@@ -56,6 +56,12 @@ Legacy alias: `--review` (still accepted on preset commands) → `--code-review=
 | `/dev-review` | `--code-review=2` | — | 10 |
 | bare `/dev` | your flags | `--review` → `--code-review=1` | 5 |
 
+Review stages use deterministic tiering: L0 skips review for docs/lockfiles/renames/version
+bumps; L1/L2 dispatch `@code-review-fast` (pro/medium/15 steps). Before a qualifying L3
+review, one ready graph backend may provide bounded evidence: CodeGraph for ordinary single-repo
+impact, GitNexus for process/group/cross-repo questions. Otherwise L3 dispatches `@code-review`
+(max/high/30 steps) directly.
+
 ## Usage
 
 ```bash

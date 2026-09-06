@@ -1,0 +1,7 @@
+{
+  "name": "f1-docs",
+  "files": ["guide.md", "changelog.md"],
+  "changedLines": 38,
+  "expectedTier": "L0",
+  "expectedAgent": null
+}

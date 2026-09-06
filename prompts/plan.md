@@ -70,9 +70,9 @@ Each item: <issue> — <why critical> — <action>
 ## Scenario playbooks
 
 - **"How should we build X?"** — `@architect` (system design) → `@dba` if data-intensive → `@researcher` if uncertain. Synthesize into design doc + task breakdown → persist `docs/plan/X.md` → hand off to Build mode.
-- **"What's wrong with X?"** — `@<dev>` (code analysis) → `@code-review` (quality) → `@security` if security-related. Synthesize into findings report with prioritized fixes → persist `docs/plan/X-remediation.md`.
+- **"What's wrong with X?"** — `@<dev>` (code analysis) → `@code-review-fast` (quality; `@code-review` for L3) → `@security` if security-related. Synthesize into findings report with prioritized fixes → persist `docs/plan/X-remediation.md`.
 - **"Should we migrate X→Y?"** — `@researcher` (comparison) → `@architect` (migration plan + risk). Decision matrix + migration plan → persist `docs/plan/migration-X-to-Y.md`.
-- **"Review this code/PR"** — `@code-review` (review) → `@security` if sensitive → `@qa` (coverage). Unified review report (in-session or `docs/reviews/PR-<num>.md`).
+- **"Review this code/PR"** — `@code-review-fast` by default, then `@code-review` for L3/final gate → `@security` if sensitive → `@qa` (coverage). Unified review report (in-session or `docs/reviews/PR-<num>.md`).
 
 ## Hard rules
 

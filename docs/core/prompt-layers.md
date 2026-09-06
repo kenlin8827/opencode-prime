@@ -31,6 +31,8 @@ the jsonc block (verified v1.18.25). `prompts/` is not auto-discovered.
 | `code`, `fast-coder`, `java-dev`, `python-dev`, `go-dev`, `rust-dev`, `node-dev`, `frontend-dev`, `devops`, `qa` | coding pack: `coding-principles` + `comment-strategy` + `edit-protocol` + `test-scope` |
 | `dba` | coding pack + `sql-migration` |
 | `code-review` | `coding-principles` + `comment-strategy` + `test-scope` (no `edit-protocol` — editing is denied) |
+| `code-review-fast` | shared review body + `coding-principles` (P0/P1 triage; no nit/full test-scope review) |
+| `codegraph-scout`, `gitnexus-scout` | compact graph-evidence bodies only; no L1 instructions or native tools |
 | `architect`, `advisor`, `security` | `coding-principles` only (review criteria) |
 | `build`, `plan`, `explore`, `researcher`, `tech-writer`, `vision` | none — L0 only |
 
@@ -49,6 +51,10 @@ Two resident layers are gated by per-agent permissions instead of disclosure
 - **L0 stripping** — the `lite` primary opts out of L0 entirely: its inline
   prompt carries the `<!-- lite-mode -->` sentinel and `plugins/lite-mode.ts`
   strips it plus every `Instructions from:` block from the system prompt.
+
+In tiered review, each graph backend is exposed only to its selected Scout; bounded relationship
+evidence crosses to the deep reviewer instead of graph tool definitions. Scout selection is
+optional: no ready backend means direct deep review.
 
 Quantify any change with `scripts/measure-prompts.ts` before releasing.
 

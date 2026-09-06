@@ -248,7 +248,7 @@ The system uses 5 model tiers, each mapped to a set of agents:
 |---|---|---|
 | `flash` | Fast, lightweight, exploration, high-throughput | explore, fast-coder |
 | `standard` | General orchestrator, high-traffic workhorse (root model) | build, plan, researcher, tech-writer |
-| `pro` | Professional engineering, code generation & debugging | code, java/python/go/rust/node-dev, frontend-dev, qa, dba, devops |
+| `pro` | Professional engineering, code generation & debugging, routine review triage | code, code-review-fast, codegraph-scout, gitnexus-scout, java/python/go/rust/node-dev, frontend-dev, qa, dba, devops |
 | `max` | Deep reasoning, system design, security, red-team review | advisor, architect, security, code-review |
 | `vision` | Multimodal visual analysis, UI critique | vision |
 

@@ -16,17 +16,17 @@ You are now running the **review-fix-loop** — an automated iterative review �
 **Use this command** for any code change that has P0/P1 potential — feature diffs, bug fixes, refactors, migrations.
 
 **Do NOT use this command** for:
-- Style-only / formatting-only changes → run `@code-review` directly.
-- Documentation-only diffs → run `@code-review` directly.
+- Style-only / formatting-only changes → apply the tiered route directly; L0 normally skips review.
+- Documentation-only diffs → apply the tiered route directly; L0 skips review.
 - Single-trivial nit fixes → fix directly, skip the loop.
-- You only want a review report with no fixes → run `@code-review` directly.
+- You only want a review report with no fixes → apply the tiered route directly.
 
 ## Graph
 
 ```
 [*] → Scope: Determine review scope
   → ROUND 1
-    1. Review: @code-review finds P0/P1
+    1. Review: @code-review-fast finds P0/P1; L3 uses optional capability-selected graph evidence before @code-review's final gate
     2. Triage: Classify by domain
     3. Verify: Verify each finding
        — Confirmed real bug → Step 4
@@ -37,24 +37,33 @@ You are now running the **review-fix-loop** — an automated iterative review �
        — Advisor says real → Step 4
        — Advisor inconclusive → Escalate to user
     4. Fix: @domain-dev fixes
-    5. ReReview: @code-review re-check
+    5. ReReview: @code-review-fast re-check; L3 uses optional capability-selected graph evidence before @code-review's final gate
   → if P0/P1 remain AND round < max → ROUND N+1
-  → if no P0/P1 → ✅ Cleared → Post-loop
+  → if no P0/P1 → ✅ Candidate cleared → max-tier final gate → Post-loop
   → if round = max → ⚠️ Max rounds → Post-loop
   → if escalated → 🔴 Escalated → User decides
 Post-loop: @qa (conditional) + summary
 ```
 
 **Loop invariant (carried forward every iteration):**
-- Prior fixes applied (so `@code-review` doesn't re-report them)
+- Prior fixes applied (so the selected reviewer doesn't re-report them)
 - Dismissed false positives + advisor concurrence + reasons (so `@code-review` doesn't re-report them)
 - Round counter (1–max, default 5, cap 99)
+
+**Review tiering:** rounds 1..N-1 use `@code-review-fast` unless the deterministic routing table promotes the scope to L3. Sensitive paths, `needs deep review`, and the final Cleared decision use `@code-review` (max). Apply `prompts/build.md`'s graph-scout selection before an L3 dispatch; when it selects no backend, dispatch `@code-review` directly. Carry only the selected Scout's bounded `Graph evidence` (220 default; up to 360 only for material multi-hop or cross-boundary evidence); the deep reviewer still verifies source. Every dispatch starts a fresh context; carry only that evidence, the compact fixed/dismissed list, and one-line round digests.
+
+Carry-forward format (one line per decision):
+```text
+[fixed] <file>:<line> — <one-sentence issue> — fixed in <commit/round>
+[dismissed] <file>:<line> — <one-sentence issue> — <reason> — advisor concurred
+```
+Never resume a prior review `task_id`; stale code, full-context re-billing, and anchoring make every round fresh. The final gate receives one digest line per round: scope reviewed, P0/P1 count, and disposition.
 
 **Exit conditions (exactly one fires per loop):**
 
 | Exit | Condition | Next action |
 |---|---|---|
-| ✅ Cleared | `@code-review` reports no P0/P1 | Post-loop → `@qa` (conditional) + summary |
+| ✅ Cleared | The process reviewer reports no P0/P1, then max-tier `@code-review` also reports no P0/P1 | Post-loop → `@qa` (conditional) + summary |
 | ⚠️ Max rounds | Max rounds exhausted (default 5, range 1–99 via `--max-rounds`), P0/P1 remain | Post-loop → summary with unresolved blockers |
 | 🔴 Escalated | Verification or advisor inconclusive | Stop — user decides with evidence |
 
@@ -84,7 +93,7 @@ Each round consists of 5 steps. **Every P0/P1 finding must pass through Verify b
 
 #### Step 1 — Review
 
-Dispatch to `@code-review` with the current change set and any context from previous rounds.
+Dispatch to `@code-review-fast` with the current change set and any context from previous rounds, unless the deterministic routing table promotes the scope to L3. For L3, apply `prompts/build.md`'s graph-scout selection: only the selected Scout receives the changed symbols and one relationship question; otherwise dispatch max-tier `@code-review` directly. The final Cleared decision always uses max-tier `@code-review`.
 
 #### Step 2 — Triage
 
@@ -145,8 +154,8 @@ Dispatch to `@advisor` with:
 
 | Advisor says | Action | Rationale |
 |---|---|---|
-| **Agrees — false positive** | Dismiss the finding. Log it with the reason + advisor's concurrence. Carry forward to next `@code-review` dispatch. | 2 of 3 parties agree it's not a bug. |
-| **Disagrees — real bug** | Proceed to Step 4 (Fix). Include both `@code-review`'s finding and `@advisor`'s counter-argument in the fix dispatch. | 2 of 3 parties say it's real. |
+| **Agrees — false positive** | Dismiss the finding. Log it with the reason + advisor's concurrence. Carry forward to the next reviewer dispatch. | 2 of 3 parties agree it's not a bug. |
+| **Disagrees — real bug** | Proceed to Step 4 (Fix). Include both the review finding and `@advisor`'s counter-argument in the fix dispatch. | 2 of 3 parties say it's real. |
 | **Inconclusive** | Escalate to the user with all evidence from both sides. | No consensus — human decides. |
 
 **One call per finding.** Don't loop with the advisor. If the advisor is unavailable (advisor mode off), the finding defaults to **kept as real** — proceed to Fix. Never silently dismiss a finding that `@code-review` raised just because the verifier disagreed.
@@ -161,7 +170,7 @@ Dispatch to the matching specialist for each **verified** P0/P1 issue. Provide t
 
 #### Step 5 — Re-review
 
-Dispatch to `@code-review` again on the updated changes. Carry forward all dismissed findings (with reasons) so they aren't re-reported.
+Dispatch to `@code-review-fast` again on the updated changes, or use `@code-review` when the routing table promotes the scope. For L3, obtain fresh compact graph evidence only when `prompts/build.md` selects one backend; otherwise deep-dispatch directly. Carry forward all dismissed findings (with reasons) so they aren't re-reported. After the loop has no remaining P0/P1, dispatch the max-tier `@code-review` final gate; scout it only when that same selection applies.
 
 The re-review must check two things:
 1. **Regression check** — are previously fixed issues still fixed? If a fix was reverted or broken by a subsequent fix, flag it as a regression P0.
@@ -175,12 +184,12 @@ If any dispatched agent fails (timeout, error, incomplete output) during a round
 
 1. **Retry once** with the same dispatch + a note that the previous attempt failed. Do not retry more than once — repeated failures indicate a systemic issue.
 2. **If retry fails** → escalate to the user with the failure reason, the finding that was being processed, and the agent that failed. Do not skip the finding silently.
-3. **If `@code-review` fails** during Step 1 or Step 5 → the round cannot proceed. Escalate to the user with the partial results from prior rounds.
+3. **If the selected reviewer fails** during Step 1 or Step 5 → the round cannot proceed. Escalate to the user with the partial results from prior rounds.
 4. **If `@advisor` fails** (Step 3a) → the finding defaults to **kept as real** (same as advisor mode off). Proceed to Fix. Log that advisor was unavailable.
 
 ### Stop conditions
 
-- **Stop immediately** when `@code-review` reports no P0/P1 issues.
+- **Stop immediately** only after the process reviewer and the max-tier final gate both report no P0/P1 issues.
 - **Stop** after max rounds (default 5, range 1–99 via `--max-rounds`), even if P0/P1 issues remain — report them as unresolved blockers.
 - **Stop** if a fix introduces a new critical issue that can't be resolved within the same round — escalate to the user.
 
@@ -193,11 +202,11 @@ Once the loop exits (cleared or max rounds reached):
 
 ## Dispatching guidelines
 
-**IMPORTANT:** All dispatch templates below are prompts you must send to the corresponding subagent by invoking the subagent tool. Do NOT output `@code-review`, `@advisor`, `@<domain-dev>`, or any dispatch template as plain text in your reply — that is a critical error that prevents the agent from being called.
+**IMPORTANT:** All dispatch templates below are prompts you must send to the corresponding subagent by invoking the subagent tool. Do NOT output reviewer, `@advisor`, `@<domain-dev>`, or any dispatch template as plain text in your reply — that is a critical error that prevents the agent from being called.
 
-When dispatching to `@code-review`:
+When dispatching to the selected reviewer:
 ```
-@code-review
+@code-review-fast
 
 Context: Review round N of the review-fix-loop. Previous rounds found and fixed: <summary of prior fixes>. Previously dismissed as false positive (do NOT re-report): <list with reasons>.
 Task: Review the following changes for P0/P1 issues only. Focus on correctness, security, and data integrity.
@@ -205,13 +214,15 @@ Scope: <files/commits to review>
 Expected output: Severity-ranked findings list with file:line references and concrete fix suggestions.
 ```
 
+For an L3 or final gate, use the same template with `@code-review`, include the fast conclusion and one-line round digests, and state `Review tier: L3 (code-review) · <trigger reason>` first.
+
 When dispatching to `@advisor` (false-positive consultation):
 ```
 @advisor
 
-Context: Review-fix-loop round N. @code-review raised the following P0/P1 finding, but independent verification concluded it is a false positive. I need your independent opinion before dismissing it.
+Context: Review-fix-loop round N. The reviewer raised the following P0/P1 finding, but independent verification concluded it is a false positive. I need your independent opinion before dismissing it.
 
-  Finding: `<file>:<line>` — <problem description from @code-review>. Suggested fix: <suggestion>.
+  Finding: `<file>:<line>` — <problem description from the reviewer>. Suggested fix: <suggestion>.
   Verifier's evidence (why it's a false positive):
     - <evidence point 1: e.g., "data flow traced — input is sanitized at line X before reaching this point">
     - <evidence point 2: e.g., "caller at line Y already guards against this condition">
@@ -225,7 +236,7 @@ When dispatching to a specialist for a fix (invoke the matching subagent tool, N
 ```
 @<domain-dev>
 
-Context: Review-fix-loop round N. @code-review found the following P0/P1 issue(s):
+Context: Review-fix-loop round N. The reviewer found the following P0/P1 issue(s):
   - `<file>:<line>` — <problem description>. Suggested fix: <suggestion>.
   [<If batched:> - `<file>:<line>` — <problem description>. Suggested fix: <suggestion>.]
   Verification: Confirmed real bug. <evidence: data flow / call path / why existing guards don't cover it>.
@@ -237,8 +248,8 @@ Expected output: The fix applied, with a brief explanation of what changed and w
 
 ## Hard rules
 
-- **Dispatch means tool call.** Every `@code-review`, `@advisor`, `@<domain-dev>`, or `@qa` reference in this protocol is a subagent dispatch — you MUST invoke the corresponding subagent tool. Outputting agent names or dispatch templates as plain text is WRONG and stalls the loop.
-- **Carry context forward** — pass prior round findings (including dismissed false positives + advisor concurrence, and their reasons) to the next `@code-review` dispatch so it doesn't re-report fixed or dismissed issues.
+- **Dispatch means tool call.** Every reviewer, `@advisor`, `@<domain-dev>`, or `@qa` reference in this protocol is a subagent dispatch — you MUST invoke the corresponding subagent tool. Outputting agent names or dispatch templates as plain text is WRONG and stalls the loop.
+- **Carry context forward** — pass prior round findings (including dismissed false positives + advisor concurrence, and their reasons) to the next reviewer dispatch so it doesn't re-report fixed or dismissed issues.
 - **Fix only verified P0/P1 issues** — do not fix P2/P3/nits unless they directly block the review loop. Collect P2/P3 findings reported by `@code-review` and list them in the final summary under "Recommended next steps" — do not silently drop them.
 - **Do not stop after the first review** if blocking issues remain — that defeats the purpose of the loop.
 - **Prefer minimal, targeted fixes** — one issue, one fix. No drive-by refactoring.

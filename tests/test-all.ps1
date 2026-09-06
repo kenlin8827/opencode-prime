@@ -76,10 +76,76 @@ Check "dba agent carries sql-migration via {file:}" `
     ($config.agent.dba.prompt -match '\{file:~/.config/opencode/instructions/sql-migration\.md\}')
 Check "code-review agent has NO edit-protocol (edit denied)" `
     (-not ($config.agent.'code-review'.prompt -match 'edit-protocol'))
+Check "code-review agent denies source-bearing CodeGraph MCP" `
+    ($config.agent.'code-review'.permission.'codegraph_*'.'*' -eq 'deny')
+Check "codegraph-scout is a bounded graph-only subagent" `
+    ($config.agent.'codegraph-scout'.mode -eq 'subagent' -and $config.agent.'codegraph-scout'.steps -eq 6 -and $config.agent.'codegraph-scout'.variant -eq 'medium')
+$scoutPermission = $config.agent.'codegraph-scout'.permission
+$scoutMcpGaps = @('serena_*', 'headroom_*', 'gitnexus_*', 'dbhub_*', 'idea_*') | Where-Object {
+    $rule = $scoutPermission.PSObject.Properties[$_].Value
+    $rule.PSObject.Properties['*'].Value -ne 'deny'
+}
+Check "codegraph-scout exposes only CodeGraph among MCP servers" `
+    ($scoutPermission.'codegraph_*'.'*' -eq 'deny' -and $scoutPermission.'codegraph_codegraph_explore'.'*' -eq 'allow' -and $scoutMcpGaps.Count -eq 0)
+$scoutNativeGaps = @(@('task', 'bash', 'read', 'glob', 'grep', 'edit', 'write', 'webfetch', 'websearch') | Where-Object {
+    $config.agent.'codegraph-scout'.tools.PSObject.Properties[$_].Value -ne $false
+})
+Check "codegraph-scout has no native source or shell tools" `
+    ($scoutNativeGaps.Count -eq 0)
+$graphSurfaceDenied = @('advisor', 'architect', 'dba', 'security', 'qa', 'devops', 'fast-coder') | Where-Object {
+    $permission = $config.agent.$_.permission
+    $permission.'codegraph_*'.'*' -ne 'deny' -or $permission.'gitnexus_*'.'*' -ne 'deny'
+}
+Check "non-graph roles hide CodeGraph and GitNexus schemas" ($graphSurfaceDenied.Count -eq 0)
+Check "codegraph-scout defaults to compact source-free evidence" `
+    ((Get-Content "$PSScriptRoot\..\prompts\codegraph-scout.md" -Raw) -match 'Default to 220 tokens' -and (Get-Content "$PSScriptRoot\..\prompts\codegraph-scout.md" -Raw) -match 'up to 360' -and (Get-Content "$PSScriptRoot\..\prompts\codegraph-scout.md" -Raw) -match 'do not quote')
+Check "gitnexus-scout uses the same complexity-triggered evidence cap" `
+    ((Get-Content "$PSScriptRoot\..\prompts\gitnexus-scout.md" -Raw) -match 'Default to 220 tokens' -and (Get-Content "$PSScriptRoot\..\prompts\gitnexus-scout.md" -Raw) -match 'up to 360' -and (Get-Content "$PSScriptRoot\..\prompts\gitnexus-scout.md" -Raw) -match 'cross-repository')
+$gitnexusScout = $config.agent.'gitnexus-scout'
+$gitnexusScoutPermission = $gitnexusScout.permission
+$gitnexusScoutMcpGaps = @('serena_*', 'codegraph_*', 'headroom_*', 'dbhub_*', 'idea_*') | Where-Object {
+    $rule = $gitnexusScoutPermission.PSObject.Properties[$_].Value
+    $rule.PSObject.Properties['*'].Value -ne 'deny'
+}
+Check "gitnexus-scout exposes only the bounded GitNexus query" `
+    ($gitnexusScout.mode -eq 'subagent' -and $gitnexusScout.steps -eq 6 -and $gitnexusScoutPermission.'gitnexus_*'.'*' -eq 'deny' -and $gitnexusScoutPermission.'gitnexus_query'.'*' -eq 'allow' -and $gitnexusScoutMcpGaps.Count -eq 0)
+$gitnexusScoutNativeGaps = @(@('task', 'bash', 'read', 'glob', 'grep', 'edit', 'write', 'webfetch', 'websearch') | Where-Object {
+    $gitnexusScout.tools.PSObject.Properties[$_].Value -ne $false
+})
+Check "gitnexus-scout has no native source or shell tools" `
+    ($gitnexusScoutNativeGaps.Count -eq 0)
+Check "code-review-fast agent is registered as a subagent" `
+    ($config.agent.'code-review-fast'.mode -eq 'subagent')
+Check "code-review-fast agent uses 15-step medium budget" `
+    ($config.agent.'code-review-fast'.steps -eq 15 -and $config.agent.'code-review-fast'.variant -eq 'medium')
+$fastPermission = $config.agent.'code-review-fast'.permission
+$fastMcpGaps = @('serena_*', 'codegraph_*', 'headroom_*', 'gitnexus_*', 'dbhub_*', 'idea_*') | Where-Object {
+    $rule = $fastPermission.PSObject.Properties[$_].Value
+    $rule.PSObject.Properties['*'].Value -ne 'deny'
+}
+Check "code-review-fast agent denies all MCP servers" ($fastMcpGaps.Count -eq 0)
+Check "code-review-fast reuses shared review body before its override" `
+    ($config.agent.'code-review-fast'.prompt -match 'prompts/code-review\.md[\s\S]*prompts/code-review-fast\.md')
+Check "code-review-fast prompt has no nested file marker" `
+    (-not ((Get-Content "$PSScriptRoot\..\prompts\code-review-fast.md" -Raw) -match '\{file:'))
+Check "code-review-fast marker requires dispatcher-selected tier" `
+    ((Get-Content "$PSScriptRoot\..\prompts\code-review-fast.md" -Raw) -match 'L<n>.*resolved to 1 or 2')
+$buildReviewRouting = Get-Content "$PSScriptRoot\..\prompts\build.md" -Raw
+Check "build review routing directly defines L0 through L3" `
+    ($buildReviewRouting -match '\| L0 \|' -and $buildReviewRouting -match '\| L0\.5 \|' -and $buildReviewRouting -match '\| L1 \|' -and $buildReviewRouting -match '\| L2 \|' -and $buildReviewRouting -match '\| L3 \|')
+Check "build review routing assigns fast to L1/L2 and deep only to L3" `
+    ($buildReviewRouting -match '\| L1 \|.*code-review-fast' -and $buildReviewRouting -match '\| L2 \|.*code-review-fast' -and $buildReviewRouting -match '\| L3 \|.*codegraph-scout.*code-review')
+Check "build review routing bounds graph evidence and retains source verification" `
+    ($buildReviewRouting -match '220 tokens by default' -and $buildReviewRouting -match 'up to 360 only' -and $buildReviewRouting -match 'reviewer verifies source')
 Check "build agent has zero L1 additions" `
     ($config.agent.build.prompt -eq '{file:~/.config/opencode/prompts/build.md}')
 Check "explore agent has zero L1 additions" `
     ($config.agent.explore.prompt -eq '{file:~/.config/opencode/prompts/explore.md}')
+$scout = $config.agent.scout
+Check "scout overrides the built-in with compact read-only reconnaissance" `
+    ($scout.mode -eq 'subagent' -and $scout.steps -eq 12 -and $scout.variant -eq 'low' -and $scout.tools.task -eq $false -and $scout.permission.edit -eq 'deny')
+Check "scout keeps graph tools and review routing out of its surface" `
+    ($scout.permission.'codegraph_*'.'*' -eq 'deny' -and $scout.permission.'gitnexus_*'.'*' -eq 'deny' -and (Get-Content "$PSScriptRoot\\..\\prompts\\scout.md" -Raw) -match 'Route: @build' -and (Get-Content "$PSScriptRoot\\..\\prompts\\scout.md" -Raw) -match 'Never edit or review code')
 
 # Ponytail config (official plugin) — environment-dependent: SKIP when the
 # config file doesn't exist (fresh machine / CI), only assert when present.
@@ -132,7 +198,7 @@ Check "code.md: image cascade delegates to @vision only" ($codeContent -match "y
 Check "code.md: image fallback to user, no guessing" ($codeContent -match "NEVER guess")
 $buildContent = Get-Content "$PSScriptRoot\..\prompts\build.md" -Raw
 $planContent = Get-Content "$PSScriptRoot\..\prompts\plan.md" -Raw
-Check "build.md: never routes to @code" ($buildContent -notmatch "@code(?!-)")
+Check "build.md: never routes to @code" ($buildContent -notmatch "@code(?=\s|$|[`,)])")
 Check "plan.md: never routes to @code" ($planContent -notmatch "@code(?!-)")
 
 # lite agent + lite-mode plugin (L2 layer: default agent, near-zero-overhead primary)
@@ -150,6 +216,8 @@ Check "template: lite tools whitelist has 12 tools" (($config.agent.lite.tools.r
 Check "template: lite does not whitelist list (not a real opencode tool)" ($config.agent.lite.tools.PSObject.Properties.Name -notcontains "list")
 Check "template: lite tools wildcard false hides everything else" ($config.agent.lite.tools.'*' -eq $false)
 Check "template: lite prompt hardcodes the on-demand dispatch policy (vision exception)" ($litePrompt -match 'explicit user request' -and $litePrompt -notmatch 'Boost mode')
+Check "lite and code map explicit review requests to the review agents" `
+    ($litePrompt -match 'ordinary diff → `@code-review-fast`' -and $litePrompt -match 'sensitive or final → `@code-review`' -and (Get-Content "$PSScriptRoot\\..\\prompts\\code.md" -Raw) -match 'Explicit review/audit request')
 Check "plugin-scope: default policy denies lite, utility and all subagent steps" (($scope.plugins.'*'.deny -contains "lite") -and ($scope.plugins.'*'.deny -contains "utility") -and ($scope.plugins.'*'.deny -contains "subagent:*"))
 $injectorFiles = @(
   "plugins\project-profiler\project-profiler.ts", "plugins\md-to-pdf\system-inject.ts",
@@ -184,7 +252,7 @@ $allFiles = @(
     "prompts/build.md", "prompts/plan.md", "prompts/code.md", "prompts/explore.md",
     "prompts/go-dev.md", "prompts/rust-dev.md", "prompts/java-dev.md",
     "prompts/python-dev.md", "prompts/node-dev.md", "prompts/frontend-dev.md",
-    "prompts/researcher.md", "prompts/architect.md", "prompts/code-review.md",
+    "prompts/researcher.md", "prompts/architect.md", "prompts/code-review.md", "prompts/code-review-fast.md", "prompts/codegraph-scout.md",
     "prompts/advisor.md",
     "prompts/dba.md", "prompts/devops.md", "prompts/qa.md",
     "prompts/security.md", "prompts/tech-writer.md", "prompts/vision.md",
@@ -335,9 +403,12 @@ CheckWorkflowSkill "handoff" @("Git-safe directory only", "Reference, don't dupl
 # verbatim; shipping is covered by the file-integrity list above).
 # dev-plan/dev-quick/dev-review launchers now route to the dev compositor —
 # their protocols live in skills/dev/SKILL.md (checked below).
-foreach ($name in @("grill-improve-loop", "dev-ultra", "review-fix-loop")) {
+foreach ($name in @("grill-improve-loop", "dev-ultra", "review-fix-loop", "review-report")) {
     CheckWorkflowSkill $name @()
 }
+Check "review-report documents durable-report boundaries" `
+    ((Get-Content "$PSScriptRoot\\..\\skills\\review-report\\SKILL.md" -Raw) -match 'L2/L3' -and (Get-Content "$PSScriptRoot\\..\\skills\\review-report\\SKILL.md" -Raw) -match 'source, diffs, tool output')
+Check "review records guide exists" (Test-Path "$PSScriptRoot\\..\\docs\\reviews\\README.md")
 
 # dev-prud: anchors protect the register's core mechanics — surface binding,
 # SEVxPROB tiering, blind-spot write-back, test materialization (@qa), and the
@@ -849,6 +920,8 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-lite-mode-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-plugin-scope-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-project-profiler-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-lite-tools-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }

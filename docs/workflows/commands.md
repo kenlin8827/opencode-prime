@@ -18,7 +18,7 @@ OpenCode Multi-Agent ships with a suite of high-leverage workflow slash commands
 | **`/dev-quick <task> [--review] [--max-rounds=N]`** | Dev Flow | **Quick-Dev Zero-Review Fast Track**: Lowest-cost Flash-tier coding + dynamic domain persona injection (instant delivery; optional `--review` triggers single audit, alias `/dev-flash`; no-depth-flag preset of `/dev` — see [Five Dev Flows](dev-loops.md)) |
 | **`/dev-plan <requirement> [--review] [--max-rounds=N]`** | Dev Flow | **Plan-Dev Plan-First Development**: Socratic clarification + architect plan + domain-routed implementation, with optional single review on demand (`--plan` preset of `/dev`, see [Five Dev Flows](dev-loops.md)) |
 | **`/dev-review <task> [--max-rounds=N]`** | Dev Flow | **Review-Dev Mission-Critical Dual-Review Loop**: Domain-routed coding + dual flagship review + Advisor consensus arbitration with full-stack multi-stage staging (`--code-review=2` preset of `/dev`, see [Five Dev Flows](dev-loops.md)) |
-| **`/dev-ultra <objective> [--max-rounds=N] [--max-phases=N]`** | Dev Flow | **Ultra-Dev Autonomous Multi-Phase Track**: End-to-end autonomous execution — decomposes large objectives into phases, each with its own `/dev-review` cycle, context compaction, git-commit isolation, and `--resume` support (see [Five Dev Flows](dev-loops.md)) |
+| **`/dev-ultra <objective> [--max-rounds=N] [--max-phases=N]`** | Dev Flow | **Ultra-Dev Autonomous Multi-Phase Track**: End-to-end autonomous execution — decomposes large objectives into phases, each with tiered review, context compaction, git-commit isolation, one max final gate, and `--resume` support (see [Five Dev Flows](dev-loops.md)) |
 | **`/dev-prud <requirement> [--top=N] [--max-rounds=N]`** | Dev Flow | **FMEA-front-loaded development**: Socratic clarification + pre-implementation risk register (SEV×PROB ranked, top-N) that drives planning, implementation, and register-audited verification (see [Prudent Development](dev-prud.md)) |
 | **`/review-fix-loop [scope] [--max-rounds=N]`** | Quality Loop | Automated review-verify-fix-re-review loop until zero P0/P1 issues. Scope: `last commit`, `HEAD~N`, `branch`, `PR`, or uncommitted changes |
 | **`/git-merge <source> <target> [--dry-run] [--no-verify] [--squash] [--no-ff] [--continue] [--abort]`** | Git Workflow | **Stock `git merge`, agent as the resolver**: syncs target to origin (`--ff-only`; divergence halts), guard-backs up, then merges — git auto-merges everything it can, and only conflicted files get hands-on semantic resolution with **target HEAD as the authoritative baseline**. One clean commit → `--squash`; otherwise no flag (merge commit keeps both sides' topology) |
@@ -52,11 +52,11 @@ OpenCode Multi-Agent ships with a suite of high-leverage workflow slash commands
 
 ```
 > /review-fix-loop last commit
-  → @code-review finds P0/P1 issues
+  → @code-review-fast finds P0/P1 issues; qualifying L3 routes add one compact capability-selected graph evidence pass before @code-review
   → Verifies each finding (reads code, traces data flow, checks upstream guards)
   → If false positive → skipped only after @advisor confirms
   → If confirmed BUG → @<domain-dev> fixes each verified issue
-  → @code-review re-reviews
+  → @code-review-fast re-reviews; the final Cleared gate uses max @code-review
   → Repeats until clean or max rounds reached (default: 5)
   → Summary output: verdict + stats
 

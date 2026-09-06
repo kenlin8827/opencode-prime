@@ -185,8 +185,10 @@
   //   test-scope): code, fast-coder, the six language devs, devops, qa
   //   coding pack + sql-migration: dba
   //   coding-principles + comment-strategy + test-scope: code-review (edit denied)
+  //   shared review body + coding-principles: code-review-fast (edit denied; P0/P1 triage)
+  //   graph-only relationship evidence: codegraph-scout, gitnexus-scout (no native tool surface)
   //   coding-principles only (review criteria): architect, advisor, security
-  //   zero additions: build, plan, explore, researcher, tech-writer, vision
+  //   zero additions: build, plan, scout, explore, researcher, tech-writer, vision
   //
   // Block field order (convention): description, prompt, then tuning
   // metadata (mode/model/temperature/steps/variant), permission/tools last.
@@ -205,8 +207,10 @@
   // MCP deny set: opencode has no permission inheritance or $ref — each
   // agent block is independent. The MCP-deny set (serena/codegraph/
   // gitnexus/dbhub/idea) is duplicated across: build, plan, researcher,
-  // tech-writer, vision (lite uses "*":deny instead — it has a tools
-  // whitelist). Adding/removing an MCP server here → grep "serena_\*"
+  // tech-writer, vision, code-review, and code-review-fast (lite uses
+  // "*":deny instead — it has a tools whitelist). Graph scouts expose one
+  // backend query each, keeping graph tool schemas off reviewers.
+  // Adding/removing an MCP server here → grep "serena_\*"
   // across this file to update ALL deny blocks in one pass.
   //
   // L2 layer: `lite` is the default agent — overhead-free primary, inline
@@ -217,7 +221,7 @@
   // (measured: stock ≈ 8.4k → ≈ 1.7k tok/step). Lite handles 80% of daily work
   // (quick fixes, Q&A, lookups, small edits) at ~2.3k tok/step — 62% cheaper
   // than code's ~5.4k. Escalation table in lite.md routes complex work to
-  // @code/@build/@code-review/@advisor when out of scope.
+  // @code/@build/@code-review-fast/@code-review/@advisor when out of scope.
   "agent": {
     // Native subagents disabled: `explore`'s role is owned by the factory
     // `explore` agent below (the name captures models' training priors —
@@ -251,7 +255,7 @@
       // usage guide alone is ~1.8k tok). Parameters/jsonSchema stay native:
       // they're already small (~100 tok/tool) and hand-overriding them risks
       // field-name mismatches that break tool calls at runtime. task whitelists
-      // assists: @explore, @code-review, @advisor, @vision (last match wins).
+      // assists: @explore, @code-review-fast, @code-review, @advisor, @vision (last match wins).
       // Dispatch policy is hardcoded in the prompt: assists fire only on
       // explicit user request, sole exception @vision for images beyond lite's
       // own sight (zero-alternative path). Lite is a leaf — heavy or
@@ -292,7 +296,7 @@
       }
     },
     "code": {
-      "description": "Code — direct developer. Primary agent that does the coding work itself: implement, fix, refactor, test. Never proactively delegates; manual delegation allowed only for assists (advisor, explore, code-review, vision). For single-domain tasks; suggests @build when multi-domain.",
+      "description": "Code — direct developer. Primary agent that does the coding work itself: implement, fix, refactor, test. Never proactively delegates; manual delegation allowed only for assists (advisor, explore, code-review-fast, code-review, vision). For single-domain tasks; suggests @build when multi-domain.",
       "prompt": "{file:~/.config/opencode/prompts/code.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
       "mode": "primary",
       "temperature": 0.3,
@@ -335,6 +339,32 @@
     },
     // Task delegation policy: subagents are leaf nodes — task:false on every subagent; delegation belongs to the primaries (build/plan/code).
     // Ordering = dispatch frequency: explore leads (it opens almost every workflow), so it also heads the task tool's candidate list.
+    "scout": {
+      "description": "Scout — built-in override for short, read-only reconnaissance. Locates files, symbols, and direct dependencies; routes review or audit requests to @build. Never reviews or calls graph MCP tools.",
+      "prompt": "{file:~/.config/opencode/prompts/scout.md}",
+      "mode": "subagent",
+      "temperature": 0.2,
+      "steps": 12,
+      "variant": "low",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git status*": "allow"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "skill": { "*": "deny" },
+        "serena_*": { "*": "deny" },
+        "codegraph_*": { "*": "deny" },
+        "headroom_*": { "*": "deny" },
+        "gitnexus_*": { "*": "deny" },
+        "dbhub_*": { "*": "deny" },
+        "idea_*": { "*": "deny" }
+      },
+      "tools": { "task": false }
+    },
     "explore": {
       "description": "Fast read-only codebase explorer. Use for quick code search, file location by pattern, keyword search, codebase Q&A, architecture overviews, and intent & design questions — any thoroughness from targeted lookup to thorough analysis. Structural lookups (definitions, references, symbol outlines) go to Serena MCP tools; multi-hop call paths and impact analysis go to CodeGraph instead.",
       "prompt": "{file:~/.config/opencode/prompts/explore.md}",
@@ -372,7 +402,9 @@
         "bash": "deny",
         "webfetch": "allow",
         "websearch": "allow",
-        "skill": { "*": "deny" }
+        "skill": { "*": "deny" },
+        "codegraph_*": { "*": "deny" },
+        "gitnexus_*": { "*": "deny" }
       },
       "tools": { "task": false }
     },
@@ -404,7 +436,12 @@
       "variant": "high",
       // Advisory role — environment facts arrive via explore/researcher; no
       // direct execution.
-      "permission": { "edit": "deny", "bash": "deny" },
+      "permission": {
+        "edit": "deny",
+        "bash": "deny",
+        "codegraph_*": { "*": "deny" },
+        "gitnexus_*": { "*": "deny" }
+      },
       "tools": { "task": false }
     },
     "dba": {
@@ -413,7 +450,11 @@
       "mode": "subagent",
       "temperature": 0.2,
       "variant": "medium",
-      "permission": { "skill": { "*": "deny" } },
+      "permission": {
+        "skill": { "*": "deny" },
+        "codegraph_*": { "*": "deny" },
+        "gitnexus_*": { "*": "deny" }
+      },
       "tools": { "task": false }
     },
     "security": {
@@ -424,7 +465,12 @@
       "variant": "high",
       // bash stays: dependency scanners (npm audit, pip-audit, trivy, gitleaks)
       // are core security work; edits stay denied.
-      "permission": { "edit": "deny", "skill": { "*": "deny" } },
+      "permission": {
+        "edit": "deny",
+        "skill": { "*": "deny" },
+        "codegraph_*": { "*": "deny" },
+        "gitnexus_*": { "*": "deny" }
+      },
       "tools": { "task": false }
     },
     "java-dev": {
@@ -487,7 +533,12 @@
       "mode": "subagent",
       "temperature": 0.3,
       "variant": "medium",
-      "permission": { "webfetch": "allow", "skill": { "*": "deny" } },
+      "permission": {
+        "webfetch": "allow",
+        "skill": { "*": "deny" },
+        "codegraph_*": { "*": "deny" },
+        "gitnexus_*": { "*": "deny" }
+      },
       "tools": { "task": false }
     },
     "code-review": {
@@ -495,6 +546,7 @@
       "prompt": "{file:~/.config/opencode/prompts/code-review.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
       "mode": "subagent",
       "temperature": 0.3,
+      "steps": 30,
       "variant": "high",
       // Review context needs git archaeology (log/blame/show/diff) and CVE/doc
       // lookups — allow those; deny every other bash command.
@@ -506,11 +558,120 @@
           "git show*": "allow",
           "git diff*": "allow",
           "git blame*": "allow",
-          "git status*": "allow"
+          "git status*": "allow",
+          "git grep*": "allow"
         },
         "webfetch": "allow",
         "websearch": "allow",
-        "skill": { "*": "deny" }
+        "skill": { "*": "deny" },
+        "serena_*": { "*": "deny" },
+        "codegraph_*": { "*": "deny" },
+        "headroom_*": { "*": "deny" },
+        "gitnexus_*": { "*": "deny" },
+        "dbhub_*": { "*": "deny" },
+        "idea_*": { "*": "deny" }
+      },
+      "tools": { "task": false }
+    },
+    "codegraph-scout": {
+      "description": "CodeGraph Scout — produces compact, source-free relationship evidence for an L3 code review. Dispatch only for a cross-module, public-contract, or otherwise unclear graph-impact question; never as a general code reader or reviewer.",
+      "prompt": "{file:~/.config/opencode/prompts/codegraph-scout.md}",
+      "mode": "subagent",
+      "temperature": 0.1,
+      "steps": 6,
+      "variant": "medium",
+      // CodeGraph returns source with every answer. This leaf agent is the
+      // compression boundary: it may call only CodeGraph and forwards a
+      // bounded relationship map, never retrieved source, to the reviewer.
+      "permission": {
+        "edit": "deny",
+        "bash": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "skill": { "*": "deny" },
+        "serena_*": { "*": "deny" },
+        "codegraph_*": { "*": "deny" },
+        "codegraph_codegraph_explore": { "*": "allow" },
+        "headroom_*": { "*": "deny" },
+        "gitnexus_*": { "*": "deny" },
+        "dbhub_*": { "*": "deny" },
+        "idea_*": { "*": "deny" }
+      },
+      "tools": {
+        "task": false,
+        "bash": false,
+        "read": false,
+        "glob": false,
+        "grep": false,
+        "edit": false,
+        "write": false,
+        "webfetch": false,
+        "websearch": false
+      }
+    },
+    "gitnexus-scout": {
+      "description": "GitNexus Scout — produces compact, source-free process or cross-repository relationship evidence for an L3 code review. Dispatch only when GitNexus is indexed and a process, group, or cross-repository question needs its unique capability; never as a general code reader or reviewer.",
+      "prompt": "{file:~/.config/opencode/prompts/gitnexus-scout.md}",
+      "mode": "subagent",
+      "temperature": 0.1,
+      "steps": 6,
+      "variant": "medium",
+      // The query tool returns relationship metadata without source by default.
+      // Keep the expensive GitNexus surface to one focused query and forward
+      // only the bounded evidence map to the deep reviewer.
+      "permission": {
+        "edit": "deny",
+        "bash": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "skill": { "*": "deny" },
+        "serena_*": { "*": "deny" },
+        "codegraph_*": { "*": "deny" },
+        "headroom_*": { "*": "deny" },
+        "gitnexus_*": { "*": "deny" },
+        "gitnexus_query": { "*": "allow" },
+        "dbhub_*": { "*": "deny" },
+        "idea_*": { "*": "deny" }
+      },
+      "tools": {
+        "task": false,
+        "bash": false,
+        "read": false,
+        "glob": false,
+        "grep": false,
+        "edit": false,
+        "write": false,
+        "webfetch": false,
+        "websearch": false
+      }
+    },
+    "code-review-fast": {
+      "description": "Fast code reviewer — triages ordinary diffs for P0/P1 correctness and security issues. Use for the default review pass; escalate sensitive paths or uncertain critical findings to code-review.",
+      "prompt": "{file:~/.config/opencode/prompts/code-review.md}\n\n{file:~/.config/opencode/prompts/code-review-fast.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}",
+      "mode": "subagent",
+      "temperature": 0.3,
+      "steps": 15,
+      "variant": "medium",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "git log*": "allow",
+          "git show*": "allow",
+          "git diff*": "allow",
+          "git blame*": "allow",
+          "git status*": "allow",
+          "git grep*": "allow"
+        },
+        "webfetch": "allow",
+        "websearch": "allow",
+        "skill": { "*": "deny" },
+        "serena_*": { "*": "deny" },
+        "codegraph_*": { "*": "deny" },
+        "headroom_*": { "*": "deny" },
+        "gitnexus_*": { "*": "deny" },
+        "dbhub_*": { "*": "deny" },
+        "idea_*": { "*": "deny" }
       },
       "tools": { "task": false }
     },
@@ -520,7 +681,11 @@
       "mode": "subagent",
       "temperature": 0.2,
       "variant": "medium",
-      "permission": { "skill": { "*": "deny" } },
+      "permission": {
+        "skill": { "*": "deny" },
+        "codegraph_*": { "*": "deny" },
+        "gitnexus_*": { "*": "deny" }
+      },
       "tools": { "task": false }
     },
     "tech-writer": {
@@ -574,7 +739,11 @@
       // so low variant on a flash-tier model would silently degrade code quality.
       // explore keeps low (retrieval, not reasoning); fast-coder needs reasoning.
       "variant": "medium",
-      "permission": { "skill": { "*": "deny" } },
+      "permission": {
+        "skill": { "*": "deny" },
+        "codegraph_*": { "*": "deny" },
+        "gitnexus_*": { "*": "deny" }
+      },
       "tools": { "task": false }
     }
   }

@@ -1,0 +1,17 @@
+{
+  "name": "f4-large",
+  "files": [
+    "orders.js",
+    "inventory.js",
+    "notifications.js",
+    "events.js",
+    "payments.js",
+    "users.js",
+    "search.js",
+    "audit.js"
+  ],
+  "changedLines": 800,
+  "expectedTier": "L2",
+  "expectedAgent": "code-review-fast",
+  "batching": "at most 3 files and 200 changed lines per batch"
+}

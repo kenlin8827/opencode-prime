@@ -31,7 +31,7 @@ const OVERRIDES: Record<string, string> = {
   websearch: "Search the web and return results.",
   todowrite: "Create or update a structured todo list for multi-step tasks.",
   webfetch: "Fetch a URL and extract its main content as markdown.",
-  task: "Delegate to a read-only assistant. explore: codebase search. code-review: review diffs. advisor: second opinion. vision: image analysis. Only these four available.",
+  task: "Delegate to a read-only assistant. explore: codebase search. code-review-fast: ordinary diff review. code-review: deep/final review. advisor: second opinion. vision: image analysis. Only these five available.",
   skill: "Load a scoped skill by name and follow it. Available: git-merge, git-pick, git-pull, git-push, git-rebase.",
   question: "Ask the user a blocking question mid-execution; answers return as selected labels. Use at most once per task — only for irreversible/destructive decisions.",
 }

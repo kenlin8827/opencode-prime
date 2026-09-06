@@ -38,11 +38,11 @@
 ### `/dev-plan` — 计划先行开发
 
 ```
-用户 → @build → @advisor (澄清) → @architect (出计划) → 确认 → @<lang>-dev (实现) → 可选 @code-review → 交付
+用户 → @build → @advisor (澄清) → @architect (出计划) → 确认 → @<lang>-dev (实现) → 可选分级审查 → 交付
 ```
 
 - **阶段**: 澄清 → 计划 → 确认 → 实现 → [可选审查]
-- **审查**: 默认无；`--review` 触发单 `@code-review` 审计（上限 5 轮）
+- **审查**: 默认无；`--review` 默认使用 `@code-review-fast`，L3/终审升级到 max `@code-review`（上限 5 轮）
 - **退出**: 计划确认 + 实现交付（若启用审查则需通过）
 
 ### `/dev-prud` — FMEA 审慎开发
@@ -59,10 +59,10 @@
 ### `/dev-review` — 深度双审共识闭环
 
 ```
-用户 → @build → @<lang>-dev → @architect (审查A) + @code-review (审查B) → @advisor 仲裁 → 共识
+用户 → @build → @<lang>-dev → @architect (审查A) + @code-review-fast (审查B) → @advisor 仲裁 → max `@code-review` 终审 → 共识
 ```
 
-- **审查**: 2 位法官会审（`@architect` + `@code-review`）
+- **审查**: `@architect` + `@code-review-fast`，随后由 max `@code-review` 执行终审门禁
 - **编码**: 按领域路由（`@<lang>-dev`）
 - **仲裁**: `@advisor` 按 Safety-First 原则处理分歧
 - **轮次**: 上限 10 轮（通常 3~5 轮收敛）
@@ -71,10 +71,10 @@
 ### `/dev-ultra` — 自主多阶段执行
 
 ```
-用户 → 目标 → @build 拆解 → 阶段0: @explore → 循环[阶段1..N: 编码 + 双审] → 最终验证
+用户 → 目标 → @build 拆解 → 阶段0: @explore → 循环[阶段1..N: 编码 + 分级审查] → max 终审 → 最终验证
 ```
 
-- **审查**: 每阶段双审
+- **审查**: L1/L2 使用架构师 + 快速审查；符合条件的 L3 走深度路径；仅一次 max 终审
 - **自主性**: 高——用户给目标，调度器驱动全部阶段
 - **阶段数**: 默认 6（推荐 3~6；上下文压缩后可达 8~10）
 - **停机**: 连续 3 阶段熔断、文件 > 100、外部依赖不可用
@@ -116,7 +116,7 @@
 | **适用场景** | 临时脚本、极简改动、快速原型 | 日常默认：计划审批优先的功能 | 20% 核心高危：分布式事务、全栈、安全敏感 | 安全攸关：支付、鉴权、医疗、航空 | 横跨多领域的大型系统 | 预设不覆盖的组合 |
 | **宿主 Agent** | `@build` | `@build` | `@build` | `@build` | `@build` | `@build` |
 | **编码 Agent** | `@fast-coder` | `@<lang>-dev`（按领域路由） | `@<lang>-dev`（按领域路由） | `@<lang>-dev`（按领域路由） | `@<lang>-dev` 按阶段 | `@fast-coder` 或 `@<lang>-dev`（标志决定） |
-| **审查阵容** | 默认无（`--review` 触发单审） | 默认无（`--review` 触发单审） | 2 位（`@architect` + `@code-review`） | 可配置（风险驱动） | 每阶段 2 位 | 按标志 0 / 1 / 2 位 |
+| **审查阵容** | 默认无（`--review` 触发单审） | 默认无（`--review` 触发单审） | `@architect` + `@code-review-fast` + max `@code-review` 终审门禁 | 可配置（风险驱动） | 每阶段 2 位 | 按标志 0 / 1 / 2 位 |
 | **编码前准备** | 无 | 苏格拉底澄清 + 计划 | 无 | FMEA 风险登记册 | `@explore` 摸底 | 按标志可选计划 / SDD |
 | **分歧对齐** | 无 | 计划确认门禁 | `@advisor`（Safety-First） | 风险登记册驱动 | 每阶段 `@advisor` | `@advisor`（`--code-review=2` 时） |
 | **收敛轮次** | 1 轮 | 1 轮（若 `--review` 上限 5 轮） | 上限 10 轮 | 登记册审计 | 每阶段上限 10 轮 | 按标志 `--max-rounds`（默认 5） |

@@ -1,6 +1,6 @@
 # Daily Use & Modes
 
-OpenCode Multi-Agent provides a lean default `@lite` mode, three orchestrator modes (`@code`, `@build`, `@plan`), and direct access to 17 specialized domain agents.
+OpenCode Multi-Agent provides a lean default `@lite` mode, three orchestrator modes (`@code`, `@build`, `@plan`), and direct access to specialized domain agents.
 
 ---
 
@@ -13,7 +13,7 @@ OpenCode Multi-Agent provides a lean default `@lite` mode, three orchestrator mo
 > @lite rename this variable and fix the call sites
 ```
 
-`@lite` handles 80% of daily work. When a task exceeds its scope, it suggests escalating to `@code` (deep single-domain), `@build` (multi-domain orchestration), `@code-review`, or `@advisor`. Dispatch policy: assists fire only on explicit user request — sole exception is `@vision`, which auto-dispatches for images lite cannot see.
+`@lite` handles 80% of daily work. When a task exceeds its scope, it suggests escalating to `@code` (deep single-domain), `@build` (multi-domain orchestration), `@code-review-fast` (ordinary review), `@code-review` (sensitive/final review), or `@advisor`. Dispatch policy: assists fire only on explicit user request — sole exception is `@vision`, which auto-dispatches for images lite cannot see.
 
 ---
 
@@ -26,7 +26,7 @@ Switch to `@code` for direct development — writes, modifies, tests, and verifi
 > @code Add input validation to registration form
 ```
 
-You can still manually delegate auxiliary subagents (`@advisor`, `@explore`, `@code-review`, `@vision`) when needed. If a task is cross-cutting, `@code` will recommend switching to `@build`.
+You can still manually delegate auxiliary subagents (`@advisor`, `@explore`, `@code-review-fast`, `@code-review`, `@vision`) when needed. If a task is cross-cutting, `@code` will recommend switching to `@build`.
 
 ---
 
@@ -39,7 +39,7 @@ Switch to `@build` for cross-cutting tasks — it routes work to the right speci
   → @build routes to @java-dev
 
 > Review my recent commits with focus on security
-  → @build routes to @code-review (adds @security if sensitive)
+  → @build applies tiered routing: @code-review-fast by default; qualifying L3 scopes use one compact capability-selected graph Scout, otherwise @code-review directly (adds @security when needed)
 
 > Design the architecture for a new payment service
   → @build routes to @architect (presents multi-step plan first)
@@ -55,7 +55,7 @@ Switch to `@plan` for analysis-only tasks (no code modifications):
 
 ```
 > @plan Audit the codebase for technical debt and security vulnerabilities
-  → @plan dispatches @architect, @security, @code-review, @qa in parallel
+  → @plan dispatches @architect, @security, @code-review-fast, @qa in parallel; deep review is added for L3/final gates
   → Aggregates findings into a prioritized report
 ```
 

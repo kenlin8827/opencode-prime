@@ -16,7 +16,7 @@ Plan-dev front-loads **requirement clarification and implementation planning bef
 3. Confirm   user gate — or auto-advisor full proxy-approve (FACTUAL, ≥ 8)
 4. Implement @<lang>-dev (domain-routed) — per the confirmed plan;
             tests at the test-scope.md tier before done
-5. Review    (optional, --review flag) @code-review single evidence-driven audit;
+5. Review    (optional, --review flag) tiered evidence-driven audit;
             fix loop max 5 rounds
 6. Deliver   verification report + plan-executed summary
 ```
@@ -43,7 +43,7 @@ The Socratic clarification uses `@advisor` to surface ambiguities, edge cases, a
 
 By default, dev-plan skips review entirely for maximum speed. With `--review`:
 
-- Single `@code-review` evidence-driven audit
+- `@code-review-fast` by default; `@code-review` for sensitive/L3/final gates
 - Max 5 fix rounds (configurable via `--max-rounds=N`)
 - Same audit protocol as other flows: requirement traceability, defensive code audit, anti-slop check
 

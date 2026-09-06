@@ -247,7 +247,7 @@
 |---|---|---|
 | `flash` | 快速，轻量，代码粗筛，高吞吐 | explore, fast-coder |
 | `standard` | 通用编排中枢，高吞吐主力（根模型） | build, plan, researcher, tech-writer |
-| `pro` | 专业全栈工程，代码生成与实现 | code, java/python/go/rust/node-dev, frontend-dev, qa, dba, devops |
+| `pro` | 专业全栈工程、代码生成与实现、常规审查分诊 | code, code-review-fast, codegraph-scout, gitnexus-scout, java/python/go/rust/node-dev, frontend-dev, qa, dba, devops |
 | `max` | 深度推理，系统架构，安全合规，严苛审查 | advisor, architect, security, code-review |
 | `vision` | 图像理解与多模态分析 | vision |
 

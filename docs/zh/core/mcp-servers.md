@@ -30,7 +30,7 @@
 ```
 
 - **精准定点用 Serena (LSP)**：查询函数定义、所有引用位置、文件符号大纲。极小 Payload，直接返回精确结果，不浪费哪怕 1 个额外文件的上下文。
-- **全局链路用 CodeGraph / GitNexus**：“这个模块怎么工作的？”、“修改这个接口会影响哪些下游服务？” —— 单次调用直接返回完整调用路径与影响面分析。
+- **全局链路用 CodeGraph / GitNexus**：“这个模块怎么工作的？”、“修改这个接口会影响哪些下游服务？” —— 单次调用直接返回完整调用路径与影响面分析。分级审查中仅按能力选定的 Scout 消费图谱，并把受限关系证据交给深审。
 - **数据探索用 DBHub**：先查真实 schema（`search_objects`）再执行查询（`execute_sql`），杜绝幻觉猜测。
 
 ---
@@ -72,6 +72,10 @@
 
 - **CLI 自动拉取**：运行 `pwsh install/install.ps1` 或 `./install/install.sh` 时，安装器检测到某 MCP 处于启用状态且本地 PATH 缺失该命令，会自动根据 `opencode.jsonc` 中声明的 `install` 指令完成 CLI 自动安装。
 
+**分级审查图谱选择：**图谱证据是可选加速层。会话画像仅报告 CodeGraph/GitNexus 的紧凑就绪状态；
+L3 的普通单仓影响面选 CodeGraph，流程、群组或跨仓问题才选 GitNexus。没有就绪后端时跳过 Scout，
+直接交给 `@code-review`。
+
 #### Headroom 说明
 
 - **定位**：Headroom 是套件中唯一的输入侧省 token 机制 —— `rtk` 与 `ponytail` 已覆盖输出侧。MCP 模式下由 agent 按需调用 `headroom_compress`；压缩可逆（`headroom_retrieve` 可在 CCR 有效期内取回原文）。
@@ -83,7 +87,7 @@
 无需记住何时调用什么 MCP。内置的 `project-profiler.ts` 插件会在会话启动时自动探测：
 - 当前代码库的项目语言构成。
 - 已启用的 MCP 服务与本地索引状态（`.codegraph/`、`.gitnexus/`）。
-- **立下铁律**：向智能体系统提示词注入指导准则 —— **必须优先调用代码图谱或 LSP 获取精确结构，严禁盲目遍历文件**。
+- 向系统提示词注入紧凑能力事实；后端选择由 `@build` 负责，选定的 Scout 让图谱工具不进入审查器上下文。
 
 ### 3. 项目生命周期管理（`/project` 命令）
 

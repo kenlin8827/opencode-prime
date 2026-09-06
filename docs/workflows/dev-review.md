@@ -1,6 +1,6 @@
 # Dual-Review Deep Consensus (`/dev-review`)
 
-Review-dev enforces **dual independent review with arbitration** for mission-critical code. It is one of the [Five Dev Flows](dev-loops.md) — the deep consensus philosophy: two flagship reviewers attack the diff through different lenses, and an advisor arbitrates disagreements under Safety-First principles.
+Review-dev enforces **dual independent review with arbitration** for mission-critical code. It is one of the [Five Dev Flows](dev-loops.md) — the deep consensus philosophy: an architect and a fast P0/P1 reviewer attack the diff through different lenses, then a max-tier final gate and advisor arbitration protect the Cleared decision under Safety-First principles.
 
 > Implemented as the `--code-review=2` preset of the [`/dev`](dev.md) engine.
 
@@ -13,11 +13,12 @@ Review-dev enforces **dual independent review with arbitration** for mission-cri
              across all touched layers; tests at test-scope.md tier
 2. Review A   @architect — "Requirement Traceability & Contract Lens":
              spec coverage, architectural cohesion, contract integrity
-3. Review B   @code-review — "Defensive Quality & Resiliency Lens":
+3. Review B   @code-review-fast — "Defensive P0/P1 Lens":
              boundary conditions, concurrency safety, error recovery, strict typing
 4. Arbitrate  @advisor — Safety-First principle resolves disagreements
-5. Consensus  both approve → deliver; disagreement → fix loop (max 10 rounds)
-6. Deliver    verification report + dual-review sign-off
+5. Final gate  @code-review (max) — Cleared decision after process rounds
+6. Consensus  both approve → final gate; disagreement → fix loop (max 10 rounds)
+7. Deliver    verification report + dual-review sign-off
 ```
 
 ## Dual-review protocol
@@ -30,7 +31,7 @@ Both reviewers share the same evidence-driven baseline (Execute → Observe → 
 - **Anti-Slop & Contract Defense** — scope cuts, fake mocks, empty TODOs, happy-path-only logic; cross-module DTO and API contract fit
 - **Verdict** — APPROVE only when every requirement is traceable AND no architectural defect found
 
-### Reviewer B — Defensive Engineering & Resiliency Lens (`@code-review`)
+### Reviewer B — Defensive Engineering & Resiliency Lens (`@code-review-fast`)
 
 - **Defensive Code Audit** — null/undefined safety, error recovery, resource deallocation, strict typing (zero arbitrary `any`)
 - **Extreme Stress & Concurrency** — race conditions, thread safety, boundary overflows, unhandled async rejections

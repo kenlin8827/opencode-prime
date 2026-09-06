@@ -56,6 +56,11 @@
 | `/dev-review` | `--code-review=2` | — | 10 |
 | 裸 `/dev` | 自定义标志 | `--review` → `--code-review=1` | 5 |
 
+评审阶段按确定性规则分级：文档、锁文件、纯重命名和版本号改动为 L0 免审；L1/L2
+使用 `@code-review-fast`（pro/medium/15 步）。符合条件的 L3 可由一个就绪图谱后端提供受限关系
+证据：普通单仓影响面使用 CodeGraph，流程、群组或跨仓问题使用 GitNexus；否则直接使用
+`@code-review`（max/high/30 步）。
+
 ## 用法示例
 
 ```bash

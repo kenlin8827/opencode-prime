@@ -1,6 +1,6 @@
 # 日常使用与工作模式
 
-OpenCode 多智能体配置提供默认的 `@lite` 轻量模式，三种编排模式（`@code`、`@build`、`@plan`），并允许直接调度 17 位领域专家智能体。
+OpenCode 多智能体配置提供默认的 `@lite` 轻量模式，三种编排模式（`@code`、`@build`、`@plan`），并允许直接调度领域专家智能体。
 
 ---
 
@@ -13,7 +13,7 @@ OpenCode 多智能体配置提供默认的 `@lite` 轻量模式，三种编排�
 > @lite 重命名这个变量并修好所有调用点
 ```
 
-`@lite` 覆盖 80% 的日常任务。当任务超出能力范围时，它会主动建议升级到 `@code`（深度单域开发）、`@build`（多域编排）、`@code-review` 或 `@advisor`。派发策略：助手仅凭显式要求触发；唯一例外是 `@vision`，遇到 lite 自己看不见的图片时自主补位。
+`@lite` 覆盖 80% 的日常任务。当任务超出能力范围时，它会主动建议升级到 `@code`（深度单域开发）、`@build`（多域编排）、`@code-review-fast`（普通审查）、`@code-review`（敏感/终审）或 `@advisor`。派发策略：助手仅凭显式要求触发；唯一例外是 `@vision`，遇到 lite 自己看不见的图片时自主补位。
 
 ---
 
@@ -26,7 +26,7 @@ OpenCode 多智能体配置提供默认的 `@lite` 轻量模式，三种编排�
 > @code 给注册表单加上输入校验
 ```
 
-仍可按需手动委托辅助类 subagent（`@advisor`、`@explore`、`@code-review`、`@vision`）。如果任务实际上是跨领域的，`@code` 会建议切换到 `@build`。
+仍可按需手动委托辅助类 subagent（`@advisor`、`@explore`、`@code-review-fast`、`@code-review`、`@vision`）。如果任务实际上是跨领域的，`@code` 会建议切换到 `@build`。
 
 ---
 
@@ -39,7 +39,7 @@ OpenCode 多智能体配置提供默认的 `@lite` 轻量模式，三种编排�
   → @build 调度到 @java-dev
 
 > 审查我最近的提交，关注安全问题
-  → @build 调度到 @code-review（敏感时追加 @security）
+  → @build 按分级规则调度：默认 @code-review-fast；符合条件的 L3 仅使用一个按能力选择的图谱 Scout 产出紧凑关系证据，否则直接交给 @code-review（需要时追加 @security）
 
 > 设计一个新支付服务的架构
   → @build 调度到 @architect（先展示多步计划）
@@ -55,7 +55,7 @@ OpenCode 多智能体配置提供默认的 `@lite` 轻量模式，三种编排�
 
 ```
 > @plan 审计代码库的技术债务和安全漏洞
-  → @plan 并行调度 @architect、@security、@code-review、@qa
+  → @plan 并行调度 @architect、@security、@code-review-fast、@qa；L3/终审再追加深度审查
   → 汇总报告，按优先级给出建议
 ```
 

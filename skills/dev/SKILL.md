@@ -63,7 +63,7 @@ Legacy alias: `--review` (still accepted on preset commands) → `--code-review=
 | **Clarifier** | `@advisor` | Socratic clarification (only with `--plan`). |
 | **Planner** | `@architect` | Implementation plan; plan revisions on `REQUEST_CHANGES`. |
 | **Coder** | `@fast-coder` \| `@<lang>-dev` | Implement per the routing table above. |
-| **Reviewer(s)** | `@code-review` (+ `@architect` when `=2`) | Single audit, or dual lenses + arbitration. |
+| **Reviewer(s)** | `@code-review-fast` by default; qualifying L3 scopes use the capability-selected graph scout then `@code-review` (+ `@architect` when `=2`) | Tiered audit, or dual lenses + arbitration. |
 | **Arbitrator** | `@advisor` | Code-review disagreement arbitration (Safety-First). |
 | **Test engineer** | `@qa` | Derives regression tests from acceptance criteria (only with `--qa`). |
 
@@ -149,7 +149,7 @@ The coder performs basic sanity checks (syntax, typing, imports) and runs tests 
 
 ### CodeReview (only with `--code-review`)
 #### `=1` — Single evidence-driven audit
-Dispatch `@code-review` with the git diff and the requirement (raw or consolidated — forward verbatim):
+Dispatch `@code-review-fast` with the git diff and the requirement (raw or consolidated — forward verbatim). Apply the review tier table and graph-scout selection in `prompts/build.md`; only an L3 scope with a selected backend dispatches its Scout before `@code-review`. Sensitive paths, `needs deep review`, and unavailable graph backends dispatch `@code-review` directly:
 ```markdown
 ### Raw User Requirements (Unaltered):
 <Insert the user's exact prompt word-for-word without any modification>
@@ -178,17 +178,18 @@ Chief Enterprise Architect guarding requirement traceability and contractual int
 3. **Verdict by Evidence**: `APPROVE` only when every requirement is traceable AND no architectural defect; `REQUEST_CHANGES` otherwise. Never reject on style/speculation; never approve with "should work" reasoning.
 4. **Actionable Output**: every finding = `file:line` + root cause + concrete corrected code snippet.
 
-### Reviewer B — @code-review (Defensive Quality & Resiliency Lens):
+### Reviewer B — @code-review-fast (Defensive Quality & Resiliency Lens):
 Chief Quality & Security Judge guarding software reliability and defensive engineering. Verdict grounded in verifiable evidence — not subjective judgment or optimism.
 1. **Defensive Code Audit**: null/undefined safety, error recovery, resource deallocation, strict typing (zero arbitrary `any`) — cite `file:line` + explain the failure mode concretely.
 2. **Extreme Stress & Concurrency**: race conditions, thread safety, boundary overflows, unhandled async rejections — `file:line` + root cause.
 3. **Verdict by Evidence**: `APPROVE` only when no concrete defect is found; `REQUEST_CHANGES` when any exists. Never reject on style/speculation; never approve with "should work" reasoning.
 4. **Actionable Findings**: every issue = exact `file:line` + root cause + concrete corrected code snippet.
 ```
+After both `=2` reviewers converge, apply the same graph-scout selection before dispatching `@code-review` as the L3 final gate. Only a Cleared verdict from this max-tier review closes the pipeline; carry the compact reviewer conclusions, optional bounded `Graph evidence` (220 default; up to 360 only for material multi-hop or cross-boundary evidence), and each round's one-line digest, never a resumed task session.
 **Consensus & arbitration gate**:
-1. Both `APPROVE` → QA or Delivery.
-2. Both `REQUEST_CHANGES` → merge both issue lists into a unified, non-redundant checklist → fix loop.
-3. Disagreement (one approves, one rejects, or conflicting recommendations) → dispatch the conflicting points, raw requirements, and both reports to `@advisor`: *"Reviewer A returned [Verdict A], Reviewer B returned [Verdict B]. Arbitrate between their findings based on the user's raw prompt and technical evidence."* **Safety-First Principle**: when in doubt regarding security, correctness, or data integrity, always favor the stricter requirement. Advisor outputs the final consolidated **Actionable Fix List**.
+1. Both `APPROVE` → dispatch the max-tier `@code-review` final gate, then QA or Delivery.
+2. Both `REQUEST_CHANGES` → merge both issue lists into a unified, non-redundant checklist → fix loop → max-tier final gate.
+3. Disagreement (one approves, one rejects, or conflicting recommendations) → dispatch the conflicting points, raw requirements, and both reports to `@advisor`: *"Reviewer A returned [Verdict A], Reviewer B returned [Verdict B]. Arbitrate between their findings based on the user's raw prompt and technical evidence."* **Safety-First Principle**: when in doubt regarding security, correctness, or data integrity, always favor the stricter requirement. Advisor outputs the final consolidated **Actionable Fix List**; after any fixes, dispatch the max-tier `@code-review` final gate before Delivery.
 
 **Fix dispatch (each round)**:
 ```markdown
@@ -220,7 +221,7 @@ Verify final state (build/test/lint per `instructions/test-scope.md`) and output
 - **Zero-Loss Raw Passthrough** — without `--plan`/`--sdd`, forward the user's exact requirement word-for-word to Coder and every Reviewer. With `--plan`, forward the consolidated requirement verbatim (never a paraphrase).
 - **Plan before code** — Implement may not start before the Confirm gate passes (when a plan exists).
 - **Review only when flagged** — never invoke reviewers without the corresponding flag.
-- **Review fidelity** — `=1` uses the single-audit directive; `=2` uses the dual directives + `@advisor` arbitration + merged fix checklist loop.
+- **Review fidelity** — `=1` uses the tiered single-audit directive; `=2` uses the fast dual directives + `@advisor` arbitration + max-tier final gate + merged fix checklist loop.
 - **Linear stages** — stages run or are skipped in Stage-order sequence; never interleaved, never re-ordered.
 - **`--sdd` set normalization** — execution order always `prd → adr → plan`; input order ignored; normalization never adds phases.
 - **Dispatch means tool call** — every `@agent` reference is a subagent invocation; printing it as text stalls the protocol.

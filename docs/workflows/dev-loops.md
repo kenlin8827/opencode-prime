@@ -38,11 +38,11 @@ User → @build → @fast-coder (Flash) → Done
 ### `/dev-plan` — Plan-First Development
 
 ```
-User → @build → @advisor (clarify) → @architect (plan) → confirm → @<lang>-dev (implement) → optional @code-review → Done
+User → @build → @advisor (clarify) → @architect (plan) → confirm → @<lang>-dev (implement) → optional tiered review → Done
 ```
 
 - **Phases**: Clarification → Plan → Confirm → Implement → [Optional Review]
-- **Review**: None by default; `--review` adds single `@code-review` audit (max 5 rounds)
+- **Review**: None by default; `--review` uses `@code-review-fast`, escalating to max `@code-review` for L3/final gates (max 5 rounds)
 - **Exit**: Plan confirmed + implementation delivered (review passed if `--review`)
 
 ### `/dev-prud` — FMEA Risk-First Development
@@ -59,10 +59,10 @@ User → Socratic Clarification → FMEA Risk Register → Risk-Driven Plan → 
 ### `/dev-review` — Dual-Review Deep Consensus
 
 ```
-User → @build → @<lang>-dev → @architect (Review A) + @code-review (Review B) → @advisor arbitration → Consensus
+User → @build → @<lang>-dev → @architect (Review A) + @code-review-fast (Review B) → @advisor arbitration → max @code-review final gate → Consensus
 ```
 
-- **Review**: 2 reviewers (`@architect` + `@code-review`)
+- **Review**: `@architect` + `@code-review-fast`, followed by max `@code-review` final gate
 - **Coder**: Domain-routed (`@<lang>-dev`)
 - **Arbitration**: `@advisor` resolves disagreements under Safety-First principles
 - **Rounds**: Max 10 (typically 3–5)
@@ -71,10 +71,10 @@ User → @build → @<lang>-dev → @architect (Review A) + @code-review (Review
 ### `/dev-ultra` — Autonomous Multi-Phase Execution
 
 ```
-User → Objective → @build decomposes → Phase 0: @explore → Loop[Phase 1..N: code + dual review] → Final verify
+User → Objective → @build decomposes → Phase 0: @explore → Loop[Phase 1..N: code + tiered review] → max final gate → Final verify
 ```
 
-- **Review**: 2 reviewers per phase
+- **Review**: L1/L2 use architect + fast review; qualifying L3 phases use the deep route; one max final gate
 - **Autonomy**: High — user gives objective, orchestrator drives all phases
 - **Phases**: Default 6 (3–6 recommended; compaction extends to 8–10)
 - **Stop**: Consecutive phase fuses ≥ 3, files > 100, external dependency unavailable
@@ -119,7 +119,7 @@ User → Objective → @build decomposes → Phase 0: @explore → Loop[Phase 1.
 | **Use Cases** | Throwaway scripts, UI tweaks, quick prototyping | Daily default: features where plan approval matters | 20% mission-critical: distributed TX, full-stack, security | Safety-critical: payments, auth, medical, aviation | Large-scale systems spanning multiple domains | Compositions no preset covers |
 | **Host Agent** | `@build` | `@build` | `@build` | `@build` | `@build` | `@build` |
 | **Coder Agent** | `@fast-coder` | `@<lang>-dev` (domain-routed) | `@<lang>-dev` (domain-routed) | `@<lang>-dev` (domain-routed) | `@<lang>-dev` per phase | `@fast-coder` or `@<lang>-dev` (flag-deterministic) |
-| **Review Team** | None (optional `--review`) | None (optional `--review`) | 2 (`@architect` + `@code-review`) | Configurable (risk-driven) | 2 per phase | 0 / 1 / 2 by flag |
+| **Review Team** | None (optional `--review`) | None (optional `--review`) | `@architect` + `@code-review-fast` + max `@code-review` final gate | Configurable (risk-driven) | 2 per phase | 0 / 1 / 2 by flag |
 | **Pre-Implementation** | None | Socratic clarification + plan | None | FMEA Risk Register | `@explore` survey | Optional plan / SDD by flag |
 | **Arbitration** | None | Plan-confirmation gate | `@advisor` (Safety-First) | Risk-register-driven | `@advisor` per phase | `@advisor` (with `--code-review=2`) |
 | **Convergence** | 1 round | 1 round (+ max 5 if `--review`) | Max 10 rounds | Register audit | Max 10 rounds/phase | `--max-rounds` by flag (default 5) |

@@ -30,7 +30,7 @@ To eliminate these bottlenecks, this configuration integrates a **tiered Code In
 ```
 
 - **Precise Symbol Inquiries → Serena (LSP)**: Exact definitions, references, and symbol outlines. Zero indexing wait, minimal payload, returns only what's asked without bloating the context.
-- **Architectural Understanding & Impact → CodeGraph / GitNexus**: "How does component X work?", "What breaks if I change this function?" — single-call responses covering complete call flows and blast radius.
+- **Architectural Understanding & Impact → CodeGraph / GitNexus**: "How does component X work?", "What breaks if I change this function?" — single-call responses covering complete call flows and blast radius. In tiered review, the capability-selected Scout is the only graph consumer: it compresses bounded relationship evidence for the deep reviewer.
 - **Reliable Data Exploration → DBHub**: Enforces discovering real schema (`search_objects`) before running queries (`execute_sql`), preventing hallucinated table/column names.
 
 ---
@@ -72,6 +72,11 @@ Manage active MCP servers in `install/options.jsonc`:
 
 - **Automatic CLI Provisioning**: When running `pwsh install/install.ps1` or `./install/install.sh`, if an enabled MCP CLI is missing from PATH, the installer automatically runs its `install` command (from `opencode.jsonc`) to provision it.
 
+**Tiered-review graph selection:** graph evidence is optional. The session profile reports compact
+CodeGraph/GitNexus readiness facts; L3 selects CodeGraph for ordinary single-repo impact, or
+GitNexus only for its process/group/cross-repo capability. No ready backend bypasses Scout and
+sends L3 directly to `@code-review`.
+
 #### Headroom Notes
 
 - **Scope**: Headroom is the only INPUT-side saver in the stack — `rtk` and `ponytail` already compress the output side. In MCP mode the agent calls `headroom_compress` on demand; compression is reversible (`headroom_retrieve` restores originals within the CCR TTL).
@@ -82,7 +87,8 @@ Manage active MCP servers in `install/options.jsonc`:
 
 You don't need to manually tell agents which tool to call. The bundled `project-profiler.ts` plugin:
 - Automatically detects project languages, active MCP servers, and local index status (`.codegraph/`, `.gitnexus/`).
-- Injects guidance into the system prompt: **mandates querying graph/LSP backends first rather than crawling files blindly**.
+- Injects compact capability facts into the system prompt; `@build` owns backend choice, while a
+  selected Scout keeps graph tools off reviewers.
 
 ### 3. Project Lifecycle Management (`/project` command)
 

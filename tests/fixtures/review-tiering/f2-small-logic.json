@@ -1,0 +1,7 @@
+{
+  "name": "f2-small-logic",
+  "files": ["cache.js", "cache.test.js"],
+  "changedLines": 100,
+  "expectedTier": "L1",
+  "expectedAgent": "code-review-fast"
+}

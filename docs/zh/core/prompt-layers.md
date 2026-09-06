@@ -28,6 +28,8 @@ L0 是最贵的层（× 步数 × Agent 数），因此发布门禁用
 | `code`、`fast-coder`、`java-dev`、`python-dev`、`go-dev`、`rust-dev`、`node-dev`、`frontend-dev`、`devops`、`qa` | 编码包：`coding-principles` + `comment-strategy` + `edit-protocol` + `test-scope` |
 | `dba` | 编码包 + `sql-migration` |
 | `code-review` | `coding-principles` + `comment-strategy` + `test-scope`（无 `edit-protocol`——编辑权限已禁用） |
+| `code-review-fast` | 共享评审正文 + `coding-principles`（仅 P0/P1 分诊；不报 nit / 不执行完整 test-scope） |
+| `codegraph-scout`、`gitnexus-scout` | 仅自身的紧凑关系证据正文；无 L1 指令、无原生工具 |
 | `architect`、`advisor`、`security` | 仅 `coding-principles`（评审基准） |
 | `build`、`plan`、`explore`、`researcher`、`tech-writer`、`vision` | 无——仅吃 L0 |
 
@@ -42,6 +44,8 @@ L0 是最贵的层（× 步数 × Agent 数），因此发布门禁用
   块。代码情报服务器（`serena`、`codegraph`）只留给真正查代码的 Agent。
 - **L0 剥离** —— `lite` 主 Agent 完全退出 L0：其内联 prompt 携带 `<!-- lite-mode -->`
   哨兵，`plugins/lite-mode.ts` 会把它连同所有 `Instructions from:` 块从系统提示中剥离。
+
+分级审查中每个图谱后端只暴露给选定的 Scout；跨审查边界的只有受限关系证据，而非图谱工具定义。Scout 是可选的：无就绪后端时直接深审。
 
 任何改动先用 `scripts/measure-prompts.ts` 量化，再发布。
 

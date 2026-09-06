@@ -1,6 +1,6 @@
 ---
 name: dev-ultra
-description: Ultra-Dev - autonomous goal-driven multi-phase development: decomposition, domain-routed coding, dual review, Advisor arbitration per phase, context compaction, --resume. Load ONLY when the user invokes /dev-ultra.
+description: Ultra-Dev - autonomous goal-driven multi-phase development: decomposition, domain-routed coding, tiered review, Advisor arbitration, context compaction, --resume. Load ONLY when the user invokes /dev-ultra.
 ---
 
 # Ultra-Dev Protocol (Autonomous Goal-Driven Multi-Phase Development)
@@ -24,14 +24,14 @@ stateDiagram-v2
 
     state "Autonomous Execution Loop (per phase)" as ExecutionLoop {
 [*] --> DomainCoding: Dispatch @<lang>-dev (domain-routed)
-DomainCoding --> DualReview: Submit Git Diff + phase spec to dual reviewers
-        state "Dual Concurrent Review (Evidence-Driven Audit)" as DualReview
+DomainCoding --> TieredReview: Route the phase diff by tier
+        state "Tiered Review (Evidence-Driven Audit)" as TieredReview
             [*] --> RevA: @architect — requirement traceability & contract lens
-            [*] --> RevB: @code-review — defensive & resiliency lens
+            [*] --> RevB: @code-review-fast — P0/P1 defensive lens (L1/L2)
             RevA --> Verdicts
             RevB --> Verdicts
         }
-        DualReview --> ConsensusGate: Compare verdicts
+        TieredReview --> ConsensusGate: Compare selected verdicts
         ConsensusGate --> DoubleApprove: Both approve
         ConsensusGate --> DoubleReject: Both reject → merge checklist
         ConsensusGate --> Disagreement: Conflict → @advisor arbitration
@@ -73,7 +73,8 @@ DomainCoding --> DualReview: Submit Git Diff + phase spec to dual reviewers
 | **Explore** | `@explore` | Rapid codebase survey before phase execution: architecture overview, file mapping, dependency chains. Dispatched ONCE as phase 0 (pre-execution). |
 | **Coder** | `@<lang>-dev` (domain-routed) | Reads phase spec and produces professional implementation across all touched layers; executes targeted fixes in subsequent review rounds. |
 | **Reviewer A** | `@architect` | **"Requirement Traceability & Contract Lens"**: Deeply analyzes phase spec against implementation — verifies complete requirement coverage, architectural cohesion, and contract integrity. |
-| **Reviewer B** | `@code-review` | **"Defensive Engineering & Resiliency Lens"**: Audits boundary conditions, concurrency safety, error recovery, and strict typing — evidence-driven quality gate. |
+| **Reviewer B** | `@code-review-fast` | **"Defensive P0/P1 Lens"**: Default phase review for boundary conditions, concurrency safety, error recovery, and strict typing. |
+| **L3 reviewer** | optional capability-selected Scout → `@code-review` | Scout only when graph selection succeeds; deep review remains the final gate. |
 | **Arbitrator** | `@advisor` | **"Consensus & Debate Arbitration"**: Weighs conflicting review arguments under the Safety-First principle to finalize a single actionable punchlist. |
 
 ---
@@ -107,7 +108,7 @@ The orchestrator (`@build`) receives the raw user objective and decomposes it in
 2. **[@dba]** — Design session table schema & indexes → DDL + migration
 3. **[@node-dev]** — Implement backend: QR generation + status polling API → controller + service
 4. **[@frontend-dev]** — Implement frontend: login dialog + QR display + polling → component + page
-5. **[@architect + @code-review]** — Dual review of full diff + final verification (build, test, lint) → review reports + pass/fail
+5. **[@architect + @code-review-fast]** — Tiered phase review + final verification (build, test, lint); the final Cleared gate uses max `@code-review` → review reports + pass/fail
 ```
 
 ## Agent Failure Handling
@@ -117,7 +118,8 @@ If any dispatched agent fails (timeout, error, incomplete output, connection res
 1. **Retry once** with the same dispatch + a note that the previous attempt failed. Pass the same `task_id` if available so the subagent resumes its existing session instead of starting from scratch (if no `task_id` is available, re-dispatch a fresh task with the same context).
 2. **If retry fails** → classify the failure:
    - **Coder (`@<lang>-dev`) fails**: Log the failure, skip this phase (treat as fused), and proceed to the next phase. Note the failed phase in the final report.
-   - **Reviewer (`@architect` or `@code-review`) fails**: Proceed with the available reviewer's verdict only. If both reviewers fail, skip the review for this phase and mark it as "review skipped — both reviewers unavailable" in the final report.
+   - **Phase reviewer (`@architect`, `@code-review-fast`, or qualifying `@code-review`) fails**: Proceed with the available phase reviewer's verdict only. If both selected phase reviewers fail, skip that phase review and mark it as "review skipped — both reviewers unavailable" in the final report.
+   - **Final max gate (`@code-review`) fails**: Do not deliver a Cleared verdict. Stop with `final gate unavailable` and report the failed attempt plus the phase digests for user action.
    - **Arbitrator (`@advisor`) fails**: The Safety-First principle applies — treat the disagreement as unresolved and fuse the phase. Do NOT silently pick one reviewer's side.
    - **Explore (`@explore`) fails**: Proceed without the codebase survey (blind execution). Warn in the final report that exploration was skipped.
 3. **Never retry more than once** per agent per phase. Repeated failures indicate a systemic issue — fuse the phase and continue.
@@ -170,11 +172,20 @@ You are the full-stack developer. Read the relevant files and 100% implement eve
 
 **Domain persona injection**: Domain expertise is native to each `@<lang>-dev` agent — no separate persona injection needed (unlike `/dev-quick`, which uses `@fast-coder`).
 
-#### 3b — Dual Review
+#### 3b — Tiered phase review
 
-After the domain specialist (`@<lang>-dev`) completes the phase, submit the git diff alongside the phase spec to both reviewers concurrently:
+After the domain specialist (`@<lang>-dev`) completes the phase, inspect the isolated phase diff with the deterministic table in `prompts/build.md` before dispatching a reviewer. Never treat `/dev-ultra` as a blanket L3 exception:
 
-**Reviewer A (`@architect` — Architecture & Contract Lens)**:
+- **L0:** no code review.
+- **L1/L2:** submit the phase diff and spec to `@architect` and `@code-review-fast` concurrently.
+- **L3:** submit to `@architect`; apply `prompts/build.md`'s graph-scout selection, then obtain bounded evidence only when it selects a backend (220 default; up to 360 only for material multi-hop or cross-boundary evidence). Submit the phase digest to max `@code-review` either way. The deep reviewer verifies source; the scout never replaces it.
+
+All reviewer dispatches are fresh contexts. Carry only the phase spec, L0.5 results, compact prior decisions, and optional Graph evidence.
+
+For L0, skip the consensus gate and mark the phase complete after its ordinary verification.
+
+**Reviewer A (`@architect` — Architecture & Contract Lens, L1–L3):**
+
 ```markdown
 ### Phase N Spec (Unaltered):
 <phase deliverable spec>
@@ -193,28 +204,29 @@ Audit the diff using the Execute → Observe → Match method:
 4. **Actionable Output**: Every finding MUST include: `file:line` + root cause + concrete corrected code snippet.
 ```
 
-**Reviewer B (`@code-review` — Defensive Engineering Lens)**:
+**Reviewer B (`@code-review-fast` — Defensive P0/P1 Lens, L1/L2):**
 ```markdown
 ### Phase N Spec (Unaltered):
 <phase deliverable spec>
 
 ### Orchestrator Directive to Reviewer B (Defensive Code Quality & Resiliency):
-You are the Chief Quality Judge guarding software reliability and defensive engineering.
+You are the fast quality judge guarding P0/P1 reliability and defensive regressions.
 Your verdict MUST be grounded in verifiable evidence — not subjective judgment or optimism.
 
 Audit the code changes from the ground up using the Execute → Observe → Match method:
 1. **Defensive Code Audit**: Inspect null/undefined safety, error recovery, resource deallocation, and strict typing (zero arbitrary `any`). For each suspected issue, cite `file:line` and explain the failure mode concretely.
 2. **Extreme Stress & Concurrency**: Hunt for race conditions, thread safety, boundary overflows, unhandled async rejections. Each finding must cite `file:line` + root cause.
-3. **Verdict by Evidence**: Your verdict MUST follow this rule:
+3. **Escalation**: An uncertain critical concern MUST return `needs deep review`; do not broaden the phase into a full repository review.
+4. **Verdict by Evidence**: Your verdict MUST follow this rule:
    - `APPROVE` only when no concrete defect is found.
    - `REQUEST_CHANGES` when any concrete defect exists.
    - Do NOT reject based on style preference or speculation. Do NOT approve with "should work" reasoning.
-4. **Actionable Findings**: Every issue MUST pinpoint exact `file:line` + root cause + concrete corrected code snippet.
+5. **Actionable Findings**: Every issue MUST pinpoint exact `file:line` + root cause + concrete corrected code snippet.
 ```
 
 #### 3c — Consensus & Arbitration Gate
 
-Compare the verdicts from Reviewer A and Reviewer B:
+Compare the verdicts from the reviewers selected by the tier:
 
 1. **Both APPROVE** → Phase complete. Proceed to next phase (Step 3 for next phase, or Step 4 if all phases done).
 2. **Both REQUEST_CHANGES** → Merge both issue lists into a unified, non-redundant checklist → Go to Step 3d (iteration).
@@ -294,12 +306,16 @@ total_phases_planned: <N>
 
 ### Step 4a — Per-Phase Diff Isolation
 
-To ensure each phase's dual review sees a clean, isolated diff (not a cumulative mess of all prior phases):
+To ensure each phase's tiered review sees a clean, isolated diff (not a cumulative mess of all prior phases):
 
 1. **Commit after each phase**: After the domain specialist (`@<lang>-dev`) completes the phase and before dispatching reviewers, run `git add -A && git commit -m "dev-ultra: phase <N> — <one-line deliverable>"`. This creates a clean commit boundary.
-2. **Review the diff**: Dispatch `@code-review` and `@architect` with `git diff HEAD~1` (the current phase's changes only). This prevents diff bloat across phases.
+2. **Review the diff**: Apply `prompts/build.md`'s tier table and graph-scout selection to `git diff HEAD~1` (the current phase only): L0 skips; L1/L2 use `@architect` + `@code-review-fast`; L3 uses `@architect` + one optional selected Scout then max `@code-review`. This prevents diff bloat and max-tier overuse.
 3. **Fix commits**: If the review iteration loop produces fixes within the same phase, amend the phase commit (`git commit --amend --no-edit`) after each fix round. The reviewers always see `HEAD~1..HEAD` as the current phase's full changes.
 4. **Final state**: After all phases complete, the git log shows one commit per phase — a clean, auditable history.
+
+### Step 4b — Final Cleared gate
+
+After the final phase, dispatch max-tier `@code-review` once over the complete objective range (from the pre-phase baseline to `HEAD`). Carry one digest line per phase. Obtain fresh compact graph evidence first only when the final scope selects one backend in `prompts/build.md`. A Cleared verdict is required before Delivery; it is the only unconditional max-tier review in this workflow.
 
 **If git is not available** (no repo initialized): fall back to tracking changed files per phase manually and passing the explicit file list to reviewers.
 
@@ -403,13 +419,13 @@ After all phases complete (or a stop condition halts execution):
 
 ## When to use `/dev-ultra` vs `/dev-review`
 
-Both `/dev-review` and `/dev-ultra` support multi-stage, full-stack execution with dual review. The key differentiator is **autonomy and scope**:
+Both `/dev-review` and `/dev-ultra` support multi-stage, full-stack execution with tiered review. The key differentiator is **autonomy and scope**:
 
 | Factor | `/dev-review` | `/dev-ultra` |
 |---|---|---|
 | **Input** | A specific coding task (e.g. "implement QR login with session table, polling API, dialog") | A high-level objective (e.g. "implement a complete user authentication system") |
 | **Decomposition** | The orchestrator sequences sub-tasks within a single review loop | The orchestrator decomposes into independent phases, each with its own review loop |
-| **Review scope** | One dual-review pass on the full diff | One dual-review pass **per phase**, plus cross-phase consistency checks |
+| **Review scope** | One dual-review pass on the full diff | L0–L3 review per phase, plus one max final gate and cross-phase consistency checks |
 | **User interaction** | User triggers, loop runs, user gets result | User gives objective, confirms plan, then gets result — zero interaction in between |
 | **When to pick** | You know exactly what to build and can describe it in one sentence | You have a big-picture goal and want the orchestrator to figure out the phases |
 

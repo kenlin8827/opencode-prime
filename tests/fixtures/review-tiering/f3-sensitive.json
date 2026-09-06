@@ -1,0 +1,8 @@
+{
+  "name": "f3-sensitive",
+  "files": ["src/auth/login.js", "src/auth/login.test.js"],
+  "changedLines": 64,
+  "expectedTier": "L3",
+  "expectedAgent": "code-review",
+  "seedFinding": "src/auth/login.js:5 — token comparison accepts an attacker-controlled fallback"
+}

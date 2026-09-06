@@ -63,7 +63,7 @@ await onMessage({ sessionID: "s1", agent: "lite" } as any, {} as any)
 {
   const output = { description: "x".repeat(1800) }
   await onToolDef({ toolID: "task" } as any, output)
-  assert(output.description.includes("explore") && output.description.includes("code-review") && output.description.includes("advisor") && output.description.includes("vision"), "task compressed to the four-assist roster for lite")
+  assert(output.description.includes("explore") && output.description.includes("code-review-fast") && output.description.includes("code-review") && output.description.includes("advisor") && output.description.includes("vision"), "task compressed to the five-assist roster for lite")
   assert(!output.description.includes("researcher"), "task roster hides subagents lite cannot dispatch")
 }
 

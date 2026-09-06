@@ -18,7 +18,7 @@ OpenCode 多智能体配置自带一系列生产级工作流斜杠命令。
 | **`/dev-quick <task> [--review] [--max-rounds=N]`** | 开发流 | **Quick-Dev 极速免审直通**：Flash 档最低成本出码 + 动态领域灵魂注入（零审查开销，出码即交付，`--review` 触发单审，别名 `/dev-flash`；`/dev` 的零深度标志预设，详见 [五档开发流](dev-loops.md)） |
 | **`/dev-plan <requirement> [--review] [--max-rounds=N]`** | 开发流 | **Plan-Dev 计划先行开发**：苏格拉底式澄清 + 架构师出计划 + 按领域路由实现，按需审查（`/dev` 的 `--plan` 预设，详见 [五档开发流](dev-loops.md)） |
 | **`/dev-review <task> [--max-rounds=N]`** | 开发流 | **Review-Dev 深度双审共识闭环**：领域路由编码 + 双旗舰顶级会审 + Advisor 争议仲裁共识，支持全栈拆解汇总（`/dev` 的 `--code-review=2` 预设，详见 [五档开发流](dev-loops.md)） |
-| **`/dev-ultra <objective> [--max-rounds=N] [--max-phases=N]`** | 开发流 | **Ultra-Dev 自主多阶段闭环**：端到端自主执行 —— 将大型目标分解为多阶段，每阶段独立 `/dev-review` 循环 + 上下文压缩 + 逐阶段 Git 提交隔离 + 支持 `--resume` 断点续跑（详见 [五档开发流](dev-loops.md)） |
+| **`/dev-ultra <objective> [--max-rounds=N] [--max-phases=N]`** | 开发流 | **Ultra-Dev 自主多阶段闭环**：端到端自主执行 —— 将大型目标分解为多阶段，每阶段按分级规则审查 + 上下文压缩 + 逐阶段 Git 提交隔离 + 一次 max 终审 + 支持 `--resume` 断点续跑（详见 [五档开发流](dev-loops.md)） |
 | **`/dev-prud <requirement> [--top=N] [--max-rounds=N]`** | 开发流 | **FMEA 审慎开发**：苏格拉底式澄清 + 编码前风险登记册（SEV×PROB 排序，top-N），由登记册驱动计划、实现与逐条审计验证（详见 [审慎开发](dev-prud.md)） |
 | **`/review-fix-loop [scope] [--max-rounds=N]`** | 质量自动化 | 自动化 审查→验证→修复→复审 循环，直到没有 P0/P1。范围：`last commit`、`HEAD~N`、`branch`、`PR`，或空（未提交变更） |
 | **`/git-merge <source> <target> [--dry-run] [--no-verify] [--squash] [--no-ff] [--continue] [--abort]`** | Git 工程流 | **原生 `git merge`，agent 扮演解决冲突的人**：先把目标分支与 origin 同步（`--ff-only`，本地分叉即停）、建 guard 备份，再合并 —— git 能自动合的全部交给 git，只有冲突文件才做语义合并，且**目标 HEAD 是权威基线**。压成 1 个干净 commit → `--squash`；其他情况不带 flag（merge commit 保留双方拓扑） |
@@ -52,11 +52,11 @@ OpenCode 多智能体配置自带一系列生产级工作流斜杠命令。
 
 ```
 > /review-fix-loop last commit
-  → @code-review 发现 P0/P1 问题
+  → @code-review-fast 发现 P0/P1 问题；符合条件的 L3 会先由一个按能力选择的图谱 Scout 提供紧凑关系证据，再交给 @code-review
   → 验证每个发现（读代码、追踪数据流、检查上游守卫）
   → 若为误报 → @advisor 确认后方可跳过
   → 若确认真 BUG → @<领域开发> 修复每个已验证问题
-  → @code-review 复审
+  → @code-review-fast 复审；最终 Cleared 门禁使用 max @code-review
   → 重复直到清零或达到最大轮次（默认 5）
   → 输出总结：结论 + 统计数据
 

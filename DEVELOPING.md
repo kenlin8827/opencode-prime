@@ -44,7 +44,10 @@ User
  │                                            ├── @node-dev      (Node.js/NestJS/Prisma)
  │                                            ├── @frontend-dev  (React/Vue, Design System)
  │                                            ├── @qa            (test strategy, coverage)
- │                                            ├── @code-review   (diff/PR review)
+ │                                            ├── @code-review-fast (routine diff triage)
+ │                                            ├── @codegraph-scout (bounded CodeGraph relationship evidence)
+ │                                            ├── @gitnexus-scout (bounded GitNexus process/cross-repo evidence)
+ │                                            ├── @code-review   (deep/final diff review)
  │                                            ├── @advisor       (second opinion; red-team stance for design review)
  │                                            ├── @devops        (Docker/K8s/CI-CD)
  │                                            ├── @tech-writer   (docs, README, ADR)
@@ -53,7 +56,7 @@ User
  ├── @plan (primary) ── read-only analysis coordinator
  │
  ├── @code (primary, default) ── direct developer, delegation only on request
- │                                (advisor/explore/code-review/vision)
+ │                                (advisor/explore/code-review-fast/code-review/vision)
  │
  │   (default agent is set by install/options.jsonc:default_agent —
  │    the installer applies it to opencode.jsonc's root `default_agent`
@@ -70,7 +73,8 @@ User
  ├── Per-step visibility gating (agent `permission` denies in the template)
  │     skills block: sdd-workflow visible only to build/plan/code/architect;
  │     MCP tool surface (serena_* / codegraph_*, ~10.9k tok/step of tool
- │     definitions) only to code-querying agents. Quantified by
+ │     definitions) only to code-querying agents; tiered review confines
+ │     graph backends to their selected Scout. Quantified by
  │     scripts/measure-prompts.ts (real MCP handshake snapshot in
  │     scripts/mcp-instructions.snapshot.json)
  │
@@ -198,7 +202,7 @@ Five tiers, each mapped per active profile (`profiles/*.json`):
 | `max` | Deep reasoning, analysis | `high` | architect, security, advisor, code-review |
 | `standard` | Orchestration, high-traffic | `medium` | build, plan, researcher, tech-writer |
 | `standard` | Daily primary (no pin) | inherited | lite |
-| `pro` | Code generation, implementation | `medium` | code, java/python/go/rust/node-dev, frontend-dev, qa, dba, devops |
+| `pro` | Code generation, implementation, routine review triage | `medium` | code, code-review-fast, codegraph-scout, gitnexus-scout, java/python/go/rust/node-dev, frontend-dev, qa, dba, devops |
 | `flash` | Fast retrieval, high-volume | `low` | explore |
 | `flash` | Rapid coding (zero-review paths) | `medium` | fast-coder |
 | `vision` | Image understanding | `medium` | vision |
@@ -217,7 +221,7 @@ Profile mechanics (tier→model rewrite, live apply vs fallback, validation) are
 
 > **Top principle**: minimize wasted time and resources, find the best balance point with quality. Test depth is matched to change size — full suite and E2E are exceptions, not the baseline.
 
-**Single source of truth**: [`instructions/test-scope.md`](instructions/test-scope.md) — attached to coding/review agent prompts at L1 (agent `prompt` `{file:}` assembly). Applies to `@build` dispatch, `@qa` execution, and `@code-review` reporting. Don't duplicate the table in agent files — they reference the policy file.
+**Single source of truth**: [`instructions/test-scope.md`](instructions/test-scope.md) — attached to coding/deep-review agent prompts at L1 (agent `prompt` `{file:}` assembly). Fast review is deliberately P0/P1-only and does not run the full test-scope policy. Applies to `@build` dispatch, `@qa` execution, and `@code-review` reporting. Don't duplicate the table in agent files — they reference the policy file.
 
 ### Quick reference (tier table)
 
@@ -546,7 +550,10 @@ prompts/
 ├── code.md                   # Primary: direct developer (default entry)
 ├── advisor.md                # Decision advisor + red-team stance
 ├── architect.md              # System design, ADR
-├── code-review.md            # Diff/PR review
+├── code-review.md            # Deep/final diff/PR review
+├── code-review-fast.md       # Routine P0/P1 diff triage
+├── codegraph-scout.md         # Compact source-free graph evidence
+├── gitnexus-scout.md          # Compact source-free process/cross-repo evidence
 ├── dba.md                    # Database, SQL, migrations
 ├── devops.md                 # Docker, K8s, CI/CD
 ├── explore.md                # Read-only explorer (efficient model)
