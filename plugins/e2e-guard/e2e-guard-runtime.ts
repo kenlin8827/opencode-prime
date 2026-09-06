@@ -41,6 +41,7 @@
  */
 
 import { tokenize } from "../adr-guard/adr-guard-runtime"
+import { PACKAGE_MANAGERS } from "../shared/package-manager"
 
 // ─── Session approval store (two tiers) ─────────────────────────────
 
@@ -99,7 +100,12 @@ export function clearApprovals(): void {
 
 const SEPARATORS = new Set(["&&", "||", ";", "|", "&"])
 
-const PACKAGE_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun", "npx", "bunx", "pnpx"])
+const PACKAGE_MANAGER_EXECUTABLES = new Set([
+  ...PACKAGE_MANAGERS,
+  "npx",
+  "bunx",
+  "pnpx",
+])
 
 // Runner CLI → the verb that actually executes tests. `null` means any
 // invocation of the binary counts (nightwatch has no separate verb).
@@ -220,7 +226,7 @@ function segmentE2eRisk(tokens: string[]): E2eRisk | null {
       continue
     }
 
-    if (PACKAGE_MANAGERS.has(t)) {
+    if (PACKAGE_MANAGER_EXECUTABLES.has(t)) {
       // First non-flag tokens after the PM: optional "run", then the script.
       let j = i + 1
       if (j < tokens.length && tokens[j].toLowerCase() === "run") j++

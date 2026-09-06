@@ -5,6 +5,8 @@ import type { Plugin } from "@opencode-ai/plugin"
  * Auto Format — automatically runs formatters on files after edit.
  *
  * Supported formatters (auto-detected by config file presence):
+ *  - dprint:     dprint.json[c] / .dprint.json[c] + project-local binary
+ *  - Biome:      biome.json / biome.jsonc + project-local binary
  *  - Prettier:   .prettierrc / prettier.config.js
  *  - ESLint:     .eslintrc / eslint.config.js
  *  - Ruff:       ruff.toml / pyproject.toml [tool.ruff]
@@ -26,6 +28,28 @@ interface FormatterConfig {
 }
 
 const FORMATTERS: FormatterConfig[] = [
+  {
+    name: "dprint",
+    check: (root) =>
+      (existsSync(join(root, "dprint.json")) || existsSync(join(root, "dprint.jsonc")) ||
+        existsSync(join(root, ".dprint.json")) || existsSync(join(root, ".dprint.jsonc"))) &&
+      (existsSync(join(root, "node_modules", ".bin", "dprint")) ||
+        existsSync(join(root, "node_modules", ".bin", "dprint.cmd"))),
+    command: (file) => ["bun", "x", "--no-install", "dprint", "fmt", file],
+    extensions: [
+      ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json", ".jsonc", ".md", ".mdx", ".toml",
+      ".css", ".scss", ".html", ".vue", ".svelte", ".go", ".py", ".rs", ".java", ".cs", ".vb",
+    ],
+  },
+  {
+    name: "biome",
+    check: (root) =>
+      (existsSync(join(root, "biome.json")) || existsSync(join(root, "biome.jsonc"))) &&
+      (existsSync(join(root, "node_modules", ".bin", "biome")) ||
+        existsSync(join(root, "node_modules", ".bin", "biome.cmd"))),
+    command: (file) => ["bun", "x", "--no-install", "@biomejs/biome", "format", "--write", file],
+    extensions: [".ts", ".tsx", ".js", ".jsx", ".json", ".jsonc", ".css", ".graphql"],
+  },
   {
     name: "prettier",
     check: (root) =>
@@ -80,6 +104,10 @@ function getFormatter(filePath: string, projectRoot: string): FormatterConfig | 
     }
   }
   return null
+}
+
+export function formatterNameFor(filePath: string, projectRoot: string): string | null {
+  return getFormatter(filePath, projectRoot)?.name ?? null
 }
 
 export const AutoFormatPlugin: Plugin = async ({ client, directory }) => {

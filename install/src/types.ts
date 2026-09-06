@@ -60,6 +60,7 @@ export interface CliArgs {
   // Unset = OCP_MAX_BACKUPS env, else 5 (see installer.getMaxBackups).
   keepBackups?: number;
   yes: boolean;
+  projectMode: 'auto' | 'wizard' | 'headless';
   binDir?: string;
   optionsFile?: string;
   isInteractive: boolean;

@@ -4,30 +4,26 @@ import type {
   TuiPluginApi,
   TuiPluginModule,
 } from "@opencode-ai/plugin/tui"
-import { existsSync, readFileSync } from "node:fs"
-import { join } from "node:path"
 import { tr, initI18n, languageOption, switchLanguage, SWITCH_LANG, type DialogOption } from "./i18n"
 import {
   CONFIG_REL,
   getProjectDir,
   setProjectDir,
 } from "../project-manager/project-manager-config"
-import {
-  planIndexBackends,
-  planInitBackends,
-  probeBackends,
-  runBackends,
-  type BackendResult,
-} from "../project-manager/project-manager-index"
+import type { BackendResult } from "../project-manager/project-manager-index"
+import type { HookResult } from "../project-manager/project-manager-hooks"
+import { indexProject, initProject, syncProject } from "../project-manager/project-manager-operations"
 import {
   applySwitchesToConfigContent,
   generateConfigContent,
-  runInitWithSwitches,
-  runSync,
   type ProjectSwitches,
   type ScaffoldResult,
-  type SyncResult,
 } from "../project-manager/project-manager-scaffold"
+import { planDprintSetup, setupDprint } from "../project-manager/project-manager-dprint"
+import {
+  detectProjectSwitches,
+  PROJECT_SWITCH_OPTIONS,
+} from "../project-manager/project-manager-options"
 
 /**
  * Project Wizard — TUI dialog-based project initialization and switch configuration.
@@ -75,81 +71,24 @@ export interface DetectedProjectState {
 export function toggleGuardState(
   current?: "on" | "off" | "default",
 ): "on" | "off" | "default" {
-  if (current === "on") return "off"
-  if (current === "off") return "default"
-  return "on"
+  const values = PROJECT_SWITCH_OPTIONS.adrGuard.map((option) => option.value)
+  const index = values.indexOf(current ?? "default")
+  return values[(index + 1) % values.length]
 }
 
 /** Cycle helper for autoAdvisorMode (lite -> full -> off -> default -> lite). */
 export function cycleAdvisorMode(
   current?: "off" | "lite" | "full" | "default",
 ): "off" | "lite" | "full" | "default" {
-  if (current === "lite") return "full"
-  if (current === "full") return "off"
-  if (current === "off") return "default"
-  return "lite"
+  const values = PROJECT_SWITCH_OPTIONS.autoAdvisorMode.map((option) => option.value)
+  const index = values.indexOf(current ?? "default")
+  return values[(index + 1) % values.length]
 }
 
 /** Detect initial switch values from existing project config or defaults. */
 export function detectCurrentSwitches(rootDir: string): DetectedProjectState {
-  const candidatePaths = [
-    { rel: ".opencode/opencode.jsonc", abs: join(rootDir, ".opencode", "opencode.jsonc") },
-    { rel: "opencode.jsonc", abs: join(rootDir, "opencode.jsonc") },
-  ]
-
-  for (const candidate of candidatePaths) {
-    if (!existsSync(candidate.abs)) continue
-    try {
-      const content = readFileSync(candidate.abs, "utf-8")
-      const advisorActive = content.match(/^[^/\n\r]*"autoAdvisorMode"\s*:\s*"([^"]+)"/m)
-      const adrActive = content.match(/^[^/\n\r]*"adrGuard"\s*:\s*"([^"]+)"/m)
-      const envActive = content.match(/^[^/\n\r]*"envGuard"\s*:\s*"([^"]+)"/m)
-      const e2eActive = content.match(/^[^/\n\r]*"e2eGuard"\s*:\s*"([^"]+)"/m)
-      const adrDirMatch = content.match(/^\s*(?:\/\/)?\s*"adrGuardDir"\s*:\s*"([^"]+)"/m)
-      const adrModeMatch = content.match(/^[^/\n\r]*"adrMode"\s*:\s*"([^"]+)"/m)
-
-      return {
-        exists: true,
-        configPath: candidate.abs,
-        configRelPath: candidate.rel,
-        switches: {
-          autoAdvisorMode: advisorActive
-            ? (advisorActive[1] as ProjectSwitches["autoAdvisorMode"])
-            : "default",
-          adrGuard: adrActive
-            ? (adrActive[1] as ProjectSwitches["adrGuard"])
-            : "default",
-          adrGuardDir: adrDirMatch ? adrDirMatch[1] : "docs/adr",
-          adrMode: adrModeMatch
-            ? (adrModeMatch[1] as ProjectSwitches["adrMode"])
-            : "default",
-          envGuard: envActive
-            ? (envActive[1] as ProjectSwitches["envGuard"])
-            : "default",
-          e2eGuard: e2eActive
-            ? (e2eActive[1] as ProjectSwitches["e2eGuard"])
-            : "default",
-        },
-      }
-    } catch {
-      // Fall through if file read fails
-    }
-  }
-
-  // No existing config: default initial preset
-  return {
-    exists: false,
-    switches: {
-      autoAdvisorMode: "lite",
-      adrGuard: "on",
-      adrGuardDir: "docs/adr",
-      adrMode: "auto",
-      envGuard: "on",
-      e2eGuard: "on",
-    },
-  }
+  return detectProjectSwitches(rootDir)
 }
-
 function formatGuardBadge(val?: "on" | "off" | "default"): string {
   if (val === "on") return "🟢 ON"
   if (val === "off") return "🔴 OFF"
@@ -176,14 +115,20 @@ function backendLine(r: BackendResult): string {
   return `  ⏭️ ${r.backend}: skipped (${r.detail})`
 }
 
-function initReport(results: ScaffoldResult[], backends: BackendResult[]): string {
+function initReport(results: ScaffoldResult[], backends: BackendResult[], hooks: HookResult[]): string {
   const lines = results.map((r) => {
     if (r.status === "created") return `  ✅ created ${r.relPath}`
     if (r.status === "updated") return `  ♻️ updated ${r.relPath}`
     if (r.status === "invalid") return `  ⚠️ malformed ${r.relPath}`
     return `  ⏭️ kept ${r.relPath}`
   })
-  return `Target: ${getProjectDir()}\n\nFiles:\n${lines.join("\n")}\n\nBackends:\n${backends.map(backendLine).join("\n")}`
+  const hookLines = hooks.map((r) => {
+    if (r.status === "registered") return `  ✅ ${r.hook}: ${r.detail}`
+    if (r.status === "updated") return `  ♻️ ${r.hook}: ${r.detail}`
+    if (r.status === "failed") return `  ❌ ${r.hook}: ${r.detail}`
+    return `  ⏭️ ${r.hook}: skipped (${r.detail})`
+  })
+  return `Target: ${getProjectDir()}\n\nFiles:\n${lines.join("\n")}\n\nBackends:\n${backends.map(backendLine).join("\n")}\n\nHooks:\n${hookLines.join("\n")}`
 }
 
 export interface WizardState {
@@ -229,6 +174,7 @@ function showAlertModal(
     title: string
     message: string
     onDismiss: () => void
+    onConfirm?: () => void
   },
 ): void {
   let navigated = false
@@ -240,7 +186,7 @@ function showAlertModal(
         onConfirm: () => {
           navigated = true
           setTimeout(() => {
-            params.onDismiss()
+            ;(params.onConfirm ?? params.onDismiss)()
           }, 20)
         },
       }),
@@ -274,6 +220,7 @@ function showMainMenu(api: TuiPluginApi, state: WizardState): void {
     : tr("project.applyInitDesc")
 
   const switchesSummary = `adv:${current.autoAdvisorMode ?? "def"} · adr:${current.adrGuard ?? "def"} · env:${current.envGuard ?? "def"} · e2e:${current.e2eGuard ?? "def"}`
+  const dprintPlan = planDprintSetup(rootDir)
 
   // The host DialogSelect renders `category` as bold accent section
   // headers that are NOT focusable options — real grouping, no fake rows.
@@ -282,6 +229,12 @@ function showMainMenu(api: TuiPluginApi, state: WizardState): void {
   const actionsCat = tr("project.actionsHeader")
   const items: DialogOption<string>[] = [
     { title: mainActionTitle, value: "__action_init__", description: mainActionDesc, category: setupCat },
+    ...(!isExisting && dprintPlan.status === "eligible" ? [{
+      title: tr("project.setupDprint"),
+      value: "__action_dprint__",
+      description: tr("project.setupDprintDesc"),
+      category: setupCat,
+    }] : []),
     { title: tr("project.configureSwitches"), value: "__action_switches__", description: switchesSummary, category: setupCat },
     { title: tr("project.syncTemplates"), value: "__action_sync__", description: tr("project.syncTemplatesDesc"), category: maintainCat },
     { title: tr("project.refreshIndex"), value: "__action_index__", description: tr("project.refreshIndexDesc"), category: maintainCat },
@@ -311,14 +264,8 @@ function showMainMenu(api: TuiPluginApi, state: WizardState): void {
           }
           case "__action_init__": {
             try {
-              const results = runInitWithSwitches(current)
-              const probe = probeBackends(rootDir)
-              const backends = await runBackends(planInitBackends(probe), rootDir).catch(
-                (e): BackendResult[] => [
-                  { backend: "codegraph", status: "failed", detail: String(e) },
-                ],
-              )
-              const report = initReport(results, backends)
+              const result = await initProject({ root: rootDir, switches: current })
+              const report = initReport(result.files, result.backends, result.hooks)
               toast(
                 api,
                 isExisting ? tr("project.configUpdated") : tr("project.initSuccess"),
@@ -348,6 +295,32 @@ function showMainMenu(api: TuiPluginApi, state: WizardState): void {
             break
           }
 
+          case "__action_dprint__": {
+            showAlertModal(api, {
+              title: tr("project.setupDprintConfirmTitle"),
+              message: tr("project.setupDprintConfirm"),
+              onConfirm: () => {
+                void setupDprint(rootDir).then(
+                  () => {
+                    toast(api, tr("project.setupDprintDone"), "success")
+                    showAlertModal(api, {
+                      title: tr("project.setupDprintConfirmTitle"),
+                      message: tr("project.setupDprintDone"),
+                      onDismiss: () => showMainMenu(api, { ...state, currentSelection: "__action_dprint__" }),
+                    })
+                  },
+                  (err) => showAlertModal(api, {
+                    title: tr("project.setupDprintFailed"),
+                    message: tr("project.operationFailed", { err: (err as Error).message }),
+                    onDismiss: () => showMainMenu(api, { ...state, currentSelection: "__action_dprint__" }),
+                  }),
+                )
+              },
+              onDismiss: () => showMainMenu(api, { ...state, currentSelection: "__action_dprint__" }),
+            })
+            break
+          }
+
           case "__action_switches__": {
             showSwitchesMenu(api, {
               ...state,
@@ -358,7 +331,7 @@ function showMainMenu(api: TuiPluginApi, state: WizardState): void {
 
           case "__action_sync__": {
             try {
-              const res = runSync()
+              const res = syncProject(rootDir)
               let syncMsg = ""
               if (res.status === "missing") {
                 syncMsg = "⚠️ Project config does not exist.\nPlease run Init first."
@@ -394,8 +367,7 @@ function showMainMenu(api: TuiPluginApi, state: WizardState): void {
 
           case "__action_index__": {
             try {
-              const probe = probeBackends(rootDir)
-              const results = await runBackends(planIndexBackends(probe), rootDir)
+              const results = await indexProject(rootDir)
               const msg =
                 results.map(backendLine).join("\n") || "ℹ️ No backends needed index refresh."
               showAlertModal(api, {
@@ -469,14 +441,8 @@ function showSwitchesMenu(api: TuiPluginApi, state: WizardState): void {
         switch (option.value) {
           case "__save_switches__": {
             try {
-              const results = runInitWithSwitches(current)
-              const probe = probeBackends(rootDir)
-              const backends = await runBackends(planInitBackends(probe), rootDir).catch(
-                (e): BackendResult[] => [
-                  { backend: "codegraph", status: "failed", detail: String(e) },
-                ],
-              )
-              const report = initReport(results, backends)
+              const result = await initProject({ root: rootDir, switches: current })
+              const report = initReport(result.files, result.backends, result.hooks)
               toast(
                 api,
                 isExisting ? tr("project.configSavedToast") : tr("project.initSuccess"),

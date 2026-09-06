@@ -6,6 +6,7 @@ import { CliArgs, InstallOptions } from './types';
 import { deployHerdrConfig } from './herdr-config';
 import { deployModelsCost } from './models-cost';
 import { colorize } from './color';
+import { runShellCommand, type ShellCommandOptions } from './shared/shell-command';
 import {
   collectHistoricalShippedFiles,
   collectShippedFiles,
@@ -517,7 +518,13 @@ export function runInstallCommand(cmd: string) {
   const mirrorSet = !!process.env.OCP_RAW_MIRROR || !!process.env.OCP_RELEASE_MIRROR;
   const { primary, fallback } = installCommandSequence(rewritten, cmd, mirrorSet);
 
-  const res = runShellCommand(primary);
+  const shellOptions: ShellCommandOptions = {
+    output: 'inherit',
+    timeoutMs: 600000,
+    windowsShell: 'powershell',
+    powershellExecutable: isBinaryOnPath('pwsh') ? 'pwsh' : 'powershell',
+  };
+  const res = runShellCommand(primary, shellOptions);
   if (res.status === 0 || !fallback) return res;
 
   // At least one mirror URL failed. Try the original command (with all
@@ -527,18 +534,7 @@ export function runInstallCommand(cmd: string) {
     `[OCP_*_MIRROR] mirror URL failed (exit ${res.status ?? 'n/a'}), ` +
       `falling back to the official source URL`,
   );
-  return runShellCommand(fallback);
-}
-
-function runShellCommand(cmd: string) {
-  if (process.platform !== 'win32') {
-    return spawnSync(cmd, { stdio: 'inherit', timeout: 600000, shell: true });
-  }
-  const ps = isBinaryOnPath('pwsh') ? 'pwsh' : 'powershell';
-  return spawnSync(ps, ['-NoProfile', '-Command', cmd], {
-    stdio: 'inherit',
-    timeout: 600000,
-  });
+  return runShellCommand(fallback, shellOptions);
 }
 
 /**
@@ -734,21 +730,20 @@ function runPostInstall(repoDir: string, name: string, def: ToolRegistry['tools'
     // Capture stdout (not inherit) so commands that emit JSON — e.g. herdr
     // plugin link — don't dump raw payloads to the terminal. We parse and
     // surface a one-line summary instead.
-    const res = spawnSync(resolvedCommand, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 300000,
-      shell: true,
-      encoding: 'utf8',
+    const res = runShellCommand(resolvedCommand, {
       env: { ...process.env, OCP_REPO_DIR: repoDir },
+      output: 'capture',
+      timeoutMs: 300000,
+      windowsShell: 'native',
     });
     if (res.error || res.status !== 0) {
-      const stderr = (res.stderr ?? '').toString().trim();
+      const stderr = res.stderr.trim();
       const detail = res.error
         ? res.error.message
         : stderr || `exit code ${res.status ?? '?'}`;
       console.log(colorize.yellow(`⚠ [post-install] ${name}/${stepName} failed: ${detail}`));
     } else {
-      const summary = extractJsonSummary((res.stdout ?? '').toString());
+      const summary = extractJsonSummary(res.stdout);
       const suffix = summary ? ` — ${summary}` : '';
       console.log(colorize.green(`✓ [post-install] ${name}/${stepName} ok${suffix}`));
     }

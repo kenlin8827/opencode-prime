@@ -12,7 +12,7 @@ Plugins provide runtime enforcement and workflows that prompts alone cannot achi
 | `design-token-guard.ts` | Blocks writes with hardcoded colors/spacing/radius — keeps frontend code on design tokens |
 | `ai-slop-scanner.ts` | Warns about AI anti-patterns in frontend files (gradient soup, div soup) |
 | `usage.ts` | `/usage` TUI command opens a dialog with auto-fitted width and a visible tab strip: **by session** (one row per session + total), **by agent**, **by model** — non-cached input / output / cached-in tokens, cost, cache hit, share bars; `1/2/3` or `←→` switch tabs live, `Enter` closes; `↑/↓` scroll long tables (tab strip, warning, header, total and footers stay pinned); `/usage all\|agent\|model` opens a dimension directly; toast fallback when the dialog API is unavailable (TUI sessions only) |
-| `auto-format.ts` | Auto-runs prettier/eslint/ruff/gofmt/rustfmt after file edits |
+| `auto-format.ts` | Auto-runs the project-selected dprint/Biome/Prettier/ESLint/Ruff/gofmt/rustfmt after file edits; dprint and Biome require their config and project-local binary |
 | `auto-advisor-mode.ts` | `/auto-advisor` command, protocol injection, mode gating, red-team suppression |
 | `deepseek-anchor.ts` | `/deepseek-anchor` command — anchor-based reasoning protocols with DeepSeek models |
 | `adr-guard.ts` | `/adr-guard` command — per-project ADR enforcement |
@@ -20,7 +20,7 @@ Plugins provide runtime enforcement and workflows that prompts alone cannot achi
 | `e2e-guard.ts` | `/e2e-guard` command — per-project gate: E2E runs need user confirmation |
 | `project-manager.ts` | `/project` command + commit discipline |
 | `queue-manager.ts` | `/queued` command — manage prompts queued while the session is busy |
-| `profile-wizard.ts`, `provider-wizard.ts`, `project-wizard.ts` | `/profile`, `/provider`, and `/project-wizard` TUI dialog wizards |
+| `profile-wizard.ts`, `provider-wizard.ts`, `project-wizard.ts` | `/profile`, `/provider`, and `/project-wizard` TUI dialog wizards; new Node projects without an existing formatter may explicitly set up project-local dprint |
 | `md-to-pdf.ts` | `/md-to-pdf` command & `md_to_pdf` tool — export Markdown files as publication-quality A4 PDFs (via Pandoc + Playwright) |
 | `md-to-docx.ts` | `/md-to-docx` command & `md_to_docx` tool — export Markdown files as publication-quality Word (.docx) documents (Chinese typography, auto TOC, styled tables & code blocks) |
 

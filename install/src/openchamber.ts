@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { isBinaryOnPath } from './installer';
+import { findPackageManager, globalAddCommand } from './package-manager';
 
 // OpenChamber (https://openchamber.dev) — the desktop / web GUI that runs
 // on top of the local OpenCode engine. The native desktop app is a Tauri
@@ -24,12 +25,9 @@ export interface OpenChamberResult {
  * yarn > npm). All segments are fixed constants — no external input.
  * Also used by `ocp update` to upgrade an existing installation.
  */
-export function getOpenChamberInstallCommand(): { bin: string; args: string[] } | null {
-  if (isBinaryOnPath('pnpm')) return { bin: 'pnpm', args: ['add', '-g', PACKAGE_NAME] };
-  if (isBinaryOnPath('bun')) return { bin: 'bun', args: ['add', '-g', PACKAGE_NAME] };
-  if (isBinaryOnPath('yarn')) return { bin: 'yarn', args: ['global', 'add', PACKAGE_NAME] };
-  if (isBinaryOnPath('npm')) return { bin: 'npm', args: ['install', '-g', PACKAGE_NAME] };
-  return null;
+export function getOpenChamberInstallCommand(): { bin: string; args: readonly string[] } | null {
+  const manager = findPackageManager(['pnpm', 'bun', 'yarn', 'npm'], isBinaryOnPath);
+  return manager === null ? null : globalAddCommand(manager, PACKAGE_NAME);
 }
 
 /**

@@ -36,15 +36,10 @@ import {
   SUBCOMMAND_SETUP,
   SUBCOMMAND_SYNC,
 } from "./project-manager-config"
-import {
-  planIndexBackends,
-  planInitBackends,
-  probeBackends,
-  runBackends,
-  type BackendResult,
-} from "./project-manager-index"
-import { registerProjectHooks, type HookResult } from "./project-manager-hooks"
-import { runInit, runSync, type ScaffoldResult, type SyncResult } from "./project-manager-scaffold"
+import type { BackendResult } from "./project-manager-index"
+import type { HookResult } from "./project-manager-hooks"
+import { indexProject, initProject, syncProject } from "./project-manager-operations"
+import type { ScaffoldResult, SyncResult } from "./project-manager-scaffold"
 
 const HELP = `[project-manager] Project scaffolding & configuration manager.
 
@@ -133,18 +128,8 @@ async function reply(client: PluginInput["client"], sessionID: string | undefine
 }
 
 async function executeInit(client: PluginInput["client"], sessionID?: string): Promise<void> {
-  // Scaffold first, then every first-time backend init step — each
-  // runs only when its CLI is installed + enabled, and a failed or
-  // absent CLI never blocks the file scaffolding. Finally sync
-  // GitNexus git hooks when gitnexus is active (and remove them
-  // when it is not), so repeated /project init stays idempotent.
-  const results = runInit()
-  const probe = probeBackends(getProjectDir())
-  const backends = await runBackends(planInitBackends(probe), getProjectDir()).catch(
-    (e): BackendResult[] => [{ backend: "codegraph", status: "failed", detail: String(e) }],
-  )
-  const hooks = registerProjectHooks(getProjectDir(), probe)
-  await reply(client, sessionID, initReport(results, backends, hooks))
+  const result = await initProject({ root: getProjectDir() })
+  await reply(client, sessionID, initReport(result.files, result.backends, result.hooks))
 }
 
 export function makeCommandHook(client: PluginInput["client"], handled: () => never) {
@@ -165,12 +150,9 @@ export function makeCommandHook(client: PluginInput["client"], handled: () => ne
       } else if (sub === SUBCOMMAND_INIT) {
         await executeInit(client, input.sessionID)
       } else if (sub === SUBCOMMAND_SYNC) {
-        await reply(client, input.sessionID, syncReport(runSync()))
+        await reply(client, input.sessionID, syncReport(syncProject(getProjectDir())))
       } else {
-        const probe = probeBackends(getProjectDir())
-        const results = await runBackends(planIndexBackends(probe), getProjectDir()).catch(
-          (e): BackendResult[] => [{ backend: "gitnexus", status: "failed", detail: String(e) }],
-        )
+        const results = await indexProject(getProjectDir())
         await reply(client, input.sessionID, indexReport(results))
       }
     } catch (err) {

@@ -12,7 +12,7 @@
 | `design-token-guard.ts` | 阻止写入硬编码的颜色/间距/圆角 —— 让前端代码坚守设计令牌 |
 | `ai-slop-scanner.ts` | 警告前端文件中的 AI 反模式（渐变汤、div 汤等） |
 | `usage.ts` | `/usage` TUI 命令打开宽度自适应的弹框，顶部常驻 tab 条：**按会话**（每会话一行 + 总计）、**按 Agent**、**按模型** —— 展示非缓存输入/输出/缓存输入 token、费用、缓存命中率、占比条；`1/2/3` 或 `←→` 实时切换 tab，`Enter` 关闭；`↑/↓` 滚动长表格（tab 条、警告、表头、总计与脚注固定不动）；`/usage all\|agent\|model` 直接打开对应维度；宿主无弹框 API 时降级为 toast（仅 TUI 会话） |
-| `auto-format.ts` | 文件编辑后自动运行 prettier/eslint/ruff/gofmt/rustfmt |
+| `auto-format.ts` | 文件编辑后自动运行项目选择的 dprint/Biome/Prettier/ESLint/Ruff/gofmt/rustfmt；dprint 与 Biome 均要求配置文件和项目本地二进制 |
 | `auto-advisor-mode.ts` | `/auto-advisor` 命令、协议注入、模式门控、red-team 抑制 |
 | `deepseek-anchor.ts` | `/deepseek-anchor` 命令 —— 基于锚点的推理协议与 DeepSeek 模型集成 |
 | `adr-guard.ts` | `/adr-guard` 命令 —— 按项目的 ADR 强制 |
@@ -20,7 +20,7 @@
 | `e2e-guard.ts` | `/e2e-guard` 命令 —— 按项目门控：E2E 运行需用户确认 |
 | `project-manager.ts` | `/project` 命令 + 提交纪律 |
 | `queue-manager.ts` | `/queued` 命令 —— 管理会话忙碌时排队的提示 |
-| `profile-wizard.ts`、`provider-wizard.ts`、`project-wizard.ts` | `/profile`、`/provider` 与 `/project-wizard` TUI 弹窗向导 |
+| `profile-wizard.ts`、`provider-wizard.ts`、`project-wizard.ts` | `/profile`、`/provider` 与 `/project-wizard` TUI 弹窗向导；未配置现有 formatter 的新 Node 项目可明确选择配置项目本地 dprint |
 | `md-to-pdf.ts` | `/md-to-pdf` 命令与 `md_to_pdf` 工具 —— 将 Markdown 一键导出为高质量 A4 PDF（基于 Pandoc + Playwright） |
 | `md-to-docx.ts` | `/md-to-docx` 命令与 `md_to_docx` 工具 —— 将 Markdown 导出为出版级 Word (.docx) 文档（宋体/黑体排版、自动TOC、智能表格与代码美化） |
 

@@ -4,9 +4,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { isBinaryOnPath } from './installer';
-import { getProjectDir, setProjectDir } from '../../plugins/project-manager/project-manager-config';
-import { planIndexBackends, planInitBackends, probeBackends, runBackends, type BackendResult } from '../../plugins/project-manager/project-manager-index';
-import { runInit, type ScaffoldResult } from '../../plugins/project-manager/project-manager-scaffold';
+import type { BackendResult } from '../../plugins/project-manager/project-manager-index';
+import type { HookResult } from '../../plugins/project-manager/project-manager-hooks';
+import { initProject } from '../../plugins/project-manager/project-manager-operations';
+import type { ScaffoldResult } from '../../plugins/project-manager/project-manager-scaffold';
 
 // Runtime launchers behind the `ocp tui` / `ocp serve` / `ocp desktop`
 // (= `ocp ui`) / `ocp web` (OpenChamber web mode) subcommands. They exec
@@ -491,52 +492,38 @@ function formatScaffoldLine(r: ScaffoldResult): string {
   return `  ⏭️ kept ${r.relPath}`;
 }
 
+function formatHookLine(r: HookResult): string {
+  if (r.status === 'registered') return `  ✅ ${r.hook}: ${r.detail}`;
+  if (r.status === 'updated') return `  ♻️ ${r.hook}: ${r.detail}`;
+  if (r.status === 'failed') return `  ❌ ${r.hook}: ${r.detail}`;
+  return `  ⏭️ ${r.hook}: skipped — ${r.detail}`;
+}
+
 /**
  * Run the same OCP project scaffolding/indexing that `ocp project init` does.
  * This keeps `ocp desktop --init` / `ocp ui .` self-contained in TypeScript.
  */
 async function runOcpProjectInit(): Promise<number> {
   const rootDir = process.cwd();
-  const previousDir = getProjectDir();
-  setProjectDir(rootDir);
   try {
-    const configExisted =
-      fs.existsSync(path.join(rootDir, '.opencode', 'opencode.jsonc')) ||
-      fs.existsSync(path.join(rootDir, 'opencode.jsonc'));
-    console.log(configExisted
+    const result = await initProject({ root: rootDir, refreshExistingIndexes: true });
+    console.log(result.configExisted
       ? `[ocp] Activating existing OCP project in ${rootDir}...`
       : `[ocp] No OCP project detected in ${rootDir} — creating one...`);
-
-    const results = runInit();
-    const probe = probeBackends(rootDir);
-    let backends: BackendResult[] = [];
-    try {
-      backends = await runBackends(planInitBackends(probe), rootDir);
-    } catch (e: any) {
-      backends = [{ backend: 'codegraph', status: 'failed', detail: String(e) }];
-    }
-    if (configExisted) {
-      try {
-        const indexBackends = await runBackends(planIndexBackends(probe), rootDir);
-        backends = backends.concat(indexBackends);
-      } catch (e: any) {
-        backends = backends.concat([{ backend: 'gitnexus', status: 'failed', detail: String(e) }]);
-      }
-    }
-
-    console.log(`[ocp] project ${configExisted ? 'activated' : 'created'} in ${rootDir}`);
+    console.log(`[ocp] project ${result.configExisted ? 'activated' : 'created'} in ${rootDir}`);
     console.log('');
     console.log('Files:');
-    for (const r of results) console.log(formatScaffoldLine(r));
+    for (const r of result.files) console.log(formatScaffoldLine(r));
     console.log('');
     console.log('Backends:');
-    for (const r of backends) console.log(formatBackendLine(r));
+    for (const r of result.backends) console.log(formatBackendLine(r));
+    console.log('');
+    console.log('Hooks:');
+    for (const r of result.hooks) console.log(formatHookLine(r));
     return 0;
   } catch (err: any) {
     console.error(`[ocp] project init failed: ${err?.message ?? String(err)}`);
     return 1;
-  } finally {
-    setProjectDir(previousDir);
   }
 }
 

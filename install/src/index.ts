@@ -17,6 +17,7 @@ import {
 import { compactHistoricalManifests, generateManifest } from './manifest';
 import { unregisterShim, runGlobalRegistration } from './shim';
 import { runInteractiveWizard } from './wizard';
+import { runProjectWizard } from './project-wizard';
 import { runTuiDashboard } from './dashboard';
 import { launchTui, launchServe, launchWeb, launchDesktop, launchHerdr } from './launcher';
 import { deployHerdrConfig, herdrUserConfigPath, HERDR_CONFIG_TEMPLATE } from './herdr-config';
@@ -24,15 +25,10 @@ import { ensureOpenChamber } from './openchamber';
 import { executeUpdate, executeUpgrade } from './updater';
 import { executeClean } from './session-clean';
 import { normalizeTuiPassthrough } from './tui-args';
-import { getProjectDir, setProjectDir } from '../../plugins/project-manager/project-manager-config';
-import {
-  planIndexBackends,
-  planInitBackends,
-  probeBackends,
-  runBackends,
-  type BackendResult,
-} from '../../plugins/project-manager/project-manager-index';
-import { runInit, runSync, type ScaffoldResult, type SyncResult } from '../../plugins/project-manager/project-manager-scaffold';
+import type { BackendResult } from '../../plugins/project-manager/project-manager-index';
+import type { HookResult } from '../../plugins/project-manager/project-manager-hooks';
+import { indexProject, initProject, syncProject } from '../../plugins/project-manager/project-manager-operations';
+import type { ScaffoldResult, SyncResult } from '../../plugins/project-manager/project-manager-scaffold';
 
 const execFileAsync = promisify(execFile);
 
@@ -106,6 +102,7 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
     noBackup: false,
     keepBackups: undefined,
     yes: false,
+    projectMode: 'auto',
     isInteractive: process.stdout.isTTY && process.stdin.isTTY,
   };
 
@@ -277,6 +274,10 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
       if (!Number.isNaN(n) && n >= 0) args.keepBackups = n;
     } else if (arg === '-Yes' || arg === '--yes' || arg === '-y') {
       args.yes = true;
+    } else if (arg === '--wizard') {
+      args.projectMode = 'wizard';
+    } else if (arg === '--headless') {
+      args.projectMode = 'headless';
     } else if (arg === '-BinDir' || arg === '--bin-dir') {
       args.binDir = rawArgs[++i];
     } else if (arg === '-OptionsFile' || arg === '--options-file') {
@@ -290,6 +291,10 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
   // If no explicit action or flags provided and running in interactive TTY, launch wizard
   if (!hasExplicitAction && rawArgs.length === 0 && args.isInteractive) {
     args.action = 'wizard';
+  }
+
+  if (args.yes && args.projectMode === 'auto') {
+    args.projectMode = 'headless';
   }
 
   return args;
@@ -317,7 +322,7 @@ Actions:
                Subcommands: 'ocp web stop' stops; 'ocp web restart' restarts; '--daemon' runs in background
   desktop      Launch the OpenChamber native desktop app (alias: ui)
   project      Project-level commands:
-                 init   Create or activate the OCP project in the current directory
+                 init   Launch the project wizard in a TTY; use --headless for scripts
                  index  Refresh existing code-intelligence indexes
                  sync   Append newly added template switches to the project config
   install      Install or update OpenCode Prime configuration files
@@ -353,6 +358,8 @@ Options:
   --no-backup              Skip automatic backup of existing configuration
   --keep-backups <n>       Max backups kept after each run (default: 5, env: OCP_MAX_BACKUPS)
   -y, --yes                Skip confirmation prompts (update: apply all pending)
+  --wizard                 project init: force the interactive project wizard
+  --headless               project init: skip prompts and run headless initialization
   --check-only             update: check versions only, apply nothing
   --bin-dir <path>         Target directory for global command shim (default: ~/.local/bin)
   -h, --help               Show this help message
@@ -395,18 +402,23 @@ function formatSyncLine(r: SyncResult): string {
   return `  ♻️ appended ${r.added.length} new switch line(s)`;
 }
 
+function formatHookLine(r: HookResult): string {
+  if (r.status === 'registered') return `  ✅ ${r.hook}: ${r.detail}`;
+  if (r.status === 'updated') return `  ♻️ ${r.hook}: ${r.detail}`;
+  if (r.status === 'failed') return `  ❌ ${r.hook}: ${r.detail}`;
+  return `  ⏭️ ${r.hook}: skipped — ${r.detail}`;
+}
+
 /**
  * `ocp project init|index|sync` — project-level scaffolding and index refresh.
  * Mirrors the `/project` slash command family, but driven from the terminal.
  */
 async function executeProjectAction(action: 'project-init' | 'project-index' | 'project-sync'): Promise<number> {
   const rootDir = process.cwd();
-  const previousDir = getProjectDir();
-  setProjectDir(rootDir);
   try {
     if (action === 'project-sync') {
       console.log(`[ocp] Syncing project config in ${rootDir}...`);
-      const syncResult = runSync();
+      const syncResult = syncProject(rootDir);
       console.log(formatSyncLine(syncResult));
       if (syncResult.added.length > 0) {
         console.log(syncResult.added.map((k) => `    + ${k}`).join('\n'));
@@ -416,48 +428,31 @@ async function executeProjectAction(action: 'project-init' | 'project-index' | '
 
     if (action === 'project-index') {
       console.log(`[ocp] Refreshing indexes in ${rootDir}...`);
-      const probe = probeBackends(rootDir);
-      const backends = await runBackends(planIndexBackends(probe), rootDir).catch(
-        (e): BackendResult[] => [{ backend: 'codegraph', status: 'failed', detail: String(e) }],
-      );
+      const backends = await indexProject(rootDir);
       console.log('Backends:');
       for (const r of backends) console.log(formatBackendLine(r));
       return 0;
     }
 
     // project-init: create if missing, sync + refresh if present.
-    const configExisted =
-      fs.existsSync(path.join(rootDir, '.opencode', 'opencode.jsonc')) ||
-      fs.existsSync(path.join(rootDir, 'opencode.jsonc'));
-    console.log(configExisted
+    const result = await initProject({ root: rootDir, refreshExistingIndexes: true });
+    console.log(result.configExisted
       ? `[ocp] Activating existing OCP project in ${rootDir}...`
       : `[ocp] No OCP project detected in ${rootDir} — creating one...`);
-
-    const results = runInit();
-    const probe = probeBackends(rootDir);
-    let backends = await runBackends(planInitBackends(probe), rootDir).catch(
-      (e): BackendResult[] => [{ backend: 'codegraph', status: 'failed', detail: String(e) }],
-    );
-    if (configExisted) {
-      const indexBackends = await runBackends(planIndexBackends(probe), rootDir).catch(
-        (e): BackendResult[] => [{ backend: 'gitnexus', status: 'failed', detail: String(e) }],
-      );
-      backends = backends.concat(indexBackends);
-    }
-
-    console.log(`[ocp] project ${configExisted ? 'activated' : 'created'} in ${rootDir}`);
+    console.log(`[ocp] project ${result.configExisted ? 'activated' : 'created'} in ${rootDir}`);
     console.log('');
     console.log('Files:');
-    for (const r of results) console.log(formatScaffoldLine(r));
+    for (const r of result.files) console.log(formatScaffoldLine(r));
     console.log('');
     console.log('Backends:');
-    for (const r of backends) console.log(formatBackendLine(r));
+    for (const r of result.backends) console.log(formatBackendLine(r));
+    console.log('');
+    console.log('Hooks:');
+    for (const r of result.hooks) console.log(formatHookLine(r));
     return 0;
   } catch (err: any) {
     console.error(`[ocp] project ${action.replace('project-', '')} failed: ${err?.message ?? String(err)}`);
     return 1;
-  } finally {
-    setProjectDir(previousDir);
   }
 }
 
@@ -560,7 +555,19 @@ async function main() {
     process.exit(launchWeb(args.passthrough ?? []));
   }
 
-  if (args.action === 'project-init' || args.action === 'project-index' || args.action === 'project-sync') {
+  if (args.action === 'project-init') {
+    const useWizard = args.projectMode === 'wizard' || (args.projectMode === 'auto' && args.isInteractive);
+    if (useWizard) {
+      if (!args.isInteractive) {
+        console.error('[ocp] --wizard requires an interactive terminal; use --headless in CI or scripts.');
+        process.exit(2);
+      }
+      process.exit(await runProjectWizard(process.cwd()));
+    }
+    process.exit(await executeProjectAction('project-init'));
+  }
+
+  if (args.action === 'project-index' || args.action === 'project-sync') {
     process.exit(await executeProjectAction(args.action));
   }
 

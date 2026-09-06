@@ -16,6 +16,7 @@ import {
   runInstallCommand,
 } from './installer';
 import { isNewerVersion, parseVersionPayload } from './manifest';
+import { findPackageManager, findPackageManagerForBinary, globalAddCommand } from './package-manager';
 
 const REPO_BASE = 'https://github.com/kenlin8827/opencode-prime';
 const RELEASE_BASE = `${REPO_BASE}/releases/latest/download`;
@@ -301,15 +302,10 @@ function smartUpgrade(toolName: string, def: ToolEntry): number {
     return 1;
   }
 
-  const ownedBy = (resolveBinPath(def.binary) ?? '').toLowerCase();
-  let cmd: { bin: string; args: string[] } | null = null;
-  if (ownedBy.includes('bun') && isBinaryOnPath('bun')) cmd = { bin: 'bun', args: ['add', '-g', pkg] };
-  else if (ownedBy.includes('pnpm') && isBinaryOnPath('pnpm')) cmd = { bin: 'pnpm', args: ['add', '-g', pkg] };
-  else if (ownedBy.includes('yarn') && isBinaryOnPath('yarn')) cmd = { bin: 'yarn', args: ['global', 'add', pkg] };
-  else if (isBinaryOnPath('bun')) cmd = { bin: 'bun', args: ['add', '-g', pkg] };
-  else if (isBinaryOnPath('pnpm')) cmd = { bin: 'pnpm', args: ['add', '-g', pkg] };
-  else if (isBinaryOnPath('yarn')) cmd = { bin: 'yarn', args: ['global', 'add', pkg] };
-  else if (isBinaryOnPath('npm')) cmd = { bin: 'npm', args: ['install', '-g', pkg] };
+  const ownedBy = resolveBinPath(def.binary) ?? '';
+  const manager = findPackageManagerForBinary(ownedBy, ['bun', 'pnpm', 'yarn'], isBinaryOnPath) ??
+    findPackageManager(['bun', 'pnpm', 'yarn', 'npm'], isBinaryOnPath);
+  const cmd = manager === null ? null : globalAddCommand(manager, pkg);
 
   if (!cmd) {
     const fallback = resolveInstallCommand(def?.update_check?.upgrade);

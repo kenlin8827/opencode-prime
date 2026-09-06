@@ -378,7 +378,7 @@ OpenCode plugin hooks provide runtime guarantees that prompts alone cannot achie
 |--------|------|-------------|
 | `design-token-guard.ts` | `tool.execute.before` | Blocks writes with hardcoded colors/spacing/radius. Throws error. |
 | `ai-slop-scanner.ts` | `event: file.edited` | Scans frontend files for AI anti-patterns (gradient soup, div soup, …). Logs warnings. |
-| `auto-format.ts` | `event: file.edited` | Auto-runs prettier/eslint/ruff/gofmt/rustfmt after file edit. |
+| `auto-format.ts` | `event: file.edited` | Auto-runs the project-selected dprint/Biome/Prettier/ESLint/Ruff/gofmt/rustfmt after file edit. dprint and Biome require their config and project-local binary; OCP never installs either globally. |
 | `browser-screenshot.ts` | custom tool | Registers `browser_screenshot` tool (Playwright headless) for `@vision` / `@frontend-dev`. |
 | `lite-mode.ts` (+ `plugins/lite-mode/`) | `system.transform` | Strips the `<!-- lite-mode -->` sentinel and every `Instructions from:` block (L0) from the `@lite` primary's system prompt. |
 | `project-profiler.ts` (+ `plugins/project-profiler/`) | `session.created` + `system.transform` | Detects project nature at session start (config-driven, zero CLI probing) and injects a compact profile + code-intelligence backend recommendation (Serena vs CodeGraph, GitNexus optional) into the system prompt. |
@@ -394,7 +394,7 @@ OpenCode plugin hooks provide runtime guarantees that prompts alone cannot achie
 | `provider-wizard.ts` | TUI plugin | `/provider` dialog wizard: baseURL/apiKey prompts, atomic write, model add/remove management; 🔌 Manage connections — union of the /connect credential store and config apiKeys (official built-ins and custom), one-click disconnect that keeps provider definitions and models. `/disconnect` (TUI-only keymap, official-/connect shape: one menu row, instant dialogs). |
 | `queue-manager.ts` | TUI plugin | `/queued` command: list/edit/cancel queued user messages. |
 | `usage.ts` | TUI plugin | `/usage` opens a dialog with auto-fitted width and a visible tab strip: **by session** (one row per session + total), **by agent**, **by model** — input (non-cached) / output / cached-in, cost, cache hit, share bars. `1/2/3` or `←→` (`[`/`[]`) switch tabs live via global keymap bindings; `Enter` closes. `/usage all\|agent\|model` opens a dimension directly. Hosts without the dialog API fall back to a toast. Pure view over server data — no local persistence. |
-| `project-wizard.ts` | TUI plugin | `/project-wizard` dialog wizard: two-tier interactive wizard (scaffolding init, switch configuration, template sync, index catch-up) with re-entrant echo. |
+| `project-wizard.ts` | TUI plugin | `/project-wizard` dialog wizard: two-tier interactive wizard (scaffolding init, switch configuration, template sync, index catch-up) with re-entrant echo. New Node projects without an existing formatter may explicitly set up project-local dprint. |
 | `md-to-pdf.ts` (+ `plugins/md-to-pdf/`) | `config` + `command.execute.before` + `system.transform` + custom tool | `/md-to-pdf` command & `md_to_pdf` tool: converts Markdown to styled A4 PDF via Pandoc + Playwright. Auto-steers natural language `@filepath 转PDF`. |
 | `md-to-docx.ts` (+ `plugins/md-to-docx/`) | `config` + `command.execute.before` + `system.transform` + custom tool | `/md-to-docx` command & `md_to_docx` tool: converts Markdown to publication-quality styled Word (.docx) documents via Pandoc + Python typography engine. |
 
@@ -479,6 +479,7 @@ bun tests/test-env-guard-unit.ts
 bun tests/test-e2e-guard-unit.ts
 bun tests/test-project-manager-unit.ts
 bun tests/test-project-wizard-unit.ts
+bun tests/test-project-dprint-unit.ts
 bun tests/test-queue-manager-unit.ts
 bun tests/test-anchor-unit.ts
 ```

@@ -319,9 +319,13 @@ $allFiles = @(
     "plugins/e2e-guard/e2e-guard-config.ts",
     "plugins/e2e-guard/README.md",
     "plugins/shared/opencode-prime.ts",
+    "plugins/shared/package-manager.ts",
     "plugins/project-manager.ts",
     "plugins/project-manager/project-manager.ts",
     "plugins/project-manager/project-manager-config.ts",
+    "plugins/project-manager/project-manager-dprint.ts",
+    "plugins/project-manager/project-manager-operations.ts",
+    "plugins/project-manager/project-manager-options.ts",
     "plugins/project-manager/project-manager-scaffold.ts",
     "plugins/project-manager/project-manager-command.ts",
     "plugins/project-manager/project-manager-hooks.ts",
@@ -338,6 +342,7 @@ $allFiles = @(
     "plugins/md-to-pdf/style.ts",
     "plugins/md-to-pdf/style.css",
     "plugins/md-to-pdf/system-inject.ts",
+    "install/src/shared/shell-command.ts",
     "plugins/shared/mermaid-renderer.ts",
     "plugins/md-to-docx.ts",
     "plugins/md-to-docx/index.ts",
@@ -922,6 +927,14 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-plugin-scope-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-project-profiler-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-project-dprint-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-package-manager-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-shell-command-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-auto-format-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-lite-tools-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
