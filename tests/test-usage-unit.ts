@@ -342,7 +342,7 @@ resetCostsCache()
 sessions.z2 = { id: "z2", agent: "build" }
 messages.z2 = [assistant({ mode: "build", agent: "build", providerID: "anthropic", modelID: "claude-pro", cost: 0, tokens: { input: 1000, output: 100, cache: { read: 10000, write: 0 } } }, 1)]
 const nonPlanText = (await formatByDimension(fakeApi.client, "z2", "session")).table
-assert(nonPlanText.includes("🏷️ $0.0075") && !nonPlanText.includes("积分"), "non-plan cost 0 shows models.dev simulated estimate prefixed with price-tag icon")
+assert(nonPlanText.includes("🪙 $0.0075") && !nonPlanText.includes("积分"), "non-plan cost 0 shows models.dev simulated estimate prefixed with coin icon")
 assert(nonPlanText.includes("https://models.dev/models/anthropic/claude-pro"), "simulated pricing footer links to models.dev model page")
 delete sessions.z2
 delete messages.z2

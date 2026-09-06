@@ -103,7 +103,7 @@ interface SessionUsage {
   cost: number
   /** True when `cost` came from real server billing, false when it's $0
    *  because the provider is on a plan or skipped billing metadata. The
-   *  cost column shows 🏷️ when false. */
+   *  cost column shows 🪙 when false. */
   costKnown: boolean
   /** OCP supplementary — coding-plan points (积分) for plan providers. */
   credits: number
@@ -111,7 +111,7 @@ interface SessionUsage {
   /** OCP supplementary — cash ($/Mtok) for non-plan providers whose server cost is 0. */
   cash: number
   cashKnown: boolean
-  /** Simulated USD estimate — shown (with 🏷️) only when the server billed $0
+  /** Simulated USD estimate — shown (with 🪙) only when the server billed $0
    *  and no OCP real billing fallback (credits/cash) matched. Uses models.dev
    *  public list prices first; final fallback is a low-end market floor. */
   estimatedCost: number
@@ -259,13 +259,13 @@ function shortModelName(fullId: string): string {
  *  (`costKnown=true`) the dollar amount is shown plain — no icon,
  *  since the server is the source of truth.
  *
- *  Otherwise (simulated estimate): a 🏷️ prefix marks the amount as a
+ *  Otherwise (simulated estimate): a 🪙 prefix marks the amount as a
  *  public-list-price simulation, not a real charge. The estimate basis
  *  and pricing-standard links live in the table footer, keeping this
  *  column narrow. */
 function fmtCost(cost: number, estimatedCost: number, costKnown: boolean): string {
   const value = costKnown ? cost : estimatedCost
-  const icon = costKnown ? "" : "🏷️ "
+  const icon = costKnown ? "" : "🪙 "
   return `${icon}$${value.toFixed(4)}`
 }
 
@@ -682,7 +682,7 @@ function tableViewToString(tv: TableView): string {
   return tv.footers.length > 0 ? table + "\n\n" + tv.footers.join("\n\n") : table
 }
 
-/** Disclosure footer for 🏷️ simulated prices. The amount is only shown when
+/** Disclosure footer for 🪙 simulated prices. The amount is only shown when
  *  the opencode server reported $0 and no real OCP billing fallback matched;
  *  link to the models.dev model pages used as the pricing standard. */
 function pushEstimateFooters(tv: TableView, sessions: SessionUsage[], totalCostKnown: boolean): void {
@@ -921,7 +921,7 @@ function renderModelTable(sessions: SessionUsage[]): TableView {
   }
   // In the model view, place simulated-pricing disclosure after the full-id
   // mapping: first explain what each short model name expands to, then explain
-  // where the 🏷️ estimated price came from.
+  // where the 🪙 estimated price came from.
   pushEstimateFooters(tv, sessions, totalCostKnown)
   return tv
 }
