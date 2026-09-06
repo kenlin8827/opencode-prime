@@ -1,115 +1,39 @@
-// Install options — single source of truth for which MCP servers, external
-// (npm) plugins, and tools this config activates. Replaces the old
-// -EnableMcp/--enable-mcp command-line flags.
-//
-// Lives in install/ with the other installer machinery (VERSION, manifests):
-// every install reads it in place and forces the target state onto it — it
-// overwrites unconditionally on EVERY install and never ships to the target.
-// Edit THIS file and re-run the installer (`install -Force` when the version
-// is unchanged):
-//   mcp.<name>     → opencode.jsonc's mcp.<name>.enabled; enabling an entry
-//                    that declares an `install` field also provisions its CLI
-//                    on the next install
-//   plugin.<name>  → membership in opencode.jsonc's `plugin` array
-//   default_agent  → opencode.jsonc's root `default_agent` — which primary
-//                    agent (build / code / plan) opencode enters first;
-//                    must name an agent that exists in the shipped `agent`
-//                    block (unknown names are rejected, template value kept)
-//                    Options: build / code / plan
-//   tools.<name>   → opt-in map for tools declared in install/tools.jsonc.
-//                    Each entry controls one external binary:
-//                      true  → provision when missing (default if omitted)
-//                      false → user opted out, installer leaves it alone
-//                    The known tools today:
-//                      rtk         → Rust Token Killer binary + vendored
-//                                    openrtk plugin (false also removes
-//                                    plugins/openrtk* from the target)
-//                      openchamber → web UI CLI powering `ocp web`; the
-//                                    native desktop app behind `ocp desktop`
-//                                    is a separate download
-//                      herdr       → terminal workspace manager
-//                                    (https://herdr.dev) — `ocp herdr`
-//                                    launcher requires it on PATH
-//                    Adding a new tool = add an entry to install/tools.jsonc
-//                    and (optionally) flip the switch in this file. No code
-//                    changes needed unless the tool has side effects beyond
-//                    installing the binary (the rtk plugin cleanup is the
-//                    only such side effect today).
-//
-// Your choices persist in this file (git). No copy is installed under
-// ~/.config/opencode — the switches apply straight onto opencode.jsonc
-// (mcp.*.enabled + the plugin array), so nothing in the target looks like
-// an editable options file. Entries this file doesn't list keep the shipped
-// template value (opencode.template.jsonc). Bundled plugins/*.ts files are
-// NOT options — they ship wholesale and are always active.
-//
-// global_commands → register global CLI shims (ocp / opencode-prime)
-// into ~/.local/bin and append that directory to the
-// user's PATH environment variable. Set false to skip; the standalone
-// `register` / `unregister` actions remain available regardless.
+// Installer-owned switches. Each install applies these values to the target;
+// user choices persist here, not under ~/.config/opencode.
 {
   "global_commands": true,
-  // Generic opt-in map for tools declared in install/tools.jsonc.
-  // Each entry corresponds to one external binary; the install scripts use
-  // the registry to decide which install command to run per platform/arch.
+  // Opt-in external binaries declared in install/tools.jsonc.
   "tools": {
-    // Rust Token Killer — token-optimized shell command proxy. true also
-    // keeps the vendored openrtk plugin loaded; false skips the binary and
-    // removes plugins/openrtk.ts + plugins/openrtk/ from the target.
+    // false also removes the bundled OpenRTK plugin from the target.
     "rtk": true,
-    // OpenChamber web UI CLI — powers `ocp web`. Requires Node.js 22+.
-    // The native desktop app behind `ocp desktop` / `ocp ui` is a separate
-    // download (not handled here).
     "openchamber": true,
-    // Terminal workspace manager for AI coding agents — `ocp herdr` opens
-    // the current directory as a focused workspace, then attaches.
-    // Implied true when `tui_mode` below is set to "herdr".
+    // Implied true when tui_mode is "herdr".
     "herdr": false
   },
-  // Which primary agent opencode enters by default:
-  //   lite     — default; lean daily driver for quick tasks, Q&A, small edits (~2k tok/step)
-  //   code     — direct developer; does the coding work itself (deep single-domain)
-  //   build    — orchestrator; routes coding tasks to specialists
-  //   plan     — read-only coordinator for analysis / design work
-  // Unknown names are rejected with a warning (template value kept).
+  // Unknown default_agent names retain the template value.
   "default_agent": "lite",
-  // How `ocp tui` starts: "direct" launches opencode directly in the current
-  // terminal (default); "herdr" launches a herdr workspace rooted at cwd and
-  // starts opencode inside it (equivalent to `ocp herdr`). Selecting "herdr"
-  // auto-enables `tools.herdr` regardless of its setting above.
+  // "herdr" starts a workspace and auto-enables tools.herdr.
   "tui_mode": "direct",
-  // true = enabled (CLI auto-provisioned via `install` if missing); false = skipped
+  // Enabled MCPs provision their CLI when the template declares one.
   "mcp": {
-    // LSP semantic code retrieval/editing; needs uv
     "serena": false,
-    // Code-graph exploration; needs one-time manual `codegraph init` per repo
+    // Requires one-time `codegraph init` per repository.
     "codegraph": true,
-    // PolyForm Noncommercial license — enable only if licensed + indexed
-    // (see the gitnexus comment in opencode.template.jsonc)
+    // PolyForm Noncommercial: enable only if licensed and indexed.
     "gitnexus": false,
-    // Universal DB gateway (MIT, ~1.4k tokens); CLI auto-provisioned.
-    // Still needs per-project dbhub.toml + DSN (see opencode.template.jsonc) —
-    // without one, dbhub just fails to connect at session start
+    // Requires a project dbhub.toml and DSN.
     "dbhub": true,
-    // Local context compression (Apache 2.0) — input-side complement to
-    // rtk/ponytail. Heavy install: uv tool + Python 3.13, first run
-    // downloads ONNX runtime + Kompress model. Default off until real-world
-    // savings are proven (see opencode.template.jsonc)
+    // Heavy first run downloads the local compression runtime and model.
     "headroom": false,
-    // JetBrains IDE MCP bridge — remote server exposed by the running IDE
-    // (IntelliJ / WebStorm / etc.) on 127.0.0.1:64342. No CLI to install;
-    // enable the MCP server in the IDE first (Settings → Tools → MCP Server),
-    // then flip this switch to connect.
+    // Enable the MCP server in JetBrains before turning this on.
     "idea": false
   },
-  // true = in opencode.jsonc's `plugin` array; false = dropped
+  // Controls membership in opencode.jsonc's plugin array.
   "plugin": {
-    // Lazy coding protocol: build what was asked, name the lazier alternative
     "@dietrichgebert/ponytail": true,
-    // Injects qoder provider/models; needs Node ^22.18 || >=24.11 + `qoder login`
+    // Requires supported Node and `qoder login`.
     "opencode-qoder-bridge": false,
-    // Persistent project memory (vector store, per-machine under ~/.opencode-mem/);
-    // heavy — auto-capture costs an LLM call per idle session (see its docs)
+    // Persistent-memory capture has an LLM cost per idle session.
     "opencode-mem@2.24.3": false
   }
 }

@@ -1,21 +1,10 @@
-// OCP supplementary — points deduction for subscription coding plans.
-// One block per provider so rates can diverge independently and each carries
-// its own source. Update here when a provider revises its schedule;
-// no plugin release needed (installer copies this file to ~/.config/opencode/
-// models/cost.jsonc on install).
-//
-// Formula (identical across providers at last sync):
-//   points = (input × input + cached × cached + output × output) / divisor
+// Supplementary coding-plan point rates and a last-resort USD lower bound.
+// Update provider sources/rates when schedules change; installer copies this to models/cost.jsonc.
 
 {
   "$comment": "OCP supplementary — coding-plan points + last-resort USD price floor. Add a new top-level provider key to register a new plan; add models under its rates map. Drop the unused provider block to remove support.",
 
-  // Last-resort USD price floor (kill-line) used by /usage when the server
-  // billed nothing AND the dataset has no provider/model match. Source of
-  // truth: https://mappedinfo.github.io/llm-price-kill-line/ — bottom of the
-  // Pareto frontier for cheap-tier first-party models. Any real LLM spend
-  // exceeds these figures; they are a strict lower bound so the cost cell
-  // never silently reads $0 when we have no other data. Per 1M tokens.
+  // USD lower bound when server billing and rate lookup both miss; per 1M tokens.
   "killLineUSD": {
     "input": 0.06,
     "cached": 0.012,
@@ -29,15 +18,14 @@
       "source": "https://docs.bigmodel.cn/cn/coding-plan/overview",
       "divisor": 10000,
       "rates": {
-        // GLM-5.3-Flash (含视觉理解 MCP)
+        // GLM-5.3-Flash, including visual MCP.
         "glm-5.3-flash":  { "input": 2.3,  "cached": 0.56, "output": 8 },
-        // glm-5-turbo / glm-4.7 auto-switch to GLM-5.3-Flash per official spec
+        // Aliases route to GLM-5.3-Flash per the provider spec.
         "glm-5-turbo":    { "input": 2.3,  "cached": 0.56, "output": 8 },
         "glm-4.7":        { "input": 2.3,  "cached": 0.56, "output": 8 },
 
-        // GLM-5.3
         "glm-5.3":        { "input": 6.9,  "cached": 1.7,  "output": 24 },
-        // glm-5.2 / glm-5.1 auto-switch to GLM-5.3 per official spec
+        // Aliases route to GLM-5.3 per the provider spec.
         "glm-5.2":        { "input": 6.9,  "cached": 1.7,  "output": 24 },
         "glm-5.1":        { "input": 6.9,  "cached": 1.7,  "output": 24 }
       }
@@ -48,9 +36,7 @@
       "source": "https://docs.z.ai/devpack/overview",
       "divisor": 10000,
       "rates": {
-        // Identical schedule to zhipuai-coding-plan at last sync (2026-09);
-        // kept as a separate provider entry so future divergence can be
-        // expressed without touching the domestic block.
+        // Separate provider key permits future schedule divergence.
         "glm-5.3-flash":  { "input": 2.3,  "cached": 0.56, "output": 8 },
         "glm-5-turbo":    { "input": 2.3,  "cached": 0.56, "output": 8 },
         "glm-4.7":        { "input": 2.3,  "cached": 0.56, "output": 8 },

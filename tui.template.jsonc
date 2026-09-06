@@ -1,18 +1,6 @@
 {
-  // OCP TUI config template (JSONC: trailing commas + comments allowed).
-  // opencode accepts `tui.json` or `tui.jsonc`; the installer writes the
-  // merged result to `~/.config/opencode/tui.jsonc`.
-  //
-  // The `.template.jsonc` suffix signals "input source for merger.ts" —
-  // installer copies every other shipped file verbatim, but THIS file is
-  // merged with the user's existing tui.jsonc on every install so:
-  //   * New OCP plugins land automatically (template-first union).
-  //   * User-added plugins (e.g. third-party TUI plugins) are preserved.
-  //   * User scalar customizations (display_thinking, theme, keybinds, ...)
-  //     win over template defaults where present.
-  //
-  // Plugin list is curated — TUI plugins have no directory auto-discovery,
-  // so they MUST be registered.
+  // Installer merges this with the user's tui.jsonc; user scalar values and
+  // plugins are preserved. Every OCP TUI plugin must be registered here.
   "$schema": "https://opencode.ai/tui.json",
   "display_thinking": true,
   "plugin": [

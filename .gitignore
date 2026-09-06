@@ -23,6 +23,7 @@ Thumbs.db
 
 # Codex CLI runtime output (ephemeral, never meant to be tracked)
 .codex/
+.omo/
 
 # IDE project files
 .idea/
