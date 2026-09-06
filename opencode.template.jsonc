@@ -382,7 +382,11 @@
           "git show*": "allow",
           "git diff*": "allow",
           "git blame*": "allow",
-          "git status*": "allow"
+          "git status*": "allow",
+          "rtk git log*": "allow",
+          "rtk git show*": "allow",
+          "rtk git diff*": "allow",
+          "rtk git status*": "allow"
         },
         "webfetch": "deny",
         "websearch": "deny",
@@ -559,7 +563,11 @@
           "git diff*": "allow",
           "git blame*": "allow",
           "git status*": "allow",
-          "git grep*": "allow"
+          "git grep*": "allow",
+          "rtk git log*": "allow",
+          "rtk git show*": "allow",
+          "rtk git diff*": "allow",
+          "rtk git status*": "allow"
         },
         "webfetch": "allow",
         "websearch": "allow",
@@ -661,7 +669,11 @@
           "git diff*": "allow",
           "git blame*": "allow",
           "git status*": "allow",
-          "git grep*": "allow"
+          "git grep*": "allow",
+          "rtk git log*": "allow",
+          "rtk git show*": "allow",
+          "rtk git diff*": "allow",
+          "rtk git status*": "allow"
         },
         "webfetch": "allow",
         "websearch": "allow",

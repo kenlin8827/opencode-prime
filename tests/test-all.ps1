@@ -40,6 +40,8 @@ $config = Get-Content "$PSScriptRoot\..\opencode.template.jsonc" -Raw | ConvertF
 $scope = Get-Content "$PSScriptRoot\..\plugin-scope.json" -Raw | ConvertFrom-Json
 Check "plugin-scope.json: parses with identifiers and plugins sections" (($null -ne $scope.identifiers) -and ($null -ne $scope.plugins))
 Check "opencode.template.jsonc: carries native permission policy (global + per-agent)" (($config.permission -eq "allow") -and (@($config.agent.PSObject.Properties | Where-Object { $_.Value.permission }).Count -gt 0))
+Check "root remote PowerShell bootstrap exists" (Test-Path "$PSScriptRoot\..\install.ps1")
+Check "root remote Bash bootstrap exists" (Test-Path "$PSScriptRoot\..\install.sh")
 Check "instructions contains output-protocol.md" `
     ($config.instructions -contains "~/.config/opencode/instructions/output-protocol.md")
 Check "plugin includes @dietrichgebert/ponytail" `
@@ -78,6 +80,14 @@ Check "code-review agent has NO edit-protocol (edit denied)" `
     (-not ($config.agent.'code-review'.prompt -match 'edit-protocol'))
 Check "code-review agent denies source-bearing CodeGraph MCP" `
     ($config.agent.'code-review'.permission.'codegraph_*'.'*' -eq 'deny')
+foreach ($reviewAgentName in @('explore', 'code-review', 'code-review-fast')) {
+    $reviewPermission = $config.agent.$reviewAgentName.permission.bash
+    $rtkGitGaps = @('log', 'show', 'diff', 'status') | Where-Object {
+        $reviewPermission.PSObject.Properties["rtk git $($_)*"].Value -ne 'allow'
+    }
+    Check "$reviewAgentName allows RTK-rewritten read-only git commands" `
+        ($rtkGitGaps.Count -eq 0) ($rtkGitGaps -join ', ')
+}
 Check "codegraph-scout is a bounded graph-only subagent" `
     ($config.agent.'codegraph-scout'.mode -eq 'subagent' -and $config.agent.'codegraph-scout'.steps -eq 6 -and $config.agent.'codegraph-scout'.variant -eq 'medium')
 $scoutPermission = $config.agent.'codegraph-scout'.permission
