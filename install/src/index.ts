@@ -23,6 +23,7 @@ import { deployHerdrConfig, herdrUserConfigPath, HERDR_CONFIG_TEMPLATE } from '.
 import { ensureOpenChamber } from './openchamber';
 import { executeUpdate, executeUpgrade } from './updater';
 import { executeClean } from './session-clean';
+import { normalizeTuiPassthrough } from './tui-args';
 import { getProjectDir, setProjectDir } from '../../plugins/project-manager/project-manager-config';
 import {
   planIndexBackends,
@@ -522,19 +523,25 @@ async function main() {
     // stripped from passthrough before forwarding to the launcher so
     // opencode / herdr don't see unknown args.
     const effectiveOptions = loadEffectiveOptions(repoDir, getDefaultTargetDir());
-    const overridePassthrough = (args.passthrough ?? []).filter(
-      (a) => a !== '--herdr' && a !== '--direct'
-    );
-    const cliMode = (args.passthrough ?? []).includes('--herdr')
+    const rawPassthrough = args.passthrough ?? [];
+    const cliMode = rawPassthrough.includes('--herdr')
       ? 'herdr'
-      : (args.passthrough ?? []).includes('--direct')
+      : rawPassthrough.includes('--direct')
         ? 'direct'
         : null;
+    const withoutModeFlags = rawPassthrough.filter(
+      (a) => a !== '--herdr' && a !== '--direct'
+    );
+    const { initRequested, passthrough } = normalizeTuiPassthrough(withoutModeFlags);
+    if (initRequested) {
+      const initCode = await executeProjectAction('project-init');
+      if (initCode !== 0) process.exit(initCode);
+    }
     const mode = cliMode ?? effectiveOptions.tui_mode ?? 'direct';
     if (mode === 'herdr') {
-      process.exit(launchHerdr(overridePassthrough));
+      process.exit(launchHerdr(passthrough));
     }
-    process.exit(launchTui(overridePassthrough));
+    process.exit(launchTui(passthrough));
   }
 
   if (args.action === 'serve') {

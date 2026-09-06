@@ -37,7 +37,7 @@
       version         Print the repo's current version
       help            Print this help
 
-    No arguments = launch the OpenCode terminal UI (same as `tui`).
+    No arguments = launch the OpenCode terminal UI directly (same as `tui --direct`).
 
 .EXAMPLE
     pwsh ./bin/opencode-prime.ps1 install
@@ -88,6 +88,7 @@ function Get-ConfigTuiMode {
 
 if ([string]::IsNullOrWhiteSpace($Subcommand)) {
     $Subcommand = 'tui'
+    $Rest = @('--direct')
 }
 
 function Find-OpenChamberDesktop {
@@ -226,6 +227,22 @@ switch ($Subcommand.ToLowerInvariant()) {
         break
     }
     'tui' {
+        # Detect init request: `ocp tui .` or `ocp tui --init` (or both).
+        # Normalize before mode routing so the TypeScript/herdr path can run
+        # project init and so `.` is never forwarded to herdr/opencode.
+        $initRequested = ($Rest -contains '--init') -or ($Rest -contains '.')
+        $normalizedRest = @()
+        foreach ($a in $Rest) {
+            if ($a -eq '--init') { continue }
+            if ($initRequested -and $a -eq '.') { continue }
+            $normalizedRest += $a
+        }
+        if ($initRequested) {
+            & $Install project init
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        }
+        $Rest = @($normalizedRest)
+
         # --herdr / --direct override `tui_mode` from options.jsonc. When
         # either is present, hand off to the TS engine so it can decide
         # which launcher to run. Without a flag, tui_mode=herdr also routes
@@ -246,12 +263,6 @@ switch ($Subcommand.ToLowerInvariant()) {
             Write-Host '✗ opencode was not found on PATH.' -ForegroundColor Red
             Write-Host '  Install OpenCode first: https://opencode.ai (or re-run `ocp install`).'
             exit 1
-        }
-        # --init: ensure the current directory is an OCP project before launching the TUI.
-        if ($Rest -contains '--init') {
-            & $Install project init
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            $Rest = $Rest | Where-Object { $_ -ne '--init' }
         }
         & opencode @Rest
         exit $LASTEXITCODE

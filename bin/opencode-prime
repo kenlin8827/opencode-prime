@@ -38,7 +38,7 @@
 #   version         Print the repo's current version
 #   help            Print this help
 #
-# No arguments = launch the OpenCode terminal UI (same as `tui`).
+# No arguments = launch the OpenCode terminal UI directly (same as `tui --direct`).
 # Anything else falls through to `install.sh` (so unknown flags + future
 # subcommands still work after an upgrade).
 
@@ -69,7 +69,7 @@ get_config_tui_mode() {
 }
 
 if [[ $# -eq 0 ]]; then
-    set -- tui
+    set -- tui --direct
 fi
 
 sub="$1"
@@ -123,6 +123,27 @@ case "$sub" in
         exec "$INSTALL" unregister "$@"
         ;;
     tui)
+        # Detect init request: `ocp tui .` or `ocp tui --init` (or both).
+        # Normalize before mode routing so the TypeScript/herdr path can run
+        # project init and so `.` is never forwarded to herdr/opencode.
+        init_requested=false
+        for a in "$@"; do
+            if [[ "$a" == "--init" || "$a" == "." ]]; then
+                init_requested=true
+                break
+            fi
+        done
+        new_args=()
+        for a in "$@"; do
+            [[ "$a" == "--init" ]] && continue
+            if [[ "$init_requested" == true && "$a" == "." ]]; then continue; fi
+            new_args+=("$a")
+        done
+        set -- "${new_args[@]}"
+        if [[ "$init_requested" == true ]]; then
+            "$INSTALL" project init || exit 1
+        fi
+
         # --herdr / --direct override `tui_mode` from options.jsonc. When
         # either is present, hand off to the TS engine so it can decide which
         # launcher to run. Without a flag, tui_mode=herdr also routes to the
@@ -143,13 +164,6 @@ case "$sub" in
             echo "✗ opencode was not found on PATH." >&2
             echo "  Install OpenCode first: https://opencode.ai (or re-run 'ocp install')." >&2
             exit 1
-        fi
-        # --init: ensure the current directory is an OCP project before launching the TUI.
-        if [[ "$*" == *--init* ]]; then
-            "$INSTALL" project init || exit 1
-            new_args=()
-            for a in "$@"; do [ "$a" != "--init" ] && new_args+=("$a"); done
-            set -- "${new_args[@]}"
         fi
         exec opencode "$@"
         ;;

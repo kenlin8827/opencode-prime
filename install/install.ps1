@@ -46,9 +46,34 @@ if (-not $isInfoCmd -and -not (Get-Command opencode -ErrorAction SilentlyContinu
     }
 }
 
-# 1. Prefer bundled single-file engine (zero-dependency, instant startup)
+# 1. In a git/dev checkout, prefer source whenever TypeScript/plugin files are
+# newer than the bundled engine; otherwise a stale ignored install/dist/index.js
+# can hide fixes. Release installs still use the bundle for instant startup.
 $BundledFile = Join-Path $ScriptDir 'dist/index.js'
 $SrcFile = Join-Path $ScriptDir 'src/index.ts'
+$sourceRoots = @((Join-Path $RepoRoot 'install/src'), (Join-Path $RepoRoot 'plugins')) | Where-Object { Test-Path $_ }
+$newestSource = $null
+if ($sourceRoots.Count -gt 0) {
+    $newestSource = Get-ChildItem -Path $sourceRoots -Recurse -File -Include *.ts, *.tsx -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1
+}
+$useSource = (Test-Path $SrcFile) -and ((-not (Test-Path $BundledFile)) -or ($newestSource -and $newestSource.LastWriteTimeUtc -gt (Get-Item $BundledFile).LastWriteTimeUtc))
+
+if ($useSource -and (Get-Command bun -ErrorAction SilentlyContinue)) {
+    & bun run "$SrcFile" @args
+    exit $LASTEXITCODE
+}
+
+if ($useSource -and (Get-Command node -ErrorAction SilentlyContinue)) {
+    $NodeModules = Join-Path $RepoRoot 'node_modules'
+    if (-not (Test-Path $NodeModules)) {
+        Write-Host "Installing installer dependencies via npm..." -ForegroundColor Cyan
+        & npm install --prefix "$RepoRoot"
+    }
+    & npx --prefix "$RepoRoot" tsx "$SrcFile" @args
+    exit $LASTEXITCODE
+}
 
 if (Test-Path $BundledFile) {
     if (Get-Command bun -ErrorAction SilentlyContinue) {

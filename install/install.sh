@@ -55,9 +55,32 @@ if [ "$IS_INFO_CMD" = false ] && ! command -v opencode >/dev/null 2>&1; then
     fi
 fi
 
-# 1. Prefer bundled single-file engine (zero-dependency, instant startup)
+# 1. In a git/dev checkout, prefer source whenever TypeScript/plugin files are
+# newer than the bundled engine; otherwise a stale ignored install/dist/index.js
+# can hide fixes. Release installs still use the bundle for instant startup.
 BUNDLED_FILE="$SCRIPT_DIR/dist/index.js"
 SRC_FILE="$SCRIPT_DIR/src/index.ts"
+USE_SOURCE=false
+if [ -f "$SRC_FILE" ]; then
+    if [ ! -f "$BUNDLED_FILE" ]; then
+        USE_SOURCE=true
+    elif find "$REPO_ROOT/install/src" "$REPO_ROOT/plugins" -type f \( -name '*.ts' -o -name '*.tsx' \) -newer "$BUNDLED_FILE" 2>/dev/null | grep -q .; then
+        USE_SOURCE=true
+    fi
+fi
+
+if [ "$USE_SOURCE" = true ]; then
+    if command -v bun >/dev/null 2>&1; then
+        exec bun run "$SRC_FILE" "$@"
+    fi
+    if command -v node >/dev/null 2>&1; then
+        if [ ! -d "$REPO_ROOT/node_modules" ]; then
+            echo "Installing installer dependencies via npm..."
+            npm install --prefix "$REPO_ROOT"
+        fi
+        exec npx --prefix "$REPO_ROOT" tsx "$SRC_FILE" "$@"
+    fi
+fi
 
 if [ -f "$BUNDLED_FILE" ]; then
     if command -v bun >/dev/null 2>&1; then

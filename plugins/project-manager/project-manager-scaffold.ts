@@ -20,14 +20,51 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { ensureOpencodeGitignore } from "../shared/opencode-prime"
 import { CONFIG_REL, getProjectDir, resolveTarget, type ScaffoldTarget } from "./project-manager-config"
 
 // ─── Templates ───────────────────────────────────────────────────────
 
-const TEMPLATE_DIR = join(dirname(fileURLToPath(import.meta.url)), "templates")
+const MODULE_DIR = dirname(fileURLToPath(import.meta.url))
+
+function uniq(paths: string[]): string[] {
+  return Array.from(new Set(paths.map((p) => resolve(p))))
+}
+
+/** Candidate template directories for source, installed-plugin, and bundled installer runs. */
+function templateDirCandidates(): string[] {
+  const candidates = [
+    // Normal plugin/source runtime: plugins/project-manager/templates
+    join(MODULE_DIR, "templates"),
+    // Bundled installer runtime: install/dist/index.js or install/src/index.ts
+    // importing this module gets rewritten into install/dist, but the real
+    // templates still live in repo/plugins/project-manager/templates.
+    join(MODULE_DIR, "..", "..", "plugins", "project-manager", "templates"),
+  ]
+
+  if (process.env.OCP_REPO_DIR) {
+    candidates.push(join(process.env.OCP_REPO_DIR, "plugins", "project-manager", "templates"))
+  }
+
+  if (process.argv[1]) {
+    const scriptDir = dirname(resolve(process.argv[1]))
+    candidates.push(join(scriptDir, "..", "..", "plugins", "project-manager", "templates"))
+  }
+
+  return uniq(candidates)
+}
+
+export function resolveProjectTemplatePath(file: string): string {
+  for (const dir of templateDirCandidates()) {
+    const candidate = join(dir, file)
+    if (existsSync(candidate)) return candidate
+  }
+  // Surface the searched locations in the thrown ENOENT path to make future
+  // packaging issues obvious instead of reporting install/dist/templates/*.
+  return join(templateDirCandidates()[0] ?? MODULE_DIR, file)
+}
 
 /** Baseline target (relative path) → template file under `templates/`. */
 const TEMPLATE_FILES: Record<ScaffoldTarget, string> = {
@@ -41,9 +78,16 @@ const templateCache = new Map<string, string>()
 function readTemplate(file: string): string {
   const cached = templateCache.get(file)
   if (cached !== undefined) return cached
-  const content = readFileSync(join(TEMPLATE_DIR, file), "utf-8")
+  const content = readFileSync(resolveProjectTemplatePath(file), "utf-8")
   templateCache.set(file, content)
   return content
+}
+
+function ensureParentDir(absPath: string): void {
+  const parent = dirname(absPath)
+  // On Windows, `mkdirSync("D:\\", { recursive: true })` can throw EPERM even
+  // though the drive root already exists. Only create parents that are absent.
+  if (!existsSync(parent)) mkdirSync(parent, { recursive: true })
 }
 
 // ─── Generic scaffold ─────────────────────────────────────────────────
@@ -53,6 +97,7 @@ function readTemplate(file: string): string {
 export function scaffoldFile(root: string, templateName: string, targetRel: string): ScaffoldStatus {
   const absPath = join(root, targetRel)
   if (existsSync(absPath)) return "skipped"
+  ensureParentDir(absPath)
   writeFileSync(absPath, readTemplate(templateName), "utf-8")
   return "created"
 }
@@ -105,7 +150,7 @@ export function runInit(): ScaffoldResult[] {
       results.push({ relPath, status: "skipped" })
       continue
     }
-    mkdirSync(dirname(absPath), { recursive: true })
+    ensureParentDir(absPath)
     writeFileSync(absPath, readTemplate(TEMPLATE_FILES[relPath]), "utf-8")
     results.push({ relPath, status: "created" })
   }

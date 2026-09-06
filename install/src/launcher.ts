@@ -43,7 +43,7 @@ export function launchTui(extraArgs: string[]): number {
   return launchBinary(
     'opencode',
     '  Install OpenCode first: https://opencode.ai (or re-run `ocp install`).',
-    extraArgs
+    stripOcpTuiControlArgs(extraArgs)
   );
 }
 
@@ -66,6 +66,7 @@ export function launchTui(extraArgs: string[]): number {
  * the workspace.
  */
 export function launchHerdr(extraArgs: string[]): number {
+  extraArgs = stripOcpTuiControlArgs(extraArgs);
   const cwd = process.cwd();
   const label = path.basename(cwd) || 'workspace';
 
@@ -129,6 +130,11 @@ export function launchHerdr(extraArgs: string[]): number {
     extraArgs,
     { cwd }
   );
+}
+
+/** Drop OCP-only TUI controls that opencode/herdr CLIs do not understand. */
+function stripOcpTuiControlArgs(args: string[]): string[] {
+  return args.filter((a) => a !== '--init' && a !== '.');
 }
 
 /**
