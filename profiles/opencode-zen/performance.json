@@ -1,10 +1,10 @@
 {
-  "description": "Performance tier — daily driver with a review-capable max on OpenCode Zen: deepseek-v4-flash keeps flash exploration efficient, kimi-k2.7-code runs standard orchestration, gpt-5.3-codex brings codex-grade coding, gpt-5.6-terra handles max-tier reviews while honoring the cost cap, and vision routes to claude-sonnet-4-6 for attachments. Requires OPENCODE_API_KEY environment variable (OpenCode Zen).",
+  "description": "Performance tier — daily driver with a review-capable max on OpenCode Zen: deepseek-v4-flash keeps flash exploration efficient, kimi-k2.7-code runs standard orchestration, gpt-5.6-sol brings flagship codex-grade coding at $2/$10 (cheaper than terra and stronger — replaced deprecated gpt-5.3-codex), and sol also handles max-tier reviews since nothing stronger survives the $3/$15 red line in-family; vision routes to claude-sonnet-4-6 for attachments. Requires OPENCODE_API_KEY environment variable (OpenCode Zen).",
   "tiers": {
     "flash": "opencode/deepseek-v4-flash",
     "standard": "opencode/kimi-k2.7-code",
-    "pro": "opencode/gpt-5.3-codex",
-    "max": "opencode/gpt-5.6-terra",
+    "pro": "opencode/gpt-5.6-sol",
+    "max": "opencode/gpt-5.6-sol",
     "vision": "opencode/claude-sonnet-4-6"
   }
 }

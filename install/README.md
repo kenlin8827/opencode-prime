@@ -245,11 +245,11 @@ flash  (fastest/cheapest)  <=  standard  (general workhorse)  <=  pro  (stronges
 | `opencode-go/qwen` | All-Qwen family fallback | qwen3.6-plus / qwen3.6-plus / qwen3.8-max / qwen3.8-max / qwen3.8-flash |
 | `opencode-go/glm` | All-GLM family fallback | glm-5.3-flash / glm-5.1 / glm-5.2 / glm-5.3 / glm-5.3-flash |
 | `opencode-zen/ultimate` | Ultimate — strongest under the cost red line (needs `OPENCODE_API_KEY`) | deepseek-v4-flash / gemini-3.8-flash / gpt-5.6-sol / grok-4.6 / claude-sonnet-4-6 |
-| `opencode-zen/performance` | Performance — daily driver, review-capable `max` | deepseek-v4-flash / kimi-k2.7-code / gpt-5.3-codex / gpt-5.6-terra / claude-sonnet-4-6 |
+| `opencode-zen/performance` | Performance — daily driver, review-capable `max` | deepseek-v4-flash / kimi-k2.7-code / gpt-5.6-sol / gpt-5.6-sol / claude-sonnet-4-6 |
 | `opencode-zen/economy` | Economy — high-traffic daily coding | gemini-3.5-flash-lite / gpt-5.1 / gpt-5.1-codex / deepseek-v4-pro / claude-sonnet-4-6 |
 | `opencode-zen/lite` | Lightweight — cheapest usable, review-capable `max` | ling-3.0-flash-fin-free / gemini-3.5-flash-lite / minimax-m2.7 / deepseek-v4-pro / gemini-3.5-flash-lite |
 | `opencode-zen/claude` | All-Claude family (Opus 5 excluded: over the cap) | claude-haiku-4-5 / claude-sonnet-5 / claude-sonnet-4-6 / claude-sonnet-4-6 / claude-sonnet-5 |
-| `opencode-zen/gpt` | All-GPT family (codex coding tiers, terra judges) | gpt-5.1-codex-mini / gpt-5.1 / gpt-5.3-codex / gpt-5.6-terra / gpt-5.1-codex-mini |
+| `opencode-zen/gpt` | All-GPT family (5.6 line: luna/terra/sol) | gpt-5.6-luna / gpt-5.6-terra / gpt-5.6-sol / gpt-5.6-sol / gpt-5.6-luna |
 | `opencode-zen/gemini` | All-Gemini family | gemini-3.5-flash-lite / gemini-3.6-flash / gemini-3.8-flash / gemini-3.1-pro / gemini-3.5-flash-lite |
 | `opencode-zen/deepseek` | All-DeepSeek family fallback | deepseek-v4-flash / deepseek-v4-flash / deepseek-v4-pro / deepseek-v4-pro / deepseek-v4-flash-vision-exp |
 | `opencode-zen/kimi` | All-Kimi family fallback | kimi-k2.5 / kimi-k2.6 / kimi-k2.7-code / kimi-k3 / kimi-k2.5 |
@@ -261,7 +261,7 @@ flash  (fastest/cheapest)  <=  standard  (general workhorse)  <=  pro  (stronges
 | `deepseek` | DeepSeek (official DeepSeek API) | deepseek-v4-flash / deepseek-v4-flash / deepseek-v4-pro / deepseek-v4-pro / MiniMax-M3 (minimax-cn) |
 | `anthropic` | Anthropic (official Anthropic API) | claude-haiku-4-5 / claude-haiku-4-5 / claude-sonnet-5 / claude-opus-5 / claude-sonnet-5 |
 | `google` | Google (official Vertex AI / Gemini API) | gemini-flash-lite-latest / gemini-2.5-flash / gemini-3-pro-preview / gemini-2.5-pro / gemini-2.5-flash |
-| `openai` | OpenAI (official OpenAI API) | gpt-5.4-fast / gpt-5.5 / gpt-5.3-codex / gpt-5.6-pro / gpt-4o |
+| `openai` | OpenAI (official OpenAI API) | gpt-5.6-luna / gpt-5.6-terra / gpt-5.6-terra / gpt-5.6-terra / gpt-4o |
 | `alibaba/coding-plan` | Alibaba Coding Plan (official) | qwen3.7-plus / qwen3.7-plus / qwen3-coder-next / MiniMax-M2.5 / qwen3.7-plus |
 | `alibaba/coding-plan-cn` | Alibaba Coding Plan China (official) | qwen3.7-plus / qwen3.7-plus / qwen3-coder-next / MiniMax-M2.5 / qwen3.7-plus |
 | `alibaba/token-plan` | Alibaba Token Plan (official) | deepseek-v4-flash-0731 / deepseek-v4-flash-0731 / qwen3.8-max / qwen3.8-max / qwen3.7-plus |

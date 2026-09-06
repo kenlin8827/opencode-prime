@@ -1,10 +1,10 @@
 {
-  "description": "All-OpenAI family picks — gpt-5.5 orchestrates on standard, gpt-5.3-codex codes on pro, gpt-5.6-pro judges on max, gpt-5.4-fast explores on flash, gpt-4o carries vision as the proven multimodal model. Family fallback profile. Requires OPENAI_API_KEY environment variable.",
+  "description": "All-OpenAI family picks on the official OpenAI API — gpt-5.6-luna explores on flash, gpt-5.6-terra carries standard/pro/max (strongest under the $3/$15 cost red line on official-API pricing; gpt-5.6-sol at $4/$20 is excluded here — use opencode-zen or router/codex for Sol), gpt-4o keeps vision as the proven multimodal model. Replaces retired gpt-5.4-fast (flash), over-cap gpt-5.5 (standard), deprecated gpt-5.3-codex (pro), and nonexistent gpt-5.6-pro (max). Requires OPENAI_API_KEY environment variable.",
   "tiers": {
-    "flash": "openai/gpt-5.4-fast",
-    "standard": "openai/gpt-5.5",
-    "pro": "openai/gpt-5.3-codex",
-    "max": "openai/gpt-5.6-pro",
+    "flash": "openai/gpt-5.6-luna",
+    "standard": "openai/gpt-5.6-terra",
+    "pro": "openai/gpt-5.6-terra",
+    "max": "openai/gpt-5.6-terra",
     "vision": "openai/gpt-4o"
   }
 }
