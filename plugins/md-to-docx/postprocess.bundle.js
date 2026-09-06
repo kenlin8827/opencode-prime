@@ -8681,7 +8681,7 @@ function postprocessDocxXml(docxPath, theme = DEFAULT_DOCX_THEME) {
         zip.updateFile("word/styles.xml", Buffer.from(updatedStylesXml, "utf8"));
       } catch {}
     }
-    const maxEmuWidth = parseInt(theme.pageContentWidthTwips, 10) * 635;
+    const maxEmuWidth = theme.pageContentWidthTwips * 635;
     const drawings = findDescendantsByTag(body, "drawing");
     for (const d of drawings) {
       let parent = d.parentNode;

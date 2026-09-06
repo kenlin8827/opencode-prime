@@ -47,9 +47,8 @@ export function makeSddCommandHook(client: PluginInput["client"]) {
           await client.session.prompt({
             path: { id: input.sessionID },
             body: {
-              parts: [{ type: "text", text: HELP_TEXT }],
+              parts: [{ type: "text", text: HELP_TEXT, ignored: true }],
               noReply: true,
-              ignored: true,
             },
           })
           return
@@ -70,9 +69,8 @@ Lifecycle: /prd → /adr → /plan → /impl`
           await client.session.prompt({
             path: { id: input.sessionID },
             body: {
-              parts: [{ type: "text", text: report }],
+              parts: [{ type: "text", text: report, ignored: true }],
               noReply: true,
-              ignored: true,
             },
           })
           return
@@ -84,9 +82,8 @@ Lifecycle: /prd → /adr → /plan → /impl`
           await client.session.prompt({
             path: { id: input.sessionID },
             body: {
-              parts: [{ type: "text", text: `[SDD] 📦 Generating SDD Handoff Package... Compacting active stage, artifacts, and next steps into .opencode/handoffs/.` }],
+              parts: [{ type: "text", text: `[SDD] 📦 Generating SDD Handoff Package... Compacting active stage, artifacts, and next steps into .opencode/handoffs/.`, ignored: true }],
               noReply: true,
-              ignored: true,
             },
           })
         }
@@ -100,9 +97,8 @@ Lifecycle: /prd → /adr → /plan → /impl`
         await client.session.prompt({
           path: { id: input.sessionID },
           body: {
-            parts: [{ type: "text", text: `[SDD] 📄 Scaffolding PRD template at ${relPath}...` }],
+            parts: [{ type: "text", text: `[SDD] 📄 Scaffolding PRD template at ${relPath}...`, ignored: true }],
             noReply: true,
-            ignored: true,
           },
         })
       }
@@ -115,9 +111,8 @@ Lifecycle: /prd → /adr → /plan → /impl`
         await client.session.prompt({
           path: { id: input.sessionID },
           body: {
-            parts: [{ type: "text", text: `[SDD] 📋 Scaffolding Implementation Plan at ${relPath}...` }],
+            parts: [{ type: "text", text: `[SDD] 📋 Scaffolding Implementation Plan at ${relPath}...`, ignored: true }],
             noReply: true,
-            ignored: true,
           },
         })
       }

@@ -79,25 +79,15 @@ function pickTier(count: number): Tier | null {
 const TIER_RANK: Record<Tier, number> = { soft: 1, strong: 2, hard: 3 }
 function tierGte(a: Tier, b: Tier): boolean { return TIER_RANK[a] >= TIER_RANK[b] }
 
-export const ContextWatchPlugin: Plugin = async ({ client }) => {
-  // Filter out subagent sessions at the transform site — they're isolated
-  // ephemeral contexts whose reminder would never reach the user anyway.
-  // Pattern borrowed from `plugins/deepseek-anchor/index.ts:119-130`.
-  try {
-    const { event } = await import("@opencode-ai/sdk")
-    // Subscribe asynchronously; we don't block plugin load on it.
-    client.event?.subscribe?.(({ type, info }: { type?: string; info?: { id?: string; parentID?: string } }) => {
-      if (type !== "session.created" || !info?.id) return
-      if (info.parentID) subagentSessionIds.add(info.id)
-    })
-  } catch {
-    // SDK import or event subscription is best-effort. Without it, the
-    // transform falls back to "inject into all sessions" — the same
-    // behaviour every other reminder plugin uses when session.created
-    // isn't available.
-  }
-
+export const ContextWatchPlugin: Plugin = async () => {
   return {
+    // Filter out subagent sessions at the transform site — they're isolated
+    // ephemeral contexts whose reminder would never reach the user anyway.
+    event: async ({ event }) => {
+      if (event.type !== "session.created") return
+      const { id, parentID } = event.properties.info
+      if (parentID) subagentSessionIds.add(id)
+    },
     "experimental.chat.messages.transform": async (
       input: { sessionID?: string } | undefined,
       output: { messages: { info: { role?: string }; parts: unknown[] }[] },
@@ -129,13 +119,14 @@ export const ContextWatchPlugin: Plugin = async ({ client }) => {
         // Find the most recent user message — that's where reminders carry
         // the most attention weight (system prompts decay; user-message
         // tail dominates the recency position).
-        let target: { info: object; parts: { type?: string; text?: string }[] } | null = null
+        let target: { info: { role?: string }; parts: unknown[] } | undefined
         for (let i = msgs.length - 1; i >= 0; i--) {
-          if (msgs[i].info?.role !== "user") continue
-          target = msgs[i] as typeof target
+          const message = msgs[i]
+          if (!message || message.info?.role !== "user") continue
+          target = message
           break
         }
-        if (!target) return
+        if (target === undefined) return
 
         target.parts.push({ type: "text", text: `\n\n${REMINDERS[tier]}` })
       } catch {

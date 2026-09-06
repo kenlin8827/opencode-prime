@@ -783,8 +783,8 @@ export function postprocessDocxXml(docxPath: string, theme: DocxTheme = DEFAULT_
     // === 7. 清理 TOC 后的多余空段落 ===
     if (tocSdt) {
       let pastToc = false
-      const children = Array.from(body.childNodes)
-      for (const node of children) {
+      for (let index = 0; index < body.childNodes.length; index++) {
+        const node = body.childNodes[index]
         if (node === tocSdt) {
           pastToc = true
           continue
@@ -881,7 +881,7 @@ export function postprocessDocxXml(docxPath: string, theme: DocxTheme = DEFAULT_
     }
 
     // === 9. 图片与图表智能尺寸与居中校准 (大图舒展、高清居中) ===
-    const maxEmuWidth = parseInt(theme.pageContentWidthTwips, 10) * 635
+    const maxEmuWidth = theme.pageContentWidthTwips * 635
     const drawings = findDescendantsByTag(body, "drawing")
     for (const d of drawings) {
       let parent = d.parentNode

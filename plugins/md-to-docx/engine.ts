@@ -9,6 +9,7 @@ import { loadThemeFromCssFile, DocxTheme } from "./style-parser"
 export interface DocxConversionOptions {
   inputPath: string
   outputPath?: string
+  company?: string
   tocDepth?: number
   stylePath?: string
 }
