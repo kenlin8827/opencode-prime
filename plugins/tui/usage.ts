@@ -2,6 +2,13 @@
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { initI18n, tr, parseSlashArgs } from "./i18n"
 import { parseJsonc } from "../shared/ocp-config"
+import {
+  getPublicModelCatalog,
+  publicModelPageID,
+  publicModelPrice,
+  resetModelCatalogCacheForTests,
+  type PublicModelCatalog,
+} from "../shared/model-catalog"
 
 /**
  * Usage — TUI token/cost usage dialog with per-dimension views.
@@ -96,7 +103,7 @@ interface SessionUsage {
   cost: number
   /** True when `cost` came from real server billing, false when it's $0
    *  because the provider is on a plan or skipped billing metadata. The
-   *  cost column shows 🔗 when false. */
+   *  cost column shows 🏷️ when false. */
   costKnown: boolean
   /** OCP supplementary — coding-plan points (积分) for plan providers. */
   credits: number
@@ -104,7 +111,7 @@ interface SessionUsage {
   /** OCP supplementary — cash ($/Mtok) for non-plan providers whose server cost is 0. */
   cash: number
   cashKnown: boolean
-  /** Simulated USD estimate — shown (with 🔗) only when the server billed $0
+  /** Simulated USD estimate — shown (with 🏷️) only when the server billed $0
    *  and no OCP real billing fallback (credits/cash) matched. Uses models.dev
    *  public list prices first; final fallback is a low-end market floor. */
   estimatedCost: number
@@ -208,9 +215,8 @@ export function loadCosts(): CostsData | null {
 /** Reset usage-pricing caches (used by tests when they change OCP_* paths). */
 export function resetCostsCache(): void {
   costsDataCache = undefined
-  modelsDevCache = undefined
-  modelsDevByModel = null
-  modelsDevRefreshInFlight = null
+  modelsDevCatalog = undefined
+  resetModelCatalogCacheForTests()
 }
 
 /** OCP-supplied usage for a message: either积分 (points, divided by provider divisor) or
@@ -253,168 +259,44 @@ function shortModelName(fullId: string): string {
  *  (`costKnown=true`) the dollar amount is shown plain — no icon,
  *  since the server is the source of truth.
  *
- *  Otherwise (simulated estimate): a 🔗 prefix marks the amount as a
+ *  Otherwise (simulated estimate): a 🏷️ prefix marks the amount as a
  *  public-list-price simulation, not a real charge. The estimate basis
  *  and pricing-standard links live in the table footer, keeping this
  *  column narrow. */
 function fmtCost(cost: number, estimatedCost: number, costKnown: boolean): string {
   const value = costKnown ? cost : estimatedCost
-  const icon = costKnown ? "" : "🔗 "
+  const icon = costKnown ? "" : "🏷️ "
   return `${icon}$${value.toFixed(4)}`
 }
 
 // ─── models.dev pricing fallback (simulated cost) ───────────────────────────
 
-/** Public list-price source used when the opencode server billed $0 and the
- *  OCP local cost dataset has no matching provider/model. Prices are USD/MTok.
- *  Source: https://models.dev/api.json. Model-page links use the canonical
- *  catalog ids from https://models.dev/models.json, rendered as
- *  https://models.dev/models/{lab}/{model}. */
-const MODELSDEV_API_URL = "https://models.dev/api.json"
-const MODELSDEV_MODELS_URL = "https://models.dev/models.json"
-const MODELSDEV_CACHE_FILE = "modelsdev-prices.json"
-const MODELSDEV_FRESH_MS = 24 * 60 * 60 * 1000
-const MODELSDEV_STALE_MS = 7 * 24 * 60 * 60 * 1000
+/** Public list-price source is shared with /provider via model-catalog.ts. */
 /** Final fallback when models.dev is unavailable or does not list the model.
  *  USD/MTok; intentionally a low-end market floor, disclosed in the footer. */
 const FALLBACK_FLOOR_USD = { input: 0.06, cached: 0.012, output: 0.12 }
 type ModelsDevPrice = { input: number; cached: number; output: number }
-type ModelsDevCache = { ts: number; prices: Record<string, ModelsDevPrice>; pageIds: Record<string, string>; lastError?: { ts: number; message: string } }
-let modelsDevCache: ModelsDevCache | null | undefined
-let modelsDevRefreshInFlight: Promise<void> | null = null
-let modelsDevByModel: Map<string, ModelsDevPrice> | null = null
-
-function modelsDevCachePath(): string {
-  if (process.env.OCP_MODELSDEV_PATH) return process.env.OCP_MODELSDEV_PATH
-  const os = require("node:os") as typeof import("node:os")
-  const base = process.env.XDG_CONFIG_HOME ||
-    (process.platform === "win32"
-      ? `${process.env.USERPROFILE || os.homedir()}\\.config`
-      : `${os.homedir()}/.config`)
-  return `${base}/opencode/${MODELSDEV_CACHE_FILE}`
-}
-
-function parseModelsDevApi(api: unknown): Record<string, ModelsDevPrice> {
-  const out: Record<string, ModelsDevPrice> = {}
-  if (!api || typeof api !== "object") return out
-  for (const [pid, provider] of Object.entries(api as Record<string, any>)) {
-    const models = provider?.models
-    if (!models || typeof models !== "object") continue
-    for (const [mid, model] of Object.entries(models as Record<string, any>)) {
-      const c = model?.cost
-      if (!c || typeof c.input !== "number" || typeof c.output !== "number") continue
-      if (!Number.isFinite(c.input) || !Number.isFinite(c.output)) continue
-      if (c.input <= 0 && c.output <= 0) continue
-      out[`${pid}/${mid}`] = {
-        input: c.input,
-        cached: typeof c.cache_read === "number" && Number.isFinite(c.cache_read) ? c.cache_read : 0,
-        output: c.output,
-      }
-    }
-  }
-  return out
-}
-
-function parseModelsDevCatalog(models: unknown): Record<string, string> {
-  const out: Record<string, string> = {}
-  if (!models || typeof models !== "object") return out
-  for (const [id] of Object.entries(models as Record<string, unknown>)) {
-    if (typeof id !== "string") continue
-    const slash = id.lastIndexOf("/")
-    if (slash === -1) continue
-    const model = id.slice(slash + 1)
-    if (model && !out[model]) out[model] = id
-  }
-  return out
-}
-
-function loadModelsDevFromDisk(): boolean {
-  try {
-    const fs = require("node:fs") as typeof import("node:fs")
-    const file = modelsDevCachePath()
-    if (!fs.existsSync(file)) return false
-    const parsed = JSON.parse(fs.readFileSync(file, "utf-8")) as ModelsDevCache
-    if (!parsed || typeof parsed.ts !== "number" || !parsed.prices || typeof parsed.prices !== "object") return false
-    modelsDevCache = { ts: parsed.ts, prices: parsed.prices, pageIds: parsed.pageIds || {}, lastError: parsed.lastError }
-    modelsDevByModel = null
-    return true
-  } catch { return false }
-}
-
-async function refreshModelsDevFromRemote(): Promise<void> {
-  try {
-    const fs = require("node:fs") as typeof import("node:fs")
-    const [apiRes, catalogRes] = await Promise.all([
-      fetch(MODELSDEV_API_URL, { signal: AbortSignal.timeout(15_000) }),
-      fetch(MODELSDEV_MODELS_URL, { signal: AbortSignal.timeout(15_000) }),
-    ])
-    if (!apiRes.ok) throw new Error(`api.json HTTP ${apiRes.status}`)
-    const prices = parseModelsDevApi(await apiRes.json())
-    if (Object.keys(prices).length === 0) throw new Error("api.json parse failed")
-    let pageIds: Record<string, string> = {}
-    if (catalogRes.ok) {
-      try { pageIds = parseModelsDevCatalog(await catalogRes.json()) } catch { /* page links are best-effort */ }
-    }
-    const entry: ModelsDevCache = { ts: Date.now(), prices, pageIds }
-    try {
-      const tmp = modelsDevCachePath() + ".tmp"
-      fs.writeFileSync(tmp, JSON.stringify(entry))
-      fs.renameSync(tmp, modelsDevCachePath())
-    } catch { /* disk write best-effort */ }
-    modelsDevCache = entry
-    modelsDevByModel = null
-  } catch (e) {
-    if (modelsDevCache) {
-      modelsDevCache = { ...modelsDevCache, lastError: { ts: Date.now(), message: e instanceof Error ? e.message : String(e) } }
-    }
-  }
-}
+let modelsDevCatalog: PublicModelCatalog | undefined
+let modelsDevRefreshInFlight: Promise<PublicModelCatalog> | undefined
 
 async function getModelsDevAsync(): Promise<void> {
-  if (modelsDevCache && Date.now() - modelsDevCache.ts < MODELSDEV_FRESH_MS) return
-  if (!modelsDevCache) loadModelsDevFromDisk()
-  if (modelsDevCache && Date.now() - modelsDevCache.ts < MODELSDEV_STALE_MS) {
-    if (!modelsDevRefreshInFlight) modelsDevRefreshInFlight = refreshModelsDevFromRemote().finally(() => { modelsDevRefreshInFlight = null })
-    return
+  if (!modelsDevRefreshInFlight) {
+    modelsDevRefreshInFlight = getPublicModelCatalog().then((catalog) => { modelsDevCatalog = catalog; return catalog })
+      .finally(() => { modelsDevRefreshInFlight = undefined })
   }
-  if (!modelsDevRefreshInFlight) modelsDevRefreshInFlight = refreshModelsDevFromRemote().finally(() => { modelsDevRefreshInFlight = null })
   await modelsDevRefreshInFlight
 }
 
 function getModelsDevSync(): void {
-  if (modelsDevCache && Date.now() - modelsDevCache.ts < MODELSDEV_STALE_MS) return
-  if (!modelsDevCache) loadModelsDevFromDisk()
-  if (!modelsDevRefreshInFlight) modelsDevRefreshInFlight = refreshModelsDevFromRemote().finally(() => { modelsDevRefreshInFlight = null })
-}
-
-function modelsDevPriceFor(providerID: string, modelID: string): ModelsDevPrice | null {
-  getModelsDevSync()
-  const cache = modelsDevCache
-  if (!cache) return null
-  const exact = cache.prices[`${providerID}/${modelID}`]
-  if (exact) return exact
-  if (!modelsDevByModel) {
-    modelsDevByModel = new Map()
-    for (const [key, price] of Object.entries(cache.prices)) {
-      const mid = key.slice(key.indexOf("/") + 1)
-      const cur = modelsDevByModel.get(mid)
-      if (!cur || price.input + price.output * 4 < cur.input + cur.output * 4) modelsDevByModel.set(mid, price)
-    }
-  }
-  return modelsDevByModel.get(modelID) ?? null
-}
-
-function modelsDevPageIdFor(modelID: string): string | null {
-  getModelsDevSync()
-  return modelsDevCache?.pageIds[modelID] ?? null
+  if (!modelsDevCatalog) void getModelsDevAsync().catch(() => { /* fallback floor remains available */ })
 }
 
 function computeModelsDevEstimate(providerID: string, modelID: string, input: number, cacheRead: number, output: number): { value: number; pageId?: string } | null {
-  const price = modelsDevPriceFor(providerID, modelID)
+  const price = modelsDevCatalog ? publicModelPrice(modelsDevCatalog, providerID, modelID) : null
   if (!price) return null
   return {
     value: (input * price.input + cacheRead * price.cached + output * price.output) / 1_000_000,
-    pageId: modelsDevPageIdFor(modelID) || undefined,
+    pageId: modelsDevCatalog ? publicModelPageID(modelsDevCatalog, modelID) || undefined : undefined,
   }
 }
 
@@ -800,7 +682,7 @@ function tableViewToString(tv: TableView): string {
   return tv.footers.length > 0 ? table + "\n\n" + tv.footers.join("\n\n") : table
 }
 
-/** Disclosure footer for 🔗 simulated prices. The amount is only shown when
+/** Disclosure footer for 🏷️ simulated prices. The amount is only shown when
  *  the opencode server reported $0 and no real OCP billing fallback matched;
  *  link to the models.dev model pages used as the pricing standard. */
 function pushEstimateFooters(tv: TableView, sessions: SessionUsage[], totalCostKnown: boolean): void {
@@ -1035,11 +917,11 @@ function renderModelTable(sessions: SessionUsage[]): TableView {
     const lines = mappings
       .map((m) => `• ${m.short} ← ${m.full}`)
       .join("\n")
-    tv.footers.push(`${tr("usage.fullIdMapping")}\n${lines}`)
+    tv.footers.push(`🆔 ${tr("usage.fullIdMapping")}\n${lines}`)
   }
   // In the model view, place simulated-pricing disclosure after the full-id
   // mapping: first explain what each short model name expands to, then explain
-  // where the 🔗 estimated price came from.
+  // where the 🏷️ estimated price came from.
   pushEstimateFooters(tv, sessions, totalCostKnown)
   return tv
 }
@@ -1060,10 +942,10 @@ export interface UsageRender {
 }
 
 export async function formatByDimension(client: Client, sessionId: string, dim: UsageDimension): Promise<UsageRender> {
-  // If we have no models.dev price cache yet (cold install, no disk cache,
+  // If we have no shared public catalog yet (cold install, no disk cache,
   // first /usage open), wait briefly so simulated costs can use real public
   // list prices instead of the hardcoded market-floor fallback.
-  if (!modelsDevCache) {
+  if (!modelsDevCatalog) {
     try {
       await Promise.race([
         getModelsDevAsync(),
@@ -1366,7 +1248,7 @@ const tui: TuiPlugin = async (api) => {
     // a fresh install will trigger one slow fetch (because there's nothing
     // on disk yet) — handled via the formatByDimension await below; all
     // subsequent opens are instant (background-only refresh).
-    if (!modelsDevCache) {
+    if (!modelsDevCatalog) {
       void getModelsDevAsync().catch(() => { /* network errors never block */ })
     }
     return formatByDimension(api.client, sessionId, dim)

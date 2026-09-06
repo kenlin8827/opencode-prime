@@ -93,6 +93,7 @@ import {
   type OpenCodeConfig,
   type ConnectionInfo,
 } from "../shared/provider-creds"
+import { fetchModelsDevModelCatalog, fetchProviderModelsCached } from "../shared/model-catalog"
 
 const CONFIG_DIR = join(homedir(), ".config", "opencode")
 const PROVIDERS_DIR = join(CONFIG_DIR, "providers")
@@ -180,13 +181,10 @@ export function allocateModelKey(
  * models.dev provider-agnostic catalog (models.json) — the open model
  * database opencode's built-in providers consume. Keys are canonical
  * "author/model" IDs, so a remote "vendor/gpt-x" matches by bare ID
- * suffix without any normalization. Fetched straight from the site (no
- * SDK dependency: the 1.18.x `api.client` has no `model.list`, so that
- * path silently yielded an empty catalog and every import stayed
- * text-only).
+ * suffix without any normalization. The shared model-catalog module owns
+ * the models.dev fetch and stale-while-revalidate disk cache; this wizard
+ * only converts its normalized records to the conservative fields it writes.
  */
-const MODELS_CATALOG_URL = "https://models.dev/models.json"
-
 /** opencode's modality vocabulary; catalog-specific values like "file" are dropped. */
 const MODALITY_NAMES = ["text", "audio", "image", "video", "pdf"]
 
@@ -195,6 +193,8 @@ type CatalogModel = {
   capabilities?: { input?: string[]; output?: string[] }
   limit?: { context?: number; output?: number }
   reasoning?: boolean
+  reasoningOptions?: Array<Record<string, unknown>>
+  variants?: Record<string, Record<string, unknown>>
   temperature?: boolean
   toolCall?: boolean
 }
@@ -328,6 +328,8 @@ export function sdkCatalogModels(response: unknown): CatalogModel[] {
       capabilities?: { input?: unknown; output?: unknown; reasoning?: unknown; temperature?: unknown; toolcall?: unknown }
       modalities?: { input?: unknown; output?: unknown }
       limit?: unknown
+      reasoning_options?: unknown
+      variants?: unknown
     }
     if (typeof m.id !== "string") return []
     const caps = m.capabilities ?? m.modalities
@@ -341,6 +343,15 @@ export function sdkCatalogModels(response: unknown): CatalogModel[] {
     if (m.capabilities?.reasoning === true) entry.reasoning = true
     if (m.capabilities?.temperature === true) entry.temperature = true
     if (m.capabilities?.toolcall === false) entry.toolCall = false
+    const reasoningOptions = m.reasoning_options
+    if (Array.isArray(reasoningOptions)) {
+      entry.reasoningOptions = reasoningOptions.filter(
+        (x): x is Record<string, unknown> => Boolean(x) && typeof x === "object" && !Array.isArray(x),
+      )
+    }
+    if (m.variants && typeof m.variants === "object" && !Array.isArray(m.variants)) {
+      entry.variants = m.variants as Record<string, Record<string, unknown>>
+    }
     return [entry]
   })
 }
@@ -359,21 +370,53 @@ let catalogCache: Promise<CatalogModel[]> | undefined
 export function fetchCatalog(api: TuiPluginApi): Promise<CatalogModel[]> {
   catalogCache ??= (async () => {
     const client = api.client as unknown as { model?: { list: () => Promise<unknown> } }
+    let fromSdk: CatalogModel[] = []
     if (typeof client.model?.list === "function") {
       try {
-        const fromSdk = sdkCatalogModels(await client.model.list())
-        if (fromSdk.length) return fromSdk
+        fromSdk = sdkCatalogModels(await client.model.list())
       } catch {
-        // host catalog unavailable — fall through to models.dev
+        // host catalog unavailable — public catalog still fills metadata
       }
     }
+    let fromPublic: CatalogModel[] = []
     try {
-      const res = await fetch(MODELS_CATALOG_URL, { signal: AbortSignal.timeout(15_000) })
-      if (res.ok) return catalogModels(await res.json())
+      fromPublic = (await fetchModelsDevModelCatalog()).map((model): CatalogModel => ({
+        id: model.id,
+        capabilities: model.capabilities,
+        limit: model.limit && typeof model.limit.context === "number" && typeof model.limit.output === "number"
+          ? { context: model.limit.context, output: model.limit.output }
+          : undefined,
+        reasoning: model.reasoning === true ? true : undefined,
+        reasoningOptions: model.reasoningOptions,
+        variants: model.variants,
+        temperature: model.temperature === true ? true : undefined,
+        toolCall: model.toolCall === false ? false : undefined,
+      }))
     } catch {
-      // unreachable catalog — empty is a valid result
+      // public catalog unavailable — keep any host catalog fields
     }
-    return [] as CatalogModel[]
+    const merged = new Map<string, CatalogModel>()
+    const publicByBare = new Map<string, CatalogModel>()
+    for (const entry of fromPublic) {
+      if (entry.id) publicByBare.set(deriveModelKey(entry.id), entry)
+      merged.set(entry.id!, { ...entry })
+    }
+    for (const entry of fromSdk) {
+      const previous = merged.get(entry.id!)
+      const bareFill = entry.id ? publicByBare.get(deriveModelKey(entry.id)) : undefined
+      merged.set(entry.id!, {
+        ...previous,
+        ...entry,
+        capabilities: entry.capabilities ?? previous?.capabilities ?? bareFill?.capabilities,
+        limit: entry.limit ?? previous?.limit ?? bareFill?.limit,
+        reasoning: entry.reasoning ?? previous?.reasoning ?? bareFill?.reasoning,
+        reasoningOptions: entry.reasoningOptions ?? previous?.reasoningOptions ?? bareFill?.reasoningOptions,
+        variants: entry.variants ?? previous?.variants ?? bareFill?.variants,
+        temperature: entry.temperature ?? previous?.temperature ?? bareFill?.temperature,
+        toolCall: entry.toolCall ?? previous?.toolCall ?? bareFill?.toolCall,
+      })
+    }
+    return [...merged.values()]
   })()
   return catalogCache
 }
@@ -464,6 +507,62 @@ const applyFlag = (entry: ModelDef, flag: "reasoning" | "temperature" | "toolCal
   return false
 }
 
+/** Convert portable effort metadata into OpenCode's native variant overlays. */
+function catalogVariants(match: CatalogModel): Record<string, Record<string, unknown>> | undefined {
+  const variants: Record<string, Record<string, unknown>> = { ...(match.variants ?? {}) }
+  for (const option of match.reasoningOptions ?? []) {
+    if (option.type !== "effort" || !Array.isArray(option.values)) continue
+    for (const value of option.values) {
+      if (typeof value !== "string" || variants[value]) continue
+      variants[value] = { reasoningEffort: value }
+    }
+  }
+  return Object.keys(variants).length ? variants : undefined
+}
+
+/** Merge reasoning metadata from all public entries sharing the same bare ID. */
+function catalogReasoningOptions(remoteID: string, catalog: readonly CatalogModel[]): Array<Record<string, unknown>> | undefined {
+  const bare = deriveModelKey(remoteID)
+  const effort = new Set<string>()
+  const other: Record<string, unknown>[] = []
+  for (const entry of catalog) {
+    if (!entry.reasoningOptions?.length || typeof entry.id !== "string") continue
+    if (entry.id !== remoteID && deriveModelKey(entry.id) !== bare) continue
+    for (const option of entry.reasoningOptions) {
+      if (option.type === "effort" && Array.isArray(option.values)) {
+        for (const value of option.values) if (typeof value === "string") effort.add(value)
+      } else if (option && typeof option === "object" && !Array.isArray(option)) {
+        const serialized = JSON.stringify(option)
+        if (!other.some((item) => JSON.stringify(item) === serialized)) other.push(option)
+      }
+    }
+  }
+  const order = ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+  const options: Array<Record<string, unknown>> = effort.size > 0
+    ? [{ type: "effort", values: [...effort].sort((a, b) => (order.indexOf(a) < 0 ? 99 : order.indexOf(a)) - (order.indexOf(b) < 0 ? 99 : order.indexOf(b))) }]
+    : []
+  options.push(...other)
+  return options.length > 0 ? options : undefined
+}
+
+const EFFORT_VALUES = ["low", "medium", "high", "xhigh", "max"] as const
+
+/** Infer missing base-model metadata from concrete effort sibling keys. */
+export function ensureBaseReasoningOptions(models: Record<string, ModelDef>, catalog: readonly CatalogModel[] = []): number {
+  let changed = 0
+  for (const [key, model] of Object.entries(models)) {
+    if (model.reasoning !== true || model.reasoning_options !== undefined) continue
+    const values = EFFORT_VALUES.filter((value) => models[`${key}-${value}`] !== undefined)
+    const options = values.length > 0
+      ? [{ type: "effort", values: [...values] }]
+      : catalogReasoningOptions(typeof model.id === "string" ? model.id : key, catalog)
+    if (!options) continue
+    model.reasoning_options = options
+    changed++
+  }
+  return changed
+}
+
 /** Build a conservative imported model definition from catalog-proven data only. */
 export function importedModelDef(
   remote: { id: string; name: string },
@@ -483,6 +582,10 @@ export function importedModelDef(
     applyFlag(entry, "reasoning", match.reasoning)
     applyFlag(entry, "temperature", match.temperature)
     applyFlag(entry, "toolCall", match.toolCall)
+    const reasoningOptions = catalogReasoningOptions(remote.id, catalog)
+    if (reasoningOptions) entry.reasoning_options = reasoningOptions
+    const variants = catalogVariants(match)
+    if (variants) entry.variants = variants
   }
   return entry
 }
@@ -518,6 +621,16 @@ export function enrichModelDef(
     changed = applyFlag(entry, "reasoning", match.reasoning) || changed
     changed = applyFlag(entry, "temperature", match.temperature) || changed
     changed = applyFlag(entry, "toolCall", match.toolCall) || changed
+    const reasoningOptions = catalogReasoningOptions(remoteID, catalog)
+    if (entry.reasoning_options === undefined && reasoningOptions) {
+      entry.reasoning_options = reasoningOptions
+      changed = true
+    }
+    const variants = catalogVariants(match)
+    if (entry.variants === undefined && variants) {
+      entry.variants = variants
+      changed = true
+    }
   }
   return changed
 }
@@ -656,7 +769,7 @@ function readConfigOrToast(api: TuiPluginApi): OpenCodeConfig | null {
 
 // ─── Remote model fetch ──────────────────────────────────────────────
 
-function parseModelList(body: unknown): Array<{ id: string; name: string }> {
+export function parseModelList(body: unknown): Array<{ id: string; name: string }> {
   const raw = Array.isArray(body) ? body : (body as { data?: unknown } | null)?.data
   if (!Array.isArray(raw)) return []
   const out: Array<{ id: string; name: string }> = []
@@ -675,20 +788,7 @@ async function fetchRemoteModels(
   baseURL: string,
   apiKey: string,
 ): Promise<Array<{ id: string; name: string }>> {
-  const base = baseURL.replace(/\/+$/, "")
-  const headers: Record<string, string> = {}
-  let url: string
-  if (npm === NPM_ANTHROPIC) {
-    url = `${base}/v1/models`
-    headers["x-api-key"] = apiKey
-    headers["anthropic-version"] = "2023-06-01"
-  } else {
-    url = `${base}/models`
-    headers.Authorization = `Bearer ${apiKey}`
-  }
-  const res = await fetch(url, { headers, signal: AbortSignal.timeout(15000) })
-  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} — ${url}`)
-  return parseModelList((await res.json()) as unknown)
+  return fetchProviderModelsCached({ npm, baseURL, apiKey })
 }
 
 // ─── Level 1: provider list ──────────────────────────────────────────
@@ -1417,6 +1517,7 @@ async function doFetch(api: TuiPluginApi, id: string, pattern: string): Promise<
     models[key] = importedModelDef(m, key, catalog)
     added++
   }
+  enriched += ensureBaseReasoningOptions(models, catalog)
   // legacy fetch bookkeeping — no longer written
   delete provider.presetModels
 

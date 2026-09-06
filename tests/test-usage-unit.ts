@@ -323,7 +323,7 @@ assert(ptsText.includes("credits") && ptsText.includes("7.42"), "credits column 
   assert(ptsText.includes("7.42"), `points computed via OCP dataset (got: ${ptsText.split("\n").join(" | ")})`)
   // On coding plans the server-side cost is $0, but credits are the actual
   // billing mechanism so costKnown should be true and no simulated-price icon appears.
-  assert(!ptsText.includes("🔗"), "coding-plan sessions don't get a simulated-price icon (credits are the real bill)")
+  assert(!ptsText.includes("🏷️"), "coding-plan sessions don't get a simulated-price icon (credits are the real bill)")
 delete sessions.z1
 delete messages.z1
 rmSync(pointsPath, { force: true })
@@ -342,7 +342,7 @@ resetCostsCache()
 sessions.z2 = { id: "z2", agent: "build" }
 messages.z2 = [assistant({ mode: "build", agent: "build", providerID: "anthropic", modelID: "claude-pro", cost: 0, tokens: { input: 1000, output: 100, cache: { read: 10000, write: 0 } } }, 1)]
 const nonPlanText = (await formatByDimension(fakeApi.client, "z2", "session")).table
-assert(nonPlanText.includes("🔗 $0.0075") && !nonPlanText.includes("积分"), "non-plan cost 0 shows models.dev simulated estimate prefixed with link icon")
+assert(nonPlanText.includes("🏷️ $0.0075") && !nonPlanText.includes("积分"), "non-plan cost 0 shows models.dev simulated estimate prefixed with price-tag icon")
 assert(nonPlanText.includes("https://models.dev/models/anthropic/claude-pro"), "simulated pricing footer links to models.dev model page")
 delete sessions.z2
 delete messages.z2
@@ -390,6 +390,7 @@ for (const header of ["model", "sess", "in", "out", "cached", "cost", "share"]) 
   assert(modelText.includes(header), `model table has "${header}" column`)
 }
 assert(modelText.includes("anthropic/claude-pro"), "model row: claude-pro")
+assert(modelText.includes("🆔 ") && modelText.includes("\n• claude-pro ← anthropic/claude-pro"), "full model-id label has model icon")
 assert(modelText.includes("11,802"), "claude-pro input summed across s1+c0 (11702+100)")
 assert(modelText.includes("994") && modelText.includes("7,232"), "claude-pro output/cache summed (984+10, 7232+0)")
 assert(modelText.includes("google/gemini-flash"), "model row: gemini-flash")

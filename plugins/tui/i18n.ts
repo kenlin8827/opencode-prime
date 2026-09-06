@@ -553,7 +553,7 @@ const STRINGS = {
   "usage.hShare": { en: "share", "zh-CN": "占比" },
   "usage.hModel": { en: "model", "zh-CN": "模型" },
   "usage.hitCell": { en: "hit {hit}% · {total}", "zh-CN": "命中 {hit}% · {total}" },
-  "usage.estimateNote": { en: "🔗 = simulated pricing (public list-price estimate, not an actual invoice)", "zh-CN": "🔗 = 模拟计价（按公开标价估算，非实际账单）" },
+  "usage.estimateNote": { en: "🏷️ = simulated pricing (public list-price estimate, not an actual invoice)", "zh-CN": "🏷️ = 模拟计价（按公开标价估算，非实际账单）" },
   "usage.estimateFloor": { en: "Some models were not found on models.dev; those rows use a low-end market-floor fallback.", "zh-CN": "部分模型未在 models.dev 匹配到价格，已按市场最低价下界兜底估算。" },
   "usage.fullIdMapping": { en: "Full IDs:", "zh-CN": "模型全名:" },
   "usage.noData": { en: "📊 No token data for the current session yet.", "zh-CN": "📊 当前会话还没有 token 数据。" },

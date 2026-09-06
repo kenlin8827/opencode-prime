@@ -70,6 +70,7 @@ import {
 import { join, dirname } from "node:path"
 import { homedir } from "node:os"
 import { tr, initI18n, languageOption, switchLanguage, SWITCH_LANG } from "./i18n"
+import { resolveSuffixModelRef, type VariantConfig } from "../shared/model-variants"
 
 const CONFIG_DIR = join(homedir(), ".config", "opencode")
 const CONFIG_FILE = join(CONFIG_DIR, "opencode.jsonc")
@@ -109,6 +110,7 @@ interface ProfileState {
 interface Agent {
   tier?: string
   model?: string
+  variant?: string
   [key: string]: unknown
 }
 
@@ -532,6 +534,7 @@ export function stripModelRefs(config: OpenCodeConfig): number {
 // and other utility calls run on the cheap tier.
 // Also emits a merge patch (agent names → model) so the live path can
 // go through the server's global config API instead of a raw rewrite.
+// Exported for unit tests.
 
 interface ApplyResult {
   updated: number
@@ -539,7 +542,7 @@ interface ApplyResult {
   patch: OpenCodeConfig
 }
 
-function applyProfile(
+export function applyProfile(
   config: OpenCodeConfig,
   profile: Profile,
   tierMap: Record<string, string>,
@@ -568,8 +571,9 @@ function applyProfile(
     for (const [name, agent] of Object.entries(config.agent)) {
       const agentTier = tierMap[name]
       if (agentTier === tier) {
-        agent.model = ref
-        patch.agent![name] = { model: ref }
+        const resolved = resolveSuffixModelRef(config as VariantConfig, ref, agent.variant)
+        agent.model = resolved
+        patch.agent![name] = { model: resolved }
         count++
       }
     }
@@ -583,7 +587,7 @@ function applyProfile(
       config.model = ref
       patch.model = ref
     }
-    details.push(`tier.${tier} → ${ref} (${count} agent${count > 1 ? "s" : ""})`)
+      details.push(`tier.${tier} → ${ref} (${count} agent${count > 1 ? "s" : ""})`)
     updated += count
   }
 

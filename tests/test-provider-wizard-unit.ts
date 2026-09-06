@@ -8,6 +8,8 @@ import {
   humanizeModelName,
   importedModelDef,
   enrichModelDef,
+  parseModelList,
+  ensureBaseReasoningOptions,
 } from "../plugins/tui/provider-wizard"
 import { listConnections, planDisconnect } from "../plugins/shared/provider-creds"
 
@@ -59,8 +61,8 @@ assert(!result.duplicate && result.key === "gpt-5.6-luna-2", "conflicting id rec
 section("catalog capabilities conservatively enable image input")
 
 const catalog = [
-  { id: "openai/gpt-4o", capabilities: { input: ["text", "image"], output: ["text"] }, limit: { context: 128000, output: 16384 }, reasoning: true, temperature: true },
-  { id: "openai/gpt-5.6-luna", capabilities: { input: ["text", "image", "pdf"], output: ["text"] }, limit: { context: 1050000, output: 128000 }, reasoning: true },
+  { id: "openai/gpt-4o", capabilities: { input: ["text", "image"], output: ["text"] }, limit: { context: 128000, output: 16384 }, reasoning: true, temperature: true, reasoningOptions: [{ type: "effort", values: ["low", "high"] }] },
+  { id: "openai/gpt-5.6-luna", capabilities: { input: ["text", "image", "pdf"], output: ["text"] }, limit: { context: 1050000, output: 128000 }, reasoning: true, reasoningOptions: [{ type: "effort", values: ["low", "high"] }] },
   { id: "deepseek/deepseek-chat", capabilities: { input: ["text"], output: ["text"] } },
   { id: "acme/no-tools", capabilities: { input: ["text"], output: ["text"] }, toolCall: false },
 ]
@@ -228,6 +230,7 @@ assert(vision.attachment === true, "catalog-proven image model enables attachmen
 assert(JSON.stringify(vision.modalities) === JSON.stringify({ input: ["text", "image"], output: ["text"] }), "catalog modalities are preserved")
 assert(JSON.stringify(vision.limit) === JSON.stringify({ context: 128000, output: 16384 }), "catalog limits are written")
 assert(vision.reasoning === true && vision.temperature === true, "non-default reasoning/temperature flags written")
+assert((vision.variants as any)?.low?.reasoningEffort === "low" && (vision.variants as any)?.high?.reasoningEffort === "high", "reasoning effort metadata becomes native variants")
 
 const noTools = importedModelDef({ id: "acme/no-tools", name: "NoTools" }, "no-tools", catalog)
 assert(noTools.tool_call === false, "catalog-proven missing tool support written")
@@ -245,8 +248,15 @@ const userTuned: Record<string, unknown> = { name: "gpt-4o", id: "gateway/gpt-4o
 assert(enrichModelDef(userTuned, "gateway/gpt-4o", catalog) === true, "limit still enriched when modalities are user-set")
 assert(userTuned.attachment === false && userTuned.modalities === undefined, "user-set attachment never overwritten")
 
-const completeEntry: Record<string, unknown> = { name: "x", id: "gateway/gpt-4o", attachment: true, modalities: { input: ["text"] }, limit: { context: 1, output: 1 }, reasoning: false, temperature: false }
+const completeEntry: Record<string, unknown> = { name: "x", id: "gateway/gpt-4o", attachment: true, modalities: { input: ["text"] }, limit: { context: 1, output: 1 }, reasoning: false, temperature: false, reasoning_options: [{ type: "effort", values: ["low", "high"] }], variants: { low: { reasoningEffort: "low" }, high: { reasoningEffort: "high" } } }
 assert(enrichModelDef(completeEntry, "gateway/gpt-4o", catalog) === false, "nothing to add → not changed")
+
+const baseWithSiblings: Record<string, any> = {
+  "gpt-5.6-luna": { reasoning: true },
+  "gpt-5.6-luna-low": { reasoning: true },
+  "gpt-5.6-luna-high": { reasoning: true },
+}
+assert(ensureBaseReasoningOptions(baseWithSiblings) === 1, "base model receives reasoning_options from suffix siblings")
 
 section("listConnections unions credential store and config apiKeys")
 
