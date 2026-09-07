@@ -1,11 +1,12 @@
 {
-	"version": "0.30.2",
+	"version": "0.31.0",
 	"license": "AGPL-3.0-or-later",
 	"scripts": {
 		"docs:dev": "vitepress dev docs",
 		"docs:build": "vitepress build docs",
 		"docs:preview": "vitepress preview docs",
 		"install:cli": "bun run install/src/index.ts",
+		"manifest:generate": "bun run scripts/generate-manifest.ts",
 		"capture:dashboard": "tsx scripts/capture-dashboard-screenshot.ts",
 		"capture:wizard": "tsx scripts/capture-wizard-screenshot.ts",
 		"capture:all": "tsx scripts/capture-dashboard-screenshot.ts && tsx scripts/capture-wizard-screenshot.ts",

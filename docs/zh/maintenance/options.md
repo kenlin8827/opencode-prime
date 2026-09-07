@@ -11,7 +11,6 @@
 | 安装（默认） | `pwsh install/install.ps1` | `./install/install.sh` | 将当前清单应用到目标目录 |
 | 强制重装 | `pwsh install/install.ps1 install -Force` | `./install/install.sh install -f` | 重新应用相同版本 |
 | 查看状态 | `pwsh install/install.ps1 status` | `./install/install.sh status` | 显示已安装版本与仓库版本 |
-| 生成清单 | `pwsh install/install.ps1 generate` | `./install/install.sh generate` | 扫描仓库，写入清单（不安装） |
 | 初始化（全新开始） | `pwsh install/install.ps1 init` | `./install/install.sh init` | 备份并清空整个目标目录 |
 | 注册全局命令 | `pwsh install/install.ps1 register` | `./install/install.sh register` | 将 `opencode-prime` 与 `ocp` shim 安装到 `~/.local/bin` |
 | 注销全局命令 | `pwsh install/install.ps1 unregister` | `./install/install.sh unregister` | 移除全局 shims |

@@ -25,7 +25,6 @@
 | `ocp init` | | 备份并清空整个目标目录，全新开始 |
 | `ocp uninstall` | | 从目标目录移除当前版本清单中的文件 |
 | `ocp status` | | 对比已安装版本与仓库版本 |
-| `ocp generate` | | 基于当前仓库重新生成 `install/versions/<VERSION>.manifest.txt` |
 | `ocp register` | | 将全局 shim（`opencode-prime`、`ocp`）安装到 `~/.local/bin`，**并**确保该目录已加入 `PATH` |
 | `ocp unregister` | | 移除 `~/.local/bin` 中的全局 shim |
 | `ocp wizard` | `ocp menu` | 交互式 TUI 安装向导（首次安装与重新配置） |
@@ -157,7 +156,7 @@ ocp session clean --project opencode-prime --days 7  # 按项目路径/名称清
 
 ## 安装类子命令
 
-`install` / `update` / `upgrade` / `init` / `uninstall` / `status` / `generate` 是 `install.ps1` / `install.sh`（同一套 TypeScript 引擎）的薄封装。常用透传参数：
+`install` / `update` / `upgrade` / `init` / `uninstall` / `status` 是 `install.ps1` / `install.sh`（同一套 TypeScript 引擎）的薄封装。常用透传参数：
 
 | 参数 | 别名 | 说明 |
 | :--- | :--- | :--- |

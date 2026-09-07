@@ -98,7 +98,6 @@ After installation, the global command `ocp` (alias: `opencode-prime`) is availa
 | `ocp init` | | Backup + clear the entire target directory for a fresh start |
 | `ocp uninstall` | | Remove the installed version's manifest files from the target |
 | `ocp status` | | Show installed vs repo version |
-| `ocp generate` | | Regenerate the manifest from the current repo tree |
 | `ocp register` | | Install global shims (`ocp`, `opencode-prime`) into `~/.local/bin` |
 | `ocp unregister` | | Remove the global shims |
 | `ocp wizard` | `ocp menu` | Interactive TUI setup wizard (first-run and reconfigure flows) |

@@ -11,7 +11,6 @@ Learn about installer commands, configuration options, token savings, and preser
 | Install (default) | `pwsh install/install.ps1` | `./install/install.sh` | Apply current manifest to target |
 | Force reinstall | `pwsh install/install.ps1 install -Force` | `./install/install.sh install -f` | Re-apply same version |
 | Status | `pwsh install/install.ps1 status` | `./install/install.sh status` | Show installed vs repo version |
-| Generate manifest | `pwsh install/install.ps1 generate` | `./install/install.sh generate` | Scan repo, write manifest (no install) |
 | Init (fresh start) | `pwsh install/install.ps1 init` | `./install/install.sh init` | Backup + clear entire target directory |
 | Register global cmd | `pwsh install/install.ps1 register` | `./install/install.sh register` | Install `opencode-prime` and `ocp` shims to `~/.local/bin` |
 | Unregister global cmd | `pwsh install/install.ps1 unregister` | `./install/install.sh unregister` | Remove global shims |

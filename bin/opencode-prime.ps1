@@ -22,7 +22,6 @@
       init            Backup + clear the target for a fresh start
       uninstall       Remove the installed version's manifest files from the target
       status          Show installed vs repo version
-      generate        Regenerate install/versions/<ver>.manifest.txt
       register        Install global shims (opencode-prime, ocp) into ~/.local/bin
       unregister      Remove global shims from ~/.local/bin
       tui             Launch the OpenCode terminal UI (exec opencode).
@@ -215,10 +214,6 @@ switch ($Subcommand.ToLowerInvariant()) {
     }
     'status' {
         & $Install status @Rest
-        break
-    }
-    'generate' {
-        & $Install generate @Rest
         break
     }
     'register' {

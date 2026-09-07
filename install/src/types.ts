@@ -28,7 +28,6 @@ export type CommandAction =
   | "update"
   | "upgrade"
   | "status"
-  | "generate"
   | "init"
   | "uninstall"
   | "register"
@@ -41,6 +40,7 @@ export type CommandAction =
   | "code"
   | "desktop"
   | "session"
+  | "session-projects"
   | "auth"
   | "clean"
   | "herdr"
@@ -69,6 +69,7 @@ export interface CliArgs {
   passthrough?: string[];
   // `clean` subcommand options.
   cleanDays?: number;
+  cleanAll?: boolean;
   cleanDryRun?: boolean;
   cleanIncludeSubagents?: boolean;
   cleanProject?: string;

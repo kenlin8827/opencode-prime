@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { isBinaryOnPath } from './installer';
+import { getOpencodeExecutable } from './shared/opencode-command';
 import type { BackendResult } from '../../plugins/project-manager/project-manager-index';
 import type { HookResult } from '../../plugins/project-manager/project-manager-hooks';
 import { initProject } from '../../plugins/project-manager/project-manager-operations';
@@ -26,7 +27,7 @@ function launchBinary(
   binName: string,
   installHint: string,
   extraArgs: string[],
-  options?: { cwd?: string; skipPathCheck?: boolean }
+  options?: { cwd?: string; skipPathCheck?: boolean; shell?: boolean }
 ): number {
   if (!options?.skipPathCheck && !isBinaryOnPath(binName)) {
     console.error(`✗ ${binName} was not found on PATH.`);
@@ -36,8 +37,7 @@ function launchBinary(
 
   const res = spawnSync(binName, extraArgs, {
     stdio: 'inherit',
-    // Windows resolves .cmd / .bat shims (npm globals) only through the shell.
-    shell: process.platform === 'win32',
+    shell: options?.shell ?? process.platform === 'win32',
     cwd: options?.cwd,
   });
 
@@ -50,10 +50,17 @@ function launchBinary(
 
 /** `ocp tui` — launch the OpenCode terminal UI. */
 export function launchTui(extraArgs: string[]): number {
+  const executable = getOpencodeExecutable();
+  if (!executable) {
+    console.error('✗ opencode CLI was not found.');
+    console.error('  Install OpenCode first: https://opencode.ai (or re-run `ocp install`).');
+    return 1;
+  }
   return launchBinary(
-    'opencode',
+    executable,
     '  Install OpenCode first: https://opencode.ai (or re-run `ocp install`).',
-    stripOcpTuiControlArgs(extraArgs)
+    stripOcpTuiControlArgs(extraArgs),
+    { skipPathCheck: true, shell: false }
   );
 }
 
@@ -182,10 +189,17 @@ function findWorkspaceByLabel(targetLabel: string): string | null {
  * opencode's own --port defaults to 0 (auto-assigned random port).
  */
 export function launchServe(extraArgs: string[]): number {
+  const executable = getOpencodeExecutable();
+  if (!executable) {
+    console.error('✗ opencode CLI was not found.');
+    console.error('  Install OpenCode first: https://opencode.ai (or re-run `ocp install`).');
+    return 1;
+  }
   return launchBinary(
-    'opencode',
+    executable,
     '  Install OpenCode first: https://opencode.ai (or re-run `ocp install`).',
-    ['serve', ...extraArgs]
+    ['serve', ...extraArgs],
+    { skipPathCheck: true, shell: false }
   );
 }
 

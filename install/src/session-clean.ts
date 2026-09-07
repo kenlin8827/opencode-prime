@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { getOpencodeExecutable } from './shared/opencode-command';
 
 /**
  * `ocp clean` — delete old OpenCode sessions via the official CLI.
@@ -14,6 +15,7 @@ import path from 'node:path';
 
 export interface CleanOptions {
   days: number;
+  all: boolean;
   dryRun: boolean;
   yes: boolean;
   includeSubagents: boolean;
@@ -38,18 +40,29 @@ interface ProjectRow {
   count: number;
 }
 
+interface SessionProjectRow extends ProjectRow {
+  oldest: number;
+  newest: number;
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────
 
 function runOpencode(args: string[]): string {
   try {
-    return execFileSync('opencode', args, {
+    const executable = getOpencodeExecutable();
+    if (!executable) {
+      console.error('✗ opencode CLI was not found.');
+      console.error('  Install OpenCode first: https://opencode.ai');
+      process.exit(1);
+    }
+    return execFileSync(executable, args, {
       encoding: 'utf-8',
       timeout: 30_000,
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
   } catch (err) {
-    const msg = (err as Error).message;
-    if (msg.includes('ENOENT') || msg.includes('not found')) {
+    const error = err as NodeJS.ErrnoException;
+    if (error.code === 'ENOENT') {
       console.error('✗ opencode CLI was not found on PATH.');
       console.error('  Install OpenCode first: https://opencode.ai');
       process.exit(1);
@@ -99,6 +112,26 @@ function queryProjects(sql: string): ProjectRow[] {
   return JSON.parse(out) as ProjectRow[];
 }
 
+/** `ocp session projects` — list workspaces with saved OpenCode sessions. */
+export async function executeSessionProjects(): Promise<void> {
+  const sql = `SELECT project_id, directory, COUNT(*) as count, MIN(time_created) as oldest, MAX(time_created) as newest FROM session GROUP BY project_id, directory ORDER BY newest DESC`;
+  const rows = queryProjects(sql) as SessionProjectRow[];
+
+  if (rows.length === 0) {
+    console.log('No session projects found.');
+    return;
+  }
+
+  console.log('');
+  console.log('OpenCode Session Projects');
+  console.log('═'.repeat(80));
+  for (const row of rows) {
+    console.log(`  ${row.directory}`);
+    console.log(`    Sessions: ${row.count}  Last activity: ${formatDate(row.newest)}  Project: ${row.project_id}`);
+  }
+  console.log('');
+}
+
 function resolveProjectId(name: string): string | undefined {
   const safe = sqlEscape(name);
   const sql = `SELECT project_id, directory, COUNT(*) as count FROM session WHERE INSTR(LOWER(directory), LOWER('${safe}')) > 0 GROUP BY project_id, directory ORDER BY count DESC`;
@@ -142,10 +175,14 @@ export async function executeClean(opts: CleanOptions): Promise<void> {
 
   // Build the SQL query.
   const effectiveDirectory = opts.directory ? normalizeDirectory(opts.directory) : undefined;
-  const parentFilter = opts.includeSubagents ? '' : 'AND parent_id IS NULL';
+  // --all intentionally includes child sessions too: otherwise it would not
+  // actually clear every session in the selected project/workspace.
+  const includeSubagents = opts.all || opts.includeSubagents;
+  const ageFilter = opts.all ? '' : `AND time_created < ${cutoff}`;
+  const parentFilter = includeSubagents ? '' : 'AND parent_id IS NULL';
   const projectFilter = effectiveProject ? `AND project_id = '${sqlEscape(effectiveProject)}'` : '';
   const directoryFilter = effectiveDirectory ? `AND directory = '${sqlEscape(effectiveDirectory)}'` : '';
-  const sql = `SELECT id, title, time_created, parent_id, tokens_input, tokens_output, cost FROM session WHERE time_created < ${cutoff} ${parentFilter} ${projectFilter} ${directoryFilter} ORDER BY time_created ASC`;
+  const sql = `SELECT id, title, time_created, parent_id, tokens_input, tokens_output, cost FROM session WHERE 1 = 1 ${ageFilter} ${parentFilter} ${projectFilter} ${directoryFilter} ORDER BY time_created ASC`;
 
   const rows = querySessions(sql);
 
@@ -156,7 +193,7 @@ export async function executeClean(opts: CleanOptions): Promise<void> {
       : projectNameInput ? ` for project name '${projectNameInput}'`
       : effectiveProject ? ` for project ${effectiveProject}`
       : '';
-    console.log(`No sessions older than ${opts.days} day(s) found${context}.`);
+    console.log(`No ${opts.all ? 'sessions' : `sessions older than ${opts.days} day(s)`} found${context}.`);
     console.log(`Database size: ${formatBytes(dbSizeBefore)}`);
     return;
   }
@@ -186,8 +223,8 @@ export async function executeClean(opts: CleanOptions): Promise<void> {
   console.log(`  OpenCode Session Cleanup — ${opts.dryRun ? 'DRY RUN' : 'LIVE'}`);
   console.log('═'.repeat(60));
   console.log('');
-  console.log(`  Cutoff       : older than ${opts.days} day(s) (before ${formatDate(cutoff)})`);
-  console.log(`  Subagents    : ${opts.includeSubagents ? 'included' : 'excluded'}`);
+  console.log(`  Scope        : ${opts.all ? 'ALL sessions' : `older than ${opts.days} day(s) (before ${formatDate(cutoff)})`}`);
+  console.log(`  Subagents    : ${includeSubagents ? 'included' : 'excluded'}`);
   const projectLabel = opts.projectName ?? (opts.project && !looksLikeProjectId(opts.project) ? opts.project : undefined);
   console.log(`  Project      : ${projectLabel ? `${projectLabel} → ${effectiveProject}` : effectiveProject ?? '(any)'}`);
   console.log(`  Directory    : ${effectiveDirectory ?? '(any)'}`);
@@ -235,7 +272,23 @@ export async function executeClean(opts: CleanOptions): Promise<void> {
 
   // ── Confirmation prompt ──────────────────────────────────────────────
 
-  if (!opts.yes) {
+  // Clearing every session is deliberately never bypassed by -y/--yes.
+  // It is a destructive action with no recovery path in the OpenCode CLI.
+  if (opts.all) {
+    const readline = require('node:readline');
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const answer: string = await new Promise((resolve) => {
+      rl.question(`  This permanently deletes ALL ${rows.length} session(s) in the selected workspace. Continue? [y/N] `, (ans: string) => {
+        rl.close();
+        resolve(ans);
+      });
+    });
+
+    if (!answer.match(/^[yY]$/)) {
+      console.log('  Cancelled.');
+      return;
+    }
+  } else if (!opts.yes) {
     const readline = require('node:readline');
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
@@ -263,8 +316,11 @@ export async function executeClean(opts: CleanOptions): Promise<void> {
       deleted++;
     } catch (err) {
       failed++;
-      const msg = (err as Error).message.split('\n')[0];
-      console.error(`  ✗ Failed to delete ${r.id}: ${msg}`);
+      const commandError = err as Error & { stderr?: string | Buffer; stdout?: string | Buffer };
+      const detail = commandError.stderr?.toString().trim()
+        || commandError.stdout?.toString().trim()
+        || commandError.message.split('\n')[0];
+      console.error(`  ✗ Failed to delete ${r.id}: ${detail}`);
     }
   }
 

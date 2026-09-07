@@ -120,7 +120,6 @@ OCP_RAW_MIRROR=https://ghfast.top ocp update
 | `ocp init` | | 备份并清空整个目标目录，全新开始 |
 | `ocp uninstall` | | 从目标目录移除已安装版本的清单文件 |
 | `ocp status` | | 查看已安装版本与仓库版本对比 |
-| `ocp generate` | | 从当前仓库树重新生成清单 |
 | `ocp register` | | 将全局 shim（`ocp`、`opencode-prime`）安装到 `~/.local/bin` |
 | `ocp unregister` | | 移除全局 shim |
 | `ocp wizard` | `ocp menu` | 交互式 TUI 安装向导（首次安装与重新配置） |

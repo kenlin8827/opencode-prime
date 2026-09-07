@@ -25,7 +25,6 @@ After a one-time `register` (or a default install), the repo provisioned two glo
 | `ocp init` | | Backup + clear the entire target directory for a fresh start |
 | `ocp uninstall` | | Remove the installed version's manifest files from the target |
 | `ocp status` | | Show installed vs repo version |
-| `ocp generate` | | Regenerate `install/versions/<VERSION>.manifest.txt` from the current tree |
 | `ocp register` | | Install global shims (`opencode-prime`, `ocp`) into `~/.local/bin` **and** ensure that directory is on your `PATH` |
 | `ocp unregister` | | Remove the global shims from `~/.local/bin` |
 | `ocp wizard` | `ocp menu` | Interactive TUI setup wizard (first-run and reconfigure flows) |
@@ -156,7 +155,7 @@ ocp project sync            # append missing template switches
 
 ## Installer Subcommands
 
-`install` / `update` / `upgrade` / `init` / `uninstall` / `status` / `generate` are thin wrappers over `install.ps1` / `install.sh` (the same TypeScript engine). Common flags that pass through:
+`install` / `update` / `upgrade` / `init` / `uninstall` / `status` are thin wrappers over `install.ps1` / `install.sh` (the same TypeScript engine). Common flags that pass through:
 
 | Flag | Aliases | Meaning |
 | :--- | :--- | :--- |

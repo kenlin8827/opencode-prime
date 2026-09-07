@@ -261,7 +261,7 @@ Full table including the "User explicitly asks run all tests" row, escalation ru
 3. **Add to `plan.md` team table** — if analysis-capable.
 4. **Add to `opencode.template.jsonc`** — `agent.<name>` block with tier, model, mode, etc.
 5. **Add to `tests/test-all.ps1`** — add to `$allFiles` array and relevant content checks.
-6. **Generate manifest** — bump `version` in `install/version.json`, then `bun run install/src/index.ts generate` (or `ocp generate`). See `AGENTS.md` §4 for the full shipping rules — files in `prompts/`, `instructions/`, `plugins/`, `profiles/`, `providers/`, `skills/` are auto-discovered; standalone files and `scripts/` runtime scripts must be added to `SHIPPED_FILES` in `install/src/manifest.ts`.
+6. **Generate manifest** — bump `version` in `install/version.json`, then `bun run manifest:generate`. See `AGENTS.md` §4 for the full shipping rules — files in `prompts/`, `instructions/`, `plugins/`, `profiles/`, `providers/`, `skills/` are auto-discovered; standalone files and `scripts/` runtime scripts must be added to `SHIPPED_FILES` in `install/src/manifest.ts`.
 7. **Test** — run `pwsh -ExecutionPolicy Bypass -File tests/test-all.ps1 -StructuralOnly`.
 
 ### Checklist for new agent
@@ -301,7 +301,7 @@ Workflow slash commands (`/dev`, `/goal`, `/handoff`, …) are native opencode c
 5. **Update `DEVELOPING.md` repository layout** (this file, around line 495) — add the new files to the `commands/` and `skills/` directory tree so the listing stays truthful. Don't list every file; list the new *category* entry.
 6. **Bump version and regenerate manifest**:
    - `install/version.json` + `package.json` + `install/README.md` title — bump minor for new features (e.g. `0.22.0 → 0.23.0`)
-   - `bun run install/src/index.ts generate` (or `ocp generate`) — `commands/` and `skills/` are in `SHIPPED_DIRS` (see `install/src/manifest.ts`), so new files appear automatically in `install/versions/<version>.manifest.txt`
+    - `bun run manifest:generate` — `commands/` and `skills/` are in `SHIPPED_DIRS` (see `install/src/manifest.ts`), so new files appear automatically in `install/versions/<version>.manifest.txt`
    - If a custom protocol needs a self-check script (recommended for safety-critical skills), add it to the skill's `## Protocol self-check` section **using shell variables to assemble forbidden-pattern literals** — otherwise grep in the check will false-positive on the literals themselves.
 7. **Run structural tests** — `pwsh -ExecutionPolicy Bypass -File tests/test-all.ps1 -StructuralOnly`. Verify the test suite accepts the new files and frontmatter.
 8. **Commit** — `feat: add /<name> command and skill` (no need to bump versions in the commit; version bump is a separate release commit).
@@ -319,7 +319,7 @@ Workflow slash commands (`/dev`, `/goal`, `/handoff`, …) are native opencode c
 - [ ] `docs/zh/workflows/commands.md` ZH table updated (one row, mirror of EN)
 - [ ] `DEVELOPING.md` repository layout updated
 - [ ] `install/version.json` + `package.json` + `install/README.md` bumped
-- [ ] `bun run install/src/index.ts generate` ran and produced `install/versions/<version>.manifest.txt`
+- [ ] `bun run manifest:generate` ran and produced `install/versions/<version>.manifest.txt`
 - [ ] Manifest contains the new command + skill files (auto-discovery since both are in `SHIPPED_DIRS`)
 - [ ] `tests/test-all.ps1 -StructuralOnly` passes
 
@@ -440,7 +440,7 @@ Opencode compiles plugins at runtime, but type errors indicate logic issues — 
 
 `install/` is a self-contained TypeScript engine (`install/src/`, run via Bun through `install/install.ps1` / `install/install.sh`). Modules:
 
-- `index.ts` — CLI entry: action parsing (`install` / `update` / `status` / `generate` / `register` / `unregister` / `wizard` / `dashboard` / `tui` / `serve` / `web` / `desktop`), and the launcher dispatch below;
+- `index.ts` — CLI entry: action parsing (`install` / `update` / `status` / `register` / `unregister` / `wizard` / `dashboard` / `tui` / `serve` / `web` / `desktop`), and the launcher dispatch below;
 - `installer.ts` — manifest-driven install/update/uninstall/status;
 - `manifest.ts` — `SHIPPED_DIRS` / `SHIPPED_FILES` → manifest generation;
 - `wizard.ts` / `dashboard.ts` — interactive TUI setup wizard and single-screen control center (rows include `global_commands` and `openchamber` switches);
@@ -646,7 +646,7 @@ tests/
 ## Release workflow
 
 1. Bump `version` in `install/version.json` (e.g. `0.7.0`) and sync `package.json` `version` + `install/README.md` title to match.
-2. Regenerate the manifest: `bun run install/src/index.ts generate` (or `ocp generate`) — the manifest is **always overwritten**, so ensure `SHIPPED_DIRS` / `SHIPPED_FILES` in `install/src/manifest.ts` include every new file (see `AGENTS.md` §4). **Never hand-edit a generated manifest.**
+2. Regenerate the manifest: `bun run manifest:generate` — the manifest is **always overwritten**, so ensure `SHIPPED_DIRS` / `SHIPPED_FILES` in `install/src/manifest.ts` include every new file (see `AGENTS.md` §4). **Never hand-edit a generated manifest.**
 3. Run structural tests: `pwsh -ExecutionPolicy Bypass -File tests/test-all.ps1 -StructuralOnly`.
 4. Type-check plugins: `bun install && bunx tsc --noEmit`.
 5. Commit and push to `main`.

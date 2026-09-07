@@ -155,7 +155,7 @@ export function compactHistoricalManifests(repoDir: string): { archived: string[
   }
   const header = [
     '# Deduplicated union of every manifest below the supported floor (minVersion),',
-    '# compacted by `ocp generate`. Per-version attribution is intentionally lost.',
+    '# compacted by the manifest generation script. Per-version attribution is intentionally lost.',
     '# Do not edit by hand.',
   ];
   fs.writeFileSync(getHistoryManifestPath(repoDir), header.join('\n') + '\n' + [...union].sort().join('\n') + '\n', 'utf8');

@@ -1,4 +1,4 @@
-# install (v0.30.0)
+# install (v0.31.0)
 
 Self-installing OpenCode Prime (OCP) powered by a unified **TypeScript engine** and an **interactive TUI Setup Wizard**.
 
@@ -282,7 +282,7 @@ flash  (fastest/cheapest)  <=  standard  (general workhorse)  <=  pro  (stronges
 | ------------------------------------- | ----------------------------------- |
 | `install/version.json`                | Authoritative version info: `version` (current) + `minVersion` (supported floor) |
 | `install/versions/<ver>.manifest.txt` | One repo-relative path per line (loose for versions ≥ `minVersion`) |
-| `install/versions/history.manifest.txt` | Deduplicated union of every manifest below `minVersion` (rebuilt by `ocp generate`) |
+| `install/versions/history.manifest.txt` | Deduplicated union of every manifest below `minVersion` (rebuilt by `bun run manifest:generate`) |
 | `<target>/.CONFIG_VERSION`            | Records the active version          |
 
 ### Iron rule: never modify historical manifests
@@ -295,13 +295,13 @@ uses them to clean up old files. Tampering with them breaks upgrade
 correctness for users on those older versions.
 
 When a file is removed or renamed:
-1. Edit **only** the current version's manifest (or run `ocp generate`).
+1. Edit **only** the current version's manifest (or run `bun run manifest:generate`).
 2. Bump `version` in `install/version.json`.
 3. Leave all prior manifests untouched.
 
 ### Manifest compaction (supported floor)
 
-`ocp generate` merges every loose manifest strictly below `minVersion` into a
+`bun run manifest:generate` merges every loose manifest strictly below `minVersion` into a
 single deduplicated `install/versions/history.manifest.txt` and deletes the
 loose copies. Install-time stale-file cleanup unions loose manifests and the
 history file. Per-version attribution below the floor is intentionally
@@ -518,7 +518,7 @@ literal key is never silently overwritten.
 
 | Script             | Language   | Purpose                                      |
 | ------------------ | ---------- | -------------------------------------------- |
-| `install.ps1`      | PowerShell | Install / generate / status / init / uninstall / register |
+| `install.ps1`      | PowerShell | Install / status / init / uninstall / register |
 | `install.sh`       | Bash 4+    | Same, with `jq` for JSON                     |
 
 The two implementations share the same contract — same manifest format, same

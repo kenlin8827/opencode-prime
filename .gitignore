@@ -18,6 +18,9 @@ package-lock.json
 Thumbs.db
 .DS_Store
 
+# Windows reserved device name (accidental redirect target, e.g. `cmd > nul`)
+nul
+
 # Repo snapshot copy (whole tree duplicated, never meant to be tracked)
 " 2"/
 

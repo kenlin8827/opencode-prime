@@ -8,7 +8,7 @@ $ScriptDir = $PSScriptRoot
 $RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..')).Path
 $EntryFile = Join-Path $ScriptDir 'src/index.ts'
 
-$isInfoCmd = $args -contains "status" -or $args -contains "version" -or $args -contains "--help" -or $args -contains "-h" -or $args -contains "help" -or $args -contains "unregister" -or $args -contains "generate" -or $args -contains "session" -or $args -contains "auth" -or $args -contains "desktop" -or $args -contains "code" -or $args -contains "project"
+$isInfoCmd = $args -contains "status" -or $args -contains "version" -or $args -contains "--help" -or $args -contains "-h" -or $args -contains "help" -or $args -contains "unregister" -or $args -contains "session" -or $args -contains "auth" -or $args -contains "desktop" -or $args -contains "code" -or $args -contains "project"
 
 # 0. Check for OpenCode CLI and offer automated install if missing (only for installation workflows)
 if (-not $isInfoCmd -and -not (Get-Command opencode -ErrorAction SilentlyContinue)) {

@@ -73,7 +73,7 @@ The manifest (`install/versions/<VERSION>.manifest.txt`) is auto-generated from 
 ### Version Bump Steps
 
 1. Bump `version` in `install/version.json` (e.g. `0.7.0`). Raise `minVersion` only when you also want to compact older manifests into `install/versions/history.manifest.txt`. Sync `package.json` `version` + `install/README.md` title.
-2. Run `bun run install/src/index.ts generate` (or `ocp generate`) to regenerate the manifest and compact manifests below `minVersion`.
+2. Run `bun run manifest:generate` to regenerate the manifest and compact manifests below `minVersion`.
 3. Pre-release gate: `pwsh scripts/pack.ps1 && pwsh scripts/verify.ps1` (or `.sh` variants).
 
 > **Pitfall**: `generate` names its output file after the CURRENT value of `version.json`. Running it **before** step 1 silently overwrites the old version's manifest with today's file tree. Always bump first; if you spot a polluted historical manifest, restore it from the parent commit (`git show <parent>:<file> > <file>`).
@@ -98,3 +98,4 @@ After version bump, manifest regeneration, and pre-release gate pass:
 - **Explicit** (`SHIPPED_FILES` in `manifest.ts`): `opencode.template.jsonc`, `tiers.json`, `tui.template.jsonc`, `scripts/serena-workspace-daemon.mjs`.
 - `scripts/` is NOT in `SHIPPED_DIRS` — only the one runtime script above is installed; the rest (`pack.*`, `verify.*`, `capture-*.ts`) stays repo-side. New standalone ship files must be added to `SHIPPED_FILES`.
 - `install/` and `bin/` are auto-mirrored during packaging.
+- **Plugin export contract**: files in `plugins/` are dynamically discovered and loaded by OpenCode. Do not add or restore production exports solely to make unit tests import private helpers: an extra runtime export can change plugin loading behavior. Test through the plugin's exported entry point and registered hooks; if direct helper coverage is essential, move the helper to a non-plugin module with an intentional, documented export contract.

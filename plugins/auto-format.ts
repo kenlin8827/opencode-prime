@@ -107,7 +107,7 @@ function getFormatter(filePath: string, projectRoot: string): FormatterConfig | 
 }
 
 /** Extract a path from both legacy string and current file-object event payloads. */
-export function filePathFromEvent(value: unknown): string | null {
+function filePathFromEvent(value: unknown): string | null {
   if (typeof value === "string") return value
   if (!value || typeof value !== "object") return null
 
@@ -117,7 +117,7 @@ export function filePathFromEvent(value: unknown): string | null {
   return null
 }
 
-export function formatterNameFor(filePath: string, projectRoot: string): string | null {
+function formatterNameFor(filePath: string, projectRoot: string): string | null {
   return getFormatter(filePath, projectRoot)?.name ?? null
 }
 

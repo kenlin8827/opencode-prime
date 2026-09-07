@@ -14,7 +14,6 @@ import {
   getDefaultTargetDir,
   loadEffectiveOptions,
 } from './installer';
-import { compactHistoricalManifests, generateManifest } from './manifest';
 import { unregisterShim, runGlobalRegistration } from './shim';
 import { runInteractiveWizard } from './wizard';
 import { runProjectWizard } from './project-wizard';
@@ -28,8 +27,9 @@ import {
   isOpenChamberSurfaceEnabled,
 } from './openchamber';
 import { executeUpdate, executeUpgrade } from './updater';
-import { executeClean } from './session-clean';
+import { executeClean, executeSessionProjects } from './session-clean';
 import { normalizeTuiPassthrough } from './tui-args';
+import { getOpencodeExecutable } from './shared/opencode-command';
 import type { BackendResult } from '../../plugins/project-manager/project-manager-index';
 import type { HookResult } from '../../plugins/project-manager/project-manager-hooks';
 import { indexProject, initProject, syncProject } from '../../plugins/project-manager/project-manager-operations';
@@ -112,6 +112,11 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
   };
 
   let hasExplicitAction = false;
+  const printUnknownCommand = (command: string): never => {
+    console.error(`✗ Unknown command: ${command}`);
+    console.error('  Run `ocp --help` to see supported commands.');
+    process.exit(2);
+  };
 
   for (let i = 0; i < rawArgs.length; i++) {
     const arg = rawArgs[i];
@@ -121,9 +126,6 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
       hasExplicitAction = true;
     } else if (arg === 'install') {
       args.action = 'install';
-      hasExplicitAction = true;
-    } else if (arg === 'generate') {
-      args.action = 'generate';
       hasExplicitAction = true;
     } else if (arg === 'init') {
       args.action = 'init';
@@ -156,9 +158,11 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
         i++; // consume 'sync'
         hasExplicitAction = true;
       } else {
-        // Unknown `project` subcommand (or --help) — fall through to local help.
-        printHelp();
-        process.exit(0);
+        if (next === '--help' || next === '-h' || next === 'help') {
+          printHelp();
+          process.exit(0);
+        }
+        printUnknownCommand(`project${next ? ` ${next}` : ''}`);
       }
     } else if (arg === 'dashboard' || arg === 'matrix' || arg === 'cc') {
       args.action = 'dashboard';
@@ -207,6 +211,10 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
         args.action = 'clean';
         i++; // consume 'clean'
         hasExplicitAction = true;
+      } else if (next === 'projects') {
+        args.action = 'session-projects';
+        i++; // consume 'projects'
+        hasExplicitAction = true;
       } else if (next === 'list' || next === 'delete') {
         // Passthrough to `opencode session <subcommand>`.
         args.action = 'session';
@@ -214,9 +222,11 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
         hasExplicitAction = true;
         break;
       } else {
-        // Unknown `session` subcommand (or --help) — fall through to local help.
-        printHelp();
-        process.exit(0);
+        if (next === '--help' || next === '-h' || next === 'help') {
+          printHelp();
+          process.exit(0);
+        }
+        printUnknownCommand(`${arg}${next ? ` ${next}` : ''}`);
       }
     } else if (arg === 'auth') {
       // `auth` namespace — `open` launches the credential file editor,
@@ -228,8 +238,11 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
         i++; // consume 'open'
         hasExplicitAction = true;
       } else {
-        printHelp();
-        process.exit(0);
+        if (next === '--help' || next === '-h' || next === 'help') {
+          printHelp();
+          process.exit(0);
+        }
+        printUnknownCommand(`auth${next ? ` ${next}` : ''}`);
       }
     } else if (arg === 'herdr' || arg === 'hr') {
       // `hr` is a short alias for `herdr` — same UX, 5 fewer chars.
@@ -255,14 +268,19 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
         i++; // consume 'status'
         hasExplicitAction = true;
       } else {
-        printHelp();
-        process.exit(0);
+        if (next === '--help' || next === '-h' || next === 'help') {
+          printHelp();
+          process.exit(0);
+        }
+        printUnknownCommand(`herdr-config${next ? ` ${next}` : ''}`);
       }
     } else if (arg === '--force') {
       args.force = true;
     } else if (arg === '--days' || arg === '-d') {
       const n = parseInt(rawArgs[++i], 10);
       if (!Number.isNaN(n) && n > 0) args.cleanDays = n;
+    } else if (arg === '--all') {
+      args.cleanAll = true;
     } else if (arg === '--dry-run') {
       args.cleanDryRun = true;
     } else if (arg === '--include-subagents') {
@@ -297,6 +315,8 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
     } else if (arg === '--help' || arg === '-h' || arg === 'help') {
       printHelp();
       process.exit(0);
+    } else {
+      printUnknownCommand(arg);
     }
   }
 
@@ -349,7 +369,7 @@ Actions:
   upgrade      Download the latest release tarball, overlay it onto the repo
                directory, and re-apply the installer (works the same whether
                you installed via \`git clone\` or not)
-  session        Manage sessions: list, delete (passthrough), clean
+   session        Manage sessions: list, projects, delete (passthrough), clean
   auth           Open OpenCode's auth.json: 'auth open' (creates the file if missing)
   herdr          Launch Herdr (https://herdr.dev) and open the current directory
                  as a focused workspace (label = directory basename); passthrough
@@ -361,8 +381,6 @@ Actions:
                    status    report whether the user's herdr config exists
                    path      print the path of the bundled template
   status         Check installed version and comparison with current repo
-    generate     Generate manifest for the current version.json and compact
-                     manifests below the supported floor into history.manifest.txt
   init         Backup and reset the target configuration directory
   uninstall    Safely remove installed managed configuration files
   register     Register global 'opencode-prime' & 'ocp' command shims into PATH
@@ -382,9 +400,11 @@ Options:
 
 Session subcommands:
   session list [args...]    List sessions (passthrough to opencode)
+   session projects         List workspaces with saved sessions
   session delete <id>       Delete a session (passthrough to opencode)
-  session clean [--days <n>]  Delete old sessions (default: 7 days)
-    --days, -d <n>           Delete sessions older than N days (default: 7)
+   session clean [--days <n> | --all]  Delete old sessions (default: 7 days)
+     --days, -d <n>           Delete sessions older than N days (default: 7)
+     --all                    Delete every session in the current workspace, including subagents; requires confirmation
     --project <id|name>      Delete sessions by project_id or project path/name
     --project-name <name>    Alias for --project when using a name/path
     --directory, --dir <path>  Delete sessions from a specific workspace path
@@ -611,9 +631,14 @@ async function main() {
     // Passthrough to `opencode session <subcommand> <args>`.
     const { execFileSync } = require('node:child_process');
     try {
-      execFileSync('opencode', ['session', ...(args.passthrough ?? [])], {
+      const executable = getOpencodeExecutable();
+      if (!executable) {
+        console.error('✗ opencode CLI was not found.');
+        console.error('  Install OpenCode first: https://opencode.ai');
+        process.exit(1);
+      }
+      execFileSync(executable, ['session', ...(args.passthrough ?? [])], {
         stdio: 'inherit',
-        shell: process.platform === 'win32',
       });
     } catch {
       process.exit(1);
@@ -621,15 +646,23 @@ async function main() {
     return;
   }
 
+  if (args.action === 'session-projects') {
+    await executeSessionProjects();
+    return;
+  }
+
   if (args.action === 'clean') {
     await executeClean({
       days: args.cleanDays ?? 7,
+      all: args.cleanAll ?? false,
       dryRun: args.cleanDryRun ?? false,
       yes: args.yes,
       includeSubagents: args.cleanIncludeSubagents ?? false,
       project: args.cleanProject,
       projectName: args.cleanProjectName,
-      directory: args.cleanDirectory,
+      // `--all` clears the current workspace only when no explicit scope is
+      // supplied. --directory and --project remain authoritative.
+      directory: args.cleanDirectory ?? (args.cleanAll && !args.cleanProject && !args.cleanProjectName ? process.cwd() : undefined),
     });
     return;
   }
@@ -670,15 +703,6 @@ async function main() {
       console.log(`Target Directory   : ${st.targetDir}`);
       console.log(`Status             : ${st.isUpToDate ? 'Up to date' : 'Update available'}`);
       console.log(`Shipped Files      : ${st.shippedFilesCount}`);
-      break;
-    }
-    case 'generate': {
-      const res = generateManifest(repoDir, curVersion);
-      console.log(`Generated manifest for v${curVersion} (${res.count} files) -> ${res.path}`);
-      const compact = compactHistoricalManifests(repoDir);
-      if (compact.archived.length > 0) {
-        console.log(`Compacted ${compact.archived.length} manifest(s) below the supported floor -> ${compact.historyPath}`);
-      }
       break;
     }
     case 'init': {

@@ -81,7 +81,7 @@ if (Get-Command bun -ErrorAction SilentlyContinue) {
 if ($LASTEXITCODE -ne 0) { throw 'prompt budget gate failed — slim the prompts before releasing' }
 
 # --- historical manifest immutability gate --------------------------------
-# Manifests are per-version historical records: `ocp generate` MUST only ever
+# Manifests are per-version historical records: manifest generation MUST only ever
 # (re)write the CURRENT version's file. Any modification or deletion of a
 # previously committed manifest means generate was run against a stale
 # version.json — restore the file from git before releasing.
