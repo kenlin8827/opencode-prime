@@ -106,6 +106,17 @@ function getFormatter(filePath: string, projectRoot: string): FormatterConfig | 
   return null
 }
 
+/** Extract a path from both legacy string and current file-object event payloads. */
+export function filePathFromEvent(value: unknown): string | null {
+  if (typeof value === "string") return value
+  if (!value || typeof value !== "object") return null
+
+  const file = value as { path?: unknown; filePath?: unknown }
+  if (typeof file.path === "string") return file.path
+  if (typeof file.filePath === "string") return file.filePath
+  return null
+}
+
 export function formatterNameFor(filePath: string, projectRoot: string): string | null {
   return getFormatter(filePath, projectRoot)?.name ?? null
 }
@@ -114,7 +125,8 @@ export const AutoFormatPlugin: Plugin = async ({ client, directory }) => {
   return {
     event: async ({ event }) => {
       if (event.type !== "file.edited") return
-      const file = (event as any).properties?.file || (event as any).file || ""
+      const file = filePathFromEvent((event as any).properties?.file) ??
+        filePathFromEvent((event as any).file)
       if (!file) return
 
       const formatter = getFormatter(file, directory)

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { formatterNameFor } from "../plugins/auto-format"
+import { filePathFromEvent, formatterNameFor } from "../plugins/auto-format"
 
 const root = join(tmpdir(), `ocp-auto-format-${Date.now()}`)
 
@@ -15,6 +15,13 @@ try {
 
   if (formatterNameFor("src/app.ts", root) !== "dprint") {
     throw new Error("dprint must win over Biome when both project configs and local binaries exist")
+  }
+
+  if (filePathFromEvent({ path: "src/app.ts" }) !== "src/app.ts") {
+    throw new Error("file-object event payloads must yield their path")
+  }
+  if (filePathFromEvent({}) !== null || filePathFromEvent(42) !== null) {
+    throw new Error("non-path event payloads must be ignored")
   }
 
   rmSync(join(root, "dprint.json"))
