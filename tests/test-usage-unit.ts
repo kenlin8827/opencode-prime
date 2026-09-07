@@ -292,9 +292,9 @@ const { formatByDimension, renderDimensionView, fitDialogSize } = await import("
 const sessionRender = await formatByDimension(fakeApi.client, "s1", "session")
 const view = renderDimensionView(sessionRender, "agent")
 const viewLines = view.split("\n")
-assertEq(viewLines[0], "(1)By session   (2)By agent   (3)By model", "tab strip labels carry hotkey numbers (no space after number)")
-// "(2)By agent" sits at offset width("(1)By session") + 3; the bar covers exactly its width
-assertEq(viewLines[1], " ".repeat(16) + "▬".repeat(11), "underline bar under the active tab")
+assertEq(viewLines[0], "(1) By session   (2) By agent   (3) By model", "tab strip labels carry '(n) ' hotkey prefixes")
+// "(2) By agent" sits at offset width("(1) By session") + 3; the bar covers exactly its width
+assertEq(viewLines[1], " ".repeat(17) + "▬".repeat(12), "underline bar under the active tab")
 assertEq(viewLines[2], "", "blank line between strip and table")
 assert(!view.includes("1/2/3 or"), "hint line removed (numbers are self-documenting)")
 
@@ -373,6 +373,11 @@ assert(sessionText.includes("hit 54.2%") && sessionText.includes("total"), "tota
 assert(sessionText.includes("51.2%"), "s1 share pct")
 assert(sessionText.includes("\u2588"), "bar characters present")
 assert(!sessionText.includes("cache-write") && !sessionText.includes("reasoning"), "display limited to 3 numbers: in / out / cached")
+// Table stretched to fill the dialog tier: the header rule spans the tier's
+// full text width (fixture fits the large tier → 83 cols), so the dialog
+// border hugs the content with no dead space on the right.
+const ruleLine = sessionText.split("\n").find((l) => l.includes("─"))!
+assertEq(ruleLine.length, 83, "header rule spans the dialog tier text width (stretched gaps)")
 
 // agent dimension: sessions grouped by agent attribution
 const agentText = (await formatByDimension(fakeApi.client, "s1", "agent")).table

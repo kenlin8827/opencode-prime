@@ -661,11 +661,34 @@ export interface TableView {
 
 const EMPTY_TABLE_VIEW: TableView = { header: "", dataRows: [], totalRow: "", footers: [] }
 
-/** Column-aligned table with a rule under the header and airy row spacing; aligns[i] === "r" right-aligns column i. */
-function renderTableView(headers: string[], rows: string[][], totalRow: string[], aligns: Array<"l" | "r">): TableView {
+/** Column-aligned table with a rule under the header and airy row spacing; aligns[i] === "r" right-aligns column i.
+ *  When targetWidth exceeds the natural width, the inter-column gaps (2 cols
+ *  each) are widened to absorb the slack so the table fills its dialog tier
+ *  exactly — fitDialogSize snaps to discrete 60/88/116 dialog widths, and an
+ *  unstretched table would hug the dialog's left edge with dead space on the
+ *  right. */
+function renderTableView(headers: string[], rows: string[][], totalRow: string[], aligns: Array<"l" | "r">, targetWidth = 0): TableView {
   const widths = headers.map((h, i) => Math.max(displayWidth(h), ...rows.map((r) => displayWidth(r[i] ?? "")), displayWidth(totalRow[i] ?? "")))
-  const fmt = (cells: string[]) =>
-    cells.map((c, i) => (aligns[i] === "r" ? padStartW(c ?? "", widths[i]) : padEndW(c ?? "", widths[i]))).join("  ").replace(/\s+$/, "")
+  // Gap layout: 2 spaces per gap; stretching spreads the slack evenly, the
+  // leftmost gaps absorbing the 1-col remainder.
+  const gaps: number[] = Array.from({ length: widths.length - 1 }, () => 2)
+  if (targetWidth > 0 && gaps.length > 0) {
+    const natural = widths.reduce((a, b) => a + b, 0) + gaps.reduce((a, b) => a + b, 0)
+    const slack = targetWidth - natural
+    if (slack > 0) {
+      const extra = Math.floor(slack / gaps.length)
+      const rem = slack - extra * gaps.length
+      for (let i = 0; i < gaps.length; i++) gaps[i] += extra + (i < rem ? 1 : 0)
+    }
+  }
+  const fmt = (cells: string[]) => {
+    let out = ""
+    for (let i = 0; i < cells.length; i++) {
+      if (i > 0) out += " ".repeat(gaps[i - 1])
+      out += aligns[i] === "r" ? padStartW(cells[i] ?? "", widths[i]) : padEndW(cells[i] ?? "", widths[i])
+    }
+    return out.replace(/\s+$/, "")
+  }
   const rule = fmt(widths.map((w) => "─".repeat(w)))
   // Header and rule stay tight; data rows get a blank line between them.
   return {
@@ -710,7 +733,7 @@ function sessionName(s: SessionUsage, currentSessionId: string): string {
 }
 
 /** One row per session, with a total row. Points column appears when any session is on a coding plan. */
-function renderSessionTable(sessions: SessionUsage[], currentSessionId: string): TableView {
+function renderSessionTable(sessions: SessionUsage[], currentSessionId: string, targetWidth = 0): TableView {
   const totalInput = sessions.reduce((sum, s) => sum + s.input, 0)
   const totalOutput = sessions.reduce((sum, s) => sum + s.output, 0)
   const totalCost = sessions.reduce((sum, s) => sum + s.cost, 0)
@@ -758,13 +781,13 @@ function renderSessionTable(sessions: SessionUsage[], currentSessionId: string):
   const aligns: Array<"l" | "r"> = ["l", "r", "r", "r", "r", "r", "r"]
   if (showCredits) aligns.push("r")
   aligns.push("l")
-  const tv = renderTableView(headers, rows, totalRow, aligns)
+  const tv = renderTableView(headers, rows, totalRow, aligns, targetWidth)
   pushEstimateFooters(tv, sessions, totalCostKnown)
   return tv
 }
 
 /** One row per agent — sessions grouped by agent attribution. */
-function renderAgentTable(sessions: SessionUsage[]): TableView {
+function renderAgentTable(sessions: SessionUsage[], targetWidth = 0): TableView {
   const groups = new Map<string, { n: number; input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number; cost: number; estimatedCost: number; costKnown: boolean; credits: number; steps: number }>()
   for (const s of sessions) {
     const key = s.agent || "-"
@@ -830,13 +853,13 @@ function renderAgentTable(sessions: SessionUsage[]): TableView {
   const aligns: Array<"l" | "r"> = ["l", "r", "r", "r", "r", "r", "r"]
   if (showCredits) aligns.push("r")
   aligns.push("l")
-  const tv = renderTableView(headers, rows, totalRow, aligns)
+  const tv = renderTableView(headers, rows, totalRow, aligns, targetWidth)
   pushEstimateFooters(tv, sessions, totalCostKnown)
   return tv
 }
 
 /** One row per model — tokens/cost summed across all sessions in the tree. */
-function renderModelTable(sessions: SessionUsage[]): TableView {
+function renderModelTable(sessions: SessionUsage[], targetWidth = 0): TableView {
   const models = new Map<string, { n: number; input: number; output: number; cacheRead: number; cost: number; estimatedCost: number; costKnown: boolean; credits: number; steps: number }>()
   let totalEstimated = 0
   let totalCostKnown = false
@@ -905,7 +928,7 @@ function renderModelTable(sessions: SessionUsage[]): TableView {
   const aligns: Array<"l" | "r"> = ["l", "r", "r", "r", "r", "r", "r"]
   if (showCredits) aligns.push("r")
   aligns.push("l")
-  const tv = renderTableView(headers, rows, totalRow, aligns)
+  const tv = renderTableView(headers, rows, totalRow, aligns, targetWidth)
   // Full-id mapping: only emit when at least one model name was actually
   // truncated (had a `/`). The short name in the table is derived by
   // taking the last `/`-segment, so showing the mapping keeps the
@@ -957,11 +980,18 @@ export async function formatByDimension(client: Client, sessionId: string, dim: 
   if (sessions.length === 0) {
     return { table: "", view: EMPTY_TABLE_VIEW, totalSteps: 0, totalCompactions: 0 }
   }
-  const view = dim === "agent"
-    ? renderAgentTable(sessions)
-    : dim === "model"
-    ? renderModelTable(sessions)
-    : renderSessionTable(sessions, sessionId)
+  const build = (targetWidth: number) =>
+    dim === "agent"
+      ? renderAgentTable(sessions, targetWidth)
+      : dim === "model"
+      ? renderModelTable(sessions, targetWidth)
+      : renderSessionTable(sessions, sessionId, targetWidth)
+  // Two-pass sizing: render at natural width to learn the dialog tier
+  // (fitDialogSize snaps to discrete 60/88/116 dialog widths), then
+  // re-render with the tier's text width as the stretch target so the
+  // column gaps absorb the slack — the table fills the dialog instead of
+  // hugging its left edge with dead space on the right.
+  const view = build(tierTextWidth(tableViewToString(build(0))))
   const totalSteps = sessions.reduce((sum, s) => sum + s.steps, 0)
   const totalCompactions = sessions.reduce((sum, s) => sum + s.compactions, 0)
   return { table: tableViewToString(view), view, totalSteps, totalCompactions }
@@ -1008,7 +1038,7 @@ const DIM_SUBCOMMAND: Record<string, UsageDimension> = {
  *  `(1) 按会话   (2) 按Agent   (3) 按模型`
  *  `▬▬▬▬▬▬▬`                        */
 function renderTabStrip(active: UsageDimension): string {
-  const labels = DIMENSIONS.map((d, i) => `(${i + 1})${tr(DIM_TITLE_KEY[d] as Parameters<typeof tr>[0])}`)
+  const labels = DIMENSIONS.map((d, i) => `(${i + 1}) ${tr(DIM_TITLE_KEY[d] as Parameters<typeof tr>[0])}`)
   const gap = "   "
   const strip = labels.join(gap)
   const idx = DIMENSIONS.indexOf(active)
@@ -1041,6 +1071,17 @@ export function fitDialogSize(text: string): "medium" | "large" | "xlarge" {
   if (width <= 60) return "medium"
   if (width <= 88) return "large"
   return "xlarge"
+}
+
+/** Widest table that still maps to each tier under fitDialogSize (its +5
+ *  safety fudge included). Tables are stretched to this width so they fill
+ *  the dialog; the mapping is a fixed point — a table stretched to its
+ *  tier's text width re-selects the same tier. */
+const TIER_TEXT_WIDTH = { medium: 55, large: 83, xlarge: 111 } as const
+
+/** Dialog tier text width for a rendered table body. */
+function tierTextWidth(table: string): number {
+  return TIER_TEXT_WIDTH[fitDialogSize(table)]
 }
 
 // ─── Scrollable viewport (short terminals) ──────────────────────────────────
