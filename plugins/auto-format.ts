@@ -134,8 +134,10 @@ export const AutoFormatPlugin: Plugin = async ({ client, directory }) => {
 
       try {
         const cmd = formatter.command(file)
-        const cmdStr = cmd.join(" ")
-        await Bun.$`${cmdStr}`.quiet()
+        const process = Bun.spawn(cmd, { stdout: "ignore", stderr: "pipe" })
+        if (await process.exited !== 0) {
+          throw new Error((await new Response(process.stderr).text()).trim() || "formatter exited with an error")
+        }
 
         await client.app.log({
           body: {
