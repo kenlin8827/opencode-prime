@@ -149,6 +149,7 @@ arguments launches the OpenCode terminal UI):
 ocp tui          # launch the OpenCode terminal UI (exec opencode)
 ocp desktop      # launch the OpenChamber native desktop app (alias: ocp ui)
 ocp web          # launch the OpenChamber web UI (openchamber --ui-password <generated>)
+ocp code         # open VS Code with the OpenChamber editor extension guaranteed
 ```
 
 ## Configuring credentials
@@ -472,13 +473,22 @@ on install).
   and keeps the vendored `plugins/openrtk*`; `false` skips the download AND
   removes `plugins/openrtk.ts` + `plugins/openrtk/` from the target (an
   already-installed `rtk` binary on PATH stays put).
-- `openchamber` drives OpenChamber web UI CLI provisioning: `true` (default)
-  installs the `@openchamber/web` CLI globally via the first detected
-  package manager (pnpm > bun > yarn > npm) when the `openchamber` binary is
-  missing — it powers `ocp web` and needs Node.js 22+; the native desktop app
-  behind `ocp desktop` / `ocp ui` is a separate download from
-  https://openchamber.dev/download. `false` skips provisioning (an
-  already-installed binary stays put).
+- OpenChamber ships as three independent surfaces, one `tools.openchamber_*`
+  switch each:
+  - `openchamber_web` — `true` (default) installs the `@openchamber/web` CLI
+    globally via the first detected package manager (pnpm > bun > yarn > npm)
+    when the `openchamber` binary is missing — it powers `ocp web` and needs
+    Node.js 22+.
+  - `openchamber_desktop` — the native desktop app behind `ocp desktop` /
+    `ocp ui` is always a separate download from https://openchamber.dev/download;
+    the installer never downloads it — this switch only gates a presence
+    check (the download link is printed when missing).
+  - `openchamber_vscode` — `true` (default) installs the OpenChamber editor
+    extension (`fedaykindev.openchamber`) via the first editor CLI found
+    (`code`, `code-insiders`, `codium`, `cursor`, `windsurf`) when missing —
+    it powers `ocp code`.
+  - `false` on any switch skips that surface (already-installed components
+    stay put).
 - `mcp.<name>` drives `opencode.jsonc`'s `mcp.<name>.enabled`; enabling an
   entry that declares an `install` field also provisions its CLI on the
   next install (disabled entries are never provisioned). Entries the options

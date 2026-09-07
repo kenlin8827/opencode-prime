@@ -8,18 +8,27 @@ import type { BackendResult } from '../../plugins/project-manager/project-manage
 import type { HookResult } from '../../plugins/project-manager/project-manager-hooks';
 import { initProject } from '../../plugins/project-manager/project-manager-operations';
 import type { ScaffoldResult } from '../../plugins/project-manager/project-manager-scaffold';
+import {
+  DESKTOP_NOT_FOUND_HINT,
+  ensureOpenChamberVscodeExtension,
+  findLinuxDesktopBin,
+  findVscodeCli,
+  findWindowsDesktopExe,
+  VSCODE_CLI_CANDIDATES,
+} from './openchamber';
 
 // Runtime launchers behind the `ocp tui` / `ocp serve` / `ocp desktop`
-// (= `ocp ui`) / `ocp web` (OpenChamber web mode) subcommands. They exec
-// the underlying binary directly — no config files are touched.
+// (= `ocp ui`) / `ocp web` (OpenChamber web mode) / `ocp code` (VS Code with
+// the OpenChamber editor extension) subcommands. They exec the underlying
+// binary directly — no config files are touched.
 
 function launchBinary(
   binName: string,
   installHint: string,
   extraArgs: string[],
-  options?: { cwd?: string }
+  options?: { cwd?: string; skipPathCheck?: boolean }
 ): number {
-  if (!isBinaryOnPath(binName)) {
+  if (!options?.skipPathCheck && !isBinaryOnPath(binName)) {
     console.error(`✗ ${binName} was not found on PATH.`);
     console.error(installHint);
     return 1;
@@ -394,84 +403,6 @@ function waitPortFree(port: number, ms = 5000): boolean {
     sleepMs(500);
   }
   return !isPortBusy(port);
-}
-
-const DESKTOP_NOT_FOUND_HINT =
-  '  Download the native app from https://openchamber.dev/download\n' +
-  '  (the `openchamber` CLI serves the browser UI instead — use `ocp web`)';
-
-/**
- * Locate the OpenChamber native desktop app (Tauri) on Windows. It is not
- * registered on PATH, so probe the common per-user / system install dirs
- * for an OpenChamber directory and return the first launcher exe inside.
- */
-function findWindowsDesktopExe(): string | null {
-  const roots: string[] = [];
-  const localAppData = process.env.LOCALAPPDATA;
-  if (localAppData) {
-    roots.push(path.join(localAppData, 'Programs'), localAppData);
-  }
-  for (const key of ['ProgramFiles', 'ProgramFiles(x86)']) {
-    const dir = process.env[key];
-    if (dir) roots.push(dir);
-  }
-  for (const root of roots) {
-    let entries: string[];
-    try {
-      entries = fs.readdirSync(root);
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (!/openchamber/i.test(entry)) continue;
-      const dirPath = path.join(root, entry);
-      if (!fs.existsSync(dirPath)) continue;
-      const exe = scanForExe(dirPath, 2);
-      if (exe) return exe;
-    }
-  }
-  return null;
-}
-
-function scanForExe(dir: string, depth: number): string | null {
-  if (depth < 0) return null;
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return null;
-  }
-  for (const e of entries) {
-    const full = path.join(dir, e.name);
-    if (e.isFile() && e.name.endsWith('.exe') && !/^unins/i.test(e.name)) {
-      return full;
-    }
-    if (e.isDirectory()) {
-      const found = scanForExe(full, depth - 1);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
-/** Locate the native app on Linux: PATH binary first, then common paths. */
-function findLinuxDesktopBin(): string | null {
-  if (isBinaryOnPath('openchamber-desktop')) return 'openchamber-desktop';
-  const candidates = [
-    path.join(os.homedir(), 'Applications', 'openchamber-desktop'),
-    path.join(os.homedir(), 'Applications', 'OpenChamber', 'OpenChamber'),
-    '/usr/local/bin/openchamber-desktop',
-    '/opt/openchamber-desktop/openchamber-desktop',
-  ];
-  for (const c of candidates) {
-    try {
-      fs.accessSync(c, fs.constants.X_OK);
-      return c;
-    } catch {
-      /* keep probing */
-    }
-  }
-  return null;
 }
 
 const OCP_ACTIVATION_TIMEOUT_MS = 30_000;
@@ -916,4 +847,54 @@ function startDesktop(extraArgs: string[]): number {
   child.on('error', (err) => console.error(`✗ Failed to launch ${bin}: ${err.message}`));
   child.unref();
   return 0;
+}
+
+/**
+ * `ocp code` — open the current project in VS Code (or a compatible fork:
+ * code-insiders / VSCodium / Cursor / Windsurf — the first CLI found on PATH
+ * wins), making sure the OpenChamber editor extension is present first. The
+ * extension powers the same OpenChamber review UI inside the editor.
+ *
+ * With `--init`, the OCP project in the current directory is scaffolded or
+ * re-activated first (same as `ocp ui --init`). A bare `.` is NOT swallowed:
+ * VS Code itself interprets it as "open the current folder", so it passes
+ * through. Every other argument is forwarded verbatim (`ocp code -n` opens a
+ * new window, `ocp code <dir>` opens that folder, etc.).
+ *
+ * A failed extension install must not block opening the editor (offline
+ * marketplace, restricted network) — it is reported and the launch proceeds.
+ */
+export async function launchCode(
+  extraArgs: string[],
+  options: { ensureExtension?: boolean } = {}
+): Promise<number> {
+  const cli = findVscodeCli();
+  if (!cli) {
+    console.error(
+      `✗ No VS Code-compatible CLI found on PATH (tried: ${VSCODE_CLI_CANDIDATES.join(', ')}).`,
+    );
+    console.error('  Install VS Code first: https://code.visualstudio.com');
+    return 1;
+  }
+
+  if (options.ensureExtension !== false) {
+    console.log(ensureOpenChamberVscodeExtension(cli).message);
+  }
+
+  const hasInit = extraArgs.includes('--init');
+  const args = extraArgs.filter((a) => a !== '--init');
+  if (hasInit) {
+    const initCode = await runOcpProjectInit();
+    if (initCode !== 0) return initCode;
+  }
+
+  // findVscodeCli already resolved the CLI through where/which, so skip
+  // launchBinary's isBinaryOnPath re-check (a 1s-timeout execSync that
+  // occasionally flakes on slow `where.exe` runs).
+  return launchBinary(
+    cli,
+    '  Install VS Code first: https://code.visualstudio.com',
+    args,
+    { skipPathCheck: true }
+  );
 }

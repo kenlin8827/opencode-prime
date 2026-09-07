@@ -9,7 +9,8 @@ OpenCode 拥有开放的前端生态。无论你习惯纯键盘流的终端环�
 | 客户端形态 | 推荐人群 | 核心优势 | 启动 / 使用方式 |
 |---|---|---|---|
 | **终端 TUI（默认）** | 命令行极客、SSH 远程开发 | 极轻量、毫秒级响应、原生键盘流交互 | 终端直接执行 `opencode` |
-| **OpenChamber 桌面端** | 偏好图形界面、精细 Code Review 用户 | **双栏可视化 Diff**、多模型并行对比与熔合（Fusion）、会话时间线管理 | 下载 [OpenChamber](https://openchamber.dev) 桌面应用或 VS Code 扩展 |
+| **OpenChamber 桌面端** | 偏好图形界面、精细 Code Review 用户 | **双栏可视化 Diff**、多模型并行对比与熔合（Fusion）、会话时间线管理 | 下载 [OpenChamber](https://openchamber.dev/download) 桌面应用后运行 `ocp desktop` |
+| **OpenChamber VS Code 扩展** | 不想离开编辑器的 Review 用户 | 在 VS Code 内提供同一套 OpenChamber 审查界面（兼容 VSCodium / Cursor / Windsurf） | 运行 `ocp code` —— 缺失时自动安装扩展 |
 | **内置 Web 端** | 局域网访问、轻量浏览器体验 | 浏览器内即开即用，无需安装桌面额外程序 | 终端执行 `opencode serve` 并在浏览器打开 |
 
 ---
@@ -37,6 +38,18 @@ OpenCode 拥有开放的前端生态。无论你习惯纯键盘流的终端环�
 运行 `ocp web` 启动浏览器版界面 —— 自动生成密码保护的会话，自动选取空闲端口，无需安装桌面程序：
 
 ![OpenChamber 网页界面](/images/openchamber-web-zh.png)
+
+---
+
+### OpenChamber VS Code 扩展
+
+运行 `ocp code` 在 VS Code 中打开当前项目，并保证 OpenChamber 扩展就绪 —— 缺失时 OCP 会通过编辑器 CLI 自动安装 `fedaykindev.openchamber`。`--init` 会先创建/激活 OCP 项目；裸 `.` 表示打开当前目录：
+
+```bash
+ocp code          # 打开 VS Code 并确保扩展就绪
+ocp code .        # 打开当前目录
+ocp code --init   # 先创建/激活 OCP 项目
+```
 
 ---
 

@@ -112,6 +112,7 @@ OCP_RAW_MIRROR=https://ghfast.top ocp update
 | `ocp tui` | | 启动 OpenCode 终端 TUI（`exec opencode`），额外参数原样透传 |
 | `ocp serve` | | 启动无头 OpenCode 服务（`opencode serve`） |
 | `ocp web` | | 启动 **OpenChamber 网页界面**，自动生成密码 |
+| `ocp code` | | 在 **VS Code** 中打开当前项目，缺失时自动安装 OpenChamber 编辑器扩展 |
 | `ocp desktop` | `ocp ui` | 启动 **OpenChamber 原生桌面应用** |
 | `ocp install` | | 将当前版本清单应用到 `~/.config/opencode` |
 | `ocp update` | | 检查套件 + 工具更新，交互式勾选应用 |

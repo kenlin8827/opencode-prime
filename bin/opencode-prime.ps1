@@ -31,6 +31,9 @@
       serve           Launch the headless opencode server (opencode serve; all args pass through)
       web             Launch the OpenChamber web UI (openchamber serve; all extra args pass through,
                       auto-picks a free port starting at 3000 unless --port is given)
+      code            Open VS Code and ensure the OpenChamber editor extension is installed
+                      (installs `fedaykindev.openchamber` when missing; also probes code-insiders /
+                      codium / cursor / windsurf CLIs). --init scaffolds the OCP project first
       desktop | ui    Launch the OpenChamber native desktop app
       session clean   Delete old sessions via `opencode session delete`
       auth open       Open OpenCode's auth.json in the default editor (creates it if missing)
@@ -331,6 +334,16 @@ switch ($Subcommand.ToLowerInvariant()) {
         $pw = -join (1..24 | ForEach-Object { 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[(Get-Random -Maximum 62)] })
         Write-Host "🔑 OpenChamber web UI password: $pw"
         & openchamber serve --ui-password $pw @Rest
+        exit $LASTEXITCODE
+    }
+    'code' {
+        # Open VS Code (or the first of code-insiders/codium/cursor/windsurf
+        # found) with the OpenChamber editor extension guaranteed — the TS
+        # engine checks `--list-extensions` and installs
+        # `fedaykindev.openchamber` when missing before launching.
+        # `--init` scaffolds/activates the OCP project first; `.` passes
+        # through so VS Code opens the current folder.
+        & $Install code @Rest
         exit $LASTEXITCODE
     }
     { $_ -in @('desktop', 'ui') } {

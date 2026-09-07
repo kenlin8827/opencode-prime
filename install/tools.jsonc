@@ -57,7 +57,7 @@
         }
       }
     },
-    "openchamber": {
+    "openchamber_web": {
       "description": "OpenChamber web UI CLI — powers `ocp web`",
       "binary": "openchamber",
       "url": "https://openchamber.dev",
@@ -75,6 +75,16 @@
           "default": "npm install -g @openchamber/web@latest"
         }
       }
+    },
+    "openchamber_desktop": {
+      "description": "OpenChamber desktop app — powers `ocp desktop` / `ocp ui` (separate download; install only checks presence)",
+      "binary": "openchamber-desktop",
+      "url": "https://openchamber.dev/download"
+    },
+    "openchamber_vscode": {
+      "description": "OpenChamber editor extension — powers `ocp code` (fedaykindev.openchamber)",
+      "binary": "code",
+      "url": "https://marketplace.visualstudio.com/items?itemName=fedaykindev.openchamber"
     },
     "opencode": {
       "description": "OpenCode — AI coding agent",

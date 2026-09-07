@@ -14,6 +14,7 @@ After a one-time `register` (or a default install), the repo provisioned two glo
 | `ocp tui` | | Launch the OpenCode terminal TUI (`exec opencode`); all extra args pass through to `opencode`. Add `--init` to create/activate the OCP project in the current directory before launching. |
 | `ocp serve` | | Launch the headless OpenCode server (`opencode serve`); all extra args pass through (e.g. `ocp serve --port 4096`) |
 | `ocp web` | | Launch the **OpenChamber web UI** (`openchamber serve`); auto-generates a `--ui-password`, auto-picks a free port starting at 3000 (see [port policy](#web-port-and-password-policy)) |
+| `ocp code` | | Open the current project in **VS Code** (also probes `code-insiders` / `codium` / `cursor` / `windsurf`) with the OpenChamber editor extension guaranteed: `fedaykindev.openchamber` is auto-installed via the editor CLI when missing. Add `--init` to create/activate the OCP project before launching; a bare `.` passes through so VS Code opens the current folder |
 | `ocp desktop` | `ocp ui` | Launch the **OpenChamber native desktop app** (a separate download from [openchamber.dev/download](https://openchamber.dev/download)). Add `--init` or pass `.` to create/activate the OCP project in the current directory, register it as an OpenChamber project, and then launch the desktop app. |
 | `ocp project init` | | Create or activate the OCP project in the current directory: create baseline files when missing, sync + refresh indexes when already present |
 | `ocp project index` | | Manually refresh existing code-intelligence indexes in the current project |
@@ -73,7 +74,7 @@ ocp serve --port 4096       # pin the port
 
 ### `ocp web` — OpenChamber web UI
 
-Requires the `openchamber` CLI (auto-provisioned on install when `"openchamber": true` in `install/options.jsonc`; needs Node.js 22+). Behavior:
+Requires the `openchamber` CLI (auto-provisioned on install when `"openchamber_web": true` in `install/options.jsonc`; needs Node.js 22+). Behavior:
 
 - **Fresh session**: if an OpenChamber instance is already running, it is stopped first (a fresh `--ui-password` launch would otherwise die on the occupied port and leak a useless password);
 - **Password**: a random UI password is generated and printed (`🔑 OpenChamber web UI password: ...`) unless you pass your own `--ui-password`;
@@ -113,6 +114,25 @@ When `.` or `--init` is used, the launcher:
    - **OpenChamber already running** — the project is registered via `POST /api/opencode/directory` and the app is opened/focused either way. On an interactive terminal, OCP then offers to **restart OpenChamber** so the app reopens with the project already in its list (the deterministic option — activation is on disk before the window loads). Decline (or non-TTY) and OCP instead verifies the registration for a few seconds and re-registers if the running window's stale in-memory project list overwrites it; press Ctrl+R in the window to load it now.
 
 OpenChamber's own API never pushes project-list changes to a running UI, which is why the not-running path seeds the settings file before launch.
+
+### `ocp code` — VS Code with the OpenChamber extension
+
+Opens the current project in VS Code, making sure the OpenChamber editor extension (`fedaykindev.openchamber` on the VS Code Marketplace, also on OpenVSX) is installed first — it powers the same OpenChamber review UI inside the editor.
+
+Editor CLI resolution: `code` → `code-insiders` → `codium` → `cursor` → `windsurf` — the first resolvable CLI wins. On Windows the resolver goes through `where.exe` and picks the `.cmd` shim, so a GUI `Code.exe` that happens to shadow the CLI on PATH cannot silently swallow the extension checks.
+
+- `--init`: scaffold/activate the OCP project in the current directory before launching (same as `ocp ui --init`).
+- A bare `.` is **not** swallowed: VS Code itself interprets it as "open the current folder", so `ocp code .` passes it through.
+- Every other argument is forwarded verbatim (`ocp code -n` opens a new window, `ocp code <dir>` opens that folder).
+- A failed extension install never blocks the launch — it is reported and the editor still opens.
+- Opt out of the auto-install with `"openchamber_vscode": false` in `install/options.jsonc` (`ocp code` then just opens the editor).
+
+```bash
+ocp code                 # open VS Code, ensure the extension, open nothing in particular
+ocp code .               # same, and open the current folder
+ocp code --init          # scaffold/activate the OCP project first, then open VS Code
+ocp code -n .            # open the current folder in a new window
+```
 
 ---
 

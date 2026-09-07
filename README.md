@@ -90,6 +90,7 @@ After installation, the global command `ocp` (alias: `opencode-prime`) is availa
 | `ocp tui` | | Launch the OpenCode terminal TUI (`exec opencode`); extra args pass through |
 | `ocp serve` | | Launch the headless OpenCode server (`opencode serve`) |
 | `ocp web` | | Launch the **OpenChamber web UI**; auto-generates a password |
+| `ocp code` | | Open the current project in **VS Code**; auto-installs the OpenChamber editor extension when missing |
 | `ocp desktop` | `ocp ui` | Launch the **OpenChamber native desktop app** |
 | `ocp install` | | Apply the current version's manifest to `~/.config/opencode` |
 | `ocp update` | | Check for suite + tool updates; interactively apply selected ones |

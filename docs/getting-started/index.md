@@ -63,6 +63,7 @@ After installation, the global shortcuts are automatically registered. You can r
 ocp              # no arguments = launch the OpenCode terminal UI (same as ocp tui)
 ocp dashboard    # open the TUI control center (aliases: ocp cc / ocp matrix)
 ocp web          # OpenChamber web UI (auto-generated password)
+ocp code         # open VS Code with the OpenChamber extension ensured (auto-installs when missing)
 ocp update       # check suite + opencode + openchamber, interactively apply the selected updates
 ocp upgrade      # pull the latest release and reinstall (one-click upgrade)
 opencode-prime   # official full suite command (same dispatcher)

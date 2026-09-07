@@ -19,9 +19,14 @@ import { unregisterShim, runGlobalRegistration } from './shim';
 import { runInteractiveWizard } from './wizard';
 import { runProjectWizard } from './project-wizard';
 import { runTuiDashboard } from './dashboard';
-import { launchTui, launchServe, launchWeb, launchDesktop, launchHerdr } from './launcher';
+import { launchTui, launchServe, launchWeb, launchCode, launchDesktop, launchHerdr } from './launcher';
 import { deployHerdrConfig, herdrUserConfigPath, HERDR_CONFIG_TEMPLATE } from './herdr-config';
-import { ensureOpenChamber } from './openchamber';
+import {
+  checkOpenChamberDesktop,
+  ensureOpenChamberWebCli,
+  ensureOpenChamberVscodeExtension,
+  isOpenChamberSurfaceEnabled,
+} from './openchamber';
 import { executeUpdate, executeUpgrade } from './updater';
 import { executeClean } from './session-clean';
 import { normalizeTuiPassthrough } from './tui-args';
@@ -165,6 +170,13 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
       break;
     } else if (arg === 'serve') {
       args.action = 'serve';
+      args.passthrough = rawArgs.slice(i + 1);
+      hasExplicitAction = true;
+      break;
+    } else if (arg === 'code') {
+      // VS Code launcher — `--init` is handled by the TS launcher; a bare `.`
+      // passes through (VS Code interprets it as "open the current folder").
+      args.action = 'code';
       args.passthrough = rawArgs.slice(i + 1);
       hasExplicitAction = true;
       break;
@@ -318,9 +330,13 @@ Actions:
                  tui_mode is 'direct'. Pass --herdr / --direct to override
                  the config for this invocation
   serve        Launch the headless opencode server (opencode serve; all args pass through)
-  web          Launch the OpenChamber web UI (auto-picks a free port unless --port is given)
-               Subcommands: 'ocp web stop' stops; 'ocp web restart' restarts; '--daemon' runs in background
-  desktop      Launch the OpenChamber native desktop app (alias: ui)
+   web          Launch the OpenChamber web UI (auto-picks a free port unless --port is given)
+                Subcommands: 'ocp web stop' stops; 'ocp web restart' restarts; '--daemon' runs in background
+   code         Open the current project in VS Code (VSCodium / Cursor / Windsurf CLIs
+                are probed too), auto-installing the OpenChamber editor extension
+                (fedaykindev.openchamber) when missing. --init scaffolds/activates
+                the OCP project first
+   desktop      Launch the OpenChamber native desktop app (alias: ui)
   project      Project-level commands:
                  init   Launch the project wizard in a TTY; use --headless for scripts
                  index  Refresh existing code-intelligence indexes
@@ -555,6 +571,17 @@ async function main() {
     process.exit(launchWeb(args.passthrough ?? []));
   }
 
+  if (args.action === 'code') {
+    // Honor tools.openchamber_vscode for the auto-install, but still open
+    // the editor either way — the command's primary job is launching VS Code.
+    const effectiveOptions = loadEffectiveOptions(repoDir, getDefaultTargetDir());
+    process.exit(
+      await launchCode(args.passthrough ?? [], {
+        ensureExtension: isOpenChamberSurfaceEnabled(effectiveOptions.tools, 'vscode'),
+      })
+    );
+  }
+
   if (args.action === 'project-init') {
     const useWizard = args.projectMode === 'wizard' || (args.projectMode === 'auto' && args.isInteractive);
     if (useWizard) {
@@ -691,8 +718,16 @@ async function main() {
         console.log(reg.pathMessage);
       }
 
-      if (effectiveOptions.tools?.openchamber !== false) {
-        console.log(ensureOpenChamber().message);
+      // OpenChamber ships as three independent surfaces, one
+      // tools.openchamber_* switch each (web / vscode / desktop).
+      if (isOpenChamberSurfaceEnabled(effectiveOptions.tools, 'web')) {
+        console.log(ensureOpenChamberWebCli().message);
+      }
+      if (isOpenChamberSurfaceEnabled(effectiveOptions.tools, 'vscode')) {
+        console.log(ensureOpenChamberVscodeExtension().message);
+      }
+      if (isOpenChamberSurfaceEnabled(effectiveOptions.tools, 'desktop')) {
+        console.log(checkOpenChamberDesktop().message);
       }
       break;
     }

@@ -668,6 +668,12 @@ export function provisionTools(repoDir: string, options: InstallOptions): void {
     }
     const cmd = resolveInstallCommand(def.install);
     if (!cmd) {
+      if (def.install === undefined) {
+        // Presence-only registry entry (e.g. openchamber_desktop): the
+        // installer never provisions it — a dedicated surface helper owns
+        // that check, so stay silent here.
+        continue;
+      }
       const hint = def.url ? ` (${def.url})` : '';
       console.log(colorize.gray(`ℹ [tool] ${name} not installed — no install command for ${process.platform}-${process.arch}${hint}`));
       continue;

@@ -14,7 +14,11 @@ import {
   updateOptionsJsoncInPlace,
 } from './wizard';
 import { runGlobalRegistration } from './shim';
-import { ensureOpenChamber } from './openchamber';
+import {
+  checkOpenChamberDesktop,
+  ensureOpenChamberWebCli,
+  ensureOpenChamberVscodeExtension,
+} from './openchamber';
 import { CliArgs, InstallOptions } from './types';
 import { loadLocale, getAvailableLocales, detectDefaultLocaleCode } from './i18n';
 
@@ -488,9 +492,18 @@ export async function runTuiDashboard(repoDir: string, initialLocale?: string): 
           console.log(`    ${reg.pathMessage}`);
         }
 
-        if (toolState.openchamber !== false) {
-          const oc = ensureOpenChamber();
-          console.log(`  • ${(t.openChamberLabel || 'OpenChamber').padEnd(16)}: ${oc.message}`);
+        // OpenChamber ships as three independent surfaces — each dashboard
+        // toggle (tools.openchamber_web / _vscode / _desktop) provisions its
+        // own surface at install time.
+        const ocSurfaces: Array<[string, () => { message: string }]> = [
+          ['openchamber_web', ensureOpenChamberWebCli],
+          ['openchamber_vscode', () => ensureOpenChamberVscodeExtension()],
+          ['openchamber_desktop', checkOpenChamberDesktop],
+        ];
+        for (const [key, run] of ocSurfaces) {
+          if (toolState[key] === false) continue;
+          const label = (t as any).toolLabels?.[key]?.label || key;
+          console.log(`  • ${String(label).padEnd(16)}: ${run().message}`);
         }
       }
 

@@ -9,7 +9,8 @@ OpenCode features an open, modular frontend ecosystem. Whether you prefer a ligh
 | Interface | Best for | Key Advantages | How to Launch |
 |---|---|---|---|
 | **Terminal TUI (Default)** | Command-line power users, SSH remote development | Ultra-lightweight, sub-millisecond response, native keyboard flow | Run `opencode` directly in terminal |
-| **OpenChamber Desktop** | Visual review, side-by-side comparison | **Visual Side-by-Side Diff**, multi-model parallel Fusion & comparison, session timeline | Download [OpenChamber](https://openchamber.dev) app or VS Code extension |
+| **OpenChamber Desktop** | Visual review, side-by-side comparison | **Visual Side-by-Side Diff**, multi-model parallel Fusion & comparison, session timeline | Download the [OpenChamber](https://openchamber.dev/download) desktop app, then run `ocp desktop` |
+| **OpenChamber VS Code Extension** | Reviewing without leaving the editor | The same OpenChamber review UI inside VS Code (also VSCodium / Cursor / Windsurf) | Run `ocp code` — auto-installs the extension when missing |
 | **Built-in Web UI** | LAN access, lightweight browser experience | Zero local desktop installation, instant web access | Run `opencode serve` in terminal and open browser |
 
 ---
@@ -36,6 +37,18 @@ Run `ocp desktop` (alias `ocp ui`) to launch the native Tauri-based desktop app 
 Run `ocp web` to launch the browser-based UI — auto-generates a password-protected session, picks a free port, no desktop install needed:
 
 ![OpenChamber Web UI](/images/openchamber-web-en.png)
+
+---
+
+### OpenChamber VS Code Extension
+
+Run `ocp code` to open the current project in VS Code with the OpenChamber extension guaranteed — OCP auto-installs `fedaykindev.openchamber` through the editor CLI when it is missing. `--init` scaffolds/activates the OCP project first; a bare `.` opens the current folder:
+
+```bash
+ocp code          # open VS Code with the extension ensured
+ocp code .        # open the current folder
+ocp code --init   # scaffold/activate the OCP project first
+```
 
 ---
 

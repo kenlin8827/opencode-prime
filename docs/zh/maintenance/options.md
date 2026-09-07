@@ -33,16 +33,27 @@
    ```
 2. **编辑 `install/options.jsonc`** 设定所需的可选功能开关：
    ```jsonc
-   // install/options.jsonc
+     // install/options.jsonc
    {
      // 安装时将全局命令 shim（ocp / opencode-prime）注册到
      // ~/.local/bin，并把该目录追加进用户 PATH
      "global_commands": true,
-     // 是否启用 rtk 输出压缩（60-90% token 节省）
-     "rtk": true,
-     // OpenChamber 网页版 CLI（缺失时自动安装 `openchamber` CLI；
-     // 提供 `ocp web` —— `ocp desktop` / `ocp ui` 的原生桌面应用需另行下载）
-     "openchamber": true,
+     // 可选外部二进制，声明于 install/tools.jsonc
+     "tools": {
+       // 是否启用 rtk 输出压缩（60-90% token 节省）
+       "rtk": true,
+       // OpenChamber 拆分为三个独立面，各自一个开关：
+       // 网页版 CLI（缺失时自动安装 @openchamber/web；提供 `ocp web`，需 Node.js 22+）
+       "openchamber_web": true,
+       // `ocp desktop` / `ocp ui` 的原生桌面应用——始终需另行下载
+       // （https://openchamber.dev/download）；安装时仅检测是否已安装
+       "openchamber_desktop": true,
+       // `ocp code` 的 VS Code 扩展（缺失时通过编辑器 CLI 自动安装
+       // fedaykindev.openchamber）
+       "openchamber_vscode": true,
+       // 终端工作空间管理器（tui_mode 为 "herdr" 时自动视为 true）
+       "herdr": false
+     },
      // 默认主控智能体（lite: 默认精益日常驱动 / code: 直接开发 / build: 编排派发 / plan: 只读分析）
      "default_agent": "lite",
      // MCP 服务开关（启用且本地缺失 CLI 时自动拉取安装）
@@ -132,19 +143,26 @@
 
 ---
 
-## OpenChamber（`ocp desktop` / `ocp web`）
+## OpenChamber（`ocp desktop` / `ocp web` / `ocp code`）
 
-安装时自动供应 [OpenChamber](https://openchamber.dev) —— 运行在本地 OpenCode 引擎之上的桌面 / 网页图形界面（双栏 Diff 审查、多模型对比、会话时间线）。
+安装时自动供应 [OpenChamber](https://openchamber.dev) —— 运行在本地 OpenCode 引擎之上的图形界面层（双栏 Diff 审查、多模型对比、会话时间线）。它拆分为**三个独立面**，各自对应一个 `tools.openchamber_*` 开关：
 
-当 `"openchamber": true`（默认）且本地缺少 `openchamber` 命令时，安装器会通过检测到的第一个包管理器（pnpm > bun > yarn > npm）全局安装 `@openchamber/web` 包——该 CLI 支撑**网页版**。`ocp desktop` / `ocp ui` 背后的**原生桌面应用**需从 <https://openchamber.dev/download> 另行下载。安装完成后即可启动：
+| 开关 | 表面 | 安装时的行为 |
+|---|---|---|
+| `tools.openchamber_web` | **网页版** —— `@openchamber/web` CLI，提供 `ocp web` | 本地缺少 `openchamber` 命令时，通过检测到的第一个包管理器（pnpm > bun > yarn > npm）全局安装（需 Node.js 22+） |
+| `tools.openchamber_desktop` | **桌面版** —— 提供 `ocp desktop` / `ocp ui` 的原生应用 | 仅检测是否已安装，缺失时打印下载链接——安装器**从不**下载桌面应用（[openchamber.dev/download](https://openchamber.dev/download)） |
+| `tools.openchamber_vscode` | **VS Code 扩展** —— 提供 `ocp code` | 本地缺少扩展时，通过检测到的第一个编辑器 CLI（`code`、`code-insiders`、`codium`、`cursor`、`windsurf`）安装 `fedaykindev.openchamber` |
+
+安装完成后即可启动：
 
 ```bash
 ocp desktop      # 原生桌面应用（别名：ocp ui）
 ocp web          # OpenChamber Web 界面（自动生成 --ui-password）
+ocp code         # 打开 VS Code 并保证 OpenChamber 扩展就绪
 ocp tui          # OpenCode 终端界面
 ```
 
-若不需要：在 `install/options.jsonc` 中设 `"openchamber": false` 后重新安装即可（已安装的命令不受影响）。安装器不会触碰 [openchamber.dev/download](https://openchamber.dev/download) 提供的原生桌面应用。
+若不需要某个面：在 `install/options.jsonc` 中把对应开关设为 `false` 后重新安装即可（已安装的组件不受影响）。被关闭的面同样会被 `ocp code` 的自动安装跳过。
 
 ---
 

@@ -38,6 +38,7 @@ export type CommandAction =
   | 'tui'
   | 'serve'
   | 'web'
+  | 'code'
   | 'desktop'
   | 'session'
   | 'auth'

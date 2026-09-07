@@ -38,11 +38,22 @@ Learn about installer commands, configuration options, token savings, and preser
      // register global command shims (ocp / opencode-prime)
      // into ~/.local/bin and add that directory to the user PATH during install
      "global_commands": true,
-     // rtk output compression (60-90% token savings)
-     "rtk": true,
-     // OpenChamber web UI CLI (auto-installs the `openchamber` CLI when missing;
-     // powers `ocp web` — the native desktop app for `ocp desktop` / `ocp ui` is a separate download)
-     "openchamber": true,
+     // Opt-in external binaries declared in install/tools.jsonc
+     "tools": {
+       // rtk output compression (60-90% token savings)
+       "rtk": true,
+       // OpenChamber ships as three independent surfaces, one switch each:
+       // Web UI CLI (@openchamber/web; powers `ocp web`, needs Node.js 22+)
+       "openchamber_web": true,
+       // Native desktop app for `ocp desktop` / `ocp ui` — always a separate
+       // download (https://openchamber.dev/download); install only checks presence
+       "openchamber_desktop": true,
+       // VS Code extension for `ocp code` (auto-installs
+       // fedaykindev.openchamber via the editor CLI when missing)
+       "openchamber_vscode": true,
+       // Terminal workspace manager (implied true when tui_mode is "herdr")
+       "herdr": false
+     },
      // Primary agent on start: lite (default, lean daily driver) / code (direct dev) / build (orchestrator) / plan (read-only)
      "default_agent": "lite",
      // MCP server switches (missing CLIs auto-provisioned on install)
@@ -132,19 +143,26 @@ Selecting `"herdr"` auto-enables `tools.herdr` (regardless of its setting) and p
 
 ---
 
-## OpenChamber (`ocp desktop` / `ocp web`)
+## OpenChamber (`ocp desktop` / `ocp web` / `ocp code`)
 
-Install auto-provisions [OpenChamber](https://openchamber.dev) — the desktop / web GUI that runs on top of the local OpenCode engine (side-by-side diffs, multi-model comparison, session timeline).
+Install auto-provisions [OpenChamber](https://openchamber.dev) — the GUI layer that runs on top of the local OpenCode engine (side-by-side diffs, multi-model comparison, session timeline). It ships as **three independent surfaces**, each behind its own `tools.openchamber_*` switch:
 
-With `"openchamber": true` (default), the installer installs the `@openchamber/web` package globally via the first package manager found (pnpm > bun > yarn > npm) when the `openchamber` binary is missing — this CLI powers the **web UI**. The **native desktop app** behind `ocp desktop` / `ocp ui` is a separate download from <https://openchamber.dev/download>. Launch afterwards with:
+| Switch | Surface | What install does |
+|---|---|---|
+| `tools.openchamber_web` | **Web** — `@openchamber/web` CLI powering `ocp web` | Installs the package globally via the first package manager found (pnpm > bun > yarn > npm) when the `openchamber` binary is missing (needs Node.js 22+) |
+| `tools.openchamber_desktop` | **Desktop** — native app powering `ocp desktop` / `ocp ui` | Checks presence only and prints the download link when missing — the installer **never** downloads the desktop app ([openchamber.dev/download](https://openchamber.dev/download)) |
+| `tools.openchamber_vscode` | **VS Code** — editor extension powering `ocp code` | Installs `fedaykindev.openchamber` via the first editor CLI found (`code`, `code-insiders`, `codium`, `cursor`, `windsurf`) when the extension is missing |
+
+Launch afterwards with:
 
 ```bash
 ocp desktop      # native desktop app (alias: ocp ui)
 ocp web          # OpenChamber web UI (auto-generates a --ui-password)
+ocp code         # VS Code with the OpenChamber extension guaranteed
 ocp tui          # the OpenCode terminal UI
 ```
 
-To opt out: set `"openchamber": false` in `install/options.jsonc` and re-run install (an already-installed binary stays put). The native desktop app from [openchamber.dev/download](https://openchamber.dev/download) is never touched by the installer.
+To opt out of a surface: set its switch to `false` in `install/options.jsonc` and re-run install (already-installed components stay put). An opted-out surface is also skipped by `ocp code`'s auto-install.
 
 ---
 

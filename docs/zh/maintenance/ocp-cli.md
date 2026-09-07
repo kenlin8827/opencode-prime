@@ -14,6 +14,7 @@
 | `ocp tui` | | 启动 OpenCode 终端 TUI（`exec opencode`）；额外参数原样透传给 `opencode` |
 | `ocp serve` | | 启动无头 OpenCode 服务（`opencode serve`）；额外参数透传（如 `ocp serve --port 4096`） |
 | `ocp web` | | 启动 **OpenChamber Web 界面**（`openchamber serve`）；自动生成 `--ui-password`，未指定端口时自动从 3000 起挑选空闲端口（详见[端口与密码策略](#web-端口与密码策略)） |
+| `ocp code` | | 在 **VS Code** 中打开当前项目（同时探测 `code-insiders` / `codium` / `cursor` / `windsurf`），并保证 OpenChamber 编辑器扩展就绪：缺失时自动通过编辑器 CLI 安装 `fedaykindev.openchamber`。加 `--init` 可在启动前创建/激活 OCP 项目；裸 `.` 会原样透传，让 VS Code 打开当前目录 |
 | `ocp desktop` | `ocp ui` | 启动 **OpenChamber 原生桌面应用**（需从 [openchamber.dev/download](https://openchamber.dev/download) 单独下载） |
 | `ocp session list` | | 列出会话（透传 `opencode session list`） |
 | `ocp session delete` | | 按 ID 删除会话（透传 `opencode session delete`） |
@@ -69,7 +70,7 @@ ocp serve --port 4096       # 固定端口
 
 ### `ocp web` — OpenChamber Web 界面
 
-依赖 `openchamber` CLI（安装时 `"openchamber": true` 会自动拉取，需 Node.js 22+）。行为要点：
+依赖 `openchamber` CLI（安装时 `"openchamber_web": true` 会自动拉取，需 Node.js 22+）。行为要点：
 
 - **全新会话**：若已有 OpenChamber 实例在运行，会先将其停止（否则携带新 `--ui-password` 的启动会因端口占用而失败，白白泄露一个密码）；
 - **密码**：除非你自己传入 `--ui-password`，否则会自动生成并打印一个随机密码（`🔑 OpenChamber web UI password: ...`）；
@@ -93,6 +94,25 @@ ocp web --ui-password s3cret # 自带密码
 ### `ocp desktop`（别名 `ocp ui`）— 原生桌面应用
 
 基于 Tauri 的桌面应用通常不在 `PATH` 上，启动器会探测常见安装位置（Windows：`%LOCALAPPDATA%\Programs`、`%LOCALAPPDATA%`、`Program Files*`；Linux：`~/.Applications`、`/usr/local/bin`、`/opt`；macOS：经 LaunchServices 执行 `open -a OpenChamber`）。找不到时会提示前往 <https://openchamber.dev/download> 下载 —— 安装器从不下载桌面应用，只会拉取支撑 `ocp web` 的 `openchamber` **CLI**。
+
+### `ocp code` — 带 OpenChamber 扩展的 VS Code
+
+在 VS Code 中打开当前项目，并确保 OpenChamber 编辑器扩展（VS Code Marketplace 上的 `fedaykindev.openchamber`，同时发布于 OpenVSX）已安装——该扩展在编辑器内提供同一套 OpenChamber 审查界面。
+
+编辑器 CLI 解析顺序：`code` → `code-insiders` → `codium` → `cursor` → `windsurf`，取第一个可解析的 CLI。在 Windows 上解析器经由 `where.exe` 并只接受 `.cmd` shim，因此即使 GUI 的 `Code.exe` 在 PATH 上遮蔽了 CLI，也不会静默吞掉扩展检查。
+
+- `--init`：启动前在当前目录创建/激活 OCP 项目（同 `ocp ui --init`）。
+- 裸 `.` **不会**被吞掉：VS Code 自身将其解释为"打开当前目录"，因此 `ocp code .` 会原样透传。
+- 其余参数全部原样转发（`ocp code -n` 新开窗口、`ocp code <dir>` 打开指定目录等）。
+- 扩展安装失败不会阻塞启动——只报告结果并照常打开编辑器。
+- 在 `install/options.jsonc` 中设 `"openchamber_vscode": false` 可关闭自动安装（此时 `ocp code` 仅打开编辑器）。
+
+```bash
+ocp code                 # 打开 VS Code，确保扩展就绪
+ocp code .               # 同上，并打开当前目录
+ocp code --init          # 先创建/激活 OCP 项目，再打开 VS Code
+ocp code -n .            # 在新窗口中打开当前目录
+```
 
 ### `ocp session` — 会话管理
 

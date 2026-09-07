@@ -14,7 +14,12 @@ import {
 import { getDefaultBinDir, runGlobalRegistration, isShimRegistered, unregisterShim } from './shim';
 import { readJsoncFile, parseJsonc } from './merger';
 import { runTuiDashboard } from './dashboard';
-import { ensureOpenChamber } from './openchamber';
+import {
+  checkOpenChamberDesktop,
+  ensureOpenChamberWebCli,
+  ensureOpenChamberVscodeExtension,
+  isOpenChamberSurfaceEnabled,
+} from './openchamber';
 import { loadLocale, getAvailableLocales, detectDefaultLocaleCode, I18nText } from './i18n';
 
 export interface DynamicOptionItem {
@@ -388,8 +393,16 @@ export async function runInteractiveWizard(repoDir: string): Promise<void> {
         applyGlobalRegistration(repoDir, t);
       }
 
-      if (effectiveOptions.tools?.openchamber !== false) {
-        p.log.step(ensureOpenChamber().message);
+      // OpenChamber ships as three independent surfaces, one
+      // tools.openchamber_* switch each (web / vscode / desktop).
+      if (isOpenChamberSurfaceEnabled(effectiveOptions.tools, 'web')) {
+        p.log.step(ensureOpenChamberWebCli().message);
+      }
+      if (isOpenChamberSurfaceEnabled(effectiveOptions.tools, 'vscode')) {
+        p.log.step(ensureOpenChamberVscodeExtension().message);
+      }
+      if (isOpenChamberSurfaceEnabled(effectiveOptions.tools, 'desktop')) {
+        p.log.step(checkOpenChamberDesktop().message);
       }
 
       p.note(

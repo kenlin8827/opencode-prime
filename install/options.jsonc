@@ -6,7 +6,16 @@
   "tools": {
     // false also removes the bundled OpenRTK plugin from the target.
     "rtk": true,
-    "openchamber": true,
+    // OpenChamber ships as three independent surfaces, one switch each.
+    // Web UI CLI (@openchamber/web) — powers `ocp web`. Needs Node.js 22+.
+    "openchamber_web": true,
+    // Native desktop app — powers `ocp desktop` / `ocp ui`. Always a
+    // separate download (https://openchamber.dev/download); install only
+    // checks presence and prints the link when missing.
+    "openchamber_desktop": true,
+    // VS Code extension (fedaykindev.openchamber) — powers `ocp code`;
+    // auto-installs through the editor CLI when missing.
+    "openchamber_vscode": true,
     // Implied true when tui_mode is "herdr".
     "herdr": false
   },
