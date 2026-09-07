@@ -382,7 +382,7 @@ OpenCode plugin hooks provide runtime guarantees that prompts alone cannot achie
 | `browser-screenshot.ts` | custom tool | Registers `browser_screenshot` tool (Playwright headless) for `@vision` / `@frontend-dev`. |
 | `lite-mode.ts` (+ `plugins/lite-mode/`) | `system.transform` | Strips the `<!-- lite-mode -->` sentinel and every `Instructions from:` block (L0) from the `@lite` primary's system prompt. |
 | `project-profiler.ts` (+ `plugins/project-profiler/`) | `session.created` + `system.transform` | Detects project nature at session start (config-driven, zero CLI probing) and injects a compact profile + code-intelligence backend recommendation (Serena vs CodeGraph, GitNexus optional) into the system prompt. |
-| `openrtk.ts` (+ `plugins/openrtk/`) | command rewrite | Vendored rtk integration: rewrites shell commands through the rtk compression proxy transparently. |
+| `rtk-write.ts` (+ `plugins/rtk-write/`) | command rewrite | Vendored rtk integration: rewrites shell commands through the rtk compression proxy transparently. |
 | `auto-advisor-mode.ts` (+ `plugins/auto-advisor/`) | 5 hooks — see below | Advisor modes off/lite/full; protocol injection; full-mode auto-execute; red-team suppression. |
 | `deepseek-anchor.ts` (+ `plugins/deepseek-anchor/`) | `config` + `command.execute.before` + `system.transform` | `/deepseek-anchor` command; anchor-based reasoning protocols with DeepSeek models. |
 | `adr-guard.ts` (+ `plugins/adr-guard/`) | `config` + `command.execute.before` + `system.transform` + `tool.execute.before` + `event: session.created` | `/adr-guard` command; ADR iron-law protocol injection; hard-blocks `feat`/`refactor` commits without an ADR in the change set. |
@@ -616,8 +616,8 @@ plugins/
 ├── deepseek-anchor/               # Command, config, announce, index
 ├── sdd.ts                         # Barrel: SDD engine (/sdd runtime actions only)
 ├── sdd/                           # Engine + command hook (protocol lives at skills/sdd-workflow)
-├── openrtk.ts                     # Barrel: vendored rtk command rewrite
-├── openrtk/                       # Implementation + rewrite logic
+├── rtk-write.ts                    # Barrel: vendored rtk command rewrite
+├── rtk-write/                      # Implementation + rewrite logic
 ├── lite-mode.ts                   # Hook: strip L0 from @lite system prompt
 ├── lite-mode/                     # Implementation
 ├── shared/plugin-scope.ts         # Injection gate (consumes plugin-scope.json)

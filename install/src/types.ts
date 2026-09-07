@@ -11,46 +11,46 @@ export interface InstallOptions {
   //   "direct" (default) — launch opencode directly in the current terminal
   //   "herdr"            — launch a herdr workspace rooted at cwd (equivalent
   //                        to `ocp herdr`); auto-enables tools.herdr
-  tui_mode?: 'direct' | 'herdr';
+  tui_mode?: "direct" | "herdr";
   // Generic opt-in map for tools declared in install/tools.jsonc.
   //   tools.<name>: true  → provision when missing (default if omitted)
   //   tools.<name>: false → user opted out, installer leaves it alone
   //   tools.<name> omitted → treat as enabled (default-true)
   // Adding a new tool = add an entry to install/tools.jsonc. The rtk plugin
   // cleanup in installer/merger.ts is the one side effect still wired by
-  // name — it reads `tools.rtk === false` and removes `plugins/openrtk*`
+  // name — it reads `tools.rtk === false` and removes `plugins/rtk-write*`
   // from the target.
   tools?: Record<string, boolean>;
 }
 
 export type CommandAction =
-  | 'install'
-  | 'update'
-  | 'upgrade'
-  | 'status'
-  | 'generate'
-  | 'init'
-  | 'uninstall'
-  | 'register'
-  | 'unregister'
-  | 'wizard'
-  | 'dashboard'
-  | 'tui'
-  | 'serve'
-  | 'web'
-  | 'code'
-  | 'desktop'
-  | 'session'
-  | 'auth'
-  | 'clean'
-  | 'herdr'
-  | 'herdr-config-install'
-  | 'herdr-config-path'
-  | 'herdr-config-status'
-  | 'project-init'
-  | 'project-index'
-  | 'project-sync'
-  | 'project-setup';
+  | "install"
+  | "update"
+  | "upgrade"
+  | "status"
+  | "generate"
+  | "init"
+  | "uninstall"
+  | "register"
+  | "unregister"
+  | "wizard"
+  | "dashboard"
+  | "tui"
+  | "serve"
+  | "web"
+  | "code"
+  | "desktop"
+  | "session"
+  | "auth"
+  | "clean"
+  | "herdr"
+  | "herdr-config-install"
+  | "herdr-config-path"
+  | "herdr-config-status"
+  | "project-init"
+  | "project-index"
+  | "project-sync"
+  | "project-setup";
 
 export interface CliArgs {
   action: CommandAction;
@@ -61,7 +61,7 @@ export interface CliArgs {
   // Unset = OCP_MAX_BACKUPS env, else 5 (see installer.getMaxBackups).
   keepBackups?: number;
   yes: boolean;
-  projectMode: 'auto' | 'wizard' | 'headless';
+  projectMode: "auto" | "wizard" | "headless";
   binDir?: string;
   optionsFile?: string;
   isInteractive: boolean;

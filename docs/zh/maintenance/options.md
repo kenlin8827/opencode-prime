@@ -120,7 +120,7 @@
 
 安装时自动配置 [rtk](https://github.com/rtk-ai/rtk) —— 一个在命令输出（git status、测试、构建等）到达模型前将其压缩 60-90% 的 CLI 代理。
 
-若 PATH 中没有 `rtk`，安装器会将固定版本的二进制下载到 `~/.local/bin`。opencode 钩子以内置的 `plugins/openrtk.ts` 形式随配置分发。
+若 PATH 中没有 `rtk`，安装器会将固定版本的二进制下载到 `~/.local/bin`。opencode 钩子以内置的 `plugins/rtk-write.ts` 形式随配置分发。
 
 若不需要：在 `install/options.jsonc` 中设 `"rtk": false` 后重新安装即可。
 

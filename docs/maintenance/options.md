@@ -120,7 +120,7 @@ To avoid startup stalls during the first OpenCode launch caused by online packag
 
 Install auto-provisions [rtk](https://github.com/rtk-ai/rtk) — a CLI proxy that compresses command output (git status, test runs, builds, ...) by 60-90% before it reaches the model.
 
-If `rtk` is not on PATH, the installer downloads the pinned release into `~/.local/bin` (SHA256-verified, added to user PATH on Windows). The opencode hook ships in-tree as `plugins/openrtk.ts`.
+If `rtk` is not on PATH, the installer downloads the pinned release into `~/.local/bin` (SHA256-verified, added to user PATH on Windows). The opencode hook ships in-tree as `plugins/rtk-write.ts`.
 
 To opt out: set `"rtk": false` in `install/options.jsonc` and re-run install.
 

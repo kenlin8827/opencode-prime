@@ -470,8 +470,8 @@ on install).
   shipped `agent` block: unknown names are rejected with a warning and the
   template value is kept. Omit the field to keep the shipped default.
 - `rtk` drives rtk provisioning: `true` downloads the binary when missing
-  and keeps the vendored `plugins/openrtk*`; `false` skips the download AND
-  removes `plugins/openrtk.ts` + `plugins/openrtk/` from the target (an
+   and keeps the vendored `plugins/rtk-write*`; `false` skips the download AND
+   removes `plugins/rtk-write.ts` + `plugins/rtk-write/` from the target (an
   already-installed `rtk` binary on PATH stays put).
 - OpenChamber ships as three independent surfaces, one `tools.openchamber_*`
   switch each:
@@ -499,7 +499,7 @@ on install).
   unchanged). Your choices persist in this file (git); no installed copy
   exists.
 - Bundled `plugins/*.ts` files are not toggled here — they ship wholesale and
-  are always active. The one exception is the vendored openrtk plugin, which
+   are always active. The one exception is the vendored rtk-write plugin, which
   follows the `rtk` switch.
 
 **Note on the shipped template.** The repo's `opencode.template.jsonc` ships with
