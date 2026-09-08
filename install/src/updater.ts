@@ -608,7 +608,8 @@ export async function executeUpgrade(repoDir: string, passthrough: string[]): Pr
   // Re-run the installer from the updated copy through the bootstrap script
   // (same entry as the one-liner quick install): it picks the right runtime
   // and loads the freshly overlaid engine, which may have replaced the code
-  // currently running this upgrade.
+  // currently running this upgrade. The bootstrap defaults to `install`, so
+  // leave the action implicit across this self-upgrade boundary.
   const rest = force ? passthrough : ['--force', ...passthrough];
   // Make the reason explicit when the version probe reported no newer
   // release: the repo copy can still be ahead of what was last applied
@@ -622,11 +623,11 @@ export async function executeUpgrade(repoDir: string, passthrough: string[]): Pr
       : path.join(repoDir, 'install', 'install.sh');
   const res =
     process.platform === 'win32'
-      ? spawnSync('pwsh', ['-NoProfile', '-File', script, 'install', ...rest], {
+      ? spawnSync('pwsh', ['-NoProfile', '-File', script, ...rest], {
           stdio: 'inherit',
           cwd: repoDir,
         })
-      : spawnSync('bash', [script, 'install', ...rest], {
+      : spawnSync('bash', [script, ...rest], {
           stdio: 'inherit',
           cwd: repoDir,
         });
