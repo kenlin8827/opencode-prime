@@ -16,6 +16,7 @@ import { getOpencodeExecutable } from './shared/opencode-command';
 export interface CleanOptions {
   days: number;
   all: boolean;
+  allProjects: boolean;
   dryRun: boolean;
   yes: boolean;
   includeSubagents: boolean;
@@ -277,8 +278,9 @@ export async function executeClean(opts: CleanOptions): Promise<void> {
   if (opts.all) {
     const readline = require('node:readline');
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const scope = opts.allProjects ? 'across ALL saved projects' : 'in the selected workspace';
     const answer: string = await new Promise((resolve) => {
-      rl.question(`  This permanently deletes ALL ${rows.length} session(s) in the selected workspace. Continue? [y/N] `, (ans: string) => {
+      rl.question(`  This permanently deletes ALL ${rows.length} session(s) ${scope}. Continue? [y/N] `, (ans: string) => {
         rl.close();
         resolve(ans);
       });
@@ -340,4 +342,3 @@ export async function executeClean(opts: CleanOptions): Promise<void> {
   console.log('  Done.');
   console.log('═'.repeat(60));
 }
-

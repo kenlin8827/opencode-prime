@@ -132,6 +132,9 @@ ocp session delete <sessionID>          # 删除指定会话
 | 参数 | 别名 | 说明 |
 | :--- | :--- | :--- |
 | `--days <n>` | `-d <n>` | 删除超过 *n* 天的会话（默认 7） |
+| `--all` | | 删除当前工作区的全部会话（包括子代理会话）。即使指定 `-y` 也需要确认。 |
+| `--projects` | | 与 `--all` 一起使用，删除所有已保存项目的会话。不能与 `--project`、`--directory` 或 `--cwd` 同用；始终需要确认。 |
+| `--all-projects` | | `--all --projects` 的简写。 |
 | `--project <id\|name>` | | 按 `project_id` 或项目路径/名称删除。如果值不是 40 位十六进制 ID，会自动按路径解析为 ID。 |
 | `--project-name <name>` | | `--project` 的别名，用于明确按名称/路径传入时 |
 | `--directory <path>` | `--dir <path>` | 仅删除工作区路径完全匹配的会话。使用 `--cwd` 匹配当前目录。 |
@@ -146,6 +149,9 @@ ocp session clean --days 3              # 删除超过 3 天的会话
 ocp session clean --days 30 -y          # 删除超过 30 天的会话，不提示
 ocp session clean -d 7 --include-subagents  # 包含子代理会话
 ocp session clean --cwd --days 1        # 清理当前工作空间的旧会话
+ocp session clean --all --projects --dry-run  # 预览清理所有项目的全部会话
+ocp session clean --all --projects      # 删除所有项目的全部会话（需要确认）
+ocp session clean --all-projects        # --all --projects 的简写
 ocp session clean --project <project_id> --days 7  # 清理指定项目的旧会话
 ocp session clean --project opencode-prime --days 7  # 按项目路径/名称清理
 ```

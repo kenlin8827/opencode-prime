@@ -70,6 +70,8 @@ export interface CliArgs {
   // `clean` subcommand options.
   cleanDays?: number;
   cleanAll?: boolean;
+  // Explicitly allow clean to span every saved workspace/project.
+  cleanAllProjects?: boolean;
   cleanDryRun?: boolean;
   cleanIncludeSubagents?: boolean;
   cleanProject?: string;

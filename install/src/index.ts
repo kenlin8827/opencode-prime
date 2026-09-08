@@ -281,6 +281,12 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
       if (!Number.isNaN(n) && n > 0) args.cleanDays = n;
     } else if (arg === '--all') {
       args.cleanAll = true;
+    } else if (arg === '--projects') {
+      args.cleanAllProjects = true;
+    } else if (arg === '--all-projects') {
+      // Convenience form for `--all --projects`.
+      args.cleanAll = true;
+      args.cleanAllProjects = true;
     } else if (arg === '--dry-run') {
       args.cleanDryRun = true;
     } else if (arg === '--include-subagents') {
@@ -327,6 +333,15 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
 
   if (args.yes && args.projectMode === 'auto') {
     args.projectMode = 'headless';
+  }
+
+  if (args.cleanAllProjects && !args.cleanAll) {
+    console.error('✗ --projects/--all-projects requires --all.');
+    process.exit(2);
+  }
+  if (args.cleanAllProjects && (args.cleanProject || args.cleanProjectName || args.cleanDirectory)) {
+    console.error('✗ --projects/--all-projects cannot be combined with --project, --directory, or --cwd.');
+    process.exit(2);
   }
 
   return args;
@@ -405,6 +420,8 @@ Session subcommands:
    session clean [--days <n> | --all]  Delete old sessions (default: 7 days)
      --days, -d <n>           Delete sessions older than N days (default: 7)
      --all                    Delete every session in the current workspace, including subagents; requires confirmation
+     --projects                With --all, delete sessions across every saved project; requires confirmation
+     --all-projects            Alias for --all --projects; requires confirmation
     --project <id|name>      Delete sessions by project_id or project path/name
     --project-name <name>    Alias for --project when using a name/path
     --directory, --dir <path>  Delete sessions from a specific workspace path
@@ -655,14 +672,15 @@ async function main() {
     await executeClean({
       days: args.cleanDays ?? 7,
       all: args.cleanAll ?? false,
+      allProjects: args.cleanAllProjects ?? false,
       dryRun: args.cleanDryRun ?? false,
       yes: args.yes,
       includeSubagents: args.cleanIncludeSubagents ?? false,
       project: args.cleanProject,
       projectName: args.cleanProjectName,
-      // `--all` clears the current workspace only when no explicit scope is
-      // supplied. --directory and --project remain authoritative.
-      directory: args.cleanDirectory ?? (args.cleanAll && !args.cleanProject && !args.cleanProjectName ? process.cwd() : undefined),
+      // `--all` clears the current workspace unless cross-project scope was
+      // explicitly requested. --directory and --project remain authoritative.
+      directory: args.cleanDirectory ?? (args.cleanAll && !args.cleanAllProjects && !args.cleanProject && !args.cleanProjectName ? process.cwd() : undefined),
     });
     return;
   }

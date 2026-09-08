@@ -193,6 +193,9 @@ Delete old sessions via the official `opencode session delete` CLI — no direct
 | Flag | Aliases | Meaning |
 | :--- | :--- | :--- |
 | `--days <n>` | `-d <n>` | Delete sessions older than *n* days (default: 7) |
+| `--all` | | Delete every session in the current workspace, including subagents. Requires confirmation even with `-y`. |
+| `--projects` | | With `--all`, delete sessions across every saved project. Cannot be combined with `--project`, `--directory`, or `--cwd`; always requires confirmation. |
+| `--all-projects` | | Shorthand for `--all --projects`. |
 | `--project <id\|name>` | | Delete sessions by `project_id` or project path/name. If the value is not a 40-char hex ID, it is resolved against `directory`. |
 | `--project-name <name>` | | Alias for `--project` when passing a name/path instead of an ID |
 | `--directory <path>` | `--dir <path>` | Delete sessions whose workspace path matches exactly. Use `--cwd` to match the current directory. |
@@ -207,6 +210,9 @@ ocp session clean --days 3              # delete sessions older than 3 days
 ocp session clean --days 30 -y          # delete sessions older than 30 days, no prompt
 ocp session clean -d 7 --include-subagents  # include subagent sessions
 ocp session clean --cwd --days 1        # clean sessions from the current workspace
+ocp session clean --all --projects --dry-run  # preview deletion across every project
+ocp session clean --all --projects      # delete every session across every project (requires confirmation)
+ocp session clean --all-projects        # shorthand for --all --projects
 ocp session clean --project <project_id> --days 7  # clean sessions for a specific project
 ocp session clean --project opencode-prime --days 7  # clean by project path/name
 ```

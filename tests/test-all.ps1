@@ -944,6 +944,8 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-shell-command-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-session-clean-flags-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-auto-format-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-lite-tools-unit.ts"
