@@ -127,6 +127,15 @@ asynchronous. Keep the default 64 MiB tgrep file-size policy and index/serve/
 search parameters consistent. tgrep does not replace Serena symbol navigation
 or CodeGraph/GitNexus relationship queries.
 
+### Verification and benchmark (opt-in)
+
+OCP's normal test run never downloads a binary. After installing a fixed,
+user-controlled tgrep version, run `OCP_TGREP_BIN=tgrep bun run
+tests/test-tgrep-integration.ts` (PowerShell: `$env:OCP_TGREP_BIN = "tgrep"`)
+to verify the actual CLI contract. Measure a repository locally with `bun run
+scripts/benchmark-tgrep.ts <repo> <literal>`; retain the JSON output alongside
+the tgrep version and repository revision before claiming a performance gain.
+
 ---
 
 ## Plugin Pre-warming Cache (Ensure-Plugins)

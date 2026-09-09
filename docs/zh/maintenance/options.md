@@ -123,6 +123,14 @@
 保持默认 64 MiB 文件大小策略以及 index/serve/search 参数一致。tgrep 不替代 Serena
 符号导航或 CodeGraph/GitNexus 关系查询。
 
+### 验证与基准测试（显式启用）
+
+常规 OCP 测试不会下载二进制。自行安装固定版本 tgrep 后，可运行
+`OCP_TGREP_BIN=tgrep bun run tests/test-tgrep-integration.ts`（PowerShell：
+`$env:OCP_TGREP_BIN = "tgrep"`）验证真实 CLI 契约。通过
+`bun run scripts/benchmark-tgrep.ts <repo> <literal>` 在本地测量仓库；在
+宣传性能收益前，应保留 JSON 输出、tgrep 版本与仓库 revision。
+
 ---
 
 ## 插件自动预热（Ensure-Plugins）
