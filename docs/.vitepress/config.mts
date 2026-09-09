@@ -5,7 +5,7 @@ export default withMermaid(
   defineConfig({
     title: "OpenCode Prime",
     description: "The Flagship Production Engineering & Multi-Agent Suite for OpenCode",
-    base: "/opencode-prime/",
+    base: "/",
     cleanUrls: true,
     lastUpdated: true,
     srcExclude: ['SUMMARY.md'],

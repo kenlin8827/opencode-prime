@@ -8,7 +8,7 @@
 ![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-lightgrey.svg)
 
-**[Documentation](https://kenlin8827.github.io/opencode-prime/)** · **[Releases](https://github.com/kenlin8827/opencode-prime/releases)** · **[中文](README.zh-CN.md)**
+**[Documentation](https://opencode-prime.dev/)** · **[Releases](https://github.com/kenlin8827/opencode-prime/releases)** · **[中文](README.zh-CN.md)**
 
 <br />
 
@@ -38,7 +38,7 @@ curl -fsSL https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/inst
 irm https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.ps1 | iex
 ```
 
-Re-run the installer to upgrade while retaining API keys, custom models, and tier mappings. For prerequisites, pinned versions, offline inspection, and clone-based installation, see the [installation guide](https://kenlin8827.github.io/opencode-prime/).
+Re-run the installer to upgrade while retaining API keys, custom models, and tier mappings. For prerequisites, pinned versions, offline inspection, and clone-based installation, see the [installation guide](https://opencode-prime.dev/).
 
 ## Quick start
 
@@ -55,11 +55,11 @@ ocp desktop         # launch the native desktop app
 ocp update          # check and apply available updates
 ```
 
-Run `ocp help` for all commands. The [CLI reference](https://kenlin8827.github.io/opencode-prime/maintenance/ocp-cli) covers aliases, arguments, upgrade behavior, and maintenance operations.
+Run `ocp help` for all commands. The [CLI reference](https://opencode-prime.dev/maintenance/ocp-cli) covers aliases, arguments, upgrade behavior, and maintenance operations.
 
 ## Documentation
 
-Read the [online documentation](https://kenlin8827.github.io/opencode-prime/) for agent roles, workflows, profiles, MCP servers, guardrails, installer options, and development guidance. Repository contributors should start with [DEVELOPING.md](DEVELOPING.md).
+Read the [online documentation](https://opencode-prime.dev/) for agent roles, workflows, profiles, MCP servers, guardrails, installer options, and development guidance. Repository contributors should start with [DEVELOPING.md](DEVELOPING.md).
 
 ## License
 

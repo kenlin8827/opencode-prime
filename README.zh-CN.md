@@ -8,7 +8,7 @@
 ![许可证](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)
 ![平台](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-lightgrey.svg)
 
-**[在线文档](https://kenlin8827.github.io/opencode-prime/zh/)** · **[发布版本](https://github.com/kenlin8827/opencode-prime/releases)** · **[English](README.md)**
+**[在线文档](https://opencode-prime.dev/zh/)** · **[发布版本](https://github.com/kenlin8827/opencode-prime/releases)** · **[English](README.md)**
 
 <br />
 
@@ -38,9 +38,9 @@ curl -fsSL https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/inst
 irm https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.ps1 | iex
 ```
 
-重复运行安装命令即可升级，同时保留 API 密钥、自定义模型和模型层级配置。前置条件、指定版本、检查脚本后再运行，以及克隆安装方式请见[在线文档](https://kenlin8827.github.io/opencode-prime/zh/)。
+重复运行安装命令即可升级，同时保留 API 密钥、自定义模型和模型层级配置。前置条件、指定版本、检查脚本后再运行，以及克隆安装方式请见[在线文档](https://opencode-prime.dev/zh/)。
 
-> 中国大陆网络环境可通过 `OCP_RAW_MIRROR`、`OCP_API_MIRROR` 与 `OCP_RELEASE_MIRROR` 配置 GitHub 镜像；详细说明见[安装与维护文档](https://kenlin8827.github.io/opencode-prime/zh/maintenance/ocp-cli)。
+> 中国大陆网络环境可通过 `OCP_RAW_MIRROR`、`OCP_API_MIRROR` 与 `OCP_RELEASE_MIRROR` 配置 GitHub 镜像；详细说明见[安装与维护文档](https://opencode-prime.dev/zh/maintenance/ocp-cli)。
 
 ## 快速开始
 
@@ -57,11 +57,11 @@ ocp desktop         # 启动原生桌面应用
 ocp update          # 检查并安装可用更新
 ```
 
-使用 `ocp help` 查看完整命令。命令别名、参数、升级行为与维护操作请参阅 [OCP CLI 参考](https://kenlin8827.github.io/opencode-prime/zh/maintenance/ocp-cli)。
+使用 `ocp help` 查看完整命令。命令别名、参数、升级行为与维护操作请参阅 [OCP CLI 参考](https://opencode-prime.dev/zh/maintenance/ocp-cli)。
 
 ## 文档
 
-[在线文档](https://kenlin8827.github.io/opencode-prime/zh/)包含智能体职责、工作流、预设、MCP 服务、工程护栏、安装选项与开发说明。参与仓库开发请先阅读 [DEVELOPING.md](DEVELOPING.md)。
+[在线文档](https://opencode-prime.dev/zh/)包含智能体职责、工作流、预设、MCP 服务、工程护栏、安装选项与开发说明。参与仓库开发请先阅读 [DEVELOPING.md](DEVELOPING.md)。
 
 ## 许可证
 
