@@ -16,6 +16,11 @@
 | `ocp web` | | 启动 **OpenChamber Web 界面**（`openchamber serve`）；自动生成 `--ui-password`，未指定端口时自动从 3000 起挑选空闲端口（详见[端口与密码策略](#web-端口与密码策略)） |
 | `ocp code` | | 在 **VS Code** 中打开当前项目（同时探测 `code-insiders` / `codium` / `cursor` / `windsurf`），并保证 OpenChamber 编辑器扩展就绪：缺失时自动通过编辑器 CLI 安装 `fedaykindev.openchamber`。加 `--init` 可在启动前创建/激活 OCP 项目；裸 `.` 会原样透传，让 VS Code 打开当前目录 |
 | `ocp desktop` | `ocp ui` | 启动 **OpenChamber 原生桌面应用**（需从 [openchamber.dev/download](https://openchamber.dev/download) 单独下载） |
+| `ocp project` | | 在当前目录创建或激活 OCP 项目；交互终端中会打开项目向导 |
+| `ocp project init` | | 在当前目录创建或激活 OCP 项目：缺少基线文件时创建，已有项目时同步并刷新索引 |
+| `ocp project index` | | 手动刷新当前项目的代码智能索引 |
+| `ocp project sync` | | 将新增的模板开关追加到现有项目配置（仅追加，绝不覆盖） |
+| `ocp usage [--all\|.\|sessionId]` | | 打开 Token 与费用用量视图：默认跨全部项目，也可限定当前目录或单个会话 |
 | `ocp session list` | | 列出会话（透传 `opencode session list`） |
 | `ocp session delete` | | 按 ID 删除会话（透传 `opencode session delete`） |
 | `ocp session clean` | | 按日期批量清理旧会话。用法：`ocp session clean --days 7 [--dry-run] [-y] [--project <id|name>] [--directory <path>]` |
@@ -29,6 +34,8 @@
 | `ocp unregister` | | 移除 `~/.local/bin` 中的全局 shim |
 | `ocp wizard` | `ocp menu` | 交互式 TUI 安装向导（首次安装与重新配置） |
 | `ocp dashboard` | `ocp cc`、`ocp matrix` | 单屏 TUI 全景控制台 —— 切换 MCP 服务 / 插件 / RTK、循环调整 Agent 模型梯队，然后一键安装 |
+| `ocp provider` | | 管理模型服务商 —— 不带子命令时运行与 `/provider` 相同的 standalone 对话框向导（添加、导入、编辑、删除）；`ocp provider list` 无需 TTY 即可列出已配置服务商 |
+| `ocp profile` | | 管理模型层级预设 —— 不带子命令时运行与 `/profile` 相同的 standalone 对话框向导；`ocp profile list`、`ocp profile apply <名称>`、`ocp profile reset --yes` 可非交互运行（裸 `profile reset` 会先要求确认） |
 | `ocp auth open` | | 用默认编辑器打开 OpenCode 的 `auth.json`；文件不存在时会自动创建一个空文件 |
 | `ocp version` | `ocp --version`、`ocp -v` | 打印仓库当前版本（`install/version.json`） |
 | `ocp help` | `ocp -h`、`ocp --help` | 打印命令帮助 |
@@ -47,7 +54,7 @@ ocp tui                     # 直接进入终端界面
 ocp tui --version           # opencode 自身的 --version
 ```
 
-默认 `ocp tui` 在当前 shell 里直接启动 `opencode`。若要改走 herdr 工作区（等同 `ocp herdr`），在 `install/options.jsonc` 里设 `"tui_mode": "herdr"`——设置后会自动启用 `tools.herdr`。
+默认情况下，`ocp tui` 会通过 Herdr 工作区启动（等同 `ocp herdr`）。若要在当前 shell 直接启动 `opencode`，在 `install/options.jsonc` 中设 `"tui_mode": "direct"`。Herdr 模式会自动启用 `tools.herdr`。
 
 命令行覆盖（一次性，优先于 `tui_mode` 配置）：
 
@@ -69,7 +76,7 @@ ocp serve --port 4096       # 固定端口
 
 ### `ocp web` — OpenChamber Web 界面
 
-依赖 `openchamber` CLI（安装时 `"openchamber_web": true` 会自动拉取，需 Node.js 22+）。行为要点：
+依赖 `openchamber` CLI（在 `install/options.jsonc` 中设 `"openchamber_web": true` 后才会自动拉取，需 Node.js 22+）。行为要点：
 
 - **全新会话**：若已有 OpenChamber 实例在运行，会先将其停止（否则携带新 `--ui-password` 的启动会因端口占用而失败，白白泄露一个密码）；
 - **密码**：除非你自己传入 `--ui-password`，否则会自动生成并打印一个随机密码（`🔑 OpenChamber web UI password: ...`）；
@@ -104,7 +111,7 @@ ocp web --ui-password s3cret # 自带密码
 - 裸 `.` **不会**被吞掉：VS Code 自身将其解释为"打开当前目录"，因此 `ocp code .` 会原样透传。
 - 其余参数全部原样转发（`ocp code -n` 新开窗口、`ocp code <dir>` 打开指定目录等）。
 - 扩展安装失败不会阻塞启动——只报告结果并照常打开编辑器。
-- 在 `install/options.jsonc` 中设 `"openchamber_vscode": false` 可关闭自动安装（此时 `ocp code` 仅打开编辑器）。
+- 自动安装默认关闭；在 `install/options.jsonc` 中设 `"openchamber_vscode": true` 才启用。关闭时 `ocp code` 仅打开编辑器。
 
 ```bash
 ocp code                 # 打开 VS Code，确保扩展就绪
@@ -160,6 +167,43 @@ ocp session clean --project opencode-prime --days 7  # 按项目路径/名称清
 
 ---
 
+## 项目子命令
+
+`ocp project` 是 `/project` 斜杠命令族的终端入口，操作对象为**当前工作目录**，而不是安装目标目录。不带子命令时等同 `ocp project init`，交互终端中会打开项目向导；脚本中使用 `ocp project init --headless` 跳过提示。
+
+| 命令 | 说明 |
+| :--- | :--- |
+| `ocp project init` | 缺少基线文件时创建；已有项目时同步配置并刷新索引。绝不覆盖现有文件。启用 gitnexus 时注册 `post-commit`、`post-merge`、`post-checkout` Git hook；未启用时移除它们。 |
+| `ocp project index` | 刷新已有代码智能索引（`codegraph sync`，以及过期时的 `gitnexus analyze`）。 |
+| `ocp project sync` | 将新增模板开关追加到项目配置；已有内容不变。 |
+
+```bash
+ocp project                 # 在当前目录创建/激活项目
+ocp project init            # 同上
+ocp project index           # 刷新已有项目的索引
+ocp project sync            # 追加缺失的模板开关
+```
+
+---
+
+## 用量统计
+
+`ocp usage [--all|.|sessionId]` 打开 Token 与费用用量视图：
+
+| 参数 | 范围 |
+| :--- | :--- |
+| *(不传)* 或 `--all` | 全部项目（默认） |
+| `.` | 当前工作目录 |
+| `<sessionId>` | 指定单个会话 |
+
+```bash
+ocp usage                 # 查看全部项目的用量
+ocp usage .               # 查看当前目录的用量
+ocp usage <sessionId>     # 直接查看指定会话
+```
+
+---
+
 ## 安装类子命令
 
 `install` / `update` / `upgrade` / `init` / `uninstall` / `status` 是 `install.ps1` / `install.sh`（同一套 TypeScript 引擎）的薄封装。常用透传参数：
@@ -182,6 +226,21 @@ ocp register -BinDir ~/bin  # shim 安装到自定义目录
 `register` 现在做两件事：把三个 shim 写入 bin 目录，**并**确保该目录在新终端中可用 —— Windows 上将其追加进用户 `PATH` 注册表值（通过 `[Environment]::SetEnvironmentVariable`，绝不使用 `setx`，长 PATH 值不会被截断）；POSIX 上向 shell 配置文件（`~/.zshrc`、`~/.bashrc` 或 `~/.profile`，带托管标记守卫）追加 `export PATH` 块。`unregister` 只移除 shim，不会改动你的 `PATH`。
 
 ---
+
+## 服务商与配置方案命令
+
+这些命令与 TUI 的 `/provider`、`/profile` 共享状态和核心逻辑。
+
+```bash
+ocp provider list             # 列出已配置服务商
+ocp provider                  # 添加、导入、编辑或删除服务商
+ocp profile list              # 列出已安装配置方案
+ocp profile apply <名称>     # 应用配置方案并写入 opencode.jsonc
+ocp profile reset --yes      # 非交互直接移除模型引用
+ocp profile                  # 交互式选择并应用配置方案
+```
+
+不带子命令时，`ocp provider` 与 `ocp profile` 直接运行与 `/provider`、`/profile` 相同的 standalone 对话框向导，包含嵌套菜单、确认步骤和 Esc 逐级返回。模型目录走统一的 OpenCode bridge：内置 TUI 使用 OpenCode SDK bridge，standalone 使用 `opencode` CLI bridge（`models --verbose`）；不可用时自动落到 `models.dev` / 本地配置文件。交互与斜杠命令一致。`provider list`、`profile list`、`profile apply <名称>`、`profile reset --yes` 可非交互运行；非 TTY 下交互模式返回退出码 1 并提示替代命令。
 
 ## 相关页面
 

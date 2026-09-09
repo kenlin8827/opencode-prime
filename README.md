@@ -4,7 +4,7 @@
 
 **Production-ready multi-agent engineering for [OpenCode](https://opencode.ai).**
 
-[![Version](https://img.shields.io/badge/version-0.31.0-blue.svg)](https://github.com/kenlin8827/opencode-prime/releases)
+[![Version](https://img.shields.io/badge/version-0.32.0-blue.svg)](https://github.com/kenlin8827/opencode-prime/releases)
 ![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-lightgrey.svg)
 
@@ -48,6 +48,8 @@ ocp wizard          # configure OCP interactively
 ocp dashboard       # manage MCPs, plugins, and model tiers
 ocp provider        # configure model providers
 ocp profile         # select or manage a model-tier profile
+ocp project         # configure and initialize the current project
+ocp usage           # inspect token and cost usage across projects
 ocp web             # launch the OpenChamber web UI
 ocp desktop         # launch the native desktop app
 ocp update          # check and apply available updates

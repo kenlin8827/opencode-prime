@@ -508,6 +508,13 @@ if (!effective.mcp || typeof effective.mcp !== 'object') throw new Error('loadEf
 const effective2 = loadEffectiveOptions(repoDir, testTargetDir, { mcp: { serena: false } });
 if (effective2.mcp?.serena !== false) throw new Error('customOptions failed to override mcp.serena');
 if (effective2.mcp?.codegraph !== true) throw new Error('customOptions replaced entire mcp map');
+if (
+  effective2.tui_mode !== 'herdr' ||
+  effective2.tools?.openchamber_web !== false ||
+  effective2.tools?.openchamber_vscode !== false
+) {
+  throw new Error('defaults must retain Herdr mode while opt-in surfaces stay disabled');
+}
 console.log('✓ Effective options load passed');
 
 // 4. Manifest Generation

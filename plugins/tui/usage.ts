@@ -547,6 +547,13 @@ function formatBar(pct: number, width = 6): string {
   return "\u2588".repeat(Math.min(filled, width)) + "\u2591".repeat(Math.max(0, width - Math.min(filled, width)))
 }
 
+/** Percentage and bar share one fixed-width cell: percentages from 0.0% to
+ * 100.0% reserve five numeric columns, so every bar starts at the same x
+ * position even when a row's share has fewer digits. */
+function formatShare(pct: number): string {
+  return `${pct.toFixed(1).padStart(5)}% ${formatBar(pct)}`
+}
+
 function hitRate(cacheRead: number, input: number): string {
   const denom = input + cacheRead
   return denom > 0 ? ((cacheRead / denom) * 100).toFixed(1) : "0.0"
@@ -755,7 +762,7 @@ function renderSessionTable(sessions: SessionUsage[], currentSessionId: string, 
       String(s.steps),
       fmtCost(s.cost, s.estimatedCost, s.costKnown),
       ...(showCredits ? [fmtCredits(s.creditsKnown ? s.credits : null)] : []),
-      `${pct.toFixed(1)}% ${formatBar(pct)}`,
+       formatShare(pct),
     ]
   })
   const totalRow = [
@@ -825,7 +832,7 @@ function renderAgentTable(sessions: SessionUsage[], targetWidth = 0): TableView 
       String(g.steps),
       fmtCost(g.cost, g.estimatedCost, g.costKnown),
       ...(showCredits ? [fmtCredits(g.credits)] : []),
-      `${pct.toFixed(1)}% ${formatBar(pct)}`,
+       formatShare(pct),
     ]
   })
   const totalRow = [
@@ -900,7 +907,7 @@ function renderModelTable(sessions: SessionUsage[], targetWidth = 0): TableView 
       String(g.steps),
       fmtCost(g.cost, g.estimatedCost, g.costKnown),
       ...(showCredits ? [fmtCredits(g.credits)] : []),
-      `${pct.toFixed(1)}% ${formatBar(pct)}`,
+       formatShare(pct),
     ]
   })
   const totalRow = [

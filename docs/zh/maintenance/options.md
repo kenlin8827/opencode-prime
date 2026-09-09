@@ -42,14 +42,15 @@
        // 是否启用 rtk 输出压缩（60-90% token 节省）
        "rtk": true,
        // OpenChamber 拆分为三个独立面，各自一个开关：
-       // 网页版 CLI（缺失时自动安装 @openchamber/web；提供 `ocp web`，需 Node.js 22+）
-       "openchamber_web": true,
+        // 网页版 CLI（缺失时自动安装 @openchamber/web；提供 `ocp web`，需 Node.js 22+）
+        // 默认关闭：启用后会安装全局包。
+        "openchamber_web": false,
        // `ocp desktop` / `ocp ui` 的原生桌面应用——始终需另行下载
        // （https://openchamber.dev/download）；安装时仅检测是否已安装
        "openchamber_desktop": true,
        // `ocp code` 的 VS Code 扩展（缺失时通过编辑器 CLI 自动安装
-       // fedaykindev.openchamber）
-       "openchamber_vscode": true,
+        // fedaykindev.openchamber）。默认关闭：启用后会修改编辑器。
+        "openchamber_vscode": false,
        // 终端工作空间管理器（tui_mode 为 "herdr" 时自动视为 true）
        "herdr": false
      },
@@ -129,13 +130,13 @@
 
 [Herdr](https://herdr.dev) 是为 AI 编码代理量身打造的终端工作区管理器。每个 herdr 工作区都以某个目录为根，并在新 pane 里自动启动 opencode（通过 OCP 的 `auto-opencode` 插件）。开启 `"herdr": true` 后，安装器会在本地缺 `herdr` 命令时自动拉取，并把内置配置链接到 `~/.config/herdr/config.toml`。
 
-默认 `"herdr": false`——不用 herdr 就保持关闭。
+由于 `tui_mode` 默认值为 `"herdr"`，Herdr 默认启用。若不需要，可在向导或此配置中关闭。
 
 要让 `ocp tui` 走 herdr 而非直接启动 `opencode`，请设：
 
 ```jsonc
 // install/options.jsonc
-"tui_mode": "herdr"   // "direct"（默认）| "herdr"
+"tui_mode": "herdr"   // "direct" | "herdr"（默认）
 ```
 
 选 `"herdr"` 会自动启用 `tools.herdr`（覆盖显式设为 `false` 的情况），并打印一行提示，无需再手动开启第二个开关。
@@ -144,13 +145,13 @@
 
 ## OpenChamber（`ocp desktop` / `ocp web` / `ocp code`）
 
-安装时自动供应 [OpenChamber](https://openchamber.dev) —— 运行在本地 OpenCode 引擎之上的图形界面层（双栏 Diff 审查、多模型对比、会话时间线）。它拆分为**三个独立面**，各自对应一个 `tools.openchamber_*` 开关：
+安装时可供应 [OpenChamber](https://openchamber.dev) —— 运行在本地 OpenCode 引擎之上的图形界面层（双栏 Diff 审查、多模型对比、会话时间线）。它拆分为**三个独立面**，各自对应一个 `tools.openchamber_*` 开关；Web 与 VS Code 默认按需启用：
 
 | 开关 | 表面 | 安装时的行为 |
 |---|---|---|
-| `tools.openchamber_web` | **网页版** —— `@openchamber/web` CLI，提供 `ocp web` | 本地缺少 `openchamber` 命令时，通过检测到的第一个包管理器（pnpm > bun > yarn > npm）全局安装（需 Node.js 22+） |
+| `tools.openchamber_web` | **网页版** —— `@openchamber/web` CLI，提供 `ocp web` | **默认：false。** 启用后，本地缺少 `openchamber` 命令时通过检测到的第一个包管理器（pnpm > bun > yarn > npm）全局安装（需 Node.js 22+） |
 | `tools.openchamber_desktop` | **桌面版** —— 提供 `ocp desktop` / `ocp ui` 的原生应用 | 仅检测是否已安装，缺失时打印下载链接——安装器**从不**下载桌面应用（[openchamber.dev/download](https://openchamber.dev/download)） |
-| `tools.openchamber_vscode` | **VS Code 扩展** —— 提供 `ocp code` | 本地缺少扩展时，通过检测到的第一个编辑器 CLI（`code`、`code-insiders`、`codium`、`cursor`、`windsurf`）安装 `fedaykindev.openchamber` |
+| `tools.openchamber_vscode` | **VS Code 扩展** —— 提供 `ocp code` | **默认：false。** 启用后，本地缺少扩展时通过检测到的第一个编辑器 CLI（`code`、`code-insiders`、`codium`、`cursor`、`windsurf`）安装 `fedaykindev.openchamber` |
 
 安装完成后即可启动：
 
@@ -161,7 +162,7 @@ ocp code         # 打开 VS Code 并保证 OpenChamber 扩展就绪
 ocp tui          # OpenCode 终端界面
 ```
 
-若不需要某个面：在 `install/options.jsonc` 中把对应开关设为 `false` 后重新安装即可（已安装的组件不受影响）。被关闭的面同样会被 `ocp code` 的自动安装跳过。
+若需要 Web 或 VS Code：在 `install/options.jsonc` 中把对应开关设为 `true` 后重新安装即可。任何面设为 `false` 都会跳过（已安装的组件不受影响）；被关闭的面同样会被 `ocp code` 的自动安装跳过。
 
 ---
 

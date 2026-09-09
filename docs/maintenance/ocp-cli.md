@@ -16,9 +16,11 @@ After a one-time `register` (or a default install), the repo provisioned two glo
 | `ocp web` | | Launch the **OpenChamber web UI** (`openchamber serve`); auto-generates a `--ui-password`, auto-picks a free port starting at 3000 (see [port policy](#web-port-and-password-policy)) |
 | `ocp code` | | Open the current project in **VS Code** (also probes `code-insiders` / `codium` / `cursor` / `windsurf`) with the OpenChamber editor extension guaranteed: `fedaykindev.openchamber` is auto-installed via the editor CLI when missing. Add `--init` to create/activate the OCP project before launching; a bare `.` passes through so VS Code opens the current folder |
 | `ocp desktop` | `ocp ui` | Launch the **OpenChamber native desktop app** (a separate download from [openchamber.dev/download](https://openchamber.dev/download)). Add `--init` or pass `.` to create/activate the OCP project in the current directory, register it as an OpenChamber project, and then launch the desktop app. |
+| `ocp project` | | Create or activate the OCP project in the current directory; opens the project wizard in an interactive terminal |
 | `ocp project init` | | Create or activate the OCP project in the current directory: create baseline files when missing, sync + refresh indexes when already present |
 | `ocp project index` | | Manually refresh existing code-intelligence indexes in the current project |
 | `ocp project sync` | | Append newly added template switches to the existing project config (append-only, never overwrites) |
+| `ocp usage [--all\|.\|sessionId]` | | Open the token and cost usage view for every project (default), the current directory, or one session |
 | `ocp install` | | Apply the current version's manifest to the target (`~/.config/opencode` by default) |
 | `ocp update` | | Check the suite (newest `install/version.json` on `main` vs what is installed in `~/.config/opencode`) **and** the companion tools (`opencode`, `openchamber`). Every available update is selected by default — on an interactive terminal press Enter to apply it or `n` to skip it. Add `-y` to apply ALL pending updates without prompting (safe for scripts/cron); add `--check-only` to probe versions and apply nothing (this is also the default when run non-interactively without `-y`) |
 | `ocp upgrade` | | Pull the latest release and re-apply the installer: `git pull --ff-only` for git clones, otherwise download `opencode-prime-latest.{tar.gz,zip}` from GitHub Releases (same source as the one-liner quick install; set `OCP_RELEASE_MIRROR` to a ghproxy-style prefix as fallback). Add `--force` to re-apply even when already up to date |
@@ -29,6 +31,8 @@ After a one-time `register` (or a default install), the repo provisioned two glo
 | `ocp unregister` | | Remove the global shims from `~/.local/bin` |
 | `ocp wizard` | `ocp menu` | Interactive TUI setup wizard (first-run and reconfigure flows) |
 | `ocp dashboard` | `ocp cc`, `ocp matrix` | Single-screen TUI control center — toggle MCP servers / plugins / RTK, cycle agent model tiers, then install |
+| `ocp provider` | | Manage model providers — bare command runs the standalone `/provider` dialog wizard (add, import, edit, delete); `ocp provider list` prints configured providers without a TTY |
+| `ocp profile` | | Manage model-tier profiles — bare command runs the standalone `/profile` dialog wizard; `ocp profile list`, `ocp profile apply <name>` and `ocp profile reset --yes` run without a TTY (bare `profile reset` asks for confirmation first) |
 | `ocp session list` | | List sessions (passthrough to `opencode session list`) |
 | `ocp session delete` | | Delete a session by ID (passthrough to `opencode session delete`) |
 | `ocp session clean` | | Delete old sessions via `opencode session delete`. Usage: `ocp session clean --days 7 [--dry-run] [-y] [--project <id|name>] [--directory <path>]` |
@@ -41,6 +45,15 @@ After a one-time `register` (or a default install), the repo provisioned two glo
 
 ## Launcher Subcommands in Detail
 
+### `ocp provider` and `ocp profile`
+
+With no subcommand, both commands run the same standalone dialog wizard used by `/provider` and `/profile`.
+Model catalogs go through a shared OpenCode bridge: the built-in TUI uses OpenCode's SDK bridge; the standalone CLI uses the `opencode` CLI bridge (`models --verbose`); when the bridge is unavailable the wizards automatically fall back to `models.dev` and the local config file. Interaction and slash commands remain identical.
+The interactive flow matches the slash-command experience, including nested menus, confirmations, and Esc back navigation.
+
+Non-interactive commands are `ocp provider list`, `ocp profile list`, `ocp profile apply <name>`, and `ocp profile reset --yes`.
+On a non-TTY, interactive mode exits with code 1 and prints the available alternatives; `profile reset` requires `--yes`.
+
 ### `ocp tui` — terminal UI
 
 Requires `opencode` on PATH (the installer provisions it). Every argument after `tui` is passed to `opencode` verbatim:
@@ -51,7 +64,7 @@ ocp tui --version           # opencode's own --version
 ocp tui --init              # init/activate current project, then open TUI
 ```
 
-By default `ocp tui` launches `opencode` directly in the current shell. To route it through a herdr workspace instead (equivalent to `ocp herdr`), set `"tui_mode": "herdr"` in `install/options.jsonc` — this auto-enables `tools.herdr` if it isn't already.
+By default, `ocp tui` routes through a Herdr workspace (equivalent to `ocp herdr`). Set `"tui_mode": "direct"` in `install/options.jsonc` to launch `opencode` directly in the current shell instead. Herdr mode auto-enables `tools.herdr` if it is not already enabled.
 
 CLI overrides (one-shot, take precedence over `tui_mode`):
 
@@ -73,7 +86,7 @@ ocp serve --port 4096       # pin the port
 
 ### `ocp web` — OpenChamber web UI
 
-Requires the `openchamber` CLI (auto-provisioned on install when `"openchamber_web": true` in `install/options.jsonc`; needs Node.js 22+). Behavior:
+Requires the `openchamber` CLI (opt in to auto-provisioning with `"openchamber_web": true` in `install/options.jsonc`; needs Node.js 22+). Behavior:
 
 - **Fresh session**: if an OpenChamber instance is already running, it is stopped first (a fresh `--ui-password` launch would otherwise die on the occupied port and leak a useless password);
 - **Password**: a random UI password is generated and printed (`🔑 OpenChamber web UI password: ...`) unless you pass your own `--ui-password`;
@@ -124,7 +137,7 @@ Editor CLI resolution: `code` → `code-insiders` → `codium` → `cursor` → 
 - A bare `.` is **not** swallowed: VS Code itself interprets it as "open the current folder", so `ocp code .` passes it through.
 - Every other argument is forwarded verbatim (`ocp code -n` opens a new window, `ocp code <dir>` opens that folder).
 - A failed extension install never blocks the launch — it is reported and the editor still opens.
-- Opt out of the auto-install with `"openchamber_vscode": false` in `install/options.jsonc` (`ocp code` then just opens the editor).
+- Auto-install is disabled by default. Enable it with `"openchamber_vscode": true` in `install/options.jsonc`; when disabled, `ocp code` just opens the editor.
 
 ```bash
 ocp code                 # open VS Code, ensure the extension, open nothing in particular
@@ -137,7 +150,7 @@ ocp code -n .            # open the current folder in a new window
 
 ## Project Subcommands
 
-`ocp project init|index|sync` are terminal mirrors of the `/project` slash command family. They operate on the **current working directory** (not the install target):
+`ocp project` is a terminal mirror of the `/project` slash command family. It operates on the **current working directory** (not the install target). With no subcommand, it runs `project init`; in an interactive terminal this opens the project wizard. For scripts, use `ocp project init --headless` to skip prompts.
 
 | Command | What it does |
 | :--- | :--- |
@@ -149,6 +162,24 @@ ocp code -n .            # open the current folder in a new window
 ocp project init            # create/activate project in cwd
 ocp project index           # refresh indexes for existing project
 ocp project sync            # append missing template switches
+```
+
+---
+
+## Usage
+
+`ocp usage [--all|.|sessionId]` opens the token and cost usage view:
+
+| Argument | Scope |
+| :--- | :--- |
+| *(none)* or `--all` | All projects (default) |
+| `.` | The current working directory |
+| `<sessionId>` | One specific session |
+
+```bash
+ocp usage                 # inspect usage across every project
+ocp usage .               # inspect usage for the current directory
+ocp usage <sessionId>     # inspect one session directly
 ```
 
 ---
@@ -220,6 +251,21 @@ ocp session clean --project opencode-prime --days 7  # clean by project path/nam
 The command prints a summary before deleting: session count, age breakdown, token totals, and up to 10 sample session titles. Deletion is performed via `opencode session delete` (the official CLI), so all storage operations go through the engine — no direct database access.
 
 ---
+
+## Provider and profile commands
+
+These commands share state and core logic with the TUI `/provider` and `/profile` commands.
+
+```bash
+ocp provider list             # list configured providers
+ocp provider                  # add, import, edit, or delete providers
+ocp profile list              # list installed profiles
+ocp profile apply <name>     # apply a profile and write opencode.jsonc
+ocp profile reset            # confirm and remove model references
+ocp profile                  # select and apply a profile interactively
+```
+
+`provider` manages provider definitions and credentials. `profile` manages profile files, tier mappings, and model references. `list` and `profile apply <name>` work without a TTY; interactive actions and `profile reset` return a usage error when stdin or stdout is not a TTY.
 
 ## Related Pages
 

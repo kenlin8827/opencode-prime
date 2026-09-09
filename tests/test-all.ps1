@@ -11,6 +11,8 @@ param(
     [switch]$StructuralOnly
 )
 
+# OpenTUI primary paths are renderer-tested without a real terminal.
+
 Set-Location "$PSScriptRoot\.."
 
 # ============================================================================
@@ -375,14 +377,23 @@ $allFiles = @(
     "plugins/design-token-guard.ts", "plugins/ai-slop-scanner.ts",
     "plugins/tui/usage.ts", "plugins/auto-format.ts",
     "plugins/tui/queue-manager.ts",
-    "plugins/tui/project-wizard.ts",
+    "plugins/tui/provider-wizard.ts", "plugins/tui/profile-wizard.ts",
+    "install/src/ui/tui-host.ts", "install/src/ui/app.tsx",
+    "install/src/ui/opencode-theme.ts", "install/src/ui/builtin-themes.ts",
+    "install/src/options-schema.ts",
+    "tests/test-ocp-ui-theme-unit.ts",
+    "plugins/shared/profile-core.ts", "plugins/shared/provider-core.ts",
+    "tests/test-ocp-tui-host-unit.ts", "tests/test-provider-wizard-unit.ts",
+    "tests/test-profile-apply-unit.ts", "tests/test-profile-reset-unit.ts",
     "plugins/lite-mode.ts",
     "plugins/lite-mode/lite-mode.ts",
     "plugins/shared/plugin-scope.ts",
     "plugin-scope.json",
     "plugins/lite-tools.ts",
     # Config
-    "tsconfig.json", "package.json"
+    "tsconfig.json", "package.json",
+    "tests/test-provider-core-unit.ts", "tests/test-profile-core-unit.ts",
+    "tests/test-ocp-wizard-cli-unit.ts", "tests/test-ocp-ui-router-unit.ts", "tests/test-ocp-ui-render.tsx"
 )
 foreach ($f in $allFiles) {
     Check "file exists: $f" (Test-Path "$PSScriptRoot\..\$f")
@@ -737,39 +748,44 @@ Check "usage.ts: registers palette command with slashName" ($mtPlugin -match "sl
 Check "usage.ts: exports default TuiPluginModule with id" ($mtPlugin -match "export default plugin")
 Check "tui.template.jsonc: usage registered in plugin array" ($tuiTemplateRaw -match '"\.\/plugins\/tui\/usage\.ts"')
 
-# Project wizard plugin checks (plugins/tui/project-wizard.ts — TUI-only, registered via tui.template.jsonc)
-$pwPlugin = Get-Content "$PSScriptRoot\..\plugins\tui\project-wizard.ts" -Raw
-Check "project-wizard.ts: imports TuiPlugin from plugin/tui" ($pwPlugin -match "@opencode-ai/plugin/tui")
-Check "project-wizard.ts: registers palette command with slashName project-wizard" ($pwPlugin -match 'slashName: "project-wizard"' -and $pwPlugin -match 'namespace: "palette"')
-Check "project-wizard.ts: supports re-entrant switch detection" ($pwPlugin -match "detectCurrentSwitches")
-Check "tui.template.jsonc: project-wizard registered in plugin array" ($tuiTemplateRaw -match '"\./plugins/tui/project-wizard\.ts"')
+# Provider wizard plugin checks (plugins/tui/provider-wizard.ts — the same
+# module is hosted by opencode's /provider slash command AND by the
+# standalone OpenTUI host behind `ocp provider` — one wizard, two hosts.)
+$pvPlugin = Get-Content "$PSScriptRoot\..\plugins\tui\provider-wizard.ts" -Raw
+Check "provider-wizard.ts: imports TuiPlugin from plugin/tui" ($pvPlugin -match "@opencode-ai/plugin/tui")
+Check "provider-wizard.ts: registers palette command with slashName provider" ($pvPlugin -match 'slashName: "provider"' -and $pvPlugin -match 'namespace: "palette"')
+Check "provider-wizard.ts: exports default TuiPluginModule with id" ($pvPlugin -match "export default plugin")
+Check "provider-wizard.ts: /disconnect keymap command exists" ($pvPlugin -match 'slashName: "disconnect"')
 
-# Profile wizard plugin checks (plugins/tui/profile-wizard.ts — TUI-only, registered via tui.template.jsonc)
+# Profile wizard plugin checks (plugins/tui/profile-wizard.ts — hosted by
+# opencode /profile AND `ocp profile` through the compat TuiPluginApi host)
 $pfPlugin = Get-Content "$PSScriptRoot\..\plugins\tui\profile-wizard.ts" -Raw
 $i18nContent = Get-Content "$PSScriptRoot\..\plugins\tui\i18n.ts" -Raw
 Check "profile-wizard.ts: imports TuiPlugin from plugin/tui" ($pfPlugin -match "@opencode-ai/plugin/tui")
 Check "profile-wizard.ts: slash command name is profile" ($pfPlugin -match 'slashName: "profile"')
 Check "profile-wizard.ts: registers palette command" ($pfPlugin -match 'namespace: "palette"')
 Check "profile-wizard.ts: has Edit agent→tier mapping sub-menu" ($pfPlugin -match "EDIT_TIERS")
-Check "profile-wizard.ts: has editAgentTier function" ($pfPlugin -match "function editAgentTier")
 Check "profile-wizard.ts: has Edit tier→model live sub-menu" ($pfPlugin -match "EDIT_TIER_MODELS")
 Check "profile-wizard.ts: has editTierModels function" ($pfPlugin -match "function editTierModels")
-Check "profile-wizard.ts: has applyTierModelChanges function" ($pfPlugin -match "async function applyTierModelChanges")
-Check "profile-wizard.ts: live tier→model syncs active profile file" ($pfPlugin -match "writeProfileAtomic\(activeName")
 Check "profile-wizard.ts: profile selection has confirm gate showing tier→model" ($pfPlugin -match "function confirmApplyProfile")
-Check "profile-wizard.ts: delete lives in tier review, goes straight to confirm dialog" (($pfPlugin -match "confirmDeleteProfile\(api, name, profile, overrides\)") -and ($pfPlugin -notmatch "promptDeleteProfile"))
 Check "profile-wizard.ts: dialogs group data vs actions via category headers, no fake divider rows" (($pfPlugin -match "profile\.actionsHeader") -and ($pfPlugin -notmatch 'option\.value === SEP') -and ($i18nContent -notmatch "function sepItem"))
-Check "profile-wizard.ts: has pickAgentTier function" ($pfPlugin -match "function pickAgentTier")
-Check "profile-wizard.ts: has applyAgentTierChanges function" ($pfPlugin -match "async function applyAgentTierChanges")
-Check "profile-wizard.ts: has writeTiersFileAtomic function" ($pfPlugin -match "function writeTiersFileAtomic")
-Check "profile-wizard.ts: has VALID_TIERS constant" ($pfPlugin -match "VALID_TIERS")
-Check "profile-wizard.ts: tier editor writes tiers.json atomically" ($pfPlugin -match "writeTiersFileAtomic")
-Check "profile-wizard.ts: tier editor live-applies via global config API" ($pfPlugin -match "applyLive")
-Check "profile-wizard.ts: reset strips model refs and deactivates profile" (($pfPlugin -match "function resetModels") -and ($pfPlugin -match "export function stripModelRefs") -and ($pfPlugin -match "confirmReset"))
 Check "profile-wizard.ts: /profile reset subcommand parses via ctx" ($pfPlugin -match "export function parseProfileSubcommand")
-Check "profile-wizard.ts: reset keeps profiles and tiers.json (confirm gate)" ($pfPlugin -match "profile\.resetMsg")
 Check "profile-wizard.ts: no explicit back items, Esc is the only back nav" (($pfPlugin -notmatch '"__back__"') -and ($pfPlugin -match 'navigated'))
+Check "tui.template.jsonc: provider-wizard registered in plugin array" ($tuiTemplateRaw -match '"\./plugins/tui/provider-wizard\.ts"')
 Check "tui.template.jsonc: profile-wizard registered in plugin array" ($tuiTemplateRaw -match '"\./plugins/tui/profile-wizard\.ts"')
+
+# Standalone host wiring: `ocp provider|profile` loads the SAME plugin
+# modules through a TuiPluginApi-compatible adapter — it must never
+# re-implement the wizard flows.
+$appUi = Get-Content "$PSScriptRoot\..\install\src\ui\app.tsx" -Raw
+Check "ui/app.tsx: loads the provider wizard plugin module" ($appUi -match "import providerWizard from .*plugins/tui/provider-wizard")
+Check "ui/app.tsx: loads the profile wizard plugin module" ($appUi -match "import profileWizard from .*plugins/tui/profile-wizard")
+Check "ui/app.tsx: dispatches the plugins' own command names" (($appUi -match "provider\.wizard") -and ($appUi -match "profile\.switch"))
+Check "ui/app.tsx: compat host exposes DialogSelect/Prompt/Confirm/Alert" (($appUi -match "DialogSelect") -and ($appUi -match "DialogPrompt") -and ($appUi -match "DialogConfirm") -and ($appUi -match "DialogAlert"))
+Check "ui/app.tsx: host adopts the opencode theme before first render" ($appUi -match "applyOpenCodeTheme")
+$btTheme = Get-Content "$PSScriptRoot\..\install\src\ui\builtin-themes.ts" -Raw
+Check "builtin-themes.ts: mirrors the opencode default theme" ($btTheme -match '"opencode"')
+Check "ui controllers do not re-implement the wizards" (-not (Test-Path "$PSScriptRoot\..\install\src\controllers"))
 
 # SDD plugin checks (plugins/sdd/ — engine-only; commands live in commands/*.md,
 # the protocol lives at L2 in skills/sdd-workflow/SKILL.md)
@@ -951,6 +967,28 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-lite-tools-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-model-preserve-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-provider-core-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-profile-core-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-ocp-wizard-cli-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-ocp-tui-host-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-ocp-ui-router-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-ocp-ui-theme-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+# The render test mounts real OpenTUI Solid components — it needs the
+# @opentui/solid preload from install/node_modules so the app's imports
+# resolve to the SAME package copy (plain --jsx-import-source picks the
+# root copy and the renderer context mismatches).
+& bun --preload "$PSScriptRoot\..\install\node_modules\@opentui\solid\scripts\preload.js" "$PSScriptRoot\test-ocp-ui-render.tsx"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-provider-wizard-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-profile-apply-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-profile-reset-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }

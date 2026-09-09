@@ -8,7 +8,24 @@ $ScriptDir = $PSScriptRoot
 $RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..')).Path
 $EntryFile = Join-Path $ScriptDir 'src/index.ts'
 
-$isInfoCmd = $args -contains "status" -or $args -contains "version" -or $args -contains "--help" -or $args -contains "-h" -or $args -contains "help" -or $args -contains "unregister" -or $args -contains "session" -or $args -contains "auth" -or $args -contains "desktop" -or $args -contains "code" -or $args -contains "project"
+function Find-WorkingBun {
+    # `Get-Command bun` can return a stale first PATH entry after a Windows
+    # Bun upgrade. Prefer the first executable that actually exists, including
+    # the current user's standard Bun install location.
+    $candidates = @()
+    if ($env:BUN_INSTALL) { $candidates += (Join-Path $env:BUN_INSTALL 'bin\bun.exe') }
+    $candidates += (Join-Path $HOME '.bun\bin\bun.exe')
+    foreach ($command in @(Get-Command bun -All -ErrorAction SilentlyContinue)) {
+        if ($command.Path) { $candidates += $command.Path }
+    }
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    }
+    return $null
+}
+
+$BunExe = Find-WorkingBun
+$isInfoCmd = $args -contains "status" -or $args -contains "version" -or $args -contains "--help" -or $args -contains "-h" -or $args -contains "help" -or $args -contains "unregister" -or $args -contains "session" -or $args -contains "auth" -or $args -contains "desktop" -or $args -contains "code" -or $args -contains "project" -or $args -contains "provider"
 
 # 0. Check for OpenCode CLI and offer automated install if missing (only for installation workflows)
 if (-not $isInfoCmd -and -not (Get-Command opencode -ErrorAction SilentlyContinue)) {
@@ -60,8 +77,8 @@ if ($sourceRoots.Count -gt 0) {
 }
 $useSource = (Test-Path $SrcFile) -and ((-not (Test-Path $BundledFile)) -or ($newestSource -and $newestSource.LastWriteTimeUtc -gt (Get-Item $BundledFile).LastWriteTimeUtc))
 
-if ($useSource -and (Get-Command bun -ErrorAction SilentlyContinue)) {
-    & bun run "$SrcFile" @args
+if ($useSource -and $BunExe) {
+    & $BunExe run "$SrcFile" @args
     exit $LASTEXITCODE
 }
 
@@ -76,8 +93,8 @@ if ($useSource -and (Get-Command node -ErrorAction SilentlyContinue)) {
 }
 
 if (Test-Path $BundledFile) {
-    if (Get-Command bun -ErrorAction SilentlyContinue) {
-        & bun "$BundledFile" @args
+    if ($BunExe) {
+        & $BunExe "$BundledFile" @args
         exit $LASTEXITCODE
     }
     if (Get-Command node -ErrorAction SilentlyContinue) {
@@ -87,8 +104,8 @@ if (Test-Path $BundledFile) {
 }
 
 # 2. Try Bun with source files
-if (Get-Command bun -ErrorAction SilentlyContinue) {
-    & bun run "$SrcFile" @args
+if ($BunExe) {
+    & $BunExe run "$SrcFile" @args
     exit $LASTEXITCODE
 }
 

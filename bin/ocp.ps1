@@ -1,4 +1,4 @@
-#requires -Version 7.0
+#requires -Version 5.1
 <#
 .SYNOPSIS
     bin/ocp.ps1 — alias dispatcher for OpenCode Prime (OCP)

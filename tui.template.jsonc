@@ -1,13 +1,15 @@
 {
   // Installer merges this with the user's tui.jsonc; user scalar values and
   // plugins are preserved. Every OCP TUI plugin must be registered here.
+  // The standalone OpenTUI CLI (`ocp provider|profile`) loads the SAME wizard
+  // plugin modules through a TuiPluginApi-compatible host — one wizard, two hosts.
   "$schema": "https://opencode.ai/tui.json",
   "display_thinking": true,
   "plugin": [
     "./plugins/tui/provider-wizard.ts",
     "./plugins/tui/profile-wizard.ts",
-    "./plugins/tui/queue-manager.ts",
     "./plugins/tui/project-wizard.ts",
+    "./plugins/tui/queue-manager.ts",
     "./plugins/tui/sidebar-status.ts",
     "./plugins/tui/usage.ts",
   ]

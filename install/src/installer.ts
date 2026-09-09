@@ -918,8 +918,8 @@ export function executeInstall(
   // 11. Deploy the bundled OCP models/cost.jsonc (coding-plan points) to
   //     ~/.config/opencode/models/. Copy-if-missing — user's edits to the
   //     rates survive; --force overwrites.
-  const modelsCost = deployModelsCost(repoDir, effectiveOptions.force === true);
-  if (modelsCost.action === 'installed' || modelsCost.action === 'merged') {
+  const modelsCost = deployModelsCost(repoDir, args.force === true);
+  if (modelsCost.action === 'installed') {
     console.log(`✓ [models-cost] ${modelsCost.message}`);
   } else if (modelsCost.action === 'uptodate' || modelsCost.action === 'skipped') {
     console.log(`ℹ [models-cost] ${modelsCost.message}`);

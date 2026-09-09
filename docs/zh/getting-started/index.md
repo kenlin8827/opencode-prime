@@ -62,6 +62,10 @@ curl -fsSL https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/inst
 ```bash
 ocp              # 不带参数 = 启动 OpenCode 终端 TUI（等同 ocp tui）
 ocp dashboard    # 打开 TUI 全景控制台（别名：ocp cc / ocp matrix）
+ocp provider     # 配置模型服务商（与 /provider 同一向导）
+ocp profile      # 选择或应用模型层级预设（与 /profile 同一向导）
+ocp project      # 在当前目录初始化或配置 OCP 项目
+ocp usage        # 查看跨项目 Token 与费用用量
 ocp web          # OpenChamber Web 界面（自动生成密码）
 ocp code         # 打开 VS Code 并保证 OpenChamber 扩展就绪（缺失时自动安装）
 ocp update       # 检查套件 + opencode + openchamber，交互式升级勾选项

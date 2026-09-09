@@ -44,7 +44,7 @@ import type { ScaffoldResult, SyncResult } from "./project-manager-scaffold"
 const HELP = `[project-manager] Project scaffolding & configuration manager.
 
 Usage:
-- /project-wizard → open interactive two-tier setup wizard (TUI mode)
+- \`ocp project init --wizard\` → open the interactive project setup wizard
 - /project        → show available subcommands & options (CLI mode)
 - /project init   → scaffold baseline files & bootstrap indexes (headless / non-TUI):
                     create baseline files if missing (never overwrites):
@@ -82,7 +82,7 @@ function initReport(results: ScaffoldResult[], backends: BackendResult[], hooks:
 /** `/project setup` report (CLI / headless inspection). */
 function setupReport(): string {
   return `[project-manager] Project setup status in ${getProjectDir()}:
-- Interactive TUI: run /project-wizard (or Ctrl+P → "Project: Setup Wizard") to open the interactive dialog.
+- Interactive CLI: run \`ocp project init --wizard\` to open the project setup wizard.
 - Headless / CLI: run /project init to scaffold baseline files and bootstrap indexes.
 - Config sync: run /project sync to append newly added template switches.`
 }

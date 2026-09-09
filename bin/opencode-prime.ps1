@@ -1,4 +1,4 @@
-#requires -Version 7.0
+#requires -Version 5.1
 <#
 .SYNOPSIS
     bin/opencode-prime.ps1 — global dispatcher for the OpenCode Prime (OCP) repo.
@@ -215,6 +215,10 @@ switch ($Subcommand.ToLowerInvariant()) {
     'status' {
         & $Install status @Rest
         break
+    }
+    { $_ -in @('provider', 'profile') } {
+        & $Install $Subcommand @Rest
+        exit $LASTEXITCODE
     }
     'register' {
         & $Install register @Rest

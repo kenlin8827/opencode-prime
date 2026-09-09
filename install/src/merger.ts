@@ -236,8 +236,9 @@ export function extractPreserveBag(targetDir: string): PreserveBag {
     // follow the template but whose model picks are user-owned).
     const agentModels: Record<string, string> = {};
     for (const [name, def] of Object.entries(existingConfig.agent)) {
-      if (def && typeof def === "object" && typeof def.model === "string") {
-        agentModels[name] = def.model;
+      const agent = def as Record<string, unknown>;
+      if (agent && typeof agent.model === "string") {
+        agentModels[name] = agent.model;
       }
     }
     if (Object.keys(agentModels).length > 0) bag.userAgentModels = agentModels;

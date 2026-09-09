@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "dependencies": {
+    "@opencode-ai/plugin": "1.18.15",
+    "@opencode-ai/sdk": "1.18.15",
+    "@opentui/solid": "^0.5.4",
+    "solid-js": "1.9.12"
+  }
+}

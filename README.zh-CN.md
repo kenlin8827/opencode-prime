@@ -4,7 +4,7 @@
 
 **面向 [OpenCode](https://opencode.ai) 的生产级多智能体工程套件。**
 
-[![版本](https://img.shields.io/badge/version-0.31.0-blue.svg)](https://github.com/kenlin8827/opencode-prime/releases)
+[![版本](https://img.shields.io/badge/version-0.32.0-blue.svg)](https://github.com/kenlin8827/opencode-prime/releases)
 ![许可证](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)
 ![平台](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-lightgrey.svg)
 
@@ -50,6 +50,8 @@ ocp wizard          # 交互式配置 OCP
 ocp dashboard       # 管理 MCP、插件与模型层级
 ocp provider        # 配置模型 Provider
 ocp profile         # 选择或管理模型层级预设
+ocp project         # 配置并初始化当前项目
+ocp usage           # 查看跨项目 Token 与费用用量
 ocp web             # 启动 OpenChamber 网页界面
 ocp desktop         # 启动原生桌面应用
 ocp update          # 检查并安装可用更新

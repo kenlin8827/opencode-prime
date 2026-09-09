@@ -62,6 +62,10 @@ After installation, the global shortcuts are automatically registered. You can r
 ```bash
 ocp              # no arguments = launch the OpenCode terminal UI (same as ocp tui)
 ocp dashboard    # open the TUI control center (aliases: ocp cc / ocp matrix)
+ocp provider     # configure model providers (same wizard as /provider)
+ocp profile      # select or apply a model-tier profile (same wizard as /profile)
+ocp project      # initialize or configure the OCP project in the current directory
+ocp usage        # inspect token and cost usage across projects
 ocp web          # OpenChamber web UI (auto-generated password)
 ocp code         # open VS Code with the OpenChamber extension ensured (auto-installs when missing)
 ocp update       # check suite + opencode + openchamber, interactively apply the selected updates

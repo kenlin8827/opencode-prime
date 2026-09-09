@@ -23,6 +23,18 @@ export interface I18nText {
   menuPrompt: string;
   dashboardLabel: string;
   dashboardHint: string;
+  dashboardTitle: string;
+  dashboardTabBasic: string;
+  dashboardTabTools: string;
+  dashboardTabMcp: string;
+  dashboardTabPlugins: string;
+  dashboardTabReview: string;
+  dashboardTabsLabel: string;
+  dashboardTabsHint: string;
+  dashboardTargetLabel: string;
+  dashboardChangeSummaryLabel: string;
+  dashboardEnabledSummary: string;
+  dashboardReviewHint: string;
   quickInstallLabel: string;
   quickInstallHint: string;
   statusLabel: string;
@@ -47,6 +59,7 @@ export interface I18nText {
   installSummaryTitle: string;
   primaryAgentLabel: string;
   primaryAgentHint: string;
+  agentLabels: Record<string, { label: string; hint: string }>;
   rtkLabel: string;
   rtkHint: string;
   globalCommandsLabel: string;
@@ -60,6 +73,8 @@ export interface I18nText {
   tuiModeLabel: string;
   tuiModeHint: string;
   toolLabels: Record<string, { label: string; hint: string }>;
+  mcpLabels: Record<string, { label: string; hint: string }>;
+  pluginLabels: Record<string, { label: string; hint: string }>;
   mcpSectionHeader: string;
   pluginSectionHeader: string;
   targetSectionHeader: string;
@@ -95,6 +110,9 @@ export interface I18nText {
   globalRegTitle: string;
   confirmResetPrompt: string;
   confirmUninstallPrompt: string;
+  confirmBtn: string;
+  cancelBtn: string;
+  confirmFooter: string;
   exitedDashboard: string;
   targetDirectoryPrompt: string;
   cycleTierHint: string;
@@ -115,6 +133,18 @@ export const FALLBACK_EN: I18nText = {
   menuPrompt: 'Select an action to proceed:',
   dashboardLabel: '🎛️ Open Control Center (Single-Screen TUI Switch Matrix)',
   dashboardHint: 'Full overview of default agent, RTK, and all MCP/Plugin switches',
+  dashboardTitle: 'Dashboard',
+  dashboardTabBasic: 'Basic',
+  dashboardTabTools: 'Tools',
+  dashboardTabMcp: 'MCP',
+  dashboardTabPlugins: 'Plugins',
+  dashboardTabReview: 'Review',
+  dashboardTabsLabel: 'Tabs',
+  dashboardTabsHint: 'Tabs · ↑/↓',
+  dashboardTargetLabel: 'Installation target',
+  dashboardChangeSummaryLabel: 'Change summary',
+  dashboardEnabledSummary: '{count} enabled integrations will be saved.',
+  dashboardReviewHint: 'Use the shortcuts below to save or install.',
   quickInstallLabel: '⚡ Quick Install (Recommended defaults)',
   quickInstallHint: 'Apply options.jsonc directly to your config directory',
   statusLabel: '📊 Check Status & Tracked Files',
@@ -139,6 +169,12 @@ export const FALLBACK_EN: I18nText = {
   installSummaryTitle: '📦 Installation Summary',
   primaryAgentLabel: 'Primary Agent',
   primaryAgentHint: 'Default agent loaded on session start (default_agent)',
+  agentLabels: {
+    lite: { label: 'Lite', hint: 'Lean daily agent for quick fixes, lookups, Q&A, and small edits.' },
+    code: { label: 'Code', hint: 'Direct developer for implementation, fixes, refactoring, and tests.' },
+    build: { label: 'Build', hint: 'Task coordinator that routes coding work to the appropriate specialist.' },
+    plan: { label: 'Plan', hint: 'Planning coordinator for analysis, structured plans, and execution handoffs.' },
+  },
   rtkLabel: 'RTK Tokenizer',
   rtkHint: 'Rust Token Killer proxy & plugin',
   globalCommandsLabel: 'Global Commands',
@@ -159,6 +195,19 @@ export const FALLBACK_EN: I18nText = {
     herdr: { label: 'Herdr', hint: 'Terminal workspace manager for AI coding agents (https://herdr.dev) — `ocp herdr` opens current dir as workspace' },
     opencode: { label: 'OpenCode', hint: 'AI coding agent — powers `ocp tui`' },
   },
+  mcpLabels: {
+    serena: { label: 'Serena', hint: 'Semantic code navigation and editing through its MCP server.' },
+    codegraph: { label: 'CodeGraph', hint: 'Repository relationship analysis; run `codegraph init` once per project.' },
+    gitnexus: { label: 'GitNexus', hint: 'Repository intelligence integration; enable only when licensed and indexed.' },
+    dbhub: { label: 'DBHub', hint: 'Database gateway; requires a project `dbhub.toml` and DSN.' },
+    headroom: { label: 'Headroom', hint: 'Local compression MCP; its first run downloads a runtime and model.' },
+    idea: { label: 'JetBrains IDEA', hint: 'JetBrains IDE MCP integration; enable the server in the IDE first.' },
+  },
+  pluginLabels: {
+    '@dietrichgebert/ponytail': { label: 'Ponytail', hint: 'Bundled OpenCode interface enhancements.' },
+    'opencode-qoder-bridge': { label: 'Qoder Bridge', hint: 'Qoder integration; requires a supported Node.js version and `qoder login`.' },
+    'opencode-mem@2.24.3': { label: 'OpenCode Memory', hint: 'Captures persistent memory and may incur an LLM cost after idle sessions.' },
+  },
   mcpSectionHeader: '── 🔌 MCP Servers (Space to toggle) ──',
   pluginSectionHeader: '── 🧩 External Plugins (Space to toggle) ──',
   targetSectionHeader: '── 📁 Installation Target ──',
@@ -168,7 +217,7 @@ export const FALLBACK_EN: I18nText = {
   actionsSectionHeader: '── ⚡ Execution Actions ──',
   saveAndInstallBtn: '🚀 SAVE & INSTALL NOW',
   saveAndInstallHint: 'Apply configuration and install all files to target',
-  saveOnlyBtn: '💾 SAVE OPTIONS.JSONC ONLY',
+  saveOnlyBtn: '💾 SAVE CONFIGURATION',
   saveOnlyHint: 'Persist settings to options.jsonc without copying files',
   exitBtn: '🚪 EXIT',
   exitBtnHint: 'Close control center without saving',
@@ -194,6 +243,9 @@ export const FALLBACK_EN: I18nText = {
   globalRegTitle: '🌐 Global Command Registration',
   confirmResetPrompt: 'Are you sure you want to reset and clear {target}? (Backup created)',
   confirmUninstallPrompt: 'Safely uninstall all managed files from {target}?',
+  confirmBtn: 'Confirm',
+  cancelBtn: 'Cancel',
+  confirmFooter: 'Enter confirms · Esc cancels',
   exitedDashboard: 'Exited OpenCode Setup Control Center.',
   targetDirectoryPrompt: 'Enter new target directory [{target}]: ',
   cycleTierHint: 'Space/Enter to cycle tier',

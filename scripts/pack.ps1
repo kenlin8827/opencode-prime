@@ -125,7 +125,8 @@ New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
 $distSrc = Join-Path $RepoRoot 'install/dist'
 if (Get-Command bun -ErrorAction SilentlyContinue) {
     Write-Host "Building zero-dependency bundled installer..."
-    & bun build (Join-Path $RepoRoot 'install/src/index.ts') --outfile (Join-Path $distSrc 'index.js') --target bun
+    & bun build (Join-Path $RepoRoot 'install/src/index.ts') --outdir $distSrc --target bun --external '@opentui/core-*'
+    if ($LASTEXITCODE -ne 0) { throw "installer bundle failed (exit $LASTEXITCODE)" }
 }
 
 # 1. Fully mirror install/ directory (excluding node_modules or temp files)

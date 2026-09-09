@@ -9,7 +9,7 @@ ENTRY_FILE="$SCRIPT_DIR/src/index.ts"
 
 IS_INFO_CMD=false
 for arg in "$@"; do
-    if [ "$arg" = "status" ] || [ "$arg" = "version" ] || [ "$arg" = "--help" ] || [ "$arg" = "-h" ] || [ "$arg" = "help" ] || [ "$arg" = "unregister" ] || [ "$arg" = "session" ] || [ "$arg" = "auth" ] || [ "$arg" = "desktop" ] || [ "$arg" = "code" ] || [ "$arg" = "project" ]; then
+    if [ "$arg" = "status" ] || [ "$arg" = "version" ] || [ "$arg" = "--help" ] || [ "$arg" = "-h" ] || [ "$arg" = "help" ] || [ "$arg" = "unregister" ] || [ "$arg" = "session" ] || [ "$arg" = "auth" ] || [ "$arg" = "desktop" ] || [ "$arg" = "code" ] || [ "$arg" = "project" ] || [ "$arg" = "provider" ]; then
         IS_INFO_CMD=true
     fi
 done

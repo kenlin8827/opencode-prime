@@ -2,7 +2,8 @@
 /**
  * provider-creds — single source of truth for provider credentials.
  *
- * Extracted from provider-wizard.ts so both the TUI wizard and the
+ * Extracted from provider-wizard.ts so the TUI wizard (hosted by both
+ * opencode and the standalone OpenTUI CLI) and the
  * standalone /disconnect server plugin operate on the same stores with
  * the same semantics:
  *

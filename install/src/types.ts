@@ -8,8 +8,8 @@ export interface InstallOptions {
   // user's PATH; false = skip global command registration entirely.
   global_commands?: boolean;
   // How `ocp tui` starts:
-  //   "direct" (default) — launch opencode directly in the current terminal
-  //   "herdr"            — launch a herdr workspace rooted at cwd (equivalent
+  //   "direct"           — launch opencode directly in the current terminal
+  //   "herdr" (default)  — launch a herdr workspace rooted at cwd (equivalent
   //                        to `ocp herdr`); auto-enables tools.herdr
   tui_mode?: "direct" | "herdr";
   // Generic opt-in map for tools declared in install/tools.jsonc.
@@ -50,7 +50,10 @@ export type CommandAction =
   | "project-init"
   | "project-index"
   | "project-sync"
-  | "project-setup";
+  | "project-setup"
+  | "provider"
+  | "profile"
+  | "usage";
 
 export interface CliArgs {
   action: CommandAction;

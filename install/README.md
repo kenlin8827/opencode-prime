@@ -1,4 +1,4 @@
-# install (v0.31.0)
+# install (v0.32.0)
 
 Self-installing OpenCode Prime (OCP) powered by a unified **TypeScript engine** and an **interactive TUI Setup Wizard**.
 
@@ -159,18 +159,27 @@ model picks are now configured inside opencode itself:
 
 - `/connect <provider>` — authenticate an official provider
 - `/profile <name>` — apply a bundled profile (per-tier model picks)
+- `ocp provider` — manage providers from any terminal, no session required
+  (same wizard as `/provider`; `ocp provider list` for a quick overview)
+- `ocp profile` — select and apply a bundled profile from any terminal
+  (same wizard as `/profile`; `ocp profile list` / `ocp profile apply <name>`
+  for scripts)
 - `llm-router` credentials — set the `LLM_ROUTER_BASE_URL` /
   `LLM_ROUTER_API_KEY` environment variables, or edit the target
   `providers/llm-router.json` preset file directly
 
-The replacement workflow is tracked by a follow-up ADR.
+Together the slash commands (inside opencode sessions) and the `ocp provider` /
+`ocp profile` CLI commands (outside them) replace the retired helpers.
 
 ## Profiles
 
 A profile is a named preset bundling per-tier model picks, applied in one
-shot instead of editing each tier by hand. Profiles are applied from within
-an opencode session via the `/profile` slash command (see
-`plugins/profile-wizard.ts`, a TUI plugin registered in `tui.template.jsonc`):
+shot instead of editing each tier by hand. Profiles are applied via the
+`/profile` slash command inside an opencode session (see
+`plugins/profile-wizard.ts`, a TUI plugin registered in `tui.template.jsonc`),
+or from any terminal via `ocp profile` — the same wizard and semantics
+without a running session (`ocp profile list` / `ocp profile apply <name>`
+for non-interactive use):
 
 ```
 /profile                  # dialog picker; first entry shows current mapping
@@ -262,7 +271,7 @@ flash  (fastest/cheapest)  <=  standard  (general workhorse)  <=  pro  (stronges
 | `deepseek` | DeepSeek (official DeepSeek API) | deepseek-v4-flash / deepseek-v4-flash / deepseek-v4-pro / deepseek-v4-pro / MiniMax-M3 (minimax-cn) |
 | `anthropic` | Anthropic (official Anthropic API) | claude-haiku-4-5 / claude-haiku-4-5 / claude-sonnet-5 / claude-opus-5 / claude-sonnet-5 |
 | `google` | Google (official Vertex AI / Gemini API) | gemini-flash-lite-latest / gemini-2.5-flash / gemini-3-pro-preview / gemini-2.5-pro / gemini-2.5-flash |
-| `openai` | OpenAI (official OpenAI API) | gpt-5.6-luna / gpt-5.6-terra / gpt-5.6-terra / gpt-5.6-terra / gpt-4o |
+| `openai` | OpenAI (official OpenAI API) | gpt-5.6-luna / gpt-5.6-terra / gpt-5.6-terra / gpt-5.6-terra / gpt-5.6-luna |
 | `alibaba/coding-plan` | Alibaba Coding Plan (official) | qwen3.7-plus / qwen3.7-plus / qwen3-coder-next / MiniMax-M2.5 / qwen3.7-plus |
 | `alibaba/coding-plan-cn` | Alibaba Coding Plan China (official) | qwen3.7-plus / qwen3.7-plus / qwen3-coder-next / MiniMax-M2.5 / qwen3.7-plus |
 | `alibaba/token-plan` | Alibaba Token Plan (official) | deepseek-v4-flash-0731 / deepseek-v4-flash-0731 / qwen3.8-max / qwen3.8-max / qwen3.7-plus |
@@ -475,7 +484,7 @@ on install).
   already-installed `rtk` binary on PATH stays put).
 - OpenChamber ships as three independent surfaces, one `tools.openchamber_*`
   switch each:
-  - `openchamber_web` — `true` (default) installs the `@openchamber/web` CLI
+   - `openchamber_web` — `false` by default. `true` installs the `@openchamber/web` CLI
     globally via the first detected package manager (pnpm > bun > yarn > npm)
     when the `openchamber` binary is missing — it powers `ocp web` and needs
     Node.js 22+.
@@ -483,7 +492,7 @@ on install).
     `ocp ui` is always a separate download from https://openchamber.dev/download;
     the installer never downloads it — this switch only gates a presence
     check (the download link is printed when missing).
-  - `openchamber_vscode` — `true` (default) installs the OpenChamber editor
+   - `openchamber_vscode` — `false` by default. `true` installs the OpenChamber editor
     extension (`fedaykindev.openchamber`) via the first editor CLI found
     (`code`, `code-insiders`, `codium`, `cursor`, `windsurf`) when missing —
     it powers `ocp code`.

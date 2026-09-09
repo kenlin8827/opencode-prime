@@ -8,8 +8,8 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "jsx": "preserve",
-    "jsxImportSource": "solid-js"
+    "jsx": "react-jsx",
+    "jsxImportSource": "@opentui/solid"
   },
   "include": ["plugins/**/*.ts", "plugins/**/*.tsx", "tools/**/*.ts"],
   "exclude": ["node_modules"]

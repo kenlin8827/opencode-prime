@@ -2,8 +2,9 @@
  * Shared i18n module for all TUI wizard plugins.
  *
  * Centralizes locale detection, storage, and all translation strings
- * for profile-wizard, provider-wizard, project-wizard, queue-manager,
- * and usage.
+ * for profile-wizard, provider-wizard, queue-manager,
+ * and usage. The standalone OpenTUI host (`ocp provider|profile`) loads
+ * the same wizard plugins through a TuiPluginApi-compatible adapter.
  *
  * The chosen language is persisted as the "language" key of the shared
  * user config (~/.config/opencode/ocp.jsonc, via plugins/shared/ocp-config).
@@ -107,6 +108,14 @@ export function initI18n(api: TuiPluginApi): void {
   currentLocale = detectLocale()
 }
 
+/** Initialize translations without the TUI API (used by headless CLI commands). */
+export function initI18nHeadless(): void {
+  if (initialized) return
+  initialized = true
+  const saved = readOcpField<Locale>(CONFIG_KEY)
+  currentLocale = isRegistered(saved) ? saved : detectLocale()
+}
+
 export function setLocale(api: TuiPluginApi, locale: Locale): void {
   currentLocale = locale
   // Keep the in-memory value even if the file write fails (read-only home).
@@ -158,6 +167,10 @@ const STRINGS = {
   // ════════════════════════════════════════════════════════════════
   "profile.cmdTitle": { en: "Switch model profile", "zh-CN": "切换配置方案" },
   "profile.cmdDesc": { en: "Select a profile, edit agent tiers or live tier models, or manage profile models — /profile reset clears all model refs", "zh-CN": "选择配置方案，编辑 Agent 的模型层级或当前层级的模型，或管理配置方案的模型 — /profile reset 清空所有模型引用" },
+  "profile.cli.noProfiles": { en: "No profiles found.", "zh-CN": "未找到配置方案。" },
+  "profile.cli.usage": { en: "Usage: ocp profile [list|apply <name>|reset]", "zh-CN": "用法：ocp profile [list|apply <名称>|reset]" },
+  "profile.cli.applied": { en: "Applied profile '{name}'.", "zh-CN": "已应用配置方案“{name}”。" },
+  "profile.cli.nothing": { en: "Nothing to change.", "zh-CN": "没有需要变更的内容。" },
 
   // Main menu
   "profile.mainTitle": { en: "Profile wizard", "zh-CN": "配置方案向导" },
@@ -189,6 +202,9 @@ const STRINGS = {
   "profile.resetDone": { en: "Removed {count} model ref(s). Restart opencode to apply.", "zh-CN": "已移除 {count} 个模型引用。重启 opencode 后生效。" },
   "profile.resetFailed": { en: "Reset failed: {err}", "zh-CN": "重置失败: {err}" },
   "profile.unknownSub": { en: "Unknown subcommand '{sub}'. Usage: /profile [reset]", "zh-CN": "未知子命令 '{sub}'。用法: /profile [reset]" },
+  "provider.cli.usage": { en: "Usage: ocp provider [list]", "zh-CN": "用法：ocp provider [list]" },
+  "provider.cli.noProviders": { en: "No providers configured.", "zh-CN": "未配置服务商。" },
+  "tuiHost.interactiveRequired": { en: "This command requires an interactive terminal. Use provider list, profile list, profile apply <name>, or profile reset --yes.", "zh-CN": "此命令需要交互式终端。请使用 provider list、profile list、profile apply <名称> 或 profile reset --yes。" },
 
   // Edit: Agent→Tier
   "profile.editTierTitle": { en: "Edit agent→tier", "zh-CN": "编辑 Agent→模型层级" },
@@ -479,6 +495,61 @@ const STRINGS = {
   "project.syncFailed": { en: "Sync operation failed: {err}", "zh-CN": "同步操作失败: {err}" },
   "project.noBackends": { en: "ℹ️ No backends needed index refresh.", "zh-CN": "ℹ️ 无后端需要索引刷新。" },
 
+  // Switch picker labels and descriptions (each guard has its own on/off/default).
+  "project.currentMarker": { en: "  (current)", "zh-CN": "  (当前)" },
+  "project.currentValue": { en: "Current: {value}", "zh-CN": "当前: {value}" },
+  "project.summary": { en: "adv:{adv} · adr:{adr} · env:{env} · e2e:{e2e}", "zh-CN": "顾问:{adv} · ADR:{adr} · 环境:{env} · E2E:{e2e}" },
+  "project.cancel": { en: "🔙 Cancel", "zh-CN": "🔙 取消" },
+  "project.cancelDesc": { en: "Keep current and return", "zh-CN": "保留当前值并返回" },
+
+  "project.pickAdvisor": { en: "Select autoAdvisorMode", "zh-CN": "选择 autoAdvisorMode" },
+  "project.valueAdvisorLite": { en: "Advisory mode (recommended)", "zh-CN": "顾问模式 (推荐)" },
+  "project.valueAdvisorFull": { en: "Decisive review mode", "zh-CN": "决定性审查模式" },
+  "project.valueAdvisorOff": { en: "Disable advisor completely", "zh-CN": "完全关闭顾问" },
+  "project.valueAdvisorDefault": { en: "Leave commented in config (default off)", "zh-CN": "在配置中保留为注释 (默认关闭)" },
+  "project.toastAdvisor": { en: "autoAdvisorMode -> {value}", "zh-CN": "autoAdvisorMode -> {value}" },
+
+  "project.pickAdrGuard": { en: "Select adrGuard", "zh-CN": "选择 adrGuard" },
+  "project.valueGuardAdrOn": { en: "Enforce ADR change check on feat/refactor", "zh-CN": "对 feat / refactor 类型启用 ADR 变更检查" },
+  "project.valueGuardAdrOff": { en: "Disable ADR guard check", "zh-CN": "关闭 ADR 守卫检查" },
+  "project.toastAdrGuard": { en: "adrGuard -> {value}", "zh-CN": "adrGuard -> {value}" },
+
+  "project.pickEnvGuard": { en: "Select envGuard", "zh-CN": "选择 envGuard" },
+  "project.valueGuardEnvOn": { en: "Block agent reading secret .env files", "zh-CN": "阻止代理读取 .env 密钥文件" },
+  "project.valueGuardEnvOff": { en: "Allow unrestricted access to env files", "zh-CN": "允许对 .env 文件的无限制访问" },
+  "project.toastEnvGuard": { en: "envGuard -> {value}", "zh-CN": "envGuard -> {value}" },
+
+  "project.pickE2eGuard": { en: "Select e2eGuard", "zh-CN": "选择 e2eGuard" },
+  "project.valueGuardE2eOn": { en: "Assess E2E impact & prompt user", "zh-CN": "评估 E2E 影响并提示用户" },
+  "project.valueGuardE2eOff": { en: "Skip E2E assessment check", "zh-CN": "跳过 E2E 评估检查" },
+  "project.toastE2eGuard": { en: "e2eGuard -> {value}", "zh-CN": "e2eGuard -> {value}" },
+  "project.toastGuard": { en: "{key} -> {value}", "zh-CN": "{key} -> {value}" },
+
+  "project.pickAdrMode": { en: "Select ADR Mode (adrMode)", "zh-CN": "选择 ADR 模式 (adrMode)" },
+  "project.valueAdrModeAuto": { en: "Smart adaptive (flat <=15, hierarchy >15)", "zh-CN": "智能适配 (≤15 平铺, >15 分层)" },
+  "project.valueAdrModeFlat": { en: "Single directory (0001-xxx.md)", "zh-CN": "单目录 (0001-xxx.md)" },
+  "project.valueAdrModeHierarchy": { en: "Domain subdirectories (auth/0001-xxx.md)", "zh-CN": "按域划分子目录 (auth/0001-xxx.md)" },
+  "project.valueAdrModeDefault": { en: "Leave commented in config (default auto)", "zh-CN": "在配置中保留为注释 (默认 auto)" },
+  "project.toastAdrMode": { en: "adrMode -> {value}", "zh-CN": "adrMode -> {value}" },
+
+  "project.pickAdrDir": { en: "Select ADR Directory (adrGuardDir)", "zh-CN": "选择 ADR 目录 (adrGuardDir)" },
+  "project.valueAdrDirDocsAdr": { en: "Standard docs/adr/ folder", "zh-CN": "标准 docs/adr/ 目录" },
+  "project.valueAdrDirDocsDecisions": { en: "docs/decisions/ folder", "zh-CN": "docs/decisions/ 目录" },
+  "project.valueAdrDirArchitecture": { en: "architecture/decisions/ folder", "zh-CN": "architecture/decisions/ 目录" },
+  "project.valueAdrDirCustom": { en: "✍️ Custom Path...", "zh-CN": "✍️ 自定义路径..." },
+  "project.valueAdrDirCustomDesc": { en: "Type custom directory path", "zh-CN": "输入自定义目录路径" },
+  "project.promptAdrDirTitle": { en: "Custom ADR Directory", "zh-CN": "自定义 ADR 目录" },
+  "project.promptAdrDirPlaceholder": { en: "e.g. docs/adr", "zh-CN": "例如 docs/adr" },
+  "project.toastAdrDir": { en: "adrGuardDir -> {value}", "zh-CN": "adrGuardDir -> {value}" },
+
+  // Switch row descriptors on the Level-2 (configure switches) menu.
+  "project.switchAdvisor": { en: "Advisor reviews (lite / full / off)", "zh-CN": "顾问审查 (lite / full / off)" },
+  "project.switchAdrGuard": { en: "Enforce ADR on feat/refactor", "zh-CN": "对 feat / refactor 启用 ADR 守护" },
+  "project.switchAdrGuardDir": { en: "ADR markdown folder path", "zh-CN": "ADR Markdown 目录路径" },
+  "project.switchAdrMode": { en: "ADR structure (auto/flat/hierarchy)", "zh-CN": "ADR 结构 (auto / flat / hierarchy)" },
+  "project.switchEnvGuard": { en: "Protect secret .env file reads", "zh-CN": "保护 .env 密钥文件读取" },
+  "project.switchE2eGuard": { en: "Assess E2E before test execution", "zh-CN": "测试执行前评估 E2E 影响" },
+
   // ════════════════════════════════════════════════════════════════
   // ── Queue manager ──────────────────────────────────────────────
   // ════════════════════════════════════════════════════════════════
@@ -563,6 +634,11 @@ const STRINGS = {
   "usage.estimateFloor": { en: "Some models were not found on models.dev; those rows use a low-end market-floor fallback.", "zh-CN": "部分模型未在 models.dev 匹配到价格，已按市场最低价下界兜底估算。" },
   "usage.fullIdMapping": { en: "Full IDs:", "zh-CN": "模型全名:" },
   "usage.noData": { en: "📊 No token data for the current session yet.", "zh-CN": "📊 当前会话还没有 token 数据。" },
+  "usage.picker.today": { en: "Today", "zh-CN": "今天" },
+  "usage.picker.yesterday": { en: "Yesterday", "zh-CN": "昨天" },
+  "usage.picker.daysAgo": { en: "2 days ago", "zh-CN": "前天" },
+  "usage.picker.earlier": { en: "Earlier", "zh-CN": "之前" },
+  "usage.picker.filterHint": { en: "Type to filter", "zh-CN": "输入以筛选" },
   "usage.unknownSub": { en: "📊 Unknown subcommand \"{sub}\". Usage: /usage [all|model]", "zh-CN": "📊 未知子命令 \"{sub}\"。用法: /usage [all|model]" },
   "usage.failed": { en: "📊 Failed to query usage: {err}", "zh-CN": "📊 查询用量失败: {err}" },
 
@@ -699,4 +775,3 @@ export function languageOption(_api: TuiPluginApi): DialogOption<string> {
     description: tr("common.langDesc"),
   }
 }
-

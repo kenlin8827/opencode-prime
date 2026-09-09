@@ -121,7 +121,7 @@ mkdir -p "$PKG_DIR"
 DIST_SRC="$REPO_ROOT/install/dist"
 if command -v bun >/dev/null 2>&1; then
     echo "Building zero-dependency bundled installer..."
-    bun build "$REPO_ROOT/install/src/index.ts" --outfile "$DIST_SRC/index.js" --target bun
+    bun build "$REPO_ROOT/install/src/index.ts" --outdir "$DIST_SRC" --target bun --external '@opentui/core-*'
 fi
 
 # 1. Fully mirror install/ directory

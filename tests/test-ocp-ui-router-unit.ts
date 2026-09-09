@@ -1,0 +1,22 @@
+import { strict as assert } from 'node:assert'
+import { createRouter } from '../install/src/ui/router'
+
+const router = createRouter()
+assert.equal(router.route(), 'home')
+assert.equal(router.exited(), false)
+router.push('dashboard')
+assert.equal(router.route(), 'dashboard')
+router.back()
+assert.equal(router.route(), 'home')
+assert.equal(router.exited(), false)
+router.back()
+assert.equal(router.exited(), true)
+router.push('setup')
+assert.equal(router.route(), 'home')
+const providerRouter = createRouter('provider')
+assert.equal(providerRouter.route(), 'provider')
+providerRouter.push('profile')
+assert.equal(providerRouter.route(), 'profile')
+const usageRouter = createRouter('usage')
+assert.equal(usageRouter.route(), 'usage')
+console.log('ocp OpenTUI router tests passed')

@@ -219,7 +219,12 @@ function showMainMenu(api: TuiPluginApi, state: WizardState): void {
     ? tr("project.applyUpdateDesc")
     : tr("project.applyInitDesc")
 
-  const switchesSummary = `adv:${current.autoAdvisorMode ?? "def"} · adr:${current.adrGuard ?? "def"} · env:${current.envGuard ?? "def"} · e2e:${current.e2eGuard ?? "def"}`
+  const switchesSummary = tr("project.summary", {
+    adv: current.autoAdvisorMode ?? "def",
+    adr: current.adrGuard ?? "def",
+    env: current.envGuard ?? "def",
+    e2e: current.e2eGuard ?? "def",
+  })
   const dprintPlan = planDprintSetup(rootDir)
 
   // The host DialogSelect renders `category` as bold accent section
@@ -416,12 +421,12 @@ function showSwitchesMenu(api: TuiPluginApi, state: WizardState): void {
   const guardsCat = tr("project.guardsHeader")
   const actionsCat = tr("project.actionsHeader")
   const items: DialogOption<string>[] = [
-    { title: `🤖 autoAdvisorMode:  ${formatAdvisorBadge(current.autoAdvisorMode)}`, value: "__switch_advisor__", description: "Advisor reviews (lite / full / off)", category: advisorCat },
-    { title: `🛡️ adrGuard:         ${formatGuardBadge(current.adrGuard)}`, value: "__switch_adr__", description: "Enforce ADR on feat/refactor", category: guardsCat },
-    { title: `📁 adrGuardDir:      ${current.adrGuardDir ?? "docs/adr"}`, value: "__switch_adr_dir__", description: "ADR markdown folder path", category: guardsCat },
-    { title: `🏛️ adrMode:          ${formatAdrModeBadge(current.adrMode)}`, value: "__switch_adr_mode__", description: "ADR structure (auto/flat/hierarchy)", category: guardsCat },
-    { title: `🔒 envGuard:         ${formatGuardBadge(current.envGuard)}`, value: "__switch_env__", description: "Protect secret .env file reads", category: guardsCat },
-    { title: `🧪 e2eGuard:         ${formatGuardBadge(current.e2eGuard)}`, value: "__switch_e2e__", description: "Assess E2E before test execution", category: guardsCat },
+    { title: `🤖 autoAdvisorMode:  ${formatAdvisorBadge(current.autoAdvisorMode)}`, value: "__switch_advisor__", description: tr("project.switchAdvisor"), category: advisorCat },
+    { title: `🛡️ adrGuard:         ${formatGuardBadge(current.adrGuard)}`, value: "__switch_adr__", description: tr("project.switchAdrGuard"), category: guardsCat },
+    { title: `📁 adrGuardDir:      ${current.adrGuardDir ?? "docs/adr"}`, value: "__switch_adr_dir__", description: tr("project.switchAdrGuardDir"), category: guardsCat },
+    { title: `🏛️ adrMode:          ${formatAdrModeBadge(current.adrMode)}`, value: "__switch_adr_mode__", description: tr("project.switchAdrMode"), category: guardsCat },
+    { title: `🔒 envGuard:         ${formatGuardBadge(current.envGuard)}`, value: "__switch_env__", description: tr("project.switchEnvGuard"), category: guardsCat },
+    { title: `🧪 e2eGuard:         ${formatGuardBadge(current.e2eGuard)}`, value: "__switch_e2e__", description: tr("project.switchE2eGuard"), category: guardsCat },
     { title: tr("project.saveApply"), value: "__save_switches__", description: tr("project.saveApplyDesc"), category: actionsCat },
     { title: tr("project.backToMain"), value: "__back_main__", description: tr("project.backToMainDesc"), category: actionsCat },
   ]
@@ -482,52 +487,52 @@ function showSwitchesMenu(api: TuiPluginApi, state: WizardState): void {
 
           case "__switch_advisor__": {
             let navAdvisor = false
-            api.ui.dialog.replace(
-              () =>
-                api.ui.DialogSelect<string>({
-                title: "Select autoAdvisorMode",
-                placeholder: `Current: ${current.autoAdvisorMode ?? "default"}`,
-                skipFilter: true,
-                current: current.autoAdvisorMode ?? "lite",
-                options: [
-                  {
-                    title: `🟢 lite${current.autoAdvisorMode === "lite" ? "  (current)" : ""}`,
-                    value: "lite",
-                    description: "Advisory mode (recommended)",
+api.ui.dialog.replace(
+                () =>
+                  api.ui.DialogSelect<string>({
+                  title: tr("project.pickAdvisor"),
+                  placeholder: tr("project.currentValue", { value: current.autoAdvisorMode ?? "default" }),
+                  skipFilter: true,
+                  current: current.autoAdvisorMode ?? "lite",
+                  options: [
+                    {
+                      title: `🟢 lite${current.autoAdvisorMode === "lite" ? tr("project.currentMarker") : ""}`,
+                      value: "lite",
+                      description: tr("project.valueAdvisorLite"),
+                    },
+                    {
+                      title: `🔵 full${current.autoAdvisorMode === "full" ? tr("project.currentMarker") : ""}`,
+                      value: "full",
+                      description: tr("project.valueAdvisorFull"),
+                    },
+                    {
+                      title: `🔴 off${current.autoAdvisorMode === "off" ? tr("project.currentMarker") : ""}`,
+                      value: "off",
+                      description: tr("project.valueAdvisorOff"),
+                    },
+                    {
+                      title: `⚪ default${current.autoAdvisorMode === "default" || !current.autoAdvisorMode ? tr("project.currentMarker") : ""}`,
+                      value: "default",
+                      description: tr("project.valueAdvisorDefault"),
+                    },
+                    {
+                      title: tr("project.cancel"),
+                      value: "__cancel__",
+                      description: tr("project.cancelDesc"),
+                    },
+                  ],
+                  onSelect: (sel) => {
+                    navAdvisor = true
+                    if (sel.value !== "__cancel__") {
+                      current.autoAdvisorMode = sel.value as ProjectSwitches["autoAdvisorMode"]
+                      toast(api, tr("project.toastAdvisor", { value: formatAdvisorBadge(current.autoAdvisorMode) }), "success")
+                    }
+                    showSwitchesMenu(api, {
+                      ...nextState,
+                      currentSelection: "__switch_advisor__",
+                    })
                   },
-                  {
-                    title: `🔵 full${current.autoAdvisorMode === "full" ? "  (current)" : ""}`,
-                    value: "full",
-                    description: "Decisive review mode",
-                  },
-                  {
-                    title: `🔴 off${current.autoAdvisorMode === "off" ? "  (current)" : ""}`,
-                    value: "off",
-                    description: "Disable advisor completely",
-                  },
-                  {
-                    title: `⚪ default${current.autoAdvisorMode === "default" || !current.autoAdvisorMode ? "  (current)" : ""}`,
-                    value: "default",
-                    description: "Leave commented in config (default off)",
-                  },
-                  {
-                    title: "🔙 Cancel",
-                    value: "__cancel__",
-                    description: "Keep current and return",
-                  },
-                ],
-                onSelect: (sel) => {
-                  navAdvisor = true
-                  if (sel.value !== "__cancel__") {
-                    current.autoAdvisorMode = sel.value as ProjectSwitches["autoAdvisorMode"]
-                    toast(api, `autoAdvisorMode -> ${formatAdvisorBadge(current.autoAdvisorMode)}`, "success")
-                  }
-                  showSwitchesMenu(api, {
-                    ...nextState,
-                    currentSelection: "__switch_advisor__",
-                  })
-                },
-              }),
+                }),
               () => {
                 // Esc on advisor picker = back to switches menu
                 if (!navAdvisor) setTimeout(() => showSwitchesMenu(api, { ...nextState, currentSelection: "__switch_advisor__" }), 0)
@@ -537,47 +542,47 @@ function showSwitchesMenu(api: TuiPluginApi, state: WizardState): void {
           }
           case "__switch_adr__": {
             let navAdr = false
-            api.ui.dialog.replace(
-              () =>
-                api.ui.DialogSelect<string>({
-                title: "Select adrGuard",
-                placeholder: `Current: ${current.adrGuard ?? "default"}`,
-                skipFilter: true,
-                current: current.adrGuard ?? "on",
-                options: [
-                  {
-                    title: `🟢 on${current.adrGuard === "on" ? "  (current)" : ""}`,
-                    value: "on",
-                    description: "Enforce ADR change check on feat/refactor",
+api.ui.dialog.replace(
+                () =>
+                  api.ui.DialogSelect<string>({
+                  title: tr("project.pickAdrGuard"),
+                  placeholder: tr("project.currentValue", { value: current.adrGuard ?? "default" }),
+                  skipFilter: true,
+                  current: current.adrGuard ?? "on",
+                  options: [
+                    {
+                      title: `🟢 on${current.adrGuard === "on" ? tr("project.currentMarker") : ""}`,
+                      value: "on",
+                      description: tr("project.valueGuardAdrOn"),
+                    },
+                    {
+                      title: `🔴 off${current.adrGuard === "off" ? tr("project.currentMarker") : ""}`,
+                      value: "off",
+                      description: tr("project.valueGuardAdrOff"),
+                    },
+                    {
+                      title: `⚪ default${current.adrGuard === "default" || !current.adrGuard ? tr("project.currentMarker") : ""}`,
+                      value: "default",
+                      description: tr("project.valueAdvisorDefault"),
+                    },
+                    {
+                      title: tr("project.cancel"),
+                      value: "__cancel__",
+                      description: tr("project.cancelDesc"),
+                    },
+                  ],
+                  onSelect: (sel) => {
+                    navAdr = true
+                    if (sel.value !== "__cancel__") {
+                      current.adrGuard = sel.value as ProjectSwitches["adrGuard"]
+                      toast(api, tr("project.toastAdrGuard", { value: formatGuardBadge(current.adrGuard) }), "success")
+                    }
+                    showSwitchesMenu(api, {
+                      ...nextState,
+                      currentSelection: "__switch_adr__",
+                    })
                   },
-                  {
-                    title: `🔴 off${current.adrGuard === "off" ? "  (current)" : ""}`,
-                    value: "off",
-                    description: "Disable ADR guard check",
-                  },
-                  {
-                    title: `⚪ default${current.adrGuard === "default" || !current.adrGuard ? "  (current)" : ""}`,
-                    value: "default",
-                    description: "Leave commented in config (default off)",
-                  },
-                  {
-                    title: "🔙 Cancel",
-                    value: "__cancel__",
-                    description: "Keep current and return",
-                  },
-                ],
-                onSelect: (sel) => {
-                  navAdr = true
-                  if (sel.value !== "__cancel__") {
-                    current.adrGuard = sel.value as ProjectSwitches["adrGuard"]
-                    toast(api, `adrGuard -> ${formatGuardBadge(current.adrGuard)}`, "success")
-                  }
-                  showSwitchesMenu(api, {
-                    ...nextState,
-                    currentSelection: "__switch_adr__",
-                  })
-                },
-              }),
+                }),
               () => {
                 // Esc on adrGuard picker = back to switches menu
                 if (!navAdr) setTimeout(() => showSwitchesMenu(api, { ...nextState, currentSelection: "__switch_adr__" }), 0)
@@ -587,87 +592,87 @@ function showSwitchesMenu(api: TuiPluginApi, state: WizardState): void {
           }
           case "__switch_adr_dir__": {
             let navAdrDir = false
-            api.ui.dialog.replace(
-              () =>
-                api.ui.DialogSelect<string>({
-                title: "Select ADR Directory (adrGuardDir)",
-                placeholder: `Current: ${current.adrGuardDir ?? "docs/adr"}`,
-                skipFilter: true,
-                current: current.adrGuardDir ?? "docs/adr",
-                options: [
-                  {
-                    title: `📁 docs/adr${(current.adrGuardDir ?? "docs/adr") === "docs/adr" ? "  (current)" : ""}`,
-                    value: "docs/adr",
-                    description: "Standard docs/adr/ folder",
+api.ui.dialog.replace(
+                () =>
+                  api.ui.DialogSelect<string>({
+                  title: tr("project.pickAdrDir"),
+                  placeholder: tr("project.currentValue", { value: current.adrGuardDir ?? "docs/adr" }),
+                  skipFilter: true,
+                  current: current.adrGuardDir ?? "docs/adr",
+                  options: [
+                    {
+                      title: `📁 docs/adr${(current.adrGuardDir ?? "docs/adr") === "docs/adr" ? tr("project.currentMarker") : ""}`,
+                      value: "docs/adr",
+                      description: tr("project.valueAdrDirDocsAdr"),
+                    },
+                    {
+                      title: `📁 docs/decisions${current.adrGuardDir === "docs/decisions" ? tr("project.currentMarker") : ""}`,
+                      value: "docs/decisions",
+                      description: tr("project.valueAdrDirDocsDecisions"),
+                    },
+                    {
+                      title: `📁 architecture/decisions${current.adrGuardDir === "architecture/decisions" ? tr("project.currentMarker") : ""}`,
+                      value: "architecture/decisions",
+                      description: tr("project.valueAdrDirArchitecture"),
+                    },
+                    {
+                      title: tr("project.valueAdrDirCustom"),
+                      value: "__custom__",
+                      description: tr("project.valueAdrDirCustomDesc"),
+                    },
+                    {
+                      title: tr("project.cancel"),
+                      value: "__cancel__",
+                      description: tr("project.cancelDesc"),
+                    },
+                  ],
+                  onSelect: (dirOpt) => {
+                    navAdrDir = true
+                    if (dirOpt.value === "__cancel__") {
+                      showSwitchesMenu(api, {
+                        ...nextState,
+                        currentSelection: "__switch_adr_dir__",
+                      })
+                    } else if (dirOpt.value === "__custom__") {
+                      let navPrompt = false
+                      api.ui.dialog.replace(
+                        () =>
+                          api.ui.DialogPrompt({
+                            title: tr("project.promptAdrDirTitle"),
+                            placeholder: tr("project.promptAdrDirPlaceholder"),
+                            value: current.adrGuardDir ?? "docs/adr",
+                            onConfirm: (val) => {
+                              navPrompt = true
+                              current.adrGuardDir = val.trim() || "docs/adr"
+                              toast(api, tr("project.toastAdrDir", { value: current.adrGuardDir }), "success")
+                              showSwitchesMenu(api, {
+                                ...nextState,
+                                currentSelection: "__switch_adr_dir__",
+                              })
+                            },
+                            onCancel: () => {
+                              navPrompt = true
+                              setTimeout(() => showSwitchesMenu(api, {
+                                ...nextState,
+                                currentSelection: "__switch_adr_dir__",
+                              }), 0)
+                            },
+                          }),
+                        () => {
+                          // Esc on custom path prompt = back to switches menu
+                          if (!navPrompt) setTimeout(() => showSwitchesMenu(api, { ...nextState, currentSelection: "__switch_adr_dir__" }), 0)
+                        },
+                      )
+                    } else {
+                      current.adrGuardDir = dirOpt.value
+                      toast(api, tr("project.toastAdrDir", { value: current.adrGuardDir }), "success")
+                      showSwitchesMenu(api, {
+                        ...nextState,
+                        currentSelection: "__switch_adr_dir__",
+                      })
+                    }
                   },
-                  {
-                    title: `📁 docs/decisions${current.adrGuardDir === "docs/decisions" ? "  (current)" : ""}`,
-                    value: "docs/decisions",
-                    description: "docs/decisions/ folder",
-                  },
-                  {
-                    title: `📁 architecture/decisions${current.adrGuardDir === "architecture/decisions" ? "  (current)" : ""}`,
-                    value: "architecture/decisions",
-                    description: "architecture/decisions/ folder",
-                  },
-                  {
-                    title: "✍️ Custom Path...",
-                    value: "__custom__",
-                    description: "Type custom directory path",
-                  },
-                  {
-                    title: "🔙 Cancel",
-                    value: "__cancel__",
-                    description: "Keep current and return",
-                  },
-                ],
-                onSelect: (dirOpt) => {
-                  navAdrDir = true
-                  if (dirOpt.value === "__cancel__") {
-                    showSwitchesMenu(api, {
-                      ...nextState,
-                      currentSelection: "__switch_adr_dir__",
-                    })
-                  } else if (dirOpt.value === "__custom__") {
-                    let navPrompt = false
-                    api.ui.dialog.replace(
-                      () =>
-                        api.ui.DialogPrompt({
-                          title: "Custom ADR Directory",
-                          placeholder: "e.g. docs/adr",
-                          value: current.adrGuardDir ?? "docs/adr",
-                          onConfirm: (val) => {
-                            navPrompt = true
-                            current.adrGuardDir = val.trim() || "docs/adr"
-                            toast(api, `adrGuardDir -> ${current.adrGuardDir}`, "success")
-                            showSwitchesMenu(api, {
-                              ...nextState,
-                              currentSelection: "__switch_adr_dir__",
-                            })
-                          },
-                          onCancel: () => {
-                            navPrompt = true
-                            setTimeout(() => showSwitchesMenu(api, {
-                              ...nextState,
-                              currentSelection: "__switch_adr_dir__",
-                            }), 0)
-                          },
-                        }),
-                      () => {
-                        // Esc on custom path prompt = back to switches menu
-                        if (!navPrompt) setTimeout(() => showSwitchesMenu(api, { ...nextState, currentSelection: "__switch_adr_dir__" }), 0)
-                      },
-                    )
-                  } else {
-                    current.adrGuardDir = dirOpt.value
-                    toast(api, `adrGuardDir -> ${current.adrGuardDir}`, "success")
-                    showSwitchesMenu(api, {
-                      ...nextState,
-                      currentSelection: "__switch_adr_dir__",
-                    })
-                  }
-                },
-              }),
+                }),
               () => {
                 // Esc on ADR directory picker = back to switches menu
                 if (!navAdrDir) setTimeout(() => showSwitchesMenu(api, { ...nextState, currentSelection: "__switch_adr_dir__" }), 0)
@@ -677,52 +682,52 @@ function showSwitchesMenu(api: TuiPluginApi, state: WizardState): void {
           }
           case "__switch_adr_mode__": {
             let navAdrMode = false
-            api.ui.dialog.replace(
-              () =>
-                api.ui.DialogSelect<string>({
-                title: "Select ADR Mode (adrMode)",
-                placeholder: `Current: ${current.adrMode ?? "default"}`,
-                skipFilter: true,
-                current: current.adrMode ?? "auto",
-                options: [
-                  {
-                    title: `🟢 auto${current.adrMode === "auto" ? "  (current)" : ""}`,
-                    value: "auto",
-                    description: "Smart adaptive (flat <=15, hierarchy >15)",
+api.ui.dialog.replace(
+                () =>
+                  api.ui.DialogSelect<string>({
+                  title: tr("project.pickAdrMode"),
+                  placeholder: tr("project.currentValue", { value: current.adrMode ?? "default" }),
+                  skipFilter: true,
+                  current: current.adrMode ?? "auto",
+                  options: [
+                    {
+                      title: `🟢 auto${current.adrMode === "auto" ? tr("project.currentMarker") : ""}`,
+                      value: "auto",
+                      description: tr("project.valueAdrModeAuto"),
+                    },
+                    {
+                      title: `📄 flat${current.adrMode === "flat" ? tr("project.currentMarker") : ""}`,
+                      value: "flat",
+                      description: tr("project.valueAdrModeFlat"),
+                    },
+                    {
+                      title: `📦 hierarchy${current.adrMode === "hierarchical" ? tr("project.currentMarker") : ""}`,
+                      value: "hierarchical",
+                      description: tr("project.valueAdrModeHierarchy"),
+                    },
+                    {
+                      title: `⚪ default${current.adrMode === "default" || !current.adrMode ? tr("project.currentMarker") : ""}`,
+                      value: "default",
+                      description: tr("project.valueAdrModeDefault"),
+                    },
+                    {
+                      title: tr("project.cancel"),
+                      value: "__cancel__",
+                      description: tr("project.cancelDesc"),
+                    },
+                  ],
+                  onSelect: (sel) => {
+                    navAdrMode = true
+                    if (sel.value !== "__cancel__") {
+                      current.adrMode = sel.value as ProjectSwitches["adrMode"]
+                      toast(api, tr("project.toastAdrMode", { value: formatAdrModeBadge(current.adrMode) }), "success")
+                    }
+                    showSwitchesMenu(api, {
+                      ...nextState,
+                      currentSelection: "__switch_adr_mode__",
+                    })
                   },
-                  {
-                    title: `📄 flat${current.adrMode === "flat" ? "  (current)" : ""}`,
-                    value: "flat",
-                    description: "Single directory (0001-xxx.md)",
-                  },
-                  {
-                    title: `📦 hierarchy${current.adrMode === "hierarchical" ? "  (current)" : ""}`,
-                    value: "hierarchical",
-                    description: "Domain subdirectories (auth/0001-xxx.md)",
-                  },
-                  {
-                    title: `⚪ default${current.adrMode === "default" || !current.adrMode ? "  (current)" : ""}`,
-                    value: "default",
-                    description: "Leave commented in config (default auto)",
-                  },
-                  {
-                    title: "🔙 Cancel",
-                    value: "__cancel__",
-                    description: "Keep current and return",
-                  },
-                ],
-                onSelect: (sel) => {
-                  navAdrMode = true
-                  if (sel.value !== "__cancel__") {
-                    current.adrMode = sel.value as ProjectSwitches["adrMode"]
-                    toast(api, `adrMode -> ${formatAdrModeBadge(current.adrMode)}`, "success")
-                  }
-                  showSwitchesMenu(api, {
-                    ...nextState,
-                    currentSelection: "__switch_adr_mode__",
-                  })
-                },
-              }),
+                }),
               () => {
                 // Esc on adrMode picker = back to switches menu
                 if (!navAdrMode) setTimeout(() => showSwitchesMenu(api, { ...nextState, currentSelection: "__switch_adr_mode__" }), 0)
@@ -732,47 +737,47 @@ function showSwitchesMenu(api: TuiPluginApi, state: WizardState): void {
           }
           case "__switch_env__": {
             let navEnv = false
-            api.ui.dialog.replace(
-              () =>
-                api.ui.DialogSelect<string>({
-                title: "Select envGuard",
-                placeholder: `Current: ${current.envGuard ?? "default"}`,
-                skipFilter: true,
-                current: current.envGuard ?? "on",
-                options: [
-                  {
-                    title: `🟢 on${current.envGuard === "on" ? "  (current)" : ""}`,
-                    value: "on",
-                    description: "Block agent reading secret .env files",
+api.ui.dialog.replace(
+                () =>
+                  api.ui.DialogSelect<string>({
+                  title: tr("project.pickEnvGuard"),
+                  placeholder: tr("project.currentValue", { value: current.envGuard ?? "default" }),
+                  skipFilter: true,
+                  current: current.envGuard ?? "on",
+                  options: [
+                    {
+                      title: `🟢 on${current.envGuard === "on" ? tr("project.currentMarker") : ""}`,
+                      value: "on",
+                      description: tr("project.valueGuardEnvOn"),
+                    },
+                    {
+                      title: `🔴 off${current.envGuard === "off" ? tr("project.currentMarker") : ""}`,
+                      value: "off",
+                      description: tr("project.valueGuardEnvOff"),
+                    },
+                    {
+                      title: `⚪ default${current.envGuard === "default" || !current.envGuard ? tr("project.currentMarker") : ""}`,
+                      value: "default",
+                      description: tr("project.valueAdvisorDefault"),
+                    },
+                    {
+                      title: tr("project.cancel"),
+                      value: "__cancel__",
+                      description: tr("project.cancelDesc"),
+                    },
+                  ],
+                  onSelect: (sel) => {
+                    navEnv = true
+                    if (sel.value !== "__cancel__") {
+                      current.envGuard = sel.value as ProjectSwitches["envGuard"]
+                      toast(api, tr("project.toastEnvGuard", { value: formatGuardBadge(current.envGuard) }), "success")
+                    }
+                    showSwitchesMenu(api, {
+                      ...nextState,
+                      currentSelection: "__switch_env__",
+                    })
                   },
-                  {
-                    title: `🔴 off${current.envGuard === "off" ? "  (current)" : ""}`,
-                    value: "off",
-                    description: "Allow unrestricted access to env files",
-                  },
-                  {
-                    title: `⚪ default${current.envGuard === "default" || !current.envGuard ? "  (current)" : ""}`,
-                    value: "default",
-                    description: "Leave commented in config (default off)",
-                  },
-                  {
-                    title: "🔙 Cancel",
-                    value: "__cancel__",
-                    description: "Keep current and return",
-                  },
-                ],
-                onSelect: (sel) => {
-                  navEnv = true
-                  if (sel.value !== "__cancel__") {
-                    current.envGuard = sel.value as ProjectSwitches["envGuard"]
-                    toast(api, `envGuard -> ${formatGuardBadge(current.envGuard)}`, "success")
-                  }
-                  showSwitchesMenu(api, {
-                    ...nextState,
-                    currentSelection: "__switch_env__",
-                  })
-                },
-              }),
+                }),
               () => {
                 // Esc on envGuard picker = back to switches menu
                 if (!navEnv) setTimeout(() => showSwitchesMenu(api, { ...nextState, currentSelection: "__switch_env__" }), 0)
@@ -782,47 +787,47 @@ function showSwitchesMenu(api: TuiPluginApi, state: WizardState): void {
           }
           case "__switch_e2e__": {
             let navE2e = false
-            api.ui.dialog.replace(
-              () =>
-                api.ui.DialogSelect<string>({
-                title: "Select e2eGuard",
-                placeholder: `Current: ${current.e2eGuard ?? "default"}`,
-                skipFilter: true,
-                current: current.e2eGuard ?? "on",
-                options: [
-                  {
-                    title: `🟢 on${current.e2eGuard === "on" ? "  (current)" : ""}`,
-                    value: "on",
-                    description: "Assess E2E impact & prompt user",
+api.ui.dialog.replace(
+                () =>
+                  api.ui.DialogSelect<string>({
+                  title: tr("project.pickE2eGuard"),
+                  placeholder: tr("project.currentValue", { value: current.e2eGuard ?? "default" }),
+                  skipFilter: true,
+                  current: current.e2eGuard ?? "on",
+                  options: [
+                    {
+                      title: `🟢 on${current.e2eGuard === "on" ? tr("project.currentMarker") : ""}`,
+                      value: "on",
+                      description: tr("project.valueGuardE2eOn"),
+                    },
+                    {
+                      title: `🔴 off${current.e2eGuard === "off" ? tr("project.currentMarker") : ""}`,
+                      value: "off",
+                      description: tr("project.valueGuardE2eOff"),
+                    },
+                    {
+                      title: `⚪ default${current.e2eGuard === "default" || !current.e2eGuard ? tr("project.currentMarker") : ""}`,
+                      value: "default",
+                      description: tr("project.valueAdvisorDefault"),
+                    },
+                    {
+                      title: tr("project.cancel"),
+                      value: "__cancel__",
+                      description: tr("project.cancelDesc"),
+                    },
+                  ],
+                  onSelect: (sel) => {
+                    navE2e = true
+                    if (sel.value !== "__cancel__") {
+                      current.e2eGuard = sel.value as ProjectSwitches["e2eGuard"]
+                      toast(api, tr("project.toastE2eGuard", { value: formatGuardBadge(current.e2eGuard) }), "success")
+                    }
+                    showSwitchesMenu(api, {
+                      ...nextState,
+                      currentSelection: "__switch_e2e__",
+                    })
                   },
-                  {
-                    title: `🔴 off${current.e2eGuard === "off" ? "  (current)" : ""}`,
-                    value: "off",
-                    description: "Skip E2E assessment check",
-                  },
-                  {
-                    title: `⚪ default${current.e2eGuard === "default" || !current.e2eGuard ? "  (current)" : ""}`,
-                    value: "default",
-                    description: "Leave commented in config (default off)",
-                  },
-                  {
-                    title: "🔙 Cancel",
-                    value: "__cancel__",
-                    description: "Keep current and return",
-                  },
-                ],
-                onSelect: (sel) => {
-                  navE2e = true
-                  if (sel.value !== "__cancel__") {
-                    current.e2eGuard = sel.value as ProjectSwitches["e2eGuard"]
-                    toast(api, `e2eGuard -> ${formatGuardBadge(current.e2eGuard)}`, "success")
-                  }
-                  showSwitchesMenu(api, {
-                    ...nextState,
-                    currentSelection: "__switch_e2e__",
-                  })
-                },
-              }),
+                }),
               () => {
                 // Esc on e2eGuard picker = back to switches menu
                 if (!navE2e) setTimeout(() => showSwitchesMenu(api, { ...nextState, currentSelection: "__switch_e2e__" }), 0)

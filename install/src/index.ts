@@ -17,6 +17,9 @@ import {
 import { unregisterShim, runGlobalRegistration } from './shim';
 import { runInteractiveWizard } from './wizard';
 import { runProjectWizard } from './project-wizard';
+import { runProviderCli } from './provider-wizard';
+import { runProfileCli } from './profile-wizard';
+import { runUsageCli } from './usage';
 import { runTuiDashboard } from './dashboard';
 import { launchTui, launchServe, launchWeb, launchCode, launchDesktop, launchHerdr } from './launcher';
 import { deployHerdrConfig, herdrUserConfigPath, HERDR_CONFIG_TEMPLATE } from './herdr-config';
@@ -36,6 +39,21 @@ import { indexProject, initProject, syncProject } from '../../plugins/project-ma
 import type { ScaffoldResult, SyncResult } from '../../plugins/project-manager/project-manager-scaffold';
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Shared UI→CLI install handoff (dashboard + wizard quick install): map a TUI
+ * child's result onto the installer args. True → the parent falls through to
+ * the `install` case, so executeInstall + global registration + surface checks
+ * run exactly once, in the user's shell.
+ */
+function applyUiInstallHandoff(args: CliArgs, result: { action: string; target?: string }): boolean {
+  if (result.action !== 'install') return false;
+  args.action = 'install';
+  args.force = true;
+  args.yes = true;
+  if (result.target) args.target = result.target;
+  return true;
+}
 
 const IS_WINDOWS = process.platform === 'win32';
 const IS_MACOS = process.platform === 'darwin';
@@ -162,8 +180,20 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
           printHelp();
           process.exit(0);
         }
-        printUnknownCommand(`project${next ? ` ${next}` : ''}`);
+        // Match provider/profile: the namespace without a subcommand opens
+        // its interactive wizard in a TTY (or runs headlessly otherwise).
+        if (!next) {
+          args.action = 'project-init';
+          hasExplicitAction = true;
+        } else {
+          printUnknownCommand(`project ${next}`);
+        }
       }
+    } else if (arg === 'provider' || arg === 'profile' || arg === 'usage') {
+      args.action = arg;
+      args.passthrough = rawArgs.slice(i + 1);
+      hasExplicitAction = true;
+      break;
     } else if (arg === 'dashboard' || arg === 'matrix' || arg === 'cc') {
       args.action = 'dashboard';
       hasExplicitAction = true;
@@ -362,7 +392,7 @@ Actions:
   tui          Launch the OpenCode terminal UI (exec opencode). With
                  tui_mode=herdr in options.jsonc, launches a herdr workspace
                  rooted at cwd instead (equivalent to 'ocp herdr'). Default
-                 tui_mode is 'direct'. Pass --herdr / --direct to override
+                 tui_mode is 'herdr'. Pass --herdr / --direct to override
                  the config for this invocation
   serve        Launch the headless opencode server (opencode serve; all args pass through)
    web          Launch the OpenChamber web UI (auto-picks a free port unless --port is given)
@@ -385,6 +415,10 @@ Actions:
                directory, and re-apply the installer (works the same whether
                you installed via \`git clone\` or not)
    session        Manage sessions: list, projects, delete (passthrough), clean
+     provider       Manage providers; interactive mode embeds the /provider TUI wizard (list is non-interactive)
+     profile        Manage profiles; interactive mode embeds the /profile TUI wizard (list, apply, reset --yes are non-interactive)
+     usage [scope]  Show token/cost usage: --all (default) selects from every project;
+                    . selects from the current directory; a session ID opens it directly
   auth           Open OpenCode's auth.json: 'auth open' (creates the file if missing)
   herdr          Launch Herdr (https://herdr.dev) and open the current directory
                  as a focused workspace (label = directory basename); passthrough
@@ -626,7 +660,7 @@ async function main() {
         console.error('[ocp] --wizard requires an interactive terminal; use --headless in CI or scripts.');
         process.exit(2);
       }
-      process.exit(await runProjectWizard(process.cwd()));
+      process.exit(await runProjectWizard(process.cwd(), repoDir));
     }
     process.exit(await executeProjectAction('project-init'));
   }
@@ -635,13 +669,18 @@ async function main() {
     process.exit(await executeProjectAction(args.action));
   }
 
+  if (args.action === 'provider') process.exit(await runProviderCli(repoDir, args.passthrough ?? []));
+  if (args.action === 'profile') process.exit(await runProfileCli(repoDir, args.passthrough ?? []));
+  if (args.action === 'usage') process.exit(await runUsageCli(repoDir, args.passthrough ?? []));
+
   if (args.action === 'desktop') {
     process.exit(await launchDesktop(args.passthrough ?? []));
   }
 
   if (args.action === 'dashboard') {
-    await runTuiDashboard(repoDir);
-    return;
+    // The dashboard persisted its selections and exited cleanly. Continue in
+    // this parent process so installer output is rendered in the user's shell.
+    if (!applyUiInstallHandoff(args, await runTuiDashboard(repoDir))) return;
   }
 
   if (args.action === 'session') {
@@ -707,8 +746,10 @@ async function main() {
   }
 
   if (args.action === 'wizard') {
-    await runInteractiveWizard(repoDir);
-    return;
+    // Quick install hands off via the same shared protocol as the dashboard:
+    // the wizard persisted its global-commands delta, the parent runs the
+    // installer (with the wizard-chosen target, if any) in the user's shell.
+    if (!applyUiInstallHandoff(args, await runInteractiveWizard(repoDir))) return;
   }
 
   const curVersion = getCurrentRepoVersion(repoDir);

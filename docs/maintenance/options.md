@@ -42,14 +42,16 @@ Learn about installer commands, configuration options, token savings, and preser
        // rtk output compression (60-90% token savings)
        "rtk": true,
        // OpenChamber ships as three independent surfaces, one switch each:
-       // Web UI CLI (@openchamber/web; powers `ocp web`, needs Node.js 22+)
-       "openchamber_web": true,
+        // Web UI CLI (@openchamber/web; powers `ocp web`, needs Node.js 22+)
+        // Disabled by default: enabling it installs a global package.
+        "openchamber_web": false,
        // Native desktop app for `ocp desktop` / `ocp ui` — always a separate
        // download (https://openchamber.dev/download); install only checks presence
        "openchamber_desktop": true,
        // VS Code extension for `ocp code` (auto-installs
-       // fedaykindev.openchamber via the editor CLI when missing)
-       "openchamber_vscode": true,
+        // fedaykindev.openchamber via the editor CLI when missing).
+        // Disabled by default: enabling it modifies the editor.
+        "openchamber_vscode": false,
        // Terminal workspace manager (implied true when tui_mode is "herdr")
        "herdr": false
      },
@@ -129,13 +131,13 @@ To opt out: set `"rtk": false` in `install/options.jsonc` and re-run install.
 
 [Herdr](https://herdr.dev) is a terminal workspace manager purpose-built for AI coding agents. Each herdr workspace is rooted at a directory and auto-starts opencode in the new pane (via OCP's `auto-opencode` plugin). With `"herdr": true`, the installer provisions the `herdr` CLI on missing PATH and links the bundled config to `~/.config/herdr/config.toml`.
 
-By default `"herdr": false` — keep it off if you don't use herdr.
+Herdr is enabled by default because `tui_mode` defaults to `"herdr"`. Turn it off in the dashboard or here if you do not use it.
 
 To force `ocp tui` to launch via herdr instead of directly starting `opencode`, set:
 
 ```jsonc
 // install/options.jsonc
-"tui_mode": "herdr"   // "direct" (default) | "herdr"
+"tui_mode": "herdr"   // "direct" | "herdr" (default)
 ```
 
 Selecting `"herdr"` auto-enables `tools.herdr` (regardless of its setting) and prints a one-line notice. No second option to flip.
@@ -144,13 +146,13 @@ Selecting `"herdr"` auto-enables `tools.herdr` (regardless of its setting) and p
 
 ## OpenChamber (`ocp desktop` / `ocp web` / `ocp code`)
 
-Install auto-provisions [OpenChamber](https://openchamber.dev) — the GUI layer that runs on top of the local OpenCode engine (side-by-side diffs, multi-model comparison, session timeline). It ships as **three independent surfaces**, each behind its own `tools.openchamber_*` switch:
+Install can provision [OpenChamber](https://openchamber.dev) — the GUI layer that runs on top of the local OpenCode engine (side-by-side diffs, multi-model comparison, session timeline). It ships as **three independent surfaces**, each behind its own `tools.openchamber_*` switch. Web and VS Code are opt-in by default:
 
 | Switch | Surface | What install does |
 |---|---|---|
-| `tools.openchamber_web` | **Web** — `@openchamber/web` CLI powering `ocp web` | Installs the package globally via the first package manager found (pnpm > bun > yarn > npm) when the `openchamber` binary is missing (needs Node.js 22+) |
+| `tools.openchamber_web` | **Web** — `@openchamber/web` CLI powering `ocp web` | **Default: false.** When enabled, installs the package globally via the first package manager found (pnpm > bun > yarn > npm) when the `openchamber` binary is missing (needs Node.js 22+) |
 | `tools.openchamber_desktop` | **Desktop** — native app powering `ocp desktop` / `ocp ui` | Checks presence only and prints the download link when missing — the installer **never** downloads the desktop app ([openchamber.dev/download](https://openchamber.dev/download)) |
-| `tools.openchamber_vscode` | **VS Code** — editor extension powering `ocp code` | Installs `fedaykindev.openchamber` via the first editor CLI found (`code`, `code-insiders`, `codium`, `cursor`, `windsurf`) when the extension is missing |
+| `tools.openchamber_vscode` | **VS Code** — editor extension powering `ocp code` | **Default: false.** When enabled, installs `fedaykindev.openchamber` via the first editor CLI found (`code`, `code-insiders`, `codium`, `cursor`, `windsurf`) when the extension is missing |
 
 Launch afterwards with:
 
@@ -161,7 +163,7 @@ ocp code         # VS Code with the OpenChamber extension guaranteed
 ocp tui          # the OpenCode terminal UI
 ```
 
-To opt out of a surface: set its switch to `false` in `install/options.jsonc` and re-run install (already-installed components stay put). An opted-out surface is also skipped by `ocp code`'s auto-install.
+To enable Web or VS Code, set its switch to `true` in `install/options.jsonc` and re-run install. Set any surface to `false` to skip it (already-installed components stay put). An opted-out surface is also skipped by `ocp code`'s auto-install.
 
 ---
 

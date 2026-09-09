@@ -1,10 +1,10 @@
 {
-  "description": "All-OpenAI family picks on the official OpenAI API — gpt-5.6-luna explores on flash, gpt-5.6-terra carries standard/pro/max (strongest under the $3/$15 cost red line on official-API pricing; gpt-5.6-sol at $4/$20 is excluded here — use opencode-zen or router/codex for Sol), gpt-4o keeps vision as the proven multimodal model. Replaces retired gpt-5.4-fast (flash), over-cap gpt-5.5 (standard), deprecated gpt-5.3-codex (pro), and nonexistent gpt-5.6-pro (max). Requires OPENAI_API_KEY environment variable.",
+  "description": "All-OpenAI family picks on the official OpenAI API — gpt-5.6-luna explores on flash and takes vision (5.6 line supports image inputs; replaces gpt-4o at ~12x the price), gpt-5.6-terra carries standard/pro/max (strongest under the $3/$15 cost red line on official-API pricing, kill-line index 57; gpt-5.6-sol at $4/$20 is excluded here — use opencode-zen or router/codex for Sol; gpt-5.3-codex-spark is the only surviving codex-line model at $1.75/$14 but a generation older and unranked on the kill-line). Replaces retired gpt-5.4-fast (flash), over-cap gpt-5.5 (standard), deprecated gpt-5.3-codex (pro), and nonexistent gpt-5.6-pro (max). Requires OPENAI_API_KEY environment variable.",
   "tiers": {
     "flash": "openai/gpt-5.6-luna",
     "standard": "openai/gpt-5.6-terra",
     "pro": "openai/gpt-5.6-terra",
     "max": "openai/gpt-5.6-terra",
-    "vision": "openai/gpt-4o"
+    "vision": "openai/gpt-5.6-luna"
   }
 }

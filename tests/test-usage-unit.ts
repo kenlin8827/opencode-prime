@@ -372,6 +372,9 @@ assert(sessionText.includes("$0.0031"), "total row cost")
 assert(sessionText.includes("hit 54.2%") && sessionText.includes("total"), "total row with hit rate")
 assert(sessionText.includes("51.2%"), "s1 share pct")
 assert(sessionText.includes("\u2588"), "bar characters present")
+const shareRows = sessionText.split("\n").filter((line) => /\d+\.\d% [█░]/.test(line))
+const barStarts = shareRows.map((line) => line.indexOf("█") >= 0 ? line.indexOf("█") : line.indexOf("░"))
+assert(shareRows.length > 1 && barStarts.every((start) => start === barStarts[0]), "share bars start at a fixed column regardless of percentage digits")
 assert(!sessionText.includes("cache-write") && !sessionText.includes("reasoning"), "display limited to 3 numbers: in / out / cached")
 // Table stretched to fill the dialog tier: the header rule spans the tier's
 // full text width (fixture fits the large tier → 83 cols), so the dialog

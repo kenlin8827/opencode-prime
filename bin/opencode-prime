@@ -116,6 +116,9 @@ case "$sub" in
     status)
         exec "$INSTALL" status "$@"
         ;;
+    provider|profile)
+        exec "$INSTALL" "$sub" "$@"
+        ;;
     register)
         exec "$INSTALL" register "$@"
         ;;
