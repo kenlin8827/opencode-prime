@@ -6,6 +6,22 @@ The `plugins/ocp/` slash command family (`/ocp project init|index|sync`,
 terminal, and slash commands cannot reach companion tools (OpenChamber
 desktop) because they run inside the agent.
 
+## Amendment (2026-09-10) — `.` is no longer an init alias
+
+The original decision aliased a leading bare `.` to `--init`
+(`ocp tui .` / `ocp ui .`). Shipped as designed, it surprised users:
+`ocp tui .` looked like "open the TUI here" but ran project
+initialization — and via the bin dispatcher's `project init` detour it
+even surfaced the interactive project wizard. Revised semantics:
+
+- **Only an explicit `--init`** triggers project init/registration
+  (`ocp tui --init`, `ocp ui --init`, `ocp desktop --init`).
+- A bare `.` is a **stripped no-op** everywhere (`ocp tui .` ≡
+  `ocp tui`); no provider CLI accepts it as an argument.
+- Init handling lives in ONE place — the TS engine (`normalizeTuiPassthrough`
+  for tui, `launchDesktop` for desktop/ui). The bin dispatcher never invokes
+  `project init` itself and performs no init-specific argument rewriting.
+
 ## Decision
 
 1. **Drop `plugins/ocp/` entirely.** Every command moves to the global

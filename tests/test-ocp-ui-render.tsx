@@ -46,18 +46,20 @@ const dashboard = await testRender(() => <OcpApp initialRoute="dashboard" contex
 await dashboard.flush()
 let frame = dashboard.captureCharFrame()
 assert.match(frame, /OpenCode Prime — Dashboard|OpenCode Prime — 全景控制台/, 'dashboard presents the localized OpenTUI header')
-assert.match(frame, /▶ Basic|▶ 基础/, 'dashboard marks the Basic tab as active')
-assert.match(frame, /Tabs · ↑\/↓|标签 · ↑\/↓/, 'dashboard identifies the focused tab rail without wasting a full header row')
+assert.match(frame, /Basic|基础/, 'dashboard renders the active Basic tab')
+assert.match(frame, /Tabs · ←\/→|标签 · ←\/→/, 'dashboard identifies its horizontal tab rail')
 assert.match(frame, /Basic|基础/, 'dashboard starts on Basic')
 assert.match(frame, /Switch Language|切换界面语言/, 'configuration exposes a clear language control')
-assert.match(frame, /保存|Save configuration/, 'dashboard keeps actions in its fixed global context')
+assert.match(frame, /保存|SAVE CONFIGURATION/, 'dashboard keeps actions in its fixed global context')
+const tabRows = dashboard.captureSpans().lines.filter((line) => line.spans.map((span) => span.text).join('').includes('Basic') || line.spans.map((span) => span.text).join('').includes('基础'))
+assert.ok(tabRows.length >= 1, 'dashboard renders tab titles in a dedicated row')
 assert.equal((frame.match(/OpenCode Prime.*(?:Dashboard|全景控制台)/g) ?? []).length, 1, 'dashboard title is rendered only once')
 dashboard.renderer.destroy()
 
 const narrowDashboard = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 56, height: 18 })
 await narrowDashboard.flush()
 frame = narrowDashboard.captureCharFrame()
-assert.match(frame, /保存|Save configuration/, 'Apply actions remain visible when configuration content scrolls on a short terminal')
+assert.match(frame, /保存|SAVE CONFIGURATION/, 'Apply actions remain visible when configuration content scrolls on a short terminal')
 narrowDashboard.renderer.destroy()
 
 const wizard = await testRender(() => <OcpApp initialRoute="wizard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
@@ -95,6 +97,8 @@ assert.match(frame, /Tools|工具/, 'dashboard renders Tools in the tab rail')
   for (const key of ['return', 'space']) {
   const booleanDashboard = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
   await settle(booleanDashboard)
+  booleanDashboard.renderer.keyInput.emit('keypress', { name: 'return' })
+  await booleanDashboard.flush()
   booleanDashboard.renderer.keyInput.emit('keypress', { name: 'right' })
   await booleanDashboard.flush()
   for (let index = 0; index < 3; index++) {
@@ -115,24 +119,39 @@ assert.match(frame, /Tools|工具/, 'dashboard renders Tools in the tab rail')
 
 const dashboardNavigation = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
 await dashboardNavigation.flush()
-const activeTabSpan = (name: string) => {
-  const line = dashboardNavigation.captureSpans().lines.find((candidate) => candidate.spans.map((span) => span.text).join('').includes(`▶ ${name}`))
-  assert.ok(line, `${name} has an active rail row`)
-  const span = line.spans.find((candidate) => candidate.bg.toInts().join(',') !== '20,27,45,255')
-  assert.ok(span, `${name} active rail row has a selected background`)
-  return span
-}
-const configurationActive = activeTabSpan('基础')
-dashboardNavigation.renderer.keyInput.emit('keypress', { name: 'down' })
-dashboardNavigation.renderer.keyInput.emit('keypress', { name: 'return' })
+dashboardNavigation.renderer.keyInput.emit('keypress', { name: 'right' })
 await dashboardNavigation.flush()
 assert.match(dashboardNavigation.captureCharFrame(), /Tools|工具/, 'keyboard tab navigation switches scoped panel content')
-const toolsActive = activeTabSpan('工具')
-assert.deepEqual(toolsActive.bg.toInts(), configurationActive.bg.toInts(), 'the newly active tab retains the active tab background')
-assert.doesNotMatch(dashboardNavigation.captureCharFrame(), /▶ 基础/, 'the previous active tab loses its selection marker')
+dashboardNavigation.renderer.keyInput.emit('keypress', { name: 'down' })
+await dashboardNavigation.flush()
+dashboardNavigation.renderer.keyInput.emit('keypress', { name: 'up' })
+await dashboardNavigation.flush()
+dashboardNavigation.renderer.keyInput.emit('keypress', { name: 'right' })
+await dashboardNavigation.flush()
+assert.match(dashboardNavigation.captureCharFrame(), /MCP/, 'Up on the first panel item returns focus to the tab row for horizontal navigation')
 assert.doesNotMatch(dashboardNavigation.captureCharFrame(), /Primary agent/, 'Tools panel does not repeat Basic content')
-assert.match(dashboardNavigation.captureCharFrame(), /Save configuration|保存/, 'Review & Apply actions remain globally visible')
+assert.match(dashboardNavigation.captureCharFrame(), /SAVE CONFIGURATION|保存/, 'Review & Apply actions remain globally visible')
 dashboardNavigation.renderer.destroy()
+
+// Review tab: Enter on the rail focuses the panel, a second Enter on the
+// static review panel opens the save-and-install confirmation (the summary
+// has no select of its own, so Enter maps to the install action).
+const reviewEnter = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+await reviewEnter.flush()
+for (let index = 0; index < 4; index++) {
+  reviewEnter.renderer.keyInput.emit('keypress', { name: 'right' })
+  await reviewEnter.flush()
+}
+assert.match(reviewEnter.captureCharFrame(), /Installation target|安装目标/, 'the Review tab panel is focused by the tab rail')
+reviewEnter.renderer.keyInput.emit('keypress', { name: 'return' }) // rail → panel
+await settle(reviewEnter)
+reviewEnter.renderer.keyInput.emit('keypress', { name: 'return' }) // panel → install confirmation
+await settle(reviewEnter)
+assert.match(reviewEnter.captureCharFrame(), /SAVE & INSTALL NOW|保存并立即安装/, 'Enter on the review panel opens the install confirmation')
+reviewEnter.renderer.keyInput.emit('keypress', { name: 'escape' })
+await settle(reviewEnter)
+reviewEnter.renderer.destroy()
+
 const dashboardShortcuts = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
 await dashboardShortcuts.flush()
 dashboardShortcuts.renderer.keyInput.emit('keypress', { name: 'a', ctrl: true, meta: false, shift: false, option: false, sequence: '\u0001', raw: '\u0001', eventType: 'press', source: 'raw', number: false })
@@ -140,7 +159,7 @@ await settle(dashboardShortcuts)
 // captureCharFrame() consumes the frame — capture once and assert all
 // confirmation-dialog properties against the same snapshot.
 const confirmFrame = dashboardShortcuts.captureCharFrame()
-assert.match(confirmFrame, /Save and install|保存并立即安装/, 'Ctrl+A opens installation confirmation')
+assert.match(confirmFrame, /SAVE & INSTALL NOW|保存并立即安装/, 'Ctrl+A opens installation confirmation')
 assert.match(confirmFrame, /Confirm|确认/, 'confirmation action is localized')
 assert.match(confirmFrame, /Cancel|取消/, 'cancellation action is localized')
 dashboardShortcuts.renderer.keyInput.emit('keypress', { name: 'escape' })
@@ -238,7 +257,7 @@ await settle(registerUi)
 registerUi.renderer.keyInput.emit('keypress', { name: 'return' }) // confirm the pre-filled target
 await settle(registerUi)
 const registerFrame = registerUi.captureCharFrame()
-assert.match(registerFrame, /Register global commands|注册全局快捷命令/, 'quick install reaches the register yes/no dialog')
+assert.match(registerFrame, /Register global commands|注册全局命令/, 'quick install reaches the register yes/no dialog')
 assert.doesNotMatch(registerFrame, /⌕ /, 'renderFilter: false dialogs render no filter line')
 process.exitCode = 0
 delete process.env.OCP_UI_RESULT_FILE

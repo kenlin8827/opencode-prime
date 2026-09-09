@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import enLocale from '../locales/en.json' with { type: 'json' };
 import zhLocale from '../locales/zh-CN.json' with { type: 'json' };
+import { readOcpField, writeOcpField } from '../../plugins/shared/ocp-config';
 
 export interface I18nMeta {
   code: string;
@@ -123,6 +124,22 @@ export interface I18nText {
   summaryInstalled: string;
   summaryBackup: string;
   unsavedChangesPrompt: string;
+  statusRepoVersion: string;
+  statusInstalledVersion: string;
+  statusTargetDirectory: string;
+  statusState: string;
+  statusUpToDate: string;
+  statusUpdateAvailable: string;
+  statusShippedFiles: string;
+  resetComplete: string;
+  uninstallComplete: string;
+  installComplete: string;
+  backupSaved: string;
+  registerGlobalYes: string;
+  registerGlobalNo: string;
+  installFailed: string;
+  resetResult: string;
+  uninstallResult: string;
 }
 
 export const FALLBACK_EN: I18nText = {
@@ -140,7 +157,7 @@ export const FALLBACK_EN: I18nText = {
   dashboardTabPlugins: 'Plugins',
   dashboardTabReview: 'Review',
   dashboardTabsLabel: 'Tabs',
-  dashboardTabsHint: 'Tabs · ↑/↓',
+  dashboardTabsHint: 'Tabs · ←/→',
   dashboardTargetLabel: 'Installation target',
   dashboardChangeSummaryLabel: 'Change summary',
   dashboardEnabledSummary: '{count} enabled integrations will be saved.',
@@ -186,7 +203,7 @@ export const FALLBACK_EN: I18nText = {
   openchamberVscodeLabel: 'OpenChamber VS Code',
   openchamberVscodeHint: 'Editor extension powering `ocp code` — auto-installs fedaykindev.openchamber via the editor CLI',
   tuiModeLabel: 'TUI Mode',
-  tuiModeHint: 'How `ocp tui` starts: direct (opencode in current shell) or herdr (workspace). Selecting herdr auto-enables tools.herdr',
+  tuiModeHint: 'How `ocp tui` starts: direct (current shell), Herdr workspace, or Luvus workspace. Selecting a workspace mode provisions its integration.',
   toolLabels: {
     rtk: { label: 'RTK Tokenizer', hint: 'Rust Token Killer proxy & plugin' },
     openchamber_web: { label: 'OpenChamber Web', hint: 'Install the OpenChamber web UI CLI powering `ocp web` (needs Node.js 22+)' },
@@ -256,6 +273,22 @@ export const FALLBACK_EN: I18nText = {
   summaryInstalled: 'Files Installed',
   summaryBackup: 'Backup Saved',
   unsavedChangesPrompt: 'You have unsaved changes. Save before leaving? (s = Save, d = Discard, c = Cancel): ',
+  statusRepoVersion: 'Repository Version',
+  statusInstalledVersion: 'Installed Version',
+  statusTargetDirectory: 'Target Directory',
+  statusState: 'Status',
+  statusUpToDate: 'Up to date',
+  statusUpdateAvailable: 'Update available',
+  statusShippedFiles: 'Shipped Files',
+  resetComplete: 'Reset configuration target: {target}',
+  uninstallComplete: 'Uninstalled {count} managed files from {target}',
+  installComplete: 'Installed v{version} to {target} ({count} files applied)',
+  backupSaved: 'Backup saved to {path}',
+  registerGlobalYes: 'Register global commands',
+  registerGlobalNo: 'Skip global commands',
+  installFailed: 'Installation failed: {error}',
+  resetResult: 'Cleared {target}. Backup: {backup}.',
+  uninstallResult: 'Removed {count} files from {target}.',
 };
 
 const localeCache: Record<string, I18nText> = {};
@@ -349,4 +382,19 @@ export function detectDefaultLocaleCode(): string {
   } catch { }
 
   return 'en';
+}
+
+/** The locale selected in any OCP wizard is shared by the TUI and CLI. */
+export function getPreferredLocaleCode(): string {
+  const saved = readOcpField<string>('language');
+  return EMBEDDED_LOCALES[saved ?? ''] ? saved! : detectDefaultLocaleCode();
+}
+
+/** Persist an explicit user choice; environment detection remains transient. */
+export function setPreferredLocaleCode(code: string): void {
+  if (EMBEDDED_LOCALES[code]) writeOcpField('language', code);
+}
+
+export function formatI18n(template: string, values: Record<string, string | number> = {}): string {
+  return template.replace(/\{(\w+)\}/g, (_match, key: string) => String(values[key] ?? `{${key}}`));
 }

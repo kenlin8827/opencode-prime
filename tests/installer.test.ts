@@ -458,7 +458,7 @@ const scratchOptionsPath = path.join(scratchOptionsDir, 'options.jsonc');
 updateOptionsJsoncInPlace(scratchOptionsPath, {
   defaultAgent: 'build',
   globalCommands: false,
-  tools: { rtk: false, openchamber: false, herdr: true },
+  tools: { rtk: false, openchamber: false, herdr: true, luvus: true },
   mcps: { serena: false, codegraph: true },
   plugins: { '@dietrichgebert/ponytail': true },
 });
@@ -466,6 +466,7 @@ if (!fs.existsSync(scratchOptionsPath)) throw new Error('updateOptionsJsoncInPla
 const writtenOptions = readJsoncFile<InstallOptions>(scratchOptionsPath);
 if (writtenOptions?.default_agent !== 'build') throw new Error('default_agent not written to scratch file');
 if (writtenOptions?.tools?.rtk !== false) throw new Error('tools.rtk not written to scratch file');
+if (writtenOptions?.tools?.luvus !== true) throw new Error('tools.luvus not written to scratch file');
 if (writtenOptions?.tools?.openchamber !== false) throw new Error('tools.openchamber not written to scratch file');
 if (writtenOptions?.global_commands !== false) throw new Error('global_commands not written to scratch file');
 if (writtenOptions?.mcp?.serena !== false || writtenOptions?.mcp?.codegraph !== true) throw new Error('mcp map not written to scratch file');

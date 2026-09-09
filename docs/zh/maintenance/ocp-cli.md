@@ -10,8 +10,8 @@
 
 | 命令 | 别名 | 说明 |
 | :--- | :--- | :--- |
-| `ocp` *（无参数）* | | 启动 **OpenCode 终端界面**（等同 `ocp tui`） |
-| `ocp tui` | | 启动 OpenCode 终端 TUI（`exec opencode`）；额外参数原样透传给 `opencode` |
+| `ocp` *（无参数）* | | 在当前 shell **直接启动 OpenCode 终端界面** |
+| `ocp tui` | | 默认通过所选的**工作区包装器**（Herdr 或 Luvus）启动 OpenCode 终端 TUI。加 `--init` 可在启动前创建/激活当前目录的 OCP 项目；加 `--direct`、`--herdr` 或 `--luvus` 可单次覆盖启动模式。 |
 | `ocp serve` | | 启动无头 OpenCode 服务（`opencode serve`）；额外参数透传（如 `ocp serve --port 4096`） |
 | `ocp web` | | 启动 **OpenChamber Web 界面**（`openchamber serve`）；自动生成 `--ui-password`，未指定端口时自动从 3000 起挑选空闲端口（详见[端口与密码策略](#web-端口与密码策略)） |
 | `ocp code` | | 在 **VS Code** 中打开当前项目（同时探测 `code-insiders` / `codium` / `cursor` / `windsurf`），并保证 OpenChamber 编辑器扩展就绪：缺失时自动通过编辑器 CLI 安装 `fedaykindev.openchamber`。加 `--init` 可在启动前创建/激活 OCP 项目；裸 `.` 会原样透传，让 VS Code 打开当前目录 |
@@ -54,16 +54,17 @@ ocp tui                     # 直接进入终端界面
 ocp tui --version           # opencode 自身的 --version
 ```
 
-默认情况下，`ocp tui` 会通过 Herdr 工作区启动（等同 `ocp herdr`）。若要在当前 shell 直接启动 `opencode`，在 `install/options.jsonc` 中设 `"tui_mode": "direct"`。Herdr 模式会自动启用 `tools.herdr`。
+`ocp tui` 是经工作区包装的终端客户端：可在安装向导中选择 **Herdr** 或 **Luvus**，选中的集成会在其受管工作区中启动 OpenCode；希望直接使用终端客户端时，请运行裸 `ocp`。
 
-命令行覆盖（一次性，优先于 `tui_mode` 配置）：
+单次直接启动终端界面：
 
 ```bash
 ocp tui --direct            # 强制 direct（当前 shell 启动 opencode）
-ocp tui --herdr             # 强制本次走 herdr 工作区
+ocp tui --herdr             # 单次强制使用 Herdr 工作区包装器
+ocp tui --luvus             # 单次强制使用 Luvus 工作区包装器
 ```
 
-裸调用 `ocp`（不带任何参数）始终直接打开 `opencode`——绕过 `tui_mode` 与 `--herdr` / `--direct`。
+裸调用 `ocp`（不带任何参数）始终直接打开 `opencode`。
 
 ### `ocp serve` — 无头服务
 

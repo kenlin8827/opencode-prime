@@ -57,6 +57,41 @@
         }
       }
     },
+    "luvus": {
+      "description": "Luvus AI-agent workspace manager — powers `ocp tui` when tui_mode is `luvus`",
+      "binary": "luvus",
+      "url": "https://luvus.dev",
+      "install": {
+        "default": "curl -fsSL https://luvus.dev/install.sh | sh",
+        "win32-x64": "irm https://luvus.dev/install.ps1 | iex",
+        "darwin-arm64": "curl -fsSL https://luvus.dev/install.sh | sh",
+        "linux-x64": "curl -fsSL https://luvus.dev/install.sh | sh"
+      },
+      "post_install": [
+        {
+          "name": "install-opencode-integration",
+          "when": "opencode",
+          "command": "luvus integration install opencode"
+        },
+        {
+          "name": "link-ocp-auto-opencode-module",
+          "when": "opencode",
+          "command": "luvus module link \"$OCP_REPO_DIR/install/luvus-modules/auto-opencode\""
+        }
+      ],
+      "update_check": {
+        "source": {
+          "kind": "github",
+          "repo": "RizRiyz/luvus"
+        },
+        "upgrade": {
+          "default": "luvus update",
+          "win32-x64": "luvus update",
+          "darwin-arm64": "luvus update",
+          "linux-x64": "luvus update"
+        }
+      }
+    },
     "openchamber_web": {
       "description": "OpenChamber web UI CLI — powers `ocp web`",
       "binary": "openchamber",

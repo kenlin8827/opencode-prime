@@ -23,7 +23,7 @@
 - **分层代码智能：** 在统一控制台管理 CodeGraph、GitNexus、Serena LSP、DBHub 等 MCP 服务。
 - **模型分层治理：** 为不同智能体映射 `flash`、`standard`、`pro`、`max`、`vision` 层级，并可一键切换预设。
 - **引导式配置：** 通过 TUI 向导完成 Provider、Profile、项目知识图谱与护栏配置，无需手改配置文件。
-- **一套配置，三种界面：** 可在 OpenCode 终端、OpenChamber Web UI 与原生桌面应用中工作。
+- **一套配置，五种客户端形态：** 终端 TUI 目前可选三种模式：直接模式（`ocp`）、Herdr 模式（`ocp tui`）和 Luvus 模式（`ocp tui`）；另有 OpenChamber VS Code 扩展（`ocp code`）、网页界面（`ocp web`）与原生桌面应用（`ocp desktop`）。
 - **安全的生命周期命令：** 安装、升级、更新、检查和卸载套件时保留本地配置。
 
 ## 安装
@@ -45,7 +45,8 @@ irm https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.ps1
 ## 快速开始
 
 ```bash
-ocp                 # 启动 OpenCode 终端界面
+ocp                 # 直接启动 OpenCode 终端界面
+ocp tui             # 通过所选工作区包装器启动 OpenCode 终端界面
 ocp wizard          # 交互式配置 OCP
 ocp dashboard       # 管理 MCP、插件与模型层级
 ocp provider        # 配置模型 Provider
@@ -54,6 +55,7 @@ ocp project         # 配置并初始化当前项目
 ocp usage           # 查看跨项目 Token 与费用用量
 ocp web             # 启动 OpenChamber 网页界面
 ocp desktop         # 启动原生桌面应用
+ocp code            # 打开 VS Code 并保证 OpenChamber 扩展就绪
 ocp update          # 检查并安装可用更新
 ```
 

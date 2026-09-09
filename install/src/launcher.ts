@@ -149,6 +149,119 @@ export function launchHerdr(extraArgs: string[]): number {
   );
 }
 
+/**
+ * `ocp tui` with `tui_mode=luvus` — open the current directory as a Luvus
+ * workspace, start an OpenCode agent pane, then attach the Luvus client.
+ */
+export function launchLuvus(extraArgs: string[]): number {
+  const cwd = process.cwd();
+  const passthrough = stripOcpTuiControlArgs(extraArgs);
+  if (passthrough.length > 0) {
+    console.log('[ocp] Luvus mode does not forward OpenCode arguments; launch `ocp` or `ocp tui --direct` to pass arguments to opencode.');
+  }
+
+  // `workspace open` is a client command and requires the Luvus background
+  // server/socket to exist. `server start` is idempotent, so run it on every
+  // launch to make first use and post-reboot launches work without a manual
+  // bootstrap command.
+  const server = spawnSync('luvus', ['server', 'start'], {
+    stdio: 'inherit', shell: process.platform === 'win32', cwd,
+  });
+  if (server.error || server.status !== 0) {
+    console.error('✗ Failed to start the Luvus server.');
+    return server.status ?? 1;
+  }
+
+  const open = spawnSync('luvus', ['workspace', 'open', cwd], {
+    stdio: 'inherit', shell: process.platform === 'win32', cwd,
+  });
+  if (open.error || open.status !== 0) {
+    console.error('✗ Failed to open the current directory as a Luvus workspace.');
+    return open.status ?? 1;
+  }
+
+  // Start opencode in the focused pane unless the auto-start path is already
+  // covered: the bundled `ocp.auto-opencode` module (linked at install time
+  // via `luvus module link`) handles `pane.created` events — the Luvus
+  // counterpart of the herdr auto-opencode plugin — and a warm workspace may
+  // already run opencode from a previous launch.
+  //
+  // Do NOT use `agent start <name> --kind opencode` here: on Windows its
+  // launch line reaches PowerShell quoted ('opencode'), which echoes the
+  // string instead of executing it — the agent never boots, the call blocks
+  // the 30s readiness wait, and the bound name is left as a zombie that makes
+  // every later start fail with name_in_use. `pane run` sends the argv
+  // unquoted and luvus auto-detects the process (authority: process_tree).
+  if (hasOpencodeAgentInWorkspace(cwd)) {
+    console.log('[ocp] opencode is already running in this workspace — attaching.');
+  } else {
+    const paneId = focusedPaneId();
+    if (paneId && !paneRunsOpencode(paneId)) {
+      const run = runLuvus(['pane', 'run', paneId, 'opencode'], cwd);
+      if (run.status === 0 && !run.error) {
+        // Best-effort name for `=`-mentioning; a zombie name from an old
+        // session is silently ignored (the agent works unnamed).
+        runLuvus(['pane', 'name', 'opencode', '--pane', paneId], cwd);
+      } else {
+        console.warn('[ocp] ⚠ Could not auto-start opencode in the focused pane — it stays a plain shell. Run `opencode` there manually.');
+      }
+    }
+  }
+  return launchBinary('luvus', '  Install Luvus first: https://luvus.dev (or re-run `ocp install`).', [], { cwd });
+}
+
+/** Run one luvus CLI call, capturing output (never inherited). */
+function runLuvus(args: string[], cwd: string) {
+  return spawnSync('luvus', args, {
+    encoding: 'utf8', timeout: 30000, shell: process.platform === 'win32', cwd,
+  });
+}
+
+/** Parse one luvus JSON response; null on any failure. */
+function parseLuvusJson(stdout: string | undefined | null): any | null {
+  try { return JSON.parse(String(stdout ?? '')); } catch { return null; }
+}
+
+/** The focused pane id in the currently focused workspace, or null. */
+function focusedPaneId(): string | null {
+  const res = runLuvus(['pane', 'list'], process.cwd());
+  if (res.error || res.status !== 0) return null;
+  const json = parseLuvusJson(res.stdout);
+  const panes: any[] = json?.result?.panes ?? json?.panes ?? [];
+  const pane = panes.find((p) => p?.focused === true) ?? panes[0];
+  const id = pane?.pane ?? pane?.pane_id ?? pane?.id;
+  return id != null ? String(id) : null;
+}
+
+/** True when `pane status <id>` already attributes the pane to opencode. */
+function paneRunsOpencode(paneId: string): boolean {
+  const res = runLuvus(['pane', 'status', paneId], process.cwd());
+  if (res.error || res.status !== 0) return false;
+  const json = parseLuvusJson(res.stdout);
+  const agent = String(json?.result?.agent ?? json?.agent ?? '');
+  return /opencode/i.test(agent);
+}
+
+/**
+ * True when `luvus agent list` positively confirms an opencode agent rooted at
+ * (or below) `cwd`. Conservative by design: any missing binary, non-zero exit,
+ * unparseable JSON, or absent cwd field yields false, so the pane-run start in
+ * launchLuvus() remains the reliable fallback.
+ */
+function hasOpencodeAgentInWorkspace(cwd: string): boolean {
+  const res = runLuvus(['agent', 'list'], process.cwd());
+  if (res.error || res.status !== 0) return false;
+  const json = parseLuvusJson(res.stdout);
+  const agents: any[] = json?.result?.agents ?? json?.agents ?? [];
+  const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '');
+  const target = norm(cwd);
+  return agents.some((a) => {
+    if ((a?.kind ?? a?.agent) !== 'opencode') return false;
+    const agentCwd = typeof a?.cwd === 'string' ? norm(a.cwd) : '';
+    return agentCwd !== '' && (agentCwd === target || agentCwd.startsWith(target + '/'));
+  });
+}
+
 /** Drop OCP-only TUI controls that opencode/herdr CLIs do not understand. */
 function stripOcpTuiControlArgs(args: string[]): string[] {
   return args.filter((a) => a !== '--init' && a !== '.');
@@ -711,17 +824,14 @@ function seedOpenChamberProject(dir: string): boolean {
  * its own probe (install dirs on Windows, `open -a` on macOS, PATH +
  * common locations on Linux).
  *
- * With `--init` (or when the caller passes `.` which the shell normalizes to
- * `--init`), this also scaffolds an OCP project in the current directory and
- * registers that directory as an OpenChamber project. Plain `ocp desktop` /
- * `ocp ui` still just launches the app.
+ * ONLY an explicit `--init` scaffolds an OCP project in the current
+ * directory and registers that directory as an OpenChamber project (a bare
+ * `.` no longer aliases it — it is stripped as a no-op). Plain `ocp desktop`
+ * / `ocp ui` still just launches the app.
  */
 export async function launchDesktop(extraArgs: string[]): Promise<number> {
-  // `.` (current directory) means the same as --init wherever it appears as
-  // the first argument — bin dispatchers normalize it too, this covers direct
-  // `bun install/src/index.ts desktop .` invocations.
-  const hasInit = extraArgs.includes('--init') || extraArgs[0] === '.';
-  const launchArgs = extraArgs.filter((a, i) => a !== '--init' && !(i === 0 && a === '.'));
+  const hasInit = extraArgs.includes('--init');
+  const launchArgs = extraArgs.filter((a) => a !== '--init' && a !== '.');
 
   if (hasInit) {
     const initCode = await runOcpProjectInit();

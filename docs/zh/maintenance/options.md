@@ -51,8 +51,9 @@
        // `ocp code` 的 VS Code 扩展（缺失时通过编辑器 CLI 自动安装
         // fedaykindev.openchamber）。默认关闭：启用后会修改编辑器。
         "openchamber_vscode": false,
-       // 终端工作空间管理器（tui_mode 为 "herdr" 时自动视为 true）
-       "herdr": false
+        // 终端工作区管理器；所选 tui_mode 对应的工具会自动视为 true。
+        "herdr": false,
+        "luvus": false
      },
      // 默认主控智能体（lite: 默认精益日常驱动 / code: 直接开发 / build: 编排派发 / plan: 只读分析）
      "default_agent": "lite",
@@ -126,20 +127,24 @@
 
 ---
 
-## Herdr（`ocp herdr`）—— 可选终端工作区管理器
+## 工作区包装 TUI（`ocp tui`）
 
-[Herdr](https://herdr.dev) 是为 AI 编码代理量身打造的终端工作区管理器。每个 herdr 工作区都以某个目录为根，并在新 pane 里自动启动 opencode（通过 OCP 的 `auto-opencode` 插件）。开启 `"herdr": true` 后，安装器会在本地缺 `herdr` 命令时自动拉取，并把内置配置链接到 `~/.config/herdr/config.toml`。
+安装向导可选择 `ocp tui` 背后的工作区集成：**Herdr** 或 **Luvus**。裸 `ocp` 始终在当前 shell 中直接启动 OpenCode。
 
-由于 `tui_mode` 默认值为 `"herdr"`，Herdr 默认启用。若不需要，可在向导或此配置中关闭。
+| 模式 | 集成 | OCP 的配置行为 |
+|---|---|---|
+| `"herdr"` *（默认）* | [Herdr](https://herdr.dev) | 建立以当前目录为根的工作区；OCP 会配置 Herdr、其 OpenCode 集成与内置自动启动插件。 |
+| `"luvus"` | [Luvus](https://luvus.dev) | 建立以当前目录为根的工作区；OCP 运行 Luvus 官方安装器，配置其 OpenCode 会话集成，并链接内置自动启动模块（新标签页/窗格自动开启 opencode）；启动时若模块未生效则回退为显式启动一个 OpenCode agent。 |
+| `"direct"` | 无 | 在当前 shell 中直接运行 OpenCode。 |
 
-要让 `ocp tui` 走 herdr 而非直接启动 `opencode`，请设：
+可在向导中选择默认值，也可手动设置：
 
 ```jsonc
 // install/options.jsonc
-"tui_mode": "herdr"   // "direct" | "herdr"（默认）
+"tui_mode": "luvus"   // "direct" | "herdr"（默认） | "luvus"
 ```
 
-选 `"herdr"` 会自动启用 `tools.herdr`（覆盖显式设为 `false` 的情况），并打印一行提示，无需再手动开启第二个开关。
+选择工作区模式会自动启用匹配的 `tools` 项，即使它显式设为 `false`。单次覆盖可使用 `ocp tui --direct`、`ocp tui --herdr` 或 `ocp tui --luvus`。
 
 ---
 

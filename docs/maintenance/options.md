@@ -52,8 +52,9 @@ Learn about installer commands, configuration options, token savings, and preser
         // fedaykindev.openchamber via the editor CLI when missing).
         // Disabled by default: enabling it modifies the editor.
         "openchamber_vscode": false,
-       // Terminal workspace manager (implied true when tui_mode is "herdr")
-       "herdr": false
+        // Terminal workspace managers; the selected tui_mode is implied true.
+        "herdr": false,
+        "luvus": false
      },
      // Primary agent on start: lite (default, lean daily driver) / code (direct dev) / build (orchestrator) / plan (read-only)
      "default_agent": "lite",
@@ -127,20 +128,24 @@ To opt out: set `"rtk": false` in `install/options.jsonc` and re-run install.
 
 ---
 
-## Herdr (`ocp herdr`) — optional terminal workspace manager
+## Workspace-wrapped TUI (`ocp tui`)
 
-[Herdr](https://herdr.dev) is a terminal workspace manager purpose-built for AI coding agents. Each herdr workspace is rooted at a directory and auto-starts opencode in the new pane (via OCP's `auto-opencode` plugin). With `"herdr": true`, the installer provisions the `herdr` CLI on missing PATH and links the bundled config to `~/.config/herdr/config.toml`.
+The setup wizard lets you choose the workspace integration behind `ocp tui`: **Herdr** or **Luvus**. Bare `ocp` always launches OpenCode directly in the current shell.
 
-Herdr is enabled by default because `tui_mode` defaults to `"herdr"`. Turn it off in the dashboard or here if you do not use it.
+| Mode | Integration | What OCP configures |
+|---|---|---|
+| `"herdr"` *(default)* | [Herdr](https://herdr.dev) | A workspace rooted at the current directory; OCP provisions Herdr, its OpenCode integration, and the bundled auto-start plugin. |
+| `"luvus"` | [Luvus](https://luvus.dev) | A workspace rooted at the current directory; OCP runs Luvus's official installer, provisions its OpenCode session integration, and links the bundled auto-start module (every new tab/pane boots opencode), falling back to an explicit OpenCode agent start at launch. |
+| `"direct"` | None | OpenCode runs in the current shell. |
 
-To force `ocp tui` to launch via herdr instead of directly starting `opencode`, set:
+Choose the default in the wizard or set it manually:
 
 ```jsonc
 // install/options.jsonc
-"tui_mode": "herdr"   // "direct" | "herdr" (default)
+"tui_mode": "luvus"   // "direct" | "herdr" (default) | "luvus"
 ```
 
-Selecting `"herdr"` auto-enables `tools.herdr` (regardless of its setting) and prints a one-line notice. No second option to flip.
+Selecting a workspace mode auto-enables its matching `tools` entry, even when it was explicitly `false`. For a one-off override, use `ocp tui --direct`, `ocp tui --herdr`, or `ocp tui --luvus`.
 
 ---
 

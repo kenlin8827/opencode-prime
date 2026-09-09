@@ -139,7 +139,7 @@ export function updateOptionsJsoncInPlace(
   updates: {
     defaultAgent?: string;
     globalCommands?: boolean;
-    tuiMode?: 'direct' | 'herdr';
+    tuiMode?: 'direct' | 'herdr' | 'luvus';
     tools?: Record<string, boolean>;
     mcps?: Record<string, boolean>;
     plugins?: Record<string, boolean>;

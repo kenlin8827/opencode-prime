@@ -25,8 +25,10 @@
       register        Install global shims (opencode-prime, ocp) into ~/.local/bin
       unregister      Remove global shims from ~/.local/bin
       tui             Launch the OpenCode terminal UI (exec opencode).
-                     Add --herdr / --direct to override tui_mode config for
+                      Add --herdr / --luvus / --direct to override tui_mode config for
                      this invocation (forces routing through the TS engine)
+                      Add --init to create/activate the OCP project in the
+                      current directory before launching
       serve           Launch the headless opencode server (opencode serve; all args pass through)
       web             Launch the OpenChamber web UI (openchamber serve; all extra args pass through,
                       auto-picks a free port starting at 3000 unless --port is given)
@@ -75,14 +77,15 @@ function Get-HelpText {
 function Get-ConfigTuiMode {
     # Read tui_mode from options.jsonc without a JSON parser (the files are
     # JSONC with comments). Mirrors loadEffectiveOptions(): repo defaults
-    # first, the user's target options.jsonc wins. Returns 'herdr' or
-    # 'direct' — the colon-anchored regex can't false-match prose comments.
+    # first, the user's target options.jsonc wins. Returns a supported mode —
+    # the colon-anchored regex can't false-match prose comments.
     $mode = 'direct'
     $configDir = if ($env:OPENCODE_CONFIG_DIR) { $env:OPENCODE_CONFIG_DIR } else { Join-Path $HOME '.config/opencode' }
     foreach ($p in @((Join-Path $RepoRoot 'install/options.jsonc'), (Join-Path $configDir 'options.jsonc'))) {
         if (-not (Test-Path -LiteralPath $p)) { continue }
         $raw = Get-Content -Raw -LiteralPath $p
         if ($raw -match '"tui_mode"\s*:\s*"herdr"') { $mode = 'herdr' }
+        elseif ($raw -match '"tui_mode"\s*:\s*"luvus"') { $mode = 'luvus' }
         elseif ($raw -match '"tui_mode"\s*:\s*"direct"') { $mode = 'direct' }
     }
     return $mode
@@ -229,28 +232,23 @@ switch ($Subcommand.ToLowerInvariant()) {
         break
     }
     'tui' {
-        # Detect init request: `ocp tui .` or `ocp tui --init` (or both).
-        # Normalize before mode routing so the TypeScript/herdr path can run
-        # project init and so `.` is never forwarded to herdr/opencode.
-        $initRequested = ($Rest -contains '--init') -or ($Rest -contains '.')
-        $normalizedRest = @()
-        foreach ($a in $Rest) {
-            if ($a -eq '--init') { continue }
-            if ($initRequested -and $a -eq '.') { continue }
-            $normalizedRest += $a
+        # Init semantics live in ONE place: the TS engine's tui branch
+        # (normalizeTuiPassthrough → headless project init → launcher).
+        # ONLY an explicit --init initializes; delegate the whole invocation
+        # when it is present so init + mode resolution stay in the engine.
+        # A bare `.` is a no-op (stripped engine-side too) — but it must not
+        # reach the direct `opencode` fast path below, so drop it here.
+        if ($Rest -contains '--init') {
+            & $Install tui @Rest
+            exit $LASTEXITCODE
         }
-        if ($initRequested) {
-            & $Install project init
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-        }
-        $Rest = @($normalizedRest)
+        $Rest = @($Rest | Where-Object { $_ -ne '.' })
 
-        # --herdr / --direct override `tui_mode` from options.jsonc. When
+        # Explicit mode flags override `tui_mode` from options.jsonc. When
         # either is present, hand off to the TS engine so it can decide
-        # which launcher to run. Without a flag, tui_mode=herdr also routes
-        # to the TS engine (herdr workspace + auto-opencode); herdr missing
-        # from PATH falls back to the direct opencode fast path.
-        if (($Rest -contains '--herdr') -or ($Rest -contains '--direct')) {
+        # which launcher to run. Workspace modes route to the TS engine; an
+        # unavailable provider falls back to the direct opencode fast path.
+        if (($Rest -contains '--herdr') -or ($Rest -contains '--luvus') -or ($Rest -contains '--direct')) {
             & $Install tui @Rest
             exit $LASTEXITCODE
         }
@@ -260,6 +258,13 @@ switch ($Subcommand.ToLowerInvariant()) {
                 exit $LASTEXITCODE
             }
             Write-Host '[ocp] tui_mode=herdr, but herdr was not found on PATH — falling back to direct opencode.' -ForegroundColor Yellow
+        }
+        if ((Get-ConfigTuiMode) -eq 'luvus') {
+            if (Get-Command luvus -ErrorAction SilentlyContinue) {
+                & $Install tui @Rest
+                exit $LASTEXITCODE
+            }
+            Write-Host '[ocp] tui_mode=luvus, but luvus was not found on PATH — falling back to direct opencode.' -ForegroundColor Yellow
         }
         if (-not (Get-Command opencode -ErrorAction SilentlyContinue)) {
             Write-Host '✗ opencode was not found on PATH.' -ForegroundColor Red
@@ -346,22 +351,10 @@ switch ($Subcommand.ToLowerInvariant()) {
         exit $LASTEXITCODE
     }
     { $_ -in @('desktop', 'ui') } {
-        # Detect init request: `ocp ui .` or `ocp ui --init` (or both).
-        # `.` is normalized to `--init` so the installer can scaffold the OCP
-        # project and register the current directory in OpenChamber.
-        # Plain `ocp ui` just launches the desktop app.
-        $initRequested = $false
-        if ($Rest.Count -gt 0 -and $Rest[0] -eq '.') {
-            $initRequested = $true
-            $Rest = $Rest[1..($Rest.Count - 1)]
-        }
-        if ($Rest -contains '--init') {
-            $initRequested = $true
-            $Rest = @($Rest | Where-Object { $_ -ne '--init' -and $_ -ne '.' })
-        }
-        if ($initRequested) {
-            $Rest = @('--init') + $Rest
-        }
+        # ONLY an explicit --init triggers project init/registration — it
+        # passes through verbatim (the TS launchDesktop reads it). A bare
+        # `.` is no longer an init alias — drop it.
+        $Rest = @($Rest | Where-Object { $_ -ne '.' })
         & $Install desktop @Rest
         exit $LASTEXITCODE
     }

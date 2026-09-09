@@ -18,11 +18,13 @@
     // disabled by default to avoid modifying the user's editor.
     "openchamber_vscode": false,
     // Implied true when tui_mode is "herdr".
-    "herdr": false
+    "herdr": false,
+    // Implied true when tui_mode is "luvus".
+    "luvus": false
   },
   // Unknown default_agent names retain the template value.
   "default_agent": "lite",
-  // Default: starts a workspace and auto-enables tools.herdr.
+  // Direct runs in this shell; herdr and luvus run in a managed workspace.
   "tui_mode": "herdr",
   // Enabled MCPs provision their CLI when the template declares one.
   "mcp": {

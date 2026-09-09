@@ -24,8 +24,10 @@
 #   register        Install global shims (opencode-prime, ocp) into ~/.local/bin
 #   unregister      Remove global shims from ~/.local/bin
 #   tui             Launch the OpenCode terminal UI (exec opencode).
-#                   Add --herdr / --direct to override tui_mode config for
+#                   Add --herdr / --luvus / --direct to override tui_mode config for
 #                   this invocation (forces routing through the TS engine)
+#                   Add --init to create/activate the OCP project in the
+#                   current directory before launching
 #   serve           Launch the headless opencode server (opencode serve;
 #                   all args pass through)
 #   web             Launch the OpenChamber web UI (openchamber serve; all extra
@@ -57,7 +59,7 @@ print_help() {
 
 # tui_mode from options.jsonc without a JSON parser (the files are JSONC
 # with comments). Mirrors loadEffectiveOptions(): repo defaults first, the
-# user's target options.jsonc wins. Prints 'herdr' or 'direct' — the
+# user's target options.jsonc wins. Prints a supported mode — the
 # colon-anchored grep can't false-match prose comments.
 get_config_tui_mode() {
     local mode=direct p
@@ -65,6 +67,7 @@ get_config_tui_mode() {
     for p in "$REPO_ROOT/install/options.jsonc" "$config_dir/options.jsonc"; do
         [[ -f "$p" ]] || continue
         if grep -qE '"tui_mode"[[:space:]]*:[[:space:]]*"herdr"' "$p"; then mode=herdr
+        elif grep -qE '"tui_mode"[[:space:]]*:[[:space:]]*"luvus"' "$p"; then mode=luvus
         elif grep -qE '"tui_mode"[[:space:]]*:[[:space:]]*"direct"' "$p"; then mode=direct
         fi
     done
@@ -126,34 +129,29 @@ case "$sub" in
         exec "$INSTALL" unregister "$@"
         ;;
     tui)
-        # Detect init request: `ocp tui .` or `ocp tui --init` (or both).
-        # Normalize before mode routing so the TypeScript/herdr path can run
-        # project init and so `.` is never forwarded to herdr/opencode.
-        init_requested=false
+        # Init semantics live in ONE place: the TS engine's tui branch
+        # (normalizeTuiPassthrough → headless project init → launcher).
+        # ONLY an explicit --init initializes; delegate the whole invocation
+        # when it is present so init + mode resolution stay in the engine.
+        # A bare `.` is a no-op (stripped engine-side too) — but it must not
+        # reach the direct `opencode` fast path below, so drop it here.
         for a in "$@"; do
-            if [[ "$a" == "--init" || "$a" == "." ]]; then
-                init_requested=true
-                break
+            if [[ "$a" == "--init" ]]; then
+                exec "$INSTALL" tui "$@"
             fi
         done
         new_args=()
         for a in "$@"; do
-            [[ "$a" == "--init" ]] && continue
-            if [[ "$init_requested" == true && "$a" == "." ]]; then continue; fi
+            [[ "$a" == "." ]] && continue
             new_args+=("$a")
         done
         set -- "${new_args[@]}"
-        if [[ "$init_requested" == true ]]; then
-            "$INSTALL" project init || exit 1
-        fi
 
-        # --herdr / --direct override `tui_mode` from options.jsonc. When
-        # either is present, hand off to the TS engine so it can decide which
-        # launcher to run. Without a flag, tui_mode=herdr also routes to the
-        # TS engine (herdr workspace + auto-opencode); herdr missing from
-        # PATH falls back to the direct opencode fast path.
+        # Explicit mode flags override `tui_mode` from options.jsonc. Workspace
+        # modes route to the TS engine; an unavailable provider falls back to
+        # the direct opencode fast path.
         for a in "$@"; do
-            if [[ "$a" == "--herdr" || "$a" == "--direct" ]]; then
+            if [[ "$a" == "--herdr" || "$a" == "--luvus" || "$a" == "--direct" ]]; then
                 exec "$INSTALL" tui "$@"
             fi
         done
@@ -162,6 +160,12 @@ case "$sub" in
                 exec "$INSTALL" tui "$@"
             fi
             echo "[ocp] tui_mode=herdr, but herdr was not found on PATH — falling back to direct opencode." >&2
+        fi
+        if [[ "$(get_config_tui_mode)" == "luvus" ]]; then
+            if command -v luvus >/dev/null 2>&1; then
+                exec "$INSTALL" tui "$@"
+            fi
+            echo "[ocp] tui_mode=luvus, but luvus was not found on PATH — falling back to direct opencode." >&2
         fi
         if ! command -v opencode >/dev/null 2>&1; then
             echo "✗ opencode was not found on PATH." >&2
@@ -308,27 +312,15 @@ case "$sub" in
         exec "$INSTALL" code "$@"
         ;;
     desktop|ui)
-        # Detect init request: `ocp ui .` or `ocp ui --init` (or both).
-        # `.` is normalized to `--init` before delegating to the installer so
-        # the TypeScript launcher can scaffold the OCP project and register the
-        # current directory as an OpenChamber project. Plain `ocp ui` ignores.
-        init_requested=false
-        if [[ "$1" == "." ]]; then
-            init_requested=true
-            shift
-        fi
-        if [[ "$*" == *--init* ]]; then
-            init_requested=true
-            new_args=()
-            for a in "$@"; do
-                # Drop --init and any stray `.` wherever they appear.
-                { [ "$a" != "--init" ] && [ "$a" != "." ]; } && new_args+=("$a")
-            done
-            set -- "${new_args[@]}"
-        fi
-        if [[ "$init_requested" == true ]]; then
-            set -- --init "$@"
-        fi
+        # ONLY an explicit --init triggers project init/registration — it
+        # passes through verbatim (the TS launchDesktop reads it). A bare
+        # `.` is no longer an init alias — drop it.
+        new_args=()
+        for a in "$@"; do
+            [[ "$a" == "." ]] && continue
+            new_args+=("$a")
+        done
+        set -- "${new_args[@]}"
         exec "$INSTALL" desktop "$@"
         ;;
     session)

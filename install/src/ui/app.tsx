@@ -18,7 +18,7 @@ import profileWizard from '../../../plugins/tui/profile-wizard'
 import projectWizard from '../../../plugins/tui/project-wizard'
 import usagePlugin from '../../../plugins/tui/usage'
 import { tr } from '../../../plugins/tui/i18n'
-import { detectDefaultLocaleCode, getAvailableLocales, loadLocale } from '../i18n'
+import { formatI18n, getAvailableLocales, getPreferredLocaleCode, loadLocale, setPreferredLocaleCode } from '../i18n'
 import { getDefaultBinDir, isShimRegistered, runGlobalRegistration, unregisterShim } from '../shim'
 
 export interface OcpUiContext { repoDir: string; root?: string; sessionId?: string; usageScope?: 'all' | 'current' }
@@ -58,26 +58,44 @@ function categoryRows(options: DialogOption[]): SelectRow[] {
 
 const DAY_MS = 86_400_000
 
+/** Plain-Esc test for every "escape = back/exit" binding. Terminals that
+ *  report modified keys in the kitty ALTERNATE-KEY form (CSI 27;5;<cp>u)
+ *  arrive with name 'escape' + ctrl set; treating those as Esc silently
+ *  ejected users from screens exactly when they pressed Ctrl+A. */
+function isBareEscape(key: { name?: string; ctrl?: boolean; meta?: boolean }): boolean {
+  return key.name === 'escape' && !key.ctrl && !key.meta
+}
+
+/** OpenTUI's kernel select fills its panel with this default focused
+ *  background; compact lists wrap themselves in a matching box so a leading
+ *  gap can sit INSIDE the panel (the kernel only spaces items after rows). */
+const SELECT_PANEL_BG = '#1a1a1a'
+
 /** Nearest real (non-header) row index — headers are presentation-only, so
  *  navigation that lands on one skips past it IN THE MOVEMENT DIRECTION
  *  (otherwise upward navigation could never cross a header), falling back to
  *  the other direction at list edges. */
 function skipHeaderRow(rows: SelectRow[], index: number, direction: 1 | -1): number {
-  if (rows[index]?.option) return index
+  // The kernel select can emit indices from a stale options list (a filter
+  // narrowed the rows between the emit and this handler) — clamp before
+  // probing so a transient mismatch navigates, never crashes.
+  if (rows.length === 0) return index
+  const at = Math.max(0, Math.min(index, rows.length - 1))
+  if (rows[at].option) return at
   if (direction === 1) {
-    const next = rows.slice(index + 1).find((row) => row.option)
+    const next = rows.slice(at + 1).find((row) => row.option)
     if (next) return rows.indexOf(next)
-    for (let i = index - 1; i >= 0; i--) {
+    for (let i = at - 1; i >= 0; i--) {
       if (rows[i].option) return i
     }
   } else {
-    for (let i = index - 1; i >= 0; i--) {
+    for (let i = at - 1; i >= 0; i--) {
       if (rows[i].option) return i
     }
-    const next = rows.slice(index + 1).find((row) => row.option)
+    const next = rows.slice(at + 1).find((row) => row.option)
     if (next) return rows.indexOf(next)
   }
-  return index
+  return at
 }
 
 /** Date bucket for the usage session picker — sessions arrive sorted by
@@ -212,7 +230,7 @@ async function registerWizard(plugin: TuiPluginModule, api: ReturnType<typeof cr
 
 function Screen(props: { title: string; lines: () => string[]; onEnter?: () => void; onBack: () => void; footer: string }): JSX.Element {
   useKeyboard((key) => {
-    if (key.name === 'escape' || (key.ctrl && key.name === 'c')) props.onBack()
+    if (isBareEscape(key) || (key.ctrl && key.name === 'c')) props.onBack()
     else if (key.name === 'return' || key.name === 'space') props.onEnter?.()
   })
   return <Modal title={props.title} footer={<>{props.footer}</>}>
@@ -289,6 +307,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
     // j/k from reaching the select's move bindings.
     const filterable = dialog.kind === 'select' && dialog.renderFilter !== false
     const [filter, setFilter] = createSignal('')
+    const [confirmSelection, setConfirmSelection] = createSignal(0)
     // OpenTUI's select handles navigation, but terminal key naming differs
     // between Windows hosts (`enter` vs `return`). Keep the active row in the
     // compatibility host and explicitly activate it for both spellings.
@@ -308,7 +327,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
     const buildRows = (): SelectRow[] => categoryRows(filteredOptions())
 
     useKeyboard((key) => {
-      if (key.name !== 'escape') {
+      if (!isBareEscape(key)) {
         // Windows Terminal / conhost commonly report Enter as `linefeed`; the
         // synthetic OpenTUI test host reports it as `return`. Support both,
         // plus numpad Enter (`enter`), in the compatibility layer.
@@ -321,6 +340,19 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
           const target = selected?.option ?? rows.slice(selectedRow() + 1).find((row) => row.option)?.option ?? rows.slice(0, selectedRow()).reverse().find((row) => row.option)?.option
           if (target) dialog.onSelect(target)
           return
+        }
+        // Confirm dialogs use custom, vertically-spaced option rows rather
+        // than the kernel select. Handle their keys in this dialog-level
+        // listener: it is registered before child renderables and therefore
+        // cannot be shadowed by a sibling/global listener.
+        if (dialog.kind === 'confirm') {
+          if (key.name === 'up' || key.name === 'down') { key.preventDefault?.(); setConfirmSelection((index) => index === 0 ? 1 : 0); return }
+          if (key.name === 'return' || key.name === 'enter' || key.name === 'linefeed' || key.name === 'space') {
+            key.preventDefault?.()
+            if (confirmSelection() === 0) dialog.onConfirm()
+            else dialog.onCancel?.()
+            return
+          }
         }
         if (!filterable) return
         if (key.name === 'backspace') { key.preventDefault?.(); setFilter((f) => f.slice(0, -1)); return }
@@ -342,6 +374,11 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
       // Memo: the branch body runs once per dialog — only the JSX expressions
       // re-evaluate, so the row list must be reactive for the filter to narrow it.
       const rows = createMemo(buildRows)
+      // The kernel select reserves two terminal rows per item when descriptions
+      // are shown. For terse host choices (yes/no, confirm/cancel, etc.), use a
+      // single centered text row and insert an explicit inter-item gap instead.
+      const showDescriptions = () => rows().some((row) => Boolean(row.description))
+      const rowHeight = () => (showDescriptions() ? 2 : 1) + (dialog.itemSpacing ?? (showDescriptions() ? 0 : 1))
       // Headers are presentation-only rows: focus must land on the first real
       // option (or the `current` pick), mirroring the host's non-selectable headers.
       const firstReal = rows().findIndex((row) => row.option)
@@ -369,39 +406,58 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
         <Show when={filterable && rows().length === 0}>
           <text fg={ocpTheme.muted}>No matches</text>
         </Show>
-        <select focused height={Math.max(1, Math.min(rows().length * (2 + (dialog.itemSpacing ?? 0)), cap))} showScrollIndicator={rows().length * (2 + (dialog.itemSpacing ?? 0)) > cap}
-          backgroundColor={ocpTheme.surface} textColor={ocpTheme.text} descriptionColor={ocpTheme.muted}
-          selectedBackgroundColor={ocpTheme.accent} selectedTextColor={ocpTheme.surface}
-          selectedDescriptionColor={ocpTheme.surface} itemSpacing={dialog.itemSpacing ?? 0}
-          keyBindings={[{ name: 'space', action: 'select-current' }]}
-          options={rows().map((row) => ({ name: row.name, value: row.value, description: row.description }))}
-          ref={(el: { setSelectedIndex?: (i: number) => void; moveDown?: (n: number) => void } | null) => {
-            selectRef = el
-            // Applying `selectedIndex` as a static prop races the wrapper's
-            // prop pipeline on remounts; drive the renderable directly.
-            if (initial > 0) queueMicrotask(() => el?.setSelectedIndex?.(initial))
-          }}
-          onChange={(index: number) => {
-            // Headers are non-focusable: if the highlight lands on one, push
-            // it to the nearest real option IN THE MOVEMENT DIRECTION
-            // (mirrors opencode's DialogSelect).
-            const direction: 1 | -1 = index >= selectedRow() ? 1 : -1
-            const target = skipHeaderRow(rows(), index, direction)
-            setSelectedRow(target)
-            if (target !== index) selectRef?.setSelectedIndex?.(target)
-          }}
-          onSelect={(_index: number, picked: { value?: string } | null) => {
-            const source = picked ? dialog.options.find((option) => option.value === picked.value) : undefined
-            if (source) dialog.onSelect(source)
-          }} />
+        {(() => {
+          const list = <select focused height={Math.max(1, Math.min(rows().length * rowHeight(), cap))} showScrollIndicator={rows().length * rowHeight() > cap}
+            backgroundColor={ocpTheme.surface} focusedBackgroundColor={SELECT_PANEL_BG} textColor={ocpTheme.text} descriptionColor={ocpTheme.muted}
+            selectedBackgroundColor={ocpTheme.accent} selectedTextColor={ocpTheme.surface}
+            selectedDescriptionColor={ocpTheme.surface} showDescription={showDescriptions()} itemSpacing={dialog.itemSpacing ?? (showDescriptions() ? 0 : 1)}
+            keyBindings={[{ name: 'space', action: 'select-current' }]}
+            options={rows().map((row) => ({ name: row.name, value: row.value, description: row.description }))}
+            ref={(el: { setSelectedIndex?: (i: number) => void; moveDown?: (n: number) => void } | null) => {
+              selectRef = el
+              // Applying `selectedIndex` as a static prop races the wrapper's
+              // prop pipeline on remounts; drive the renderable directly.
+              if (initial > 0) queueMicrotask(() => el?.setSelectedIndex?.(initial))
+            }}
+            onChange={(index: number) => {
+              // Headers are non-focusable: if the highlight lands on one, push
+              // it to the nearest real option IN THE MOVEMENT DIRECTION
+              // (mirrors opencode's DialogSelect).
+              const direction: 1 | -1 = index >= selectedRow() ? 1 : -1
+              const target = skipHeaderRow(rows(), index, direction)
+              setSelectedRow(target)
+              if (target !== index) selectRef?.setSelectedIndex?.(target)
+            }}
+            onSelect={(_index: number, picked: { value?: string } | null) => {
+              const source = picked ? dialog.options.find((option) => option.value === picked.value) : undefined
+              if (source) dialog.onSelect(source)
+            }} />
+          // Compact rows carry their gap AFTER each item; the kernel paints
+          // items flush to the panel top, so wrap the list in a panel-colored
+          // box whose leading blank row makes the head gap symmetric.
+          if (showDescriptions()) return list
+          return <box backgroundColor={SELECT_PANEL_BG}><box height={1} />{list}</box>
+        })()}
       </Modal>
     }
+    const ConfirmOptions = (confirmDialog: Extract<Dialog, { kind: 'confirm' }>) => {
+      const options = () => [confirmDialog.confirmLabel ?? 'Confirm', confirmDialog.cancelLabel ?? 'Cancel']
+      // Mirror the compact select panel: same fill, a leading blank row, one
+      // text row per option and a trailing gap after each (including the last)
+      // so head and foot gaps inside the panel stay symmetric.
+      return <box backgroundColor={SELECT_PANEL_BG}>
+        <box height={1} />
+        <For each={options()}>{(label, index) => <>
+          <box flexDirection="row" height={1} justifyContent="flex-start" alignItems="center" paddingLeft={1} backgroundColor={index() === confirmSelection() ? ocpTheme.accent : SELECT_PANEL_BG}>
+            <text fg={index() === confirmSelection() ? ocpTheme.surface : ocpTheme.text}>{`${index() === confirmSelection() ? '▶ ' : '  '}${label}`}</text>
+          </box>
+          <box height={1} />
+        </>}</For>
+      </box>
+    }
     if (dialog.kind === 'confirm') return <Modal title={dialog.title} size={host.size()} footer={dialog.footer ?? 'Enter confirms · Esc cancels'}>
-      <text fg={ocpTheme.text}>{dialog.message}</text>
-      <select focused height={4} backgroundColor={ocpTheme.surface} textColor={ocpTheme.text}
-        selectedBackgroundColor={ocpTheme.accent} selectedTextColor={ocpTheme.surface}
-        options={[{ name: dialog.confirmLabel ?? 'Confirm', value: 'confirm', description: '' }, { name: dialog.cancelLabel ?? 'Cancel', value: 'cancel', description: '' }]}
-        onSelect={(_index: number, picked: { value?: string } | null) => { if (picked?.value === 'confirm') dialog.onConfirm(); else if (picked?.value === 'cancel') dialog.onCancel?.() }} />
+      <text marginBottom={1} fg={ocpTheme.text}>{dialog.message}</text>
+      <ConfirmOptions {...dialog} />
     </Modal>
     if (dialog.kind === 'alert') return <Modal title={dialog.title} size={host.size()} footer="Esc returns"><text fg={ocpTheme.text}>{dialog.message}</text></Modal>
     return <Modal title={dialog.title} size={host.size()} footer={dialog.busy ? (dialog.busyText ?? 'Working…') : 'Enter confirms · Esc cancels'}>
@@ -452,7 +508,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
     // the report dialog (DialogView's Esc) is not double-handled: this
     // listener registers BEFORE DialogView's, while the dialog is still open.
     useKeyboard((key) => {
-      if (!host.dialog() && (key.name === 'escape' || (key.ctrl && key.name === 'c'))) exit()
+      if (!host.dialog() && (isBareEscape(key) || (key.ctrl && key.name === 'c'))) exit()
     })
     if (routeProps.sessionId && !requestedSessionValid() && !error()) {
       // Do not let a typo turn into the usage plugin's generic empty-data
@@ -573,17 +629,19 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
     const tools = loadToolRegistry(repoDir)
     const locales = getAvailableLocales(repoDir)
     const [agent, setAgent] = createSignal(effective.default_agent ?? schema.defaultAgent.value)
-    const [tuiMode, setTuiMode] = createSignal<'direct' | 'herdr'>(effective.tui_mode ?? 'herdr')
+    const [tuiMode, setTuiMode] = createSignal<'direct' | 'herdr' | 'luvus'>(effective.tui_mode ?? 'herdr')
     const [globalCommands, setGlobalCommands] = createSignal(effective.global_commands !== false)
     const [toolState, setToolState] = createSignal<Record<string, boolean>>(Object.fromEntries(Object.keys(tools?.tools ?? {}).map((key) => [key, effective.tools?.[key] !== false])))
     const [mcpState, setMcpState] = createSignal<Record<string, boolean>>(Object.fromEntries(schema.mcpItems.map((item) => [item.key, effective.mcp?.[item.key] ?? item.value])))
     const [pluginState, setPluginState] = createSignal<Record<string, boolean>>(Object.fromEntries(schema.pluginItems.map((item) => [item.key, effective.plugin?.[item.key] ?? item.value])))
-    const initialLocale = locales.some((locale) => locale.code === detectDefaultLocaleCode()) ? detectDefaultLocaleCode() : locales[0]?.code ?? 'en'
+    const preferredLocale = getPreferredLocaleCode()
+    const initialLocale = locales.some((locale) => locale.code === preferredLocale) ? preferredLocale : locales[0]?.code ?? 'en'
     const [localeCode, setLocaleCode] = createSignal(initialLocale)
     const [status, setStatus] = createSignal('')
     const [busy, setBusy] = createSignal(false)
     const [activeTab, setActiveTab] = createSignal(0)
     const [focusArea, setFocusArea] = createSignal<'rail' | 'panel'>('rail')
+    const [panelIndex, setPanelIndex] = createSignal(0)
     const text = () => loadLocale(repoDir, localeCode())
     const copy = (key: keyof ReturnType<typeof text>, fallback: string) => String(text()[key] ?? fallback)
     const tabs = () => [
@@ -636,6 +694,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
       const next = locales[(index + 1) % locales.length]
       if (!next) return
       setLocaleCode(next.code)
+      setPreferredLocaleCode(next.code)
       setStatus(loadLocale(repoDir, next.code).switchLangHint)
     }
     const select = (picked: { value?: string } | null) => {
@@ -643,7 +702,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
       if (!value || busy()) return
         if (value === 'language') cycleLocale()
         else if (value === 'agent') host.replace({ kind: 'select', title: copy('primaryAgentLabel', 'Primary agent'), placeholder: copy('primaryAgentHint', 'Choose the default primary agent'), current: agent(), options: schema.defaultAgent.choices.map((choice) => ({ title: text().agentLabels?.[choice]?.label ?? choice, value: choice, description: text().agentLabels?.[choice]?.hint ?? schema.defaultAgent.hint })), onSelect: (option) => { setAgent(option.value); host.clear() } })
-        else if (value === 'tui') host.replace({ kind: 'select', title: copy('tuiModeLabel', 'TUI mode'), placeholder: copy('tuiModeHint', 'Choose how OpenCode opens its TUI'), current: tuiMode(), renderFilter: false, options: [{ title: 'Direct', value: 'direct', description: 'Open the TUI directly' }, { title: 'Herdr', value: 'herdr', description: 'Open through Herdr' }], onSelect: (option) => { setTuiMode(option.value === 'direct' ? 'direct' : 'herdr'); host.clear() } })
+        else if (value === 'tui') host.replace({ kind: 'select', title: copy('tuiModeLabel', 'TUI mode'), placeholder: copy('tuiModeHint', 'Choose how OpenCode opens its TUI'), current: tuiMode(), renderFilter: false, options: [{ title: 'Direct', value: 'direct', description: 'Open the TUI directly in the current shell' }, { title: 'Herdr', value: 'herdr', description: 'Open through a Herdr workspace' }, { title: 'Luvus', value: 'luvus', description: 'Open through a Luvus workspace with agent controls' }], onSelect: (option) => { setTuiMode(option.value === 'luvus' ? 'luvus' : option.value === 'herdr' ? 'herdr' : 'direct'); host.clear() } })
         else if (value === 'global') { const next = !globalCommands(); setGlobalCommands(next); setStatus(`${copy('globalCommandsLabel', 'Global commands')} ${next ? copy('enabled', 'enabled') : copy('disabled', 'disabled')}.`) }
         else if (value.startsWith('tool:')) { const key = value.slice(5); const next = !toolState()[key]; setToolState({ ...toolState(), [key]: next }); setStatus(`${key} ${next ? copy('enabled', 'enabled') : copy('disabled', 'disabled')}.`) }
         else if (value.startsWith('mcp:')) { const key = value.slice(4); const next = !mcpState()[key]; setMcpState({ ...mcpState(), [key]: next }); setStatus(`${key} ${next ? copy('enabled', 'enabled') : copy('disabled', 'disabled')}.`) }
@@ -655,29 +714,54 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
       const terminalHeight = Number((renderer as unknown as { height?: number }).height) || 46
       return Math.max(2, Math.min(rows().length * 3, terminalHeight - 14))
     }
+    const activateTab = (index: number) => {
+      const next = Math.max(0, Math.min(index, tabs().length - 1))
+      setActiveTab(next)
+      setPanelIndex(0)
+    }
     useKeyboard((key) => {
-      if ((key.ctrl || key.meta) && key.name === 'a') { key.preventDefault?.(); confirmSave(true); return }
-      if ((key.ctrl || key.meta) && key.name === 's') { key.preventDefault?.(); confirmSave(false); return }
+      // Ctrl+A / Ctrl+S reach us in three shapes: the legacy control byte
+      // (0x01/0x13 → name 'a'/'s' + ctrl), the kitty disambiguated form
+      // (CSI 97;5u — also parsed as name + ctrl), and the kitty
+      // ALTERNATE-KEY form (CSI 27;5;97u) where OpenTUI reports name
+      // 'escape' and the base char survives only in `sequence`. Accept all
+      // three; otherwise Ctrl+A misses this binding and lands on the
+      // escape branch below, leaving the dashboard instead of installing.
+      const ctrlChar = (ch: string, controlByte: string) => (key.ctrl || key.meta) && (key.name === ch || key.sequence === ch || key.raw === controlByte)
+      if (ctrlChar('a', '\u0001')) { key.preventDefault?.(); confirmSave(true); return }
+      if (ctrlChar('s', '\u0013')) { key.preventDefault?.(); confirmSave(false); return }
       if (host.dialog()) return
-      if (key.name === 'escape') { setRoute('wizard'); return }
+      if (isBareEscape(key)) { setRoute('wizard'); return }
       if (key.name === 'l') { cycleLocale(); return }
-      if (key.name === 'left') { setFocusArea('rail'); return }
-      if (key.name === 'right') { setFocusArea('panel'); return }
-      if (key.name === 'tab') { setFocusArea(focusArea() === 'rail' ? 'panel' : 'rail'); return }
-      // Rail arrows are owned by the focused rail select itself (default
-      // bindings); onChange syncs activeTab so the panel follows the highlight.
-      if (focusArea() === 'rail' && key.name === 'return') { key.preventDefault?.(); setFocusArea('panel'); return }
+      if (focusArea() === 'rail') {
+        if (key.name === 'left') { key.preventDefault?.(); activateTab(activeTab() - 1); return }
+        if (key.name === 'right') { key.preventDefault?.(); activateTab(activeTab() + 1); return }
+        if (key.name === 'down' || key.name === 'return' || key.name === 'tab') { key.preventDefault?.(); setFocusArea('panel'); return }
+        return
+      }
+      // Review tab: the panel is a static summary (no select to own Enter), so
+      // a second Enter on the focused panel equals the install action —
+      // rail Enter → panel → Enter opens the save-and-install confirmation.
+      if (activeTab() === 4 && (key.name === 'return' || key.name === 'enter' || key.name === 'linefeed')) {
+        key.preventDefault?.()
+        confirmSave(true)
+        return
+      }
+      if (key.name === 'left' || key.name === 'tab' || (key.name === 'up' && panelIndex() === 0)) {
+        key.preventDefault?.()
+        setFocusArea('rail')
+      }
     })
     const content = () => <Modal title={`OpenCode Prime — ${copy('dashboardTitle', 'Dashboard')}`} footer={<>{copy('footerHelp', '↑/↓ selects · Enter opens choices or toggles · L language · Ctrl+A install · Esc exits')}{status() ? `\n${status()}` : ''}</>}>
-      <box flexDirection="row">
-        <box width="22%" flexDirection="column">
-          <text fg={focusArea() === 'rail' ? ocpTheme.accent : ocpTheme.muted}>{focusArea() === 'rail' ? copy('dashboardTabsHint', 'Tabs · ↑/↓') : copy('dashboardTabsLabel', 'Tabs')}</text>
-          <select focused={focusArea() === 'rail'} height={10} showScrollIndicator={false} backgroundColor={ocpTheme.surface} textColor={ocpTheme.text} selectedBackgroundColor={ocpTheme.accent} selectedTextColor={ocpTheme.surface} options={tabs().map((name, index) => ({ name, value: String(index), description: '' }))} onChange={(index: number) => setActiveTab(index)} />
+      <box flexDirection="column">
+        <text marginBottom={1} fg={focusArea() === 'rail' ? ocpTheme.accent : ocpTheme.muted}>{focusArea() === 'rail' ? copy('dashboardTabsHint', 'Tabs · ←/→') : copy('dashboardTabsLabel', 'Tabs')}</text>
+        <box flexDirection="row" height={3}>
+          <For each={tabs()}>{(name, index) => <box flexGrow={1} height="100%" justifyContent="center" alignItems="center" backgroundColor={index() === activeTab() ? ocpTheme.accent : ocpTheme.surface}>
+            <text fg={index() === activeTab() ? ocpTheme.surface : ocpTheme.text}>{name}</text>
+          </box>}</For>
         </box>
-        <text fg={ocpTheme.border}>│</text>
-        <box flexGrow={1} flexDirection="column" paddingLeft={1}>
-          <text fg={ocpTheme.accent}>{tabs()[activeTab()]}</text>
-          <Show when={activeTab() === 4} fallback={<select focused={focusArea() === 'panel'} height={listHeight()} showScrollIndicator={rows().length * 3 > listHeight()} backgroundColor={ocpTheme.surface} textColor={ocpTheme.text} descriptionColor={ocpTheme.muted} selectedBackgroundColor={ocpTheme.accent} selectedTextColor={ocpTheme.surface} selectedDescriptionColor={ocpTheme.surface} itemSpacing={1} keyBindings={[{ name: 'space', action: 'select-current' }]} options={rows()} onSelect={(_index: number, picked: { value?: string } | null) => select(picked)} />}>
+        <box flexDirection="column" paddingTop={1}>
+          <Show when={activeTab() === 4} fallback={<select focused={focusArea() === 'panel'} selectedIndex={panelIndex()} height={listHeight()} showScrollIndicator={rows().length * 3 > listHeight()} backgroundColor={ocpTheme.surface} focusedBackgroundColor={SELECT_PANEL_BG} textColor={ocpTheme.text} descriptionColor={ocpTheme.muted} selectedBackgroundColor={ocpTheme.accent} selectedTextColor={ocpTheme.surface} selectedDescriptionColor={ocpTheme.surface} itemSpacing={1} keyBindings={[{ name: 'space', action: 'select-current' }]} options={rows()} onChange={(index: number) => setPanelIndex(index)} onSelect={(_index: number, picked: { value?: string } | null) => select(picked)} />}>
             <box flexDirection="column" gap={1}>
               <text fg={ocpTheme.text}>{copy('dashboardTargetLabel', 'Installation target')}</text>
               <text fg={ocpTheme.muted}>{target}</text>
@@ -688,8 +772,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
           </Show>
         </box>
       </box>
-      <box flexDirection="column">
-        <text fg={ocpTheme.accent}>{copy('dashboardTabReview', 'Review')}</text>
+      <box flexDirection="column" marginTop={1}>
         <text fg={ocpTheme.text}>{busy() ? copy('installingSpinner', 'Installing…') : `${copy('saveOnlyBtn', 'Save configuration')} Ctrl+S · ${copy('saveAndInstallBtn', 'Save and install')} Ctrl+A`}</text>
       </box>
     </Modal>
@@ -697,7 +780,8 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
   }
   const MainWizard = () => {
     const locales = getAvailableLocales(repoDir)
-    const defaultLocale = locales.some((locale) => locale.code === detectDefaultLocaleCode()) ? detectDefaultLocaleCode() : locales[0]?.code ?? 'en'
+    const preferredLocale = getPreferredLocaleCode()
+    const defaultLocale = locales.some((locale) => locale.code === preferredLocale) ? preferredLocale : locales[0]?.code ?? 'en'
     const [localeCode, setLocaleCode] = createSignal(defaultLocale)
     const [message, setMessage] = createSignal('')
     const [busy, setBusy] = createSignal(false)
@@ -724,7 +808,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
         const previous = loadEffectiveOptions(repoDir, installTarget).global_commands !== false
         if (globalCommands !== previous) updateOptionsJsoncInPlace(path.join(installTarget, 'options.jsonc'), { globalCommands })
       } catch (error) {
-        setMessage(`Installation failed: ${error instanceof Error ? error.message : String(error)}`)
+        setMessage(formatI18n(copy('installFailed', 'Installation failed: {error}'), { error: error instanceof Error ? error.message : String(error) }))
         setBusy(false)
         return
       }
@@ -733,10 +817,10 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
     const promptQuickInstall = () => host.replace({ kind: 'prompt', title: copy('quickInstallLabel', 'Quick install'), placeholder: target(), value: target(), onConfirm: (value) => {
       const installTarget = path.resolve(value || target())
       const enabled = loadEffectiveOptions(repoDir, installTarget).global_commands !== false
-      host.replace({ kind: 'select', title: copy('stepRegisterPrompt', 'Register global commands?').replace('{binDir}', getDefaultBinDir()), placeholder: copy('stepRegisterNote', 'Choose whether to register ocp and opencode-prime commands.'), current: enabled ? 'yes' : 'no', renderFilter: false, options: [{ title: 'Register global commands', value: 'yes' }, { title: 'Skip global commands', value: 'no' }], onSelect: (option) => { host.clear(); quickInstall(installTarget, option.value === 'yes') } })
+      host.replace({ kind: 'select', title: copy('stepRegisterPrompt', 'Register global commands?').replace('{binDir}', getDefaultBinDir()), placeholder: copy('stepRegisterNote', 'Choose whether to register ocp and opencode-prime commands.'), current: enabled ? 'yes' : 'no', renderFilter: false, options: [{ title: copy('registerGlobalYes', 'Register global commands'), value: 'yes' }, { title: copy('registerGlobalNo', 'Skip global commands'), value: 'no' }], onSelect: (option) => { host.clear(); quickInstall(installTarget, option.value === 'yes') } })
     }, onCancel: () => host.clear() })
-    const reset = () => host.replace({ kind: 'confirm', title: copy('initLabel', 'Reset configuration').replace('{target}', target()), message: copy('confirmResetPrompt', 'Reset this target?').replace('{target}', target()), onConfirm: () => { host.clear(); const result = executeInit(repoDir, { action: 'init', force: true, noBackup: false, yes: true, isInteractive: true, projectMode: 'auto' }); setMessage(`Cleared ${result.targetDir}. Backup: ${result.backupPath ?? 'None'}.`) }, onCancel: () => host.clear() })
-    const uninstall = () => host.replace({ kind: 'confirm', title: copy('uninstallLabel', 'Uninstall'), message: copy('confirmUninstallPrompt', 'Uninstall managed files?').replace('{target}', target()), onConfirm: () => { host.clear(); const result = executeUninstall(repoDir, { action: 'uninstall', force: true, noBackup: false, yes: true, isInteractive: true, projectMode: 'auto' }); setMessage(`Removed ${result.removedCount} files from ${result.targetDir}.`) }, onCancel: () => host.clear() })
+    const reset = () => host.replace({ kind: 'confirm', title: copy('initLabel', 'Reset configuration').replace('{target}', target()), message: copy('confirmResetPrompt', 'Reset this target?').replace('{target}', target()), onConfirm: () => { host.clear(); const result = executeInit(repoDir, { action: 'init', force: true, noBackup: false, yes: true, isInteractive: true, projectMode: 'auto' }); setMessage(formatI18n(copy('resetResult', 'Cleared {target}. Backup: {backup}.'), { target: result.targetDir, backup: result.backupPath ?? 'None' })) }, onCancel: () => host.clear() })
+    const uninstall = () => host.replace({ kind: 'confirm', title: copy('uninstallLabel', 'Uninstall'), message: copy('confirmUninstallPrompt', 'Uninstall managed files?').replace('{target}', target()), onConfirm: () => { host.clear(); const result = executeUninstall(repoDir, { action: 'uninstall', force: true, noBackup: false, yes: true, isInteractive: true, projectMode: 'auto' }); setMessage(formatI18n(copy('uninstallResult', 'Removed {count} files from {target}.'), { count: result.removedCount, target: result.targetDir })) }, onCancel: () => host.clear() })
     const menu = () => {
       const installed = Boolean(executeStatus(repoDir).installedVersion)
       const registered = isShimRegistered()
@@ -763,14 +847,19 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
           break
         case 'init': reset(); break
         case 'uninstall': uninstall(); break
-        case 'language': { const index = locales.findIndex((locale) => locale.code === localeCode()); const next = locales[(index + 1) % locales.length]; if (next) { setLocaleCode(next.code); setMessage(loadLocale(repoDir, next.code).switchLangHint) }; break }
+        case 'language': { const index = locales.findIndex((locale) => locale.code === localeCode()); const next = locales[(index + 1) % locales.length]; if (next) { setLocaleCode(next.code); setPreferredLocaleCode(next.code); setMessage(loadLocale(repoDir, next.code).switchLangHint) }; break }
         case 'exit': exit(); break
       }
     }
-    useKeyboard((key) => { if (!host.dialog() && (key.name === 'escape' || (key.ctrl && key.name === 'c'))) exit() })
+    useKeyboard((key) => { if (!host.dialog() && (isBareEscape(key) || (key.ctrl && key.name === 'c'))) exit() })
     return <Show when={host.dialog()} keyed fallback={<Modal title={`${copy('wizardTitle', 'OpenCode Prime — Interactive Setup Wizard')} v${getCurrentRepoVersion(repoDir)}`} footer={<>{busy() ? copy('installingSpinner', 'Installing…') : '↑/↓ selects · Enter opens · Esc exits'}{message() ? `\n${message()}` : ''}</>}>
-      <text fg={ocpTheme.muted}>{executeStatus(repoDir).installedVersion ? copy('installedNote', 'Installed version: v{version} (Target: {target})').replace('{version}', executeStatus(repoDir).installedVersion ?? '').replace('{target}', target()) : copy('notInstalledNote', 'Target not initialized: {target}').replace('{target}', target())}</text>
-      <select focused height={Math.max(6, Math.min(menu().length * 3, 26))} backgroundColor={ocpTheme.surface} textColor={ocpTheme.text} descriptionColor={ocpTheme.muted} selectedBackgroundColor={ocpTheme.accent} selectedTextColor={ocpTheme.surface} selectedDescriptionColor={ocpTheme.surface} itemSpacing={1} options={menu()} onSelect={(_index: number, picked: { value?: string } | null) => choose(picked)} />
+      <text marginBottom={1} fg={ocpTheme.muted}>{executeStatus(repoDir).installedVersion ? copy('installedNote', 'Installed version: v{version} (Target: {target})').replace('{version}', executeStatus(repoDir).installedVersion ?? '').replace('{target}', target()) : copy('notInstalledNote', 'Target not initialized: {target}').replace('{target}', target())}</text>
+      <box backgroundColor={SELECT_PANEL_BG}>
+        {/* Same head-gap symmetry as the compact host selects (itemSpacing
+         * trails a gap row inside the panel; the kernel paints flush top). */}
+        <box height={1} />
+        <select focused height={Math.max(6, Math.min(menu().length * 3, 26))} backgroundColor={ocpTheme.surface} focusedBackgroundColor={SELECT_PANEL_BG} textColor={ocpTheme.text} descriptionColor={ocpTheme.muted} selectedBackgroundColor={ocpTheme.accent} selectedTextColor={ocpTheme.surface} selectedDescriptionColor={ocpTheme.surface} itemSpacing={1} options={menu()} onSelect={(_index: number, picked: { value?: string } | null) => choose(picked)} />
+      </box>
     </Modal>}>{(dialog: Dialog) => <DialogView dialog={dialog} />}</Show>
   }
   const Setup = () => <Screen title="OpenCode Prime — Setup" onBack={back} onEnter={() => setRoute('dashboard')} footer="Enter opens dashboard · Esc exits"

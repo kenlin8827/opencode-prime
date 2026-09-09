@@ -10,12 +10,12 @@ After a one-time `register` (or a default install), the repo provisioned two glo
 
 | Command | Aliases | What it does |
 | :--- | :--- | :--- |
-| `ocp` *(no args)* | | Launch the **OpenCode terminal UI** (same as `ocp tui`) |
-| `ocp tui` | | Launch the OpenCode terminal TUI (`exec opencode`); all extra args pass through to `opencode`. Add `--init` to create/activate the OCP project in the current directory before launching. |
+| `ocp` *(no args)* | | Launch the **OpenCode terminal UI directly** in the current shell. |
+| `ocp tui` | | Launch the OpenCode terminal TUI through the selected **workspace wrapper** (Herdr or Luvus) by default. Add `--init` to create/activate the OCP project in the current directory before launching. Use `--direct`, `--herdr`, or `--luvus` to override the mode for one launch. |
 | `ocp serve` | | Launch the headless OpenCode server (`opencode serve`); all extra args pass through (e.g. `ocp serve --port 4096`) |
 | `ocp web` | | Launch the **OpenChamber web UI** (`openchamber serve`); auto-generates a `--ui-password`, auto-picks a free port starting at 3000 (see [port policy](#web-port-and-password-policy)) |
 | `ocp code` | | Open the current project in **VS Code** (also probes `code-insiders` / `codium` / `cursor` / `windsurf`) with the OpenChamber editor extension guaranteed: `fedaykindev.openchamber` is auto-installed via the editor CLI when missing. Add `--init` to create/activate the OCP project before launching; a bare `.` passes through so VS Code opens the current folder |
-| `ocp desktop` | `ocp ui` | Launch the **OpenChamber native desktop app** (a separate download from [openchamber.dev/download](https://openchamber.dev/download)). Add `--init` or pass `.` to create/activate the OCP project in the current directory, register it as an OpenChamber project, and then launch the desktop app. |
+| `ocp desktop` | `ocp ui` | Launch the **OpenChamber native desktop app** (a separate download from [openchamber.dev/download](https://openchamber.dev/download)). Add `--init` to create/activate the OCP project in the current directory, register it as an OpenChamber project, and then launch the desktop app. A bare `.` is not an init alias — it is ignored. |
 | `ocp project` | | Create or activate the OCP project in the current directory; opens the project wizard in an interactive terminal |
 | `ocp project init` | | Create or activate the OCP project in the current directory: create baseline files when missing, sync + refresh indexes when already present |
 | `ocp project index` | | Manually refresh existing code-intelligence indexes in the current project |
@@ -64,16 +64,17 @@ ocp tui --version           # opencode's own --version
 ocp tui --init              # init/activate current project, then open TUI
 ```
 
-By default, `ocp tui` routes through a Herdr workspace (equivalent to `ocp herdr`). Set `"tui_mode": "direct"` in `install/options.jsonc` to launch `opencode` directly in the current shell instead. Herdr mode auto-enables `tools.herdr` if it is not already enabled.
+`ocp tui` is the workspace-wrapped terminal client. In the setup wizard choose **Herdr** or **Luvus**; the selected integration starts OpenCode in its managed workspace. Use bare `ocp` when you want the direct terminal client.
 
-CLI overrides (one-shot, take precedence over `tui_mode`):
+For a one-off direct terminal launch:
 
 ```bash
 ocp tui --direct            # force direct (opencode in current shell)
-ocp tui --herdr             # force herdr workspace for this invocation
+ocp tui --herdr             # force the Herdr workspace wrapper
+ocp tui --luvus             # force the Luvus workspace wrapper
 ```
 
-Bare `ocp` (no args) always opens `opencode` directly — it bypasses both `tui_mode` and the `--herdr`/`--direct` overrides.
+Bare `ocp` (no args) always opens `opencode` directly.
 
 ### `ocp serve` — headless server
 
@@ -114,11 +115,10 @@ The Tauri-based desktop app is not usually on `PATH`, so the launcher probes the
 ```bash
 ocp desktop                 # plain desktop app
 ocp ui                      # same as above
-ocp ui .                    # init/activate cwd, then open desktop app
-ocp ui --init               # same as `ocp ui .`
+ocp ui --init               # init/activate cwd, register it, then open desktop app
 ```
 
-When `.` or `--init` is used, the launcher:
+When `--init` is used (only an explicit `--init` initializes — a bare `.` is ignored), the launcher:
 
 1. Runs `ocp project init` in the current directory (creates baseline files if missing, syncs + refreshes indexes if present).
 2. Registers the current directory as an OpenChamber project and makes it active:
