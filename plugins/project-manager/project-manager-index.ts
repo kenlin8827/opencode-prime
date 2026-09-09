@@ -36,6 +36,8 @@ import { homedir } from "node:os"
 import { DBHUB_TOML_REL, scaffoldFile, writeDbhubToml } from "./project-manager-scaffold"
 import { loadProjectHooks, type BackendAction, type ProjectHooks } from "./project-hooks-loader"
 import { getProjectDir } from "./project-manager-config"
+import { tgrepOptionsFrom, type TgrepOptions } from "../tgrep/tgrep-config"
+import { hasTgrepIndex, probeTgrepStatus, type TgrepReadiness } from "../tgrep/tgrep-service"
 
 // ─── Probes ──────────────────────────────────────────────────────────
 
@@ -94,6 +96,14 @@ function cliInstalled(name: string): boolean {
   if (name === "codegraph") return codegraphCliInstalled()
   if (name === "gitnexus") return gitnexusCliInstalled()
   if (name === "dbhub") return dbhubCliInstalled()
+  if (name === "tgrep") {
+    const probe = process.platform === "win32" ? "where.exe tgrep" : "command -v tgrep"
+    try {
+      execSync(probe, { encoding: "utf8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"] })
+      execSync("tgrep --version", { encoding: "utf8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"] })
+      return true
+    } catch { return false }
+  }
   return false
 }
 
@@ -130,6 +140,11 @@ export interface BackendProbe {
   dbhubEnabled: boolean
   dbhubCli: boolean
   dbhubToml: boolean
+  tgrepEnabled: boolean
+  tgrepCli: boolean
+  tgrepIndexed: boolean
+  tgrepReadiness: TgrepReadiness
+  tgrepOptions: TgrepOptions
 }
 
 /** Probe both backends for the given project root (sync, cheap). */
@@ -137,6 +152,10 @@ export function probeBackends(root: string): BackendProbe {
   const cgEnabled = mcpEnabled("codegraph")
   const gnEnabled = mcpEnabled("gitnexus")
   const dhEnabled = mcpEnabled("dbhub")
+  let tgrepOptions: TgrepOptions = { enabled: false }
+  try { tgrepOptions = tgrepOptionsFrom(root, readFileSync(join(homedir(), ".config", "opencode", "options.jsonc"), "utf8")) } catch { /* invalid setting disables safely */ }
+  const tgEnabled = tgrepOptions.enabled
+  const tgCli = tgEnabled && cliInstalled("tgrep")
   return {
     codegraphEnabled: cgEnabled,
     codegraphCli: cgEnabled && codegraphCliInstalled(),
@@ -147,12 +166,17 @@ export function probeBackends(root: string): BackendProbe {
     dbhubEnabled: dhEnabled,
     dbhubCli: dhEnabled && dbhubCliInstalled(),
     dbhubToml: existsSync(join(root, DBHUB_TOML_REL)),
+    tgrepEnabled: tgEnabled,
+    tgrepCli: tgCli,
+    tgrepIndexed: tgEnabled && hasTgrepIndex(root, tgrepOptions),
+    tgrepReadiness: tgCli ? probeTgrepStatus(root, tgrepOptions) : "unavailable",
+    tgrepOptions,
   }
 }
 
 // ─── Registry-driven planner ─────────────────────────────────────────
 
-export type BackendKind = "codegraph" | "gitnexus" | "dbhub"
+export type BackendKind = "codegraph" | "gitnexus" | "dbhub" | "tgrep"
 
 export interface BackendPlan {
   backend: BackendKind
@@ -178,16 +202,23 @@ function evaluateCondition(cond: string, root: string, probe: BackendProbe): boo
     result = name === "codegraph" ? probe.codegraphEnabled
       : name === "gitnexus" ? probe.gitnexusEnabled
         : name === "dbhub" ? probe.dbhubEnabled
-          : false
+           : false
+  } else if (c.startsWith("tool_enabled:")) {
+    result = c.slice("tool_enabled:".length) === "tgrep" && probe.tgrepEnabled
   } else if (c.startsWith("cli_installed:")) {
     const name = c.slice("cli_installed:".length)
     result = name === "codegraph" ? probe.codegraphCli
       : name === "gitnexus" ? probe.gitnexusCli
-        : name === "dbhub" ? probe.dbhubCli
-          : false
+         : name === "dbhub" ? probe.dbhubCli
+         : name === "tgrep" ? probe.tgrepCli
+           : false
   } else if (c.startsWith("indexed:")) {
     const name = c.slice("indexed:".length)
-    result = name === "codegraph" ? probe.codegraphIndexed : false
+    result = name === "codegraph" ? probe.codegraphIndexed : name === "tgrep" ? probe.tgrepIndexed : false
+  } else if (c.startsWith("server_healthy:")) {
+    result = c.slice("server_healthy:".length) === "tgrep" && probe.tgrepReadiness === "server"
+  } else if (c.startsWith("index_missing:")) {
+    result = c.slice("index_missing:".length) === "tgrep" && !probe.tgrepIndexed
   } else if (c.startsWith("toml_present:")) {
     const name = c.slice("toml_present:".length)
     result = name === "dbhub" ? probe.dbhubToml : false
@@ -205,6 +236,7 @@ function evaluateCondition(cond: string, root: string, probe: BackendProbe): boo
 }
 
 function conditionSkipNote(cond: string, probe: BackendProbe): string {
+  if (cond.startsWith("tool_enabled:")) return `${cond.slice("tool_enabled:".length)} disabled in options.jsonc`
   if (cond.startsWith("mcp_enabled:")) return `${cond.slice("mcp_enabled:".length)} disabled in options.jsonc`
   if (cond.startsWith("cli_installed:")) return `${cond.slice("cli_installed:".length)} CLI not installed`
   if (cond === "indexed:codegraph") return "no index yet — that's an init step, run /project init"
@@ -216,6 +248,8 @@ function conditionSkipNote(cond: string, probe: BackendProbe): string {
   }
   if (cond === "index_stale") return "index up to date"
   if (cond === "index_ready") return "no index yet — that's an init step, run /project init"
+  if (cond === "index_missing:tgrep") return "local tgrep index already exists"
+  if (cond === "!server_healthy:tgrep") return "healthy tgrep server keeps the index current"
   return `skipped (${cond})`
 }
 
@@ -245,7 +279,7 @@ function planBackends(
   root: string,
   probe: BackendProbe,
 ): BackendPlan[] {
-  const names: BackendKind[] = ["codegraph", "gitnexus", "dbhub"]
+  const names: BackendKind[] = ["codegraph", "gitnexus", "dbhub", "tgrep"]
   if (!registry) {
     // Registry missing — every backend is skipped with a safe fallback note.
     return names.map((backend) => ({ backend, command: null, note: "project-hooks.jsonc not found" }))

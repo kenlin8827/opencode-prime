@@ -126,6 +126,17 @@ export interface ScaffoldResult {
 
 export { ensureOpencodeGitignore }
 
+/** Append the local tgrep cache rule once, without modifying non-Git folders. */
+export function ensureTgrepGitignore(root: string): "added" | "present" | "not-git" {
+  if (!existsSync(join(root, ".git"))) return "not-git"
+  const target = join(root, ".gitignore")
+  const existing = existsSync(target) ? readFileSync(target, "utf-8") : ""
+  if (/^(?:\.tgrep|\.tgrep\/|\*\*\/\.tgrep\/)\s*$/m.test(existing)) return "present"
+  const prefix = existing && !existing.endsWith("\n") ? "\n" : ""
+  writeFileSync(target, `${existing}${prefix}.tgrep/\n`, "utf-8")
+  return "added"
+}
+
 /**
  * Run `/project init`: create each missing target file. Existing files are
  * never overwritten — EXCEPT the project config, which gets an append-only

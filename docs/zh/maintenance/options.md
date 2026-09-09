@@ -40,7 +40,10 @@
      // 可选外部二进制，声明于 install/tools.jsonc
      "tools": {
        // 是否启用 rtk 输出压缩（60-90% token 节省）
-       "rtk": true,
+        "rtk": true,
+        // 可选外部全文检索缓存——OCP 不会下载 tgrep。
+        // 它不是 MCP、LSP 或代码图谱；.tgrep/ 不可提交。
+        "tgrep": false,
        // OpenChamber 拆分为三个独立面，各自一个开关：
         // 网页版 CLI（缺失时自动安装 @openchamber/web；提供 `ocp web`，需 Node.js 22+）
         // 默认关闭：启用后会安装全局包。
@@ -105,6 +108,20 @@
    ```bash
    ./install/install.sh install -f
    ```
+
+---
+
+## 可选 tgrep 全文检索索引
+
+仅在自行安装并验证外部 [`tgrep`](https://github.com/tgrep/tgrep) CLI 后，将
+`tools.tgrep` 设为 `true`。OCP 不下载它，也不会修改 `PATH`。`/project init`
+创建首次本地 `.tgrep/` 索引；`/project index` 只重建已有但不健康的索引。健康的
+`tgrep serve .` watcher 负责日常增量更新。
+
+索引检索适合重复、宽泛的文本或正则查询。刚保存后、验证修改时，或要断言没有匹配时，
+须使用 current/full scan（`tgrep --no-index` 或 `rg`），因为 watcher 更新是异步的。
+保持默认 64 MiB 文件大小策略以及 index/serve/search 参数一致。tgrep 不替代 Serena
+符号导航或 CodeGraph/GitNexus 关系查询。
 
 ---
 

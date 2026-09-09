@@ -45,6 +45,7 @@ import {
   runInit,
   runSync,
   writeDbhubToml,
+  ensureTgrepGitignore,
 } from "../plugins/project-manager/project-manager-scaffold"
 import {
   mcpEnabledFrom,
@@ -320,11 +321,12 @@ function probe(overrides: Partial<BackendProbe>): BackendProbe {
     dbhubEnabled: true,
     dbhubCli: true,
     dbhubToml: false,
+    tgrepEnabled: false, tgrepCli: false, tgrepIndexed: false, tgrepReadiness: "unavailable", tgrepOptions: { enabled: false },
     ...overrides,
   }
 }
 
-function planFor(plans: ReturnType<typeof planInitBackends>, backend: "codegraph" | "gitnexus" | "dbhub") {
+function planFor(plans: ReturnType<typeof planInitBackends>, backend: "codegraph" | "gitnexus" | "dbhub" | "tgrep") {
   return plans.find((p) => p.backend === backend)!
 }
 
@@ -378,6 +380,10 @@ function test08_IndexPlanning() {
   assert(planFor(planIndexBackends(probe({ gitnexusIndex: "missing" })), "gitnexus").command === null, "missing index → init step, not a rebuild")
   assert(planFor(planIndexBackends(probe({ gitnexusCli: false })), "gitnexus").command === null, "CLI missing → skipped, never invoked")
   assert(planFor(planIndexBackends(probe({ gitnexusEnabled: false })), "gitnexus").command === null, "disabled → no run even with CLI")
+  assert(planFor(planInitBackends(probe({ tgrepEnabled: true, tgrepCli: true })), "tgrep").command === "tgrep index .", "tgrep init builds missing local index")
+  assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true })), "tgrep").command === null, "tgrep index command never creates first index")
+  assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true, tgrepIndexed: true, tgrepReadiness: "server" })), "tgrep").command === null, "healthy tgrep server skips rebuild")
+  assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true, tgrepIndexed: true, tgrepReadiness: "disk-index" })), "tgrep").command === "tgrep index .", "unhealthy tgrep index rebuilds")
 
   // mcp.<name>.enabled parsing (same JSONC subset rule as the profiler).
   assert(mcpEnabledFrom('{"mcp":{"gitnexus":{"enabled":false}}}', "gitnexus") === false, "explicit false honored")
@@ -399,6 +405,7 @@ async function test09_Announce() {
     codegraphEnabled: true, codegraphCli: true, codegraphIndexed: false,
     gitnexusEnabled: true, gitnexusCli: true, gitnexusIndex: "missing",
     dbhubEnabled: true, dbhubCli: true, dbhubToml: false,
+    tgrepEnabled: false, tgrepCli: false, tgrepIndexed: false, tgrepReadiness: "unavailable", tgrepOptions: { enabled: false },
   }
   const msg = suggestInitMessage(["AGENTS.md"], probeFull)
   assert(msg.includes("/project init"), "message names the command")
@@ -525,6 +532,7 @@ function hookProbe(overrides: Partial<BackendProbe>): BackendProbe {
     codegraphEnabled: true, codegraphCli: true, codegraphIndexed: false,
     gitnexusEnabled: true, gitnexusCli: true, gitnexusIndex: "missing",
     dbhubEnabled: true, dbhubCli: true, dbhubToml: false,
+    tgrepEnabled: false, tgrepCli: false, tgrepIndexed: false, tgrepReadiness: "unavailable", tgrepOptions: { enabled: false },
     ...overrides,
   }
 }
@@ -603,6 +611,21 @@ function test11_Hooks() {
   rmSync(dir, { recursive: true, force: true })
 }
 
+function test12_TgrepGitignore() {
+  section("12: tgrep .gitignore is append-only")
+  const dir = mkdtempSync(join(tmpdir(), "pm-tgrep-"))
+  assert(ensureTgrepGitignore(dir) === "not-git", "non-Git directory stays untouched")
+  assert(!existsSync(join(dir, ".gitignore")), "non-Git directory does not gain .gitignore")
+  mkdirSync(join(dir, ".git"))
+  writeFileSync(join(dir, ".gitignore"), "custom\n", "utf8")
+  assert(ensureTgrepGitignore(dir) === "added", "appends tgrep rule once")
+  const first = readFileSync(join(dir, ".gitignore"), "utf8")
+  assert(first === "custom\n.tgrep/\n", "custom content is preserved")
+  assert(ensureTgrepGitignore(dir) === "present", "second run is idempotent")
+  assert(readFileSync(join(dir, ".gitignore"), "utf8") === first, "second run is byte stable")
+  rmSync(dir, { recursive: true, force: true })
+}
+
 test01_ValidateMessage()
 await test02_FileAsSwitch()
 await test03_ToolGuard()
@@ -614,6 +637,7 @@ test08_IndexPlanning()
 await test09_Announce()
 test10_Sync()
 test11_Hooks()
+test12_TgrepGitignore()
 
 rmSync(projectDir, { recursive: true, force: true })
 

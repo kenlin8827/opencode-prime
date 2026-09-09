@@ -40,7 +40,10 @@ Learn about installer commands, configuration options, token savings, and preser
      // Opt-in external binaries declared in install/tools.jsonc
      "tools": {
        // rtk output compression (60-90% token savings)
-       "rtk": true,
+        "rtk": true,
+        // Optional external full-text cache — OCP never downloads tgrep.
+        // It is not MCP, LSP, or a code graph; .tgrep/ must stay uncommitted.
+        "tgrep": false,
        // OpenChamber ships as three independent surfaces, one switch each:
         // Web UI CLI (@openchamber/web; powers `ocp web`, needs Node.js 22+)
         // Disabled by default: enabling it installs a global package.
@@ -106,6 +109,23 @@ Every install re-evaluates `install/options.jsonc` in place and enforces your ch
    ```bash
    ./install/install.sh install -f
    ```
+
+---
+
+## Optional tgrep full-text index
+
+Set `tools.tgrep` to `true` only after installing and verifying the external
+[`tgrep`](https://github.com/tgrep/tgrep) CLI yourself. OCP never downloads it
+or changes `PATH`. `/project init` creates the first local `.tgrep/` index;
+`/project index` rebuilds only an existing unhealthy index. A healthy
+`tgrep serve .` watcher handles normal updates.
+
+Use indexed search only for repeated broad text/regex queries. After saving,
+while validating a change, or before asserting there are no matches, use a
+current/full scan (`tgrep --no-index` or `rg`) because watcher updates are
+asynchronous. Keep the default 64 MiB tgrep file-size policy and index/serve/
+search parameters consistent. tgrep does not replace Serena symbol navigation
+or CodeGraph/GitNexus relationship queries.
 
 ---
 

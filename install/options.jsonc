@@ -6,6 +6,8 @@
   "tools": {
     // false also removes the bundled OpenRTK plugin from the target.
     "rtk": true,
+    // Optional external full-text index. OCP never downloads tgrep or treats it as MCP.
+    "tgrep": false,
     // OpenChamber ships as three independent surfaces, one switch each.
     // Web UI CLI (@openchamber/web) — powers `ocp web`. Needs Node.js 22+;
     // disabled by default because it installs a global package.
