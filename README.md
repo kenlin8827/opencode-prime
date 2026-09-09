@@ -1,180 +1,64 @@
 # OpenCode Prime (OCP)
 
-> **The Flagship Production Engineering & Multi-Agent Suite for OpenCode**
+<div align="center">
 
-A production-ready [OpenCode](https://opencode.ai) suite for real-world software engineering: layered MCP code intelligence and database gateway, hard engineering guardrails (ADR / secret-file / E2E / commit discipline), 21 specialist agents, and one-shot model tier governance — installed into `~/.config/opencode` with a single command.
+**Production-ready multi-agent engineering for [OpenCode](https://opencode.ai).**
 
-> **English** | [中文](README.zh-CN.md) | 📖 **[Online Documentation](https://kenlin8827.github.io/opencode-prime/)**
->
-> This README is the quick-start guide. For full documentation, see **[Online Docs](https://kenlin8827.github.io/opencode-prime/)**. To modify this repo itself, see **[DEVELOPING.md](DEVELOPING.md)**.
+[![Version](https://img.shields.io/badge/version-0.31.0-blue.svg)](https://github.com/kenlin8827/opencode-prime/releases)
+![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)
+![Platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-lightgrey.svg)
 
----
+**[Documentation](https://kenlin8827.github.io/opencode-prime/)** · **[Releases](https://github.com/kenlin8827/opencode-prime/releases)** · **[中文](README.zh-CN.md)**
 
-## ⚡ 10-Second Quick Install
+<br />
 
-Install directly to `~/.config/opencode` with a single command (no Git clone required):
+<img src="./docs/public/images/ocp-ui-tour-en.gif" alt="OpenCode Prime UI tour: dashboard, project wizard, terminal, web, and desktop interfaces" width="820" />
 
-### macOS / Linux / WSL
-```bash
-curl -fsSL https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.sh | bash
-```
+</div>
 
-### Windows (PowerShell)
-```powershell
-irm https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.ps1 | iex
-```
+## Features
 
-> 💡 **Zero-Risk Upgrades**: Re-running the command above smoothly upgrades to the latest release while **preserving** all your API keys, custom models, and tier assignments.
+- **Specialist agent team:** 21 focused agents for frontend, Java, databases, security, QA, DevOps, and more.
+- **Engineering guardrails:** Optional ADR, secret-file, E2E, and commit-discipline gates keep delivery predictable.
+- **Layered intelligence:** Configure CodeGraph, GitNexus, Serena LSP, DBHub, and other MCP services from one dashboard.
+- **Model governance:** Map agents to `flash`, `standard`, `pro`, `max`, and `vision` tiers, then switch profiles in one action.
+- **Guided setup:** Use the TUI wizard to configure providers, profiles, project knowledge, and guardrails without hand-editing files.
+- **One configuration, three surfaces:** Work from the OpenCode terminal, OpenChamber web UI, or native desktop app.
+- **Safe lifecycle commands:** Install, upgrade, update, inspect, and uninstall the suite while preserving local configuration.
 
-<details>
-<summary><b>Install a specific version</b></summary>
+## Install
 
 ```bash
 # macOS / Linux / WSL
-curl -fsSL https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.sh | bash -s -- -v 0.9.0
+curl -fsSL https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.sh | bash
 ```
 
 ```powershell
-# Windows
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.ps1))) -Version "0.9.0"
+# Windows PowerShell
+irm https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.ps1 | iex
 ```
 
-</details>
+Re-run the installer to upgrade while retaining API keys, custom models, and tier mappings. For prerequisites, pinned versions, offline inspection, and clone-based installation, see the [installation guide](https://kenlin8827.github.io/opencode-prime/).
 
-<details>
-<summary><b>Manual install & prerequisites</b></summary>
+## Quick start
 
-If you prefer to inspect the script before running, or your environment blocks remote scripts:
-
-**macOS / Linux / WSL:**
 ```bash
-curl -fsSL -o /tmp/ocp-install.sh https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.sh
-bash /tmp/ocp-install.sh
+ocp                 # launch the OpenCode terminal UI
+ocp wizard          # configure OCP interactively
+ocp dashboard       # manage MCPs, plugins, and model tiers
+ocp provider        # configure model providers
+ocp profile         # select or manage a model-tier profile
+ocp web             # launch the OpenChamber web UI
+ocp desktop         # launch the native desktop app
+ocp update          # check and apply available updates
 ```
 
-**Windows (PowerShell):**
-```powershell
-curl -fsSL -o "$env:TEMP\ocp-install.ps1" https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.ps1
-pwsh "$env:TEMP\ocp-install.ps1"
-```
+Run `ocp help` for all commands. The [CLI reference](https://kenlin8827.github.io/opencode-prime/maintenance/ocp-cli) covers aliases, arguments, upgrade behavior, and maintenance operations.
 
-**Developer method (clone):**
-```bash
-git clone https://github.com/kenlin8827/opencode-prime.git
-cd opencode-prime
-./install/install.sh        # Windows: pwsh install/install.ps1
-```
+## Documentation
 
-**Prerequisites:**
-
-| Requirement | Why | Install |
-|---|---|---|
-| [opencode](https://opencode.ai) CLI | Runtime that reads the config and dispatches agents | `curl -fsSL https://opencode.ai/install \| bash` |
-| PowerShell 7+ (Windows) | Install script | `winget install Microsoft.PowerShell` |
-| Bash 4+ + `jq` (macOS / Linux / WSL) | Same script, bash side | `brew install jq` or `sudo apt install jq` |
-| Git | Version control & manifest fallback | — |
-| Node.js 22.5+ + npm (Optional) | Runtime for CodeGraph / GitNexus / DBHub MCPs | [nodejs.org](https://nodejs.org/) |
-| uv / Python 3.13+ (Optional) | Runtime for Serena LSP MCP | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-
-</details>
-
----
-
-## 📋 OCP CLI Commands
-
-After installation, the global command `ocp` (alias: `opencode-prime`) is available from **any terminal directory**:
-
-| Command | Aliases | What it does |
-| :--- | :--- | :--- |
-| `ocp` *(no args)* | | Launch the **OpenCode terminal UI** (same as `ocp tui`) |
-| `ocp tui` | | Launch the OpenCode terminal TUI (`exec opencode`); extra args pass through |
-| `ocp serve` | | Launch the headless OpenCode server (`opencode serve`) |
-| `ocp web` | | Launch the **OpenChamber web UI**; auto-generates a password |
-| `ocp code` | | Open the current project in **VS Code**; auto-installs the OpenChamber editor extension when missing |
-| `ocp desktop` | `ocp ui` | Launch the **OpenChamber native desktop app** |
-| `ocp install` | | Apply the current version's manifest to `~/.config/opencode` |
-| `ocp update` | | Check for suite + tool updates; interactively apply selected ones |
-| `ocp upgrade` | | Pull the latest release and re-apply the installer (one-click upgrade) |
-| `ocp init` | | Backup + clear the entire target directory for a fresh start |
-| `ocp uninstall` | | Remove the installed version's manifest files from the target |
-| `ocp status` | | Show installed vs repo version |
-| `ocp register` | | Install global shims (`ocp`, `opencode-prime`) into `~/.local/bin` |
-| `ocp unregister` | | Remove the global shims |
-| `ocp wizard` | `ocp menu` | Interactive TUI setup wizard (first-run and reconfigure flows) |
-| `ocp dashboard` | `ocp cc`, `ocp matrix` | Single-screen TUI control center — toggle MCP / plugins / tiers |
-| `ocp version` | `ocp -v` | Print the repo's current version (`install/version.json`) |
-| `ocp help` | `ocp -h` | Print the command help |
-
-> 📖 **Full CLI reference**: [OCP CLI — Online Docs](https://kenlin8827.github.io/opencode-prime/maintenance/ocp-cli)
-
----
-
-## 🖼️ Screenshots
-
-### Single-Screen TUI Control Center
-
-The `ocp dashboard` (or running the installer) opens a single-screen control center where you can press `Space` to toggle MCP servers, plugins, RTK optimizer, or cycle Agent-to-Tier model assignments (`flash` / `standard` / `pro` / `max` / `vision`):
-
-<p align="center">
-  <img src="./docs/public/images/tui-dashboard-en.webp" alt="OpenCode TUI Panoramic Dashboard" width="880"/>
-</p>
-
-> **Keyboard Shortcuts**: `↑/↓` Move cursor, `Space` Toggle/Cycle tier, `Enter` Execute action, `L` Instant language switch (EN/ZH), `Q` Exit.
-
----
-
-### Interactive Project Wizard
-
-Run `/project init` (or `ocp wizard`) inside any project to scaffold the code knowledge graph (CodeGraph + Serena LSP) and project guardrails (ADR + secret-file gates):
-
-<p align="center">
-  <img src="./docs/public/images/tui-project-wizard-en.webp" alt="Project Wizard Interactive Dialog" width="880"/>
-</p>
-
-The two-tier wizard lets you toggle quality guardrails (ADR / E2E / commit discipline / env-guard) with live `🟢 ON` / `🔴 OFF` / `⚪ default` badges, then `💾 Save & Apply Changes` — all changes stay in-memory until confirmed.
-
----
-
-### OpenCode Terminal UI
-
-Once configured, launch the OpenCode terminal UI with `ocp` (or `ocp tui`) and start working with your specialist agent team:
-
-<p align="center">
-  <img src="./docs/public/images/opencode-en.webp" alt="OpenCode Terminal UI" width="880"/>
-</p>
-
-The terminal UI provides a chat interface to 21 specialist agents (`@java-dev`, `@security`, `@dba`, `@frontend-dev`, `@fast-coder`, etc.), four working modes (`@lite` (default — ~2k tok/step) / `@code` / `@build` / `@plan`), workflow slash commands (`/dev` · `/dev-quick` · `/dev-plan` · `/dev-review` · `/review-fix-loop` · `/sdd` …), and the `/profile` picker for one-shot model tier mapping.
-
----
-
-### OpenChamber Web UI
-
-Run `ocp web` to launch the browser-based OpenChamber UI — a side-by-side diff and multi-model comparison surface that shares the same config as the terminal:
-
-<p align="center">
-  <img src="./docs/public/images/openchamber-web-en.png" alt="OpenChamber Web UI" width="880"/>
-</p>
-
-The web UI auto-generates a password-protected session, picks a free port starting at 3000, and reclaims zombie daemons — no manual setup needed.
-
----
-
-### OpenChamber Desktop App
-
-Run `ocp desktop` (alias `ocp ui`) to launch the native Tauri-based desktop application:
-
-<p align="center">
-  <img src="./docs/public/images/openchamber-desktop-en.png" alt="OpenChamber Desktop App" width="880"/>
-</p>
-
-The desktop app provides a native window with side-by-side diff views, multi-model comparison, and full keyboard navigation — one config shared across terminal, web, and desktop, zero re-setup.
-
----
-
-> 📖 **For full documentation** — agents, profiles, MCP servers, workflows, guardrails, and installer options — visit the **[Online Docs](https://kenlin8827.github.io/opencode-prime/)**.
-
----
+Read the [online documentation](https://kenlin8827.github.io/opencode-prime/) for agent roles, workflows, profiles, MCP servers, guardrails, installer options, and development guidance. Repository contributors should start with [DEVELOPING.md](DEVELOPING.md).
 
 ## License
 
-Copyright (C) 2026 Ken Lin — licensed under the [GNU Affero General Public License v3.0 or later](./LICENSE). Third-party integrations keep their own licenses; per-component license notes live in `install/options.jsonc` and `opencode.template.jsonc`.
+Copyright (C) 2026 Ken Lin — licensed under the [GNU Affero General Public License v3.0 or later](LICENSE). Third-party integrations retain their own licenses.
