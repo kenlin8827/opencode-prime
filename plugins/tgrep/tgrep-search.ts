@@ -4,7 +4,8 @@ import { relative, resolve, sep } from "node:path"
 import type { TgrepReadiness } from "./tgrep-service"
 
 export interface TgrepSearchInput { pattern: string; path?: string; flags?: string[]; freshness?: "indexed" | "current" }
-export interface TgrepSearchResult { backend: "tgrep" | "fallback"; code: number; stdout: string; stderr: string }
+export type TgrepSearchStatus = "matches" | "no-matches" | "error"
+export interface TgrepSearchResult { backend: "tgrep" | "fallback"; code: number; status: TgrepSearchStatus; stdout: string; stderr: string }
 const ALLOWED_FLAGS = new Set(["-i", "--ignore-case", "-F", "--fixed-strings", "-g", "--glob"])
 
 export function resolveSearchPath(root: string, path = "."): string {
@@ -24,17 +25,28 @@ export function buildTgrepSearchArgs(root: string, input: TgrepSearchInput): str
   return [...(input.freshness === "current" ? ["--no-index"] : []), ...flags, "--", input.pattern, target]
 }
 
+function resultFrom(backend: "tgrep" | "fallback", result: ReturnType<typeof spawnSync>): TgrepSearchResult {
+  const code = result.status ?? 2
+  return {
+    backend, code, status: code === 0 ? "matches" : code === 1 ? "no-matches" : "error",
+    stdout: result.stdout ?? "", stderr: `${result.stderr ?? ""}${result.error ? String(result.error) : ""}`,
+  }
+}
+
+function fallbackRg(root: string, input: TgrepSearchInput): TgrepSearchResult {
+  const args = buildTgrepSearchArgs(root, { ...input, freshness: "indexed" })
+  const separator = args.indexOf("--")
+  return resultFrom("fallback", spawnSync("rg", separator < 0 ? args : [...args.slice(0, separator), ...args.slice(separator + 1)], { cwd: root, encoding: "utf8", windowsHide: true }))
+}
+
 export function searchTgrep(root: string, input: TgrepSearchInput, readiness: TgrepReadiness): TgrepSearchResult {
   const indexed = (input.freshness ?? "indexed") === "indexed"
   if (indexed && readiness !== "server") {
-    const args = buildTgrepSearchArgs(root, { ...input, freshness: "indexed" })
-    // tgrep's argv shape is compatible with this intentionally tiny flag
-    // allowlist: remove its `--` separator only after preserving the pattern.
-    const separator = args.indexOf("--")
-    const rgArgs = separator < 0 ? args : [...args.slice(0, separator), ...args.slice(separator + 1)]
-    const fallback = spawnSync("rg", rgArgs, { cwd: root, encoding: "utf8", windowsHide: true })
-    return { backend: "fallback", code: fallback.status ?? 2, stdout: fallback.stdout ?? "", stderr: `${fallback.stderr ?? ""}${fallback.error ? String(fallback.error) : ""}` }
+    return fallbackRg(root, input)
   }
   const result = spawnSync("tgrep", buildTgrepSearchArgs(root, input), { cwd: root, encoding: "utf8", windowsHide: true })
-  return { backend: "tgrep", code: result.status ?? 2, stdout: result.stdout ?? "", stderr: `${result.stderr ?? ""}${result.error ? String(result.error) : ""}` }
+  const mapped = resultFrom("tgrep", result)
+  // current means correctness over acceleration: if the external CLI itself
+  // cannot run, use the established full-scan backend instead.
+  return input.freshness === "current" && mapped.status === "error" ? fallbackRg(root, input) : mapped
 }

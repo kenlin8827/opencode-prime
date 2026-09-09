@@ -32,8 +32,9 @@ export const TgrepPlugin: Plugin = async ({ directory }) => {
         let readiness = probeTgrepStatus(directory, config)
         if (readiness === "disk-index") readiness = await ensureServer(directory, config)
         const result = searchTgrep(directory, args as TgrepSearchInput, readiness)
-        const label = result.backend === "tgrep" ? `tgrep (${args.freshness ?? "indexed"})` : "fallback required"
-        return { title: label, output: `${result.stdout}${result.stderr ? `\n${result.stderr}` : ""}`, metadata: { backend: result.backend, exitCode: result.code, readiness } }
+        const label = result.backend === "tgrep" ? `tgrep (${args.freshness ?? "indexed"})` : "rg fallback"
+        const output = result.status === "no-matches" ? "No matches." : `${result.stdout}${result.stderr ? `\n${result.stderr}` : ""}`
+        return { title: label, output, metadata: { backend: result.backend, exitCode: result.code, status: result.status, readiness } }
       },
     }),
   } }

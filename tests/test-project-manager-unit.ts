@@ -321,7 +321,7 @@ function probe(overrides: Partial<BackendProbe>): BackendProbe {
     dbhubEnabled: true,
     dbhubCli: true,
     dbhubToml: false,
-    tgrepEnabled: false, tgrepCli: false, tgrepIndexed: false, tgrepReadiness: "unavailable", tgrepOptions: { enabled: false },
+    tgrepEnabled: false, tgrepCli: false, tgrepIndexed: false, tgrepReadiness: "unavailable", tgrepPolicyCurrent: false, tgrepOptions: { enabled: false },
     ...overrides,
   }
 }
@@ -382,7 +382,7 @@ function test08_IndexPlanning() {
   assert(planFor(planIndexBackends(probe({ gitnexusEnabled: false })), "gitnexus").command === null, "disabled → no run even with CLI")
   assert(planFor(planInitBackends(probe({ tgrepEnabled: true, tgrepCli: true })), "tgrep").command === "tgrep index .", "tgrep init builds missing local index")
   assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true })), "tgrep").command === null, "tgrep index command never creates first index")
-  assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true, tgrepIndexed: true, tgrepReadiness: "server" })), "tgrep").command === null, "healthy tgrep server skips rebuild")
+  assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true, tgrepIndexed: true, tgrepReadiness: "server", tgrepPolicyCurrent: true })), "tgrep").command === null, "healthy tgrep server skips rebuild")
   assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true, tgrepIndexed: true, tgrepReadiness: "disk-index" })), "tgrep").command === "tgrep index .", "unhealthy tgrep index rebuilds")
 
   // mcp.<name>.enabled parsing (same JSONC subset rule as the profiler).
@@ -405,7 +405,7 @@ async function test09_Announce() {
     codegraphEnabled: true, codegraphCli: true, codegraphIndexed: false,
     gitnexusEnabled: true, gitnexusCli: true, gitnexusIndex: "missing",
     dbhubEnabled: true, dbhubCli: true, dbhubToml: false,
-    tgrepEnabled: false, tgrepCli: false, tgrepIndexed: false, tgrepReadiness: "unavailable", tgrepOptions: { enabled: false },
+    tgrepEnabled: false, tgrepCli: false, tgrepIndexed: false, tgrepReadiness: "unavailable", tgrepPolicyCurrent: false, tgrepOptions: { enabled: false },
   }
   const msg = suggestInitMessage(["AGENTS.md"], probeFull)
   assert(msg.includes("/project init"), "message names the command")
@@ -532,7 +532,7 @@ function hookProbe(overrides: Partial<BackendProbe>): BackendProbe {
     codegraphEnabled: true, codegraphCli: true, codegraphIndexed: false,
     gitnexusEnabled: true, gitnexusCli: true, gitnexusIndex: "missing",
     dbhubEnabled: true, dbhubCli: true, dbhubToml: false,
-    tgrepEnabled: false, tgrepCli: false, tgrepIndexed: false, tgrepReadiness: "unavailable", tgrepOptions: { enabled: false },
+    tgrepEnabled: false, tgrepCli: false, tgrepIndexed: false, tgrepReadiness: "unavailable", tgrepPolicyCurrent: false, tgrepOptions: { enabled: false },
     ...overrides,
   }
 }

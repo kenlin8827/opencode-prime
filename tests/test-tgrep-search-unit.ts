@@ -2,6 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { parseTgrepOptions, tgrepEnabledFrom, tgrepIndexArgs } from "../plugins/tgrep/tgrep-config"
+import { tgrepPolicyFingerprint } from "../plugins/tgrep/tgrep-state"
 import { buildTgrepSearchArgs, resolveSearchPath, searchTgrep } from "../plugins/tgrep/tgrep-search"
 
 let failed = 0
@@ -14,6 +15,7 @@ assert(tgrepEnabledFrom('{"tools":{"tgrep":true}}'), "explicit tools.tgrep enabl
 assert(!tgrepEnabledFrom('{"tools":{"tgrep":false}}'), "false disables integration")
 const options = parseTgrepOptions(root, { enabled: true, indexPath: ".cache/tgrep", maxFileSize: "64MiB", exclude: ["vendor"], noRequireGit: true })
 assert(tgrepIndexArgs(options).join(" ") === "--index-path .cache/tgrep --max-file-size 64MiB --exclude vendor --no-require-git", "stable index arguments")
+assert(tgrepPolicyFingerprint({ ...options, exclude: ["vendor", "build"] }, "tgrep 1") === tgrepPolicyFingerprint({ ...options, exclude: ["build", "vendor"] }, "tgrep 1"), "policy fingerprint normalizes exclude order")
 assert(throws(() => parseTgrepOptions(root, { enabled: true, indexPath: "../outside" })), "rejects escaping index path")
 assert(throws(() => parseTgrepOptions(root, { enabled: true, exclude: [""] })), "rejects empty exclusion")
 const args = buildTgrepSearchArgs(root, { pattern: 'a "quoted" -- value', path: "src", flags: ["-F"], freshness: "current" })
@@ -21,6 +23,7 @@ assert(args[0] === "--no-index" && args.includes("--") && args.includes('a "quot
 assert(throws(() => resolveSearchPath(root, "../outside")), "rejects lexical path escape")
 const unavailable = searchTgrep(root, { pattern: "definitely-no-result", freshness: "indexed" }, "unavailable")
 assert(unavailable.backend === "fallback", "unready indexed search transparently falls back to rg")
+assert(unavailable.status === "no-matches", "rg exit code 1 maps to no matches")
 if (process.platform !== "win32") {
   const outside = mkdtempSync(join(tmpdir(), "tgrep-outside-")); symlinkSync(outside, join(root, "escape"))
   assert(throws(() => resolveSearchPath(root, "escape")), "rejects symlink path escape")

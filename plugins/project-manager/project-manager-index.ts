@@ -37,7 +37,7 @@ import { DBHUB_TOML_REL, scaffoldFile, writeDbhubToml } from "./project-manager-
 import { loadProjectHooks, type BackendAction, type ProjectHooks } from "./project-hooks-loader"
 import { getProjectDir } from "./project-manager-config"
 import { tgrepOptionsFrom, type TgrepOptions } from "../tgrep/tgrep-config"
-import { hasTgrepIndex, probeTgrepStatus, type TgrepReadiness } from "../tgrep/tgrep-service"
+import { hasTgrepIndex, probeTgrepStatus, recordSuccessfulIndex, tgrepNeedsRebuild, type TgrepReadiness } from "../tgrep/tgrep-service"
 
 // ─── Probes ──────────────────────────────────────────────────────────
 
@@ -144,6 +144,7 @@ export interface BackendProbe {
   tgrepCli: boolean
   tgrepIndexed: boolean
   tgrepReadiness: TgrepReadiness
+  tgrepPolicyCurrent: boolean
   tgrepOptions: TgrepOptions
 }
 
@@ -170,6 +171,7 @@ export function probeBackends(root: string): BackendProbe {
     tgrepCli: tgCli,
     tgrepIndexed: tgEnabled && hasTgrepIndex(root, tgrepOptions),
     tgrepReadiness: tgCli ? probeTgrepStatus(root, tgrepOptions) : "unavailable",
+    tgrepPolicyCurrent: tgCli && hasTgrepIndex(root, tgrepOptions) ? !tgrepNeedsRebuild(root, tgrepOptions) : false,
     tgrepOptions,
   }
 }
@@ -219,6 +221,10 @@ function evaluateCondition(cond: string, root: string, probe: BackendProbe): boo
     result = c.slice("server_healthy:".length) === "tgrep" && probe.tgrepReadiness === "server"
   } else if (c.startsWith("index_missing:")) {
     result = c.slice("index_missing:".length) === "tgrep" && !probe.tgrepIndexed
+  } else if (c.startsWith("policy_current:")) {
+    result = c.slice("policy_current:".length) === "tgrep" && probe.tgrepPolicyCurrent
+  } else if (c === "tgrep_rebuild_needed") {
+    result = probe.tgrepIndexed && (probe.tgrepReadiness !== "server" || !probe.tgrepPolicyCurrent)
   } else if (c.startsWith("toml_present:")) {
     const name = c.slice("toml_present:".length)
     result = name === "dbhub" ? probe.dbhubToml : false
@@ -250,6 +256,8 @@ function conditionSkipNote(cond: string, probe: BackendProbe): string {
   if (cond === "index_ready") return "no index yet — that's an init step, run /project init"
   if (cond === "index_missing:tgrep") return "local tgrep index already exists"
   if (cond === "!server_healthy:tgrep") return "healthy tgrep server keeps the index current"
+  if (cond === "policy_current:tgrep") return "tgrep index policy/version changed — rebuild via /project index"
+  if (cond === "tgrep_rebuild_needed") return probe.tgrepReadiness === "server" ? "healthy tgrep server and current policy" : "no healthy tgrep server"
   return `skipped (${cond})`
 }
 
@@ -270,7 +278,7 @@ function planBackendAction(
   if (action.action === "scaffold") {
     return { backend, command: null, action: "scaffold", args: action.args, note: action.note ?? "scaffold file" }
   }
-  return { backend, command: action.command ?? null, note: action.note ?? `${action.command} planned` }
+  return { backend, command: action.command ?? null, args: backend === "tgrep" ? { options: probe.tgrepOptions } : undefined, note: action.note ?? `${action.command} planned` }
 }
 
 function planBackends(
@@ -360,6 +368,9 @@ function runBackend(plan: BackendPlan, root: string): Promise<BackendResult> {
     child.on("error", (e) => resolve({ backend: plan.backend, status: "failed", detail: String(e) }))
     child.on("close", (code) => {
       if (code === 0) {
+        if (plan.backend === "tgrep") {
+          try { recordSuccessfulIndex(root, plan.args?.options as TgrepOptions) } catch { /* metadata failure must not invalidate a successful CLI index */ }
+        }
         resolve({ backend: plan.backend, status: "ran", detail: `${plan.command} done` })
       } else {
         const firstErr = stderr.trim().split("\n")[0]

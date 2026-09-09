@@ -2,6 +2,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { tgrepIndexArgs, type TgrepOptions } from "./tgrep-config"
+import { isTgrepPolicyCurrent, writeTgrepIndexState } from "./tgrep-state"
 
 export type TgrepReadiness = "unavailable" | "building" | "disk-index" | "server"
 
@@ -10,6 +11,11 @@ export function tgrepServeCommand(options: TgrepOptions): string[] { return ["se
 export function tgrepStatusCommand(options: TgrepOptions): string[] { return ["status", ".", ...tgrepIndexArgs(options)] }
 export function hasTgrepIndex(root: string, options: TgrepOptions): boolean { return existsSync(join(root, options.indexPath ?? ".tgrep")) }
 
+export function tgrepVersion(root: string): string | null {
+  const result = spawnSync("tgrep", ["--version"], { cwd: root, encoding: "utf8", timeout: 5000, windowsHide: true })
+  return result.status === 0 ? String(result.stdout).trim() || null : null
+}
+
 /** A safe, argv-only status probe. Failure is intentionally unavailable. */
 export function probeTgrepStatus(root: string, options: TgrepOptions): TgrepReadiness {
   const status = spawnSync("tgrep", tgrepStatusCommand(options), { cwd: root, encoding: "utf8", timeout: 5000, windowsHide: true })
@@ -17,6 +23,18 @@ export function probeTgrepStatus(root: string, options: TgrepOptions): TgrepRead
   const output = `${status.stdout}\n${status.stderr}`
   if (/Indexing:\s*(building|in progress)/i.test(output)) return "building"
   return /Indexing:\s*complete/i.test(output) ? "server" : "disk-index"
+}
+
+export function tgrepNeedsRebuild(root: string, options: TgrepOptions): boolean {
+  if (!hasTgrepIndex(root, options)) return false
+  const version = tgrepVersion(root)
+  // Old indexes without OCP metadata are intentionally treated as stale once;
+  // this establishes a reproducible policy/version baseline.
+  return !isTgrepPolicyCurrent(root, options, version ?? "unknown")
+}
+
+export function recordSuccessfulIndex(root: string, options: TgrepOptions): void {
+  writeTgrepIndexState(root, options, tgrepVersion(root) ?? "unknown")
 }
 
 export interface TgrepLease { root: string; pid?: number; startedAt: number; args: string[]; child: ChildProcess }

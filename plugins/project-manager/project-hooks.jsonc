@@ -78,7 +78,7 @@
       "index": {
         "command": "tgrep index .",
         "note": "rebuilding incomplete or unhealthy local full-text index",
-        "when": ["tool_enabled:tgrep", "cli_installed:tgrep", "indexed:tgrep", "!server_healthy:tgrep"]
+        "when": ["tool_enabled:tgrep", "cli_installed:tgrep", "tgrep_rebuild_needed"]
       },
       "teardown": null,
       "git_hooks": null
