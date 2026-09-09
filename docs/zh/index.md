@@ -2,8 +2,8 @@
 layout: home
 
 hero:
-  name: "OpenCode Prime"
-  text: "(OCP)"
+  name: "OpenCode Prime (OCP)"
+  text: ""
   tagline: "OpenCode 旗舰级生产工程与多智能体研发套件 · 分层代码智能 · 全链路工程护栏"
   image:
     src: /logo.svg

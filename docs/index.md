@@ -2,8 +2,8 @@
 layout: home
 
 hero:
-  name: "OpenCode Prime"
-  text: "(OCP)"
+  name: "OpenCode Prime (OCP)"
+  text: ""
   tagline: "The Flagship Production Engineering & Multi-Agent Suite for OpenCode"
   image:
     src: /logo.svg

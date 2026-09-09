@@ -1,12 +1,13 @@
 import { h } from 'vue'
-import DefaultTheme from 'vitepress/theme'
+import Teek from 'vitepress-theme-teek'
+import 'vitepress-theme-teek/index.css'
 import MermaidZoom from './MermaidZoom.vue'
 import './custom.css'
 
 export default {
-  extends: DefaultTheme,
+  extends: Teek,
   Layout() {
-    return h(DefaultTheme.Layout, null, {
+    return h(Teek.Layout, null, {
       'layout-bottom': () => h(MermaidZoom)
     })
   }

@@ -30,6 +30,7 @@
 		"tsx": "^4.19.3",
 		"typescript": "^7.0.2",
 		"vitepress": "^1.6.4",
-		"vitepress-plugin-mermaid": "^2.0.17"
+		"vitepress-plugin-mermaid": "^2.0.17",
+		"vitepress-theme-teek": "1.6.2"
 	}
 }

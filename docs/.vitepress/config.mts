@@ -9,6 +9,26 @@ export default withMermaid(
     cleanUrls: true,
     lastUpdated: true,
     srcExclude: ['SUMMARY.md'],
+    head: [
+      [
+        'script',
+        {},
+        `(function () {
+          var detected = 'ocp-locale-auto-detected';
+          if (location.pathname !== '/' || sessionStorage.getItem(detected)) return;
+          sessionStorage.setItem(detected, '1');
+          if ((navigator.language || '').toLowerCase().indexOf('zh') === 0) location.replace('/zh/');
+        })();`,
+      ],
+    ],
+    vite: {
+      optimizeDeps: {
+        include: ['mermaid', 'fastdom', '@braintree/sanitize-url', 'dayjs'],
+      },
+      ssr: {
+        noExternal: ['mermaid', 'vitepress-plugin-mermaid', 'fastdom', 'vitepress-theme-teek'],
+      },
+    },
 
     locales: {
       root: {
@@ -67,7 +87,7 @@ export default withMermaid(
             }
           ],
           footer: {
-            message: 'Released under the MIT License.',
+            message: 'Released under the AGPL-3.0-or-later License.',
             copyright: 'Copyright © 2026 OpenCode Prime Contributors'
           }
         }
@@ -131,7 +151,7 @@ export default withMermaid(
             ]
           },
           footer: {
-            message: '基于 MIT 协议发布。',
+            message: '基于 AGPL-3.0-or-later 协议发布。',
             copyright: 'Copyright © 2026 OpenCode Prime Contributors'
           }
         }
@@ -139,6 +159,9 @@ export default withMermaid(
     },
 
     themeConfig: {
+      teekHome: false,
+      vpHome: true,
+      loading: true,
       logo: '/logo.svg',
       socialLinks: [
         { icon: 'github', link: 'https://github.com/kenlin8827/opencode-prime' }
@@ -148,13 +171,5 @@ export default withMermaid(
       }
     },
 
-    vite: {
-      optimizeDeps: {
-        include: ['mermaid', 'fastdom', '@braintree/sanitize-url', 'dayjs'],
-      },
-      ssr: {
-        noExternal: ['mermaid', 'vitepress-plugin-mermaid', 'fastdom'],
-      }
-    }
   })
 )
