@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process"
-import { existsSync } from "node:fs"
+import { closeSync, existsSync, openSync, unlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tgrepIndexArgs, type TgrepOptions } from "./tgrep-config"
 import { isTgrepPolicyCurrent, writeTgrepIndexState } from "./tgrep-state"
@@ -37,8 +37,22 @@ export function recordSuccessfulIndex(root: string, options: TgrepOptions): void
   writeTgrepIndexState(root, options, tgrepVersion(root) ?? "unknown")
 }
 
-export interface TgrepLease { root: string; pid?: number; startedAt: number; args: string[]; child: ChildProcess }
+export interface TgrepLease { root: string; pid?: number; startedAt: number; args: string[]; child: ChildProcess; lockPath: string }
 const leases = new Map<string, TgrepLease>()
+
+function leaseLockPath(root: string, options: TgrepOptions): string { return join(root, options.indexPath ?? ".tgrep", ".ocp-tgrep-serve.lock") }
+
+function acquireLeaseLock(root: string, options: TgrepOptions): string | null {
+  const lockPath = leaseLockPath(root, options)
+  try {
+    const fd = openSync(lockPath, "wx")
+    writeFileSync(fd, `${JSON.stringify({ pid: process.pid, root, startedAt: new Date().toISOString() })}\n`, "utf8")
+    closeSync(fd)
+    return lockPath
+  } catch { return null }
+}
+
+function releaseLeaseLock(path: string): void { try { unlinkSync(path) } catch { /* only best-effort cleanup */ } }
 
 /** Start at most one OCP-owned watcher per root. Existing user watchers are
  * deliberately reused and never recorded as a lease that OCP could kill. */
@@ -47,13 +61,17 @@ export async function ensureServer(root: string, options: TgrepOptions, timeoutM
   if (before === "server" || before === "building" || !hasTgrepIndex(root, options)) return before
   const active = leases.get(root)
   if (!active) {
+    const lockPath = acquireLeaseLock(root, options)
+    // Another OCP instance may be starting it; never race it with a duplicate.
+    if (!lockPath) return "disk-index"
     const args = tgrepServeCommand(options)
     const child = spawn("tgrep", args, { cwd: root, detached: true, stdio: "ignore", windowsHide: true })
     child.unref()
-    const lease: TgrepLease = { root, pid: child.pid, startedAt: Date.now(), args, child }
+    const lease: TgrepLease = { root, pid: child.pid, startedAt: Date.now(), args, child, lockPath }
     leases.set(root, lease)
-    child.once("exit", () => { if (leases.get(root) === lease) leases.delete(root) })
-    child.once("error", () => { if (leases.get(root) === lease) leases.delete(root) })
+    const clear = () => { if (leases.get(root) === lease) leases.delete(root); releaseLeaseLock(lockPath) }
+    child.once("exit", clear)
+    child.once("error", clear)
   }
   const deadline = Date.now() + timeoutMs
   do {
@@ -69,6 +87,7 @@ export function releaseServer(root: string): boolean {
   const lease = leases.get(root)
   if (!lease) return false
   leases.delete(root)
+  releaseLeaseLock(lease.lockPath)
   try { lease.child.kill(); return true } catch { return false }
 }
 
