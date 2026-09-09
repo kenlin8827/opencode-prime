@@ -26,7 +26,15 @@ export function buildTgrepSearchArgs(root: string, input: TgrepSearchInput): str
 
 export function searchTgrep(root: string, input: TgrepSearchInput, readiness: TgrepReadiness): TgrepSearchResult {
   const indexed = (input.freshness ?? "indexed") === "indexed"
-  if (indexed && readiness !== "server") return { backend: "fallback", code: 2, stdout: "", stderr: "tgrep index is not ready" }
+  if (indexed && readiness !== "server") {
+    const args = buildTgrepSearchArgs(root, { ...input, freshness: "indexed" })
+    // tgrep's argv shape is compatible with this intentionally tiny flag
+    // allowlist: remove its `--` separator only after preserving the pattern.
+    const separator = args.indexOf("--")
+    const rgArgs = separator < 0 ? args : [...args.slice(0, separator), ...args.slice(separator + 1)]
+    const fallback = spawnSync("rg", rgArgs, { cwd: root, encoding: "utf8", windowsHide: true })
+    return { backend: "fallback", code: fallback.status ?? 2, stdout: fallback.stdout ?? "", stderr: `${fallback.stderr ?? ""}${fallback.error ? String(fallback.error) : ""}` }
+  }
   const result = spawnSync("tgrep", buildTgrepSearchArgs(root, input), { cwd: root, encoding: "utf8", windowsHide: true })
   return { backend: "tgrep", code: result.status ?? 2, stdout: result.stdout ?? "", stderr: `${result.stderr ?? ""}${result.error ? String(result.error) : ""}` }
 }

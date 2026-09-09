@@ -3,15 +3,18 @@ import { join } from "node:path"
 import { homedir } from "node:os"
 import type { Plugin } from "@opencode-ai/plugin"
 import { scoped } from "../shared/plugin-scope"
+import { tgrepOptionsFrom } from "../tgrep/tgrep-config"
+import { probeTgrepStatus } from "../tgrep/tgrep-service"
 
 export const MARKER = "[PROJECT CAPABILITIES]"
 
-type Capability = "ready" | "unavailable"
+type Capability = "ready" | "building" | "disk-index" | "unavailable"
 
 export interface ProjectProfile {
   readonly codegraph: Capability
   readonly gitnexus: Capability
   readonly serena: Capability
+  readonly tgrep: Capability
 }
 
 export function mcpEnabledFrom(text: string, name: string): boolean {
@@ -38,10 +41,16 @@ function indexedCapability(root: string, directory: string, mcp: string): Capabi
 }
 
 export function buildProfile(root: string = process.cwd()): ProjectProfile {
+  let tgrep: Capability = "unavailable"
+  try {
+    const options = tgrepOptionsFrom(root, readFileSync(join(homedir(), ".config", "opencode", "options.jsonc"), "utf8"))
+    if (options.enabled) tgrep = probeTgrepStatus(root, options)
+  } catch { /* optional backend stays unavailable */ }
   return {
     codegraph: indexedCapability(root, ".codegraph", "codegraph"),
     gitnexus: indexedCapability(root, ".gitnexus", "gitnexus"),
     serena: mcpEnabled("serena") ? "ready" : "unavailable",
+    tgrep,
   }
 }
 
@@ -50,7 +59,7 @@ export function renderProfileBlock(profile: ProjectProfile): string {
     "",
     "---",
     MARKER,
-    `Code intelligence: CodeGraph=${profile.codegraph}; GitNexus=${profile.gitnexus}; Serena=${profile.serena}`,
+    `Code intelligence: CodeGraph=${profile.codegraph}; GitNexus=${profile.gitnexus}; Serena=${profile.serena}; Text index: tgrep=${profile.tgrep}`,
     "",
   ].join("\n")
 }

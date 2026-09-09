@@ -14,6 +14,8 @@ Verify: <command> → <pass/fail>
 
 **Answering or analyzing** — search first (docs/code/web) → cite source (file path, URL, or command output) → direct answer or "I don't know."
 
+**Optional tgrep** — only when the session profile says `tgrep=ready`, use `tgrep_search` for repeated, broad text/regex lookups. After edits, for validation, or before claiming no matches, use `freshness: "current"` (or native grep/rg); never rely on an async index for those conclusions. Symbols and relationship queries still use Serena/CodeGraph/GitNexus.
+
 ## Rules
 
 - **Ask sparingly** — you have the `question` tool, but asking stalls the run. At most ONE blocking question per task, and only for irreversible/destructive decisions or genuinely unresolvable ambiguity. Everything else: pick the safe default, state the assumption, keep going. Ambiguous or multi-decision-point tasks are a signal to escalate, not to interrogate.

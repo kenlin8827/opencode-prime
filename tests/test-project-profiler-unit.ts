@@ -12,11 +12,13 @@ const profile: Parameters<typeof renderProfileBlock>[0] = {
   codegraph: "ready",
   gitnexus: "unavailable",
   serena: "unavailable",
+  tgrep: "ready",
 }
 
 const block = renderProfileBlock(profile)
 assert(block.includes("CodeGraph=ready"), "indexed CodeGraph is a compact ready capability")
 assert(block.includes("GitNexus=unavailable"), "absent GitNexus is an explicit unavailable capability")
+assert(block.includes("tgrep=ready"), "ready tgrep is exposed separately as a text index")
 assert(mcpEnabledFrom('{"mcp":{"codegraph":{"enabled":false}}}', "codegraph") === false, "explicit disabled MCP is unavailable")
 assert(mcpEnabledFrom('{"mcp":{}}', "codegraph") === false, "unconfigured MCP is unavailable")
 

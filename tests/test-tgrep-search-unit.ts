@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { parseTgrepOptions, tgrepEnabledFrom, tgrepIndexArgs } from "../plugins/tgrep/tgrep-config"
-import { buildTgrepSearchArgs, resolveSearchPath } from "../plugins/tgrep/tgrep-search"
+import { buildTgrepSearchArgs, resolveSearchPath, searchTgrep } from "../plugins/tgrep/tgrep-search"
 
 let failed = 0
 function assert(ok: boolean, message: string) { console.log(`${ok ? "✅" : "❌"} ${message}`); if (!ok) failed++ }
@@ -19,6 +19,8 @@ assert(throws(() => parseTgrepOptions(root, { enabled: true, exclude: [""] })), 
 const args = buildTgrepSearchArgs(root, { pattern: 'a "quoted" -- value', path: "src", flags: ["-F"], freshness: "current" })
 assert(args[0] === "--no-index" && args.includes("--") && args.includes('a "quoted" -- value'), "pattern remains a single argv argument")
 assert(throws(() => resolveSearchPath(root, "../outside")), "rejects lexical path escape")
+const unavailable = searchTgrep(root, { pattern: "definitely-no-result", freshness: "indexed" }, "unavailable")
+assert(unavailable.backend === "fallback", "unready indexed search transparently falls back to rg")
 if (process.platform !== "win32") {
   const outside = mkdtempSync(join(tmpdir(), "tgrep-outside-")); symlinkSync(outside, join(root, "escape"))
   assert(throws(() => resolveSearchPath(root, "escape")), "rejects symlink path escape")
