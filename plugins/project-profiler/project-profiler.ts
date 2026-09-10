@@ -4,14 +4,16 @@ import { homedir } from "node:os"
 import type { Plugin } from "@opencode-ai/plugin"
 import { scoped } from "../shared/plugin-scope"
 import { loadTgrepOptions } from "../tgrep/tgrep-config"
-import { probeTgrepStatus } from "../tgrep/tgrep-service"
+import { resolveTgrepCapability, type TgrepCapabilityState } from "../tgrep/tgrep-service"
 
 export const MARKER = "[PROJECT CAPABILITIES]"
 
-/** "stale" = a healthy index exists but was built under a different policy or
- * binary version; indexed searches must not trust it until /project index
- * rebuilds it. */
-type Capability = "ready" | "building" | "disk-index" | "stale" | "unavailable"
+/** Per-backend capability states. The non-tgrep backends only ever return
+ * `ready` or `unavailable`; tgrep widens to the full TgrepCapabilityState
+ * set so the [PROJECT CAPABILITIES] block the model reads shows exactly
+ * the same state names as the TUI sidebar (single source of truth:
+ * resolveTgrepCapability in plugins/tgrep/tgrep-service.ts). */
+type Capability = "ready" | "unavailable" | TgrepCapabilityState
 
 export interface ProjectProfile {
   readonly codegraph: Capability
@@ -44,13 +46,16 @@ function indexedCapability(root: string, directory: string, mcp: string): Capabi
 }
 
 export function buildProfile(root: string = process.cwd()): ProjectProfile {
+  // Tgrep goes through the shared resolver so the model-visible state
+  // here matches the sidebar's `tgrep` badge exactly. Switch-off is
+  // represented as `unavailable` for the system-prompt block (the
+  // sidebar additionally folds it under OFF + hides the row, but the
+  // block is meant for the model, not the user, so the omission is
+  // not useful — `unavailable` is the unambiguous fallback).
   let tgrep: Capability = "unavailable"
   try {
     const options = loadTgrepOptions(root)
-    if (options.enabled) {
-      const readiness = probeTgrepStatus(root, options)
-      tgrep = readiness === "server" ? "ready" : readiness
-    }
+    if (options.enabled) tgrep = resolveTgrepCapability(root, options)
   } catch { /* optional backend stays unavailable */ }
   return {
     codegraph: indexedCapability(root, ".codegraph", "codegraph"),

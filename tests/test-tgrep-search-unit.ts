@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { parseTgrepOptions, stripJsonc, tgrepIndexArgs, tgrepOptionsFrom } from "../plugins/tgrep/tgrep-config"
 import { tgrepPolicyFingerprint } from "../plugins/tgrep/tgrep-state"
-import { acquireLeaseLock } from "../plugins/tgrep/tgrep-service"
+import { acquireLeaseLock, parseTgrepStatusOutput } from "../plugins/tgrep/tgrep-service"
 import { buildTgrepSearchArgs, resolveSearchPath, searchTgrep } from "../plugins/tgrep/tgrep-search"
 import { loadTgrepOptions } from "../plugins/tgrep/tgrep-config"
 import { TgrepPlugin } from "../plugins/tgrep"
@@ -61,6 +61,31 @@ const cliOnPath = spawnSync("tgrep", ["--version"], { encoding: "utf8", timeout:
 const switchOn = loadTgrepOptions(root).enabled
 const hooks = await TgrepPlugin({ directory: root }) as { tool?: { tgrep_search?: unknown } }
 assert(!!hooks?.tool?.tgrep_search === (switchOn && cliOnPath), "tool registration gates on switch AND CLI presence")
+
+// ─── Parser: tgrep 1.0.5 status emits `Watcher:` (not `Server:`) ───
+// Before this fix the parser only looked for `Server:`, missed the
+// real field name, and the sidebar falsely reported NO WATCHER even
+// when a watcher was running. These two cases pin the behaviour:
+// `active` → not disk-index (watcher is up); `not running` → disk-index.
+const parserRoot = mkdtempSync(join(tmpdir(), "tgrep-parser-"))
+const parserOptions = parseTgrepOptions(parserRoot, { enabled: true })
+const liveOutput = [
+  "Server status for D:\\repo",
+  "  PID:        25748",
+  "  Port:       58591",
+  "  Watcher:    active",
+  "  Watch mode: native",
+  "  Indexing:   complete",
+].join("\n")
+const watcherUp = parseTgrepStatusOutput(liveOutput, parserRoot, parserOptions, true)
+assert(watcherUp !== "disk-index" && watcherUp !== "unavailable",
+  "Watcher: active classifies as a live watcher (was disk-index before fix)")
+assert(watcherUp === "server" || watcherUp === "stale",
+  "Watcher: active returns server or stale — never disk-index")
+const downOutput = liveOutput.replace(/  Watcher:\s*active/, "  Watcher:    not running")
+assert(parseTgrepStatusOutput(downOutput, parserRoot, parserOptions, true) === "disk-index",
+  "Watcher: not running classifies as disk-index")
+rmSync(parserRoot, { recursive: true, force: true })
 
 rmSync(root, { recursive: true, force: true })
 if (failed) process.exit(1)
