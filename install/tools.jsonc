@@ -44,6 +44,25 @@
           "command": "node \"$OCP_REPO_DIR/install/scripts/herdr-recovery.js\" plugin link \"$OCP_REPO_DIR/install/herdr-plugins/auto-opencode\""
         }
       ],
+      // Launch manifest for `ocp tui` (tui_mode=herdr) / `ocp herdr`, executed
+      // by install/src/tui-engine.ts. Steps live in
+      // install/scripts/engines/herdr/ and own the tool-specific behavior
+      // (server bootstrap, workspace dedupe). The agent auto-start itself is
+      // the ocp.auto-opencode plugin (pane.created hook), not a launch step.
+      "tui": {
+        "bin": "herdr",
+        "install_hint": "  Install Herdr first: https://herdr.dev (or re-run `ocp install`).",
+        "pre_launch": [
+          {
+            "name": "ensure-server",
+            "command": "node \"$OCP_REPO_DIR/install/scripts/engines/herdr/ensure-server.js\""
+          },
+          {
+            "name": "open-workspace",
+            "command": "node \"$OCP_REPO_DIR/install/scripts/engines/herdr/open-workspace.js\""
+          }
+        ]
+      },
       "update_check": {
         "source": {
           "kind": "github",
@@ -79,6 +98,33 @@
           "command": "luvus module link \"$OCP_REPO_DIR/install/luvus-modules/auto-opencode\""
         }
       ],
+      // Launch manifest for `ocp tui` (tui_mode=luvus), executed by
+      // install/src/tui-engine.ts. Steps live in
+      // install/scripts/engines/luvus/: idempotent server start, workspace
+      // open, and the warm-start agent guarantee (the ocp.auto-opencode
+      // module covers NEW panes via pane.created, but reopening an existing
+      // workspace emits no event — start-agent.js closes that gap and works
+      // around luvus' Windows `agent start` quoting bug with `pane run`).
+      "tui": {
+        "bin": "luvus",
+        "install_hint": "  Install Luvus first: https://luvus.dev (or re-run `ocp install`).",
+        "forward_args": false,
+        "args_warning": "[ocp] Luvus mode does not forward OpenCode arguments; launch `ocp` or `ocp tui --direct` to pass arguments to opencode.",
+        "pre_launch": [
+          {
+            "name": "ensure-server",
+            "command": "node \"$OCP_REPO_DIR/install/scripts/engines/luvus/ensure-server.js\""
+          },
+          {
+            "name": "open-workspace",
+            "command": "node \"$OCP_REPO_DIR/install/scripts/engines/luvus/open-workspace.js\""
+          },
+          {
+            "name": "start-agent",
+            "command": "node \"$OCP_REPO_DIR/install/scripts/engines/luvus/start-agent.js\""
+          }
+        ]
+      },
       "update_check": {
         "source": {
           "kind": "github",

@@ -22,7 +22,8 @@ import { runProviderCli } from './provider-wizard';
 import { runProfileCli } from './profile-wizard';
 import { runUsageCli } from './usage';
 import { runTuiDashboard } from './dashboard';
-import { launchTui, launchServe, launchWeb, launchCode, launchDesktop, launchHerdr, launchLuvus } from './launcher';
+import { launchTui, launchServe, launchWeb, launchCode, launchDesktop } from './launcher';
+import { runTuiEngine } from './tui-engine';
 import { deployHerdrConfig, herdrUserConfigPath, HERDR_CONFIG_TEMPLATE } from './herdr-config';
 import {
   checkOpenChamberDesktop,
@@ -626,10 +627,10 @@ async function main() {
     }
     const mode = cliMode ?? effectiveOptions.tui_mode ?? 'direct';
     if (mode === 'herdr') {
-      process.exit(launchHerdr(passthrough));
+      process.exit(runTuiEngine(repoDir, 'herdr', passthrough));
     }
     if (mode === 'luvus') {
-      process.exit(launchLuvus(passthrough));
+      process.exit(runTuiEngine(repoDir, 'luvus', passthrough));
     }
     process.exit(launchTui(passthrough));
   }
@@ -739,7 +740,7 @@ async function main() {
   }
 
   if (args.action === 'herdr') {
-    process.exit(launchHerdr(args.passthrough ?? []));
+    process.exit(runTuiEngine(repoDir, 'herdr', args.passthrough ?? []));
   }
 
   if (args.action === 'herdr-config-install') {

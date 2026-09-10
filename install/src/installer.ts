@@ -614,6 +614,13 @@ export interface ToolRegistry {
       url?: string;
       install?: unknown; // string | Record<string, string>; resolved via resolveInstallCommand
       post_install?: Array<string | PostInstallStep>;
+      /**
+       * TUI launch manifest consumed by src/tui-engine.ts (shape:
+       * TuiEngineSpec there). Typed loosely on purpose: the installer must
+       * not import the engine module (it imports installer.ts) — the engine
+       * validates the shape at launch time.
+       */
+      tui?: unknown;
     }
   >;
 }
@@ -811,6 +818,27 @@ export function executeInstall(
   ) {
     console.log('[ocp] tui_mode=luvus requires luvus — auto-enabling tools.luvus (overrides your tools.luvus=false).');
     effectiveOptions.tools = { ...effectiveOptions.tools, luvus: true };
+  }
+
+  // Symmetric auto-disable for the OFF-mode tool — when the user picks one
+  // TUI driver, the other should not silently run its post-install steps.
+  // We only flip `undefined` → `false`: an explicit `true` means the user
+  // really wants both (rare but valid, e.g. testing). The earlier shallow-
+  // replace merge of `tools` means "undefined" here = the user simply didn't
+  // list that key — exactly the silent-drift case we want to close.
+  if (
+    effectiveOptions.tui_mode === 'herdr' &&
+    effectiveOptions.tools?.luvus === undefined
+  ) {
+    console.log('[ocp] tui_mode=herdr — auto-disabling tools.luvus (set tools.luvus=true explicitly to opt back in).');
+    effectiveOptions.tools = { ...effectiveOptions.tools, luvus: false };
+  }
+  if (
+    effectiveOptions.tui_mode === 'luvus' &&
+    effectiveOptions.tools?.herdr === undefined
+  ) {
+    console.log('[ocp] tui_mode=luvus — auto-disabling tools.herdr (set tools.herdr=true explicitly to opt back in).');
+    effectiveOptions.tools = { ...effectiveOptions.tools, herdr: false };
   }
 
   // 1. Ensure Manifest for current version exists
