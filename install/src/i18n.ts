@@ -241,7 +241,7 @@ export const FALLBACK_EN: I18nText = {
   exitBtnHint: 'Close control center without saving',
   backBtn: '↩ BACK TO MAIN MENU',
   backBtnHint: 'Return to the wizard main menu',
-  footerHelp: '[ ↑/↓/j/k: Move ]  [ Space: Toggle ]  [ L: Lang ]  [ Enter: Apply ]  [ ^S: Save ]  [ ^Z: Reset ]  [ ^A: Install ]  [ ^Q: Quit ]  [ Esc: Back ]',
+  footerHelp: '[ ↑/↓/j/k: Move ]  [ Space: Toggle ]  [ L: Lang ]  [ Enter: Apply ]  [ ^S: Save ]  [ ^Z: Reset ]  [ ^T: Install ]  [ ^Q: Quit ]  [ Esc: Back ]',
   switchLangHint: 'Language switched to English',
   enabled: 'ENABLED',
   disabled: 'DISABLED',

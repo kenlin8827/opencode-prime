@@ -62,7 +62,7 @@ const DAY_MS = 86_400_000
 /** Plain-Esc test for every "escape = back/exit" binding. Terminals that
  *  report modified keys in the kitty ALTERNATE-KEY form (CSI 27;5;<cp>u)
  *  arrive with name 'escape' + ctrl set; treating those as Esc silently
- *  ejected users from screens exactly when they pressed Ctrl+A. */
+ *  ejected users from screens exactly when they pressed Ctrl+T. */
 function isBareEscape(key: { name?: string; ctrl?: boolean; meta?: boolean }): boolean {
   return key.name === 'escape' && !key.ctrl && !key.meta
 }
@@ -753,15 +753,19 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
       setPanelIndex(0)
     }
     useKeyboard((key) => {
-      // Ctrl+A / Ctrl+S reach us in three shapes: the legacy control byte
-      // (0x01/0x13 → name 'a'/'s' + ctrl), the kitty disambiguated form
-      // (CSI 97;5u — also parsed as name + ctrl), and the kitty
-      // ALTERNATE-KEY form (CSI 27;5;97u) where OpenTUI reports name
+      // Ctrl+T / Ctrl+S reach us in three shapes: the legacy control byte
+      // (0x14/0x13 → name 't'/'s' + ctrl), the kitty disambiguated form
+      // (CSI 116;5u — also parsed as name + ctrl), and the kitty
+      // ALTERNATE-KEY form (CSI 27;5;116u) where OpenTUI reports name
       // 'escape' and the base char survives only in `sequence`. Accept all
-      // three; otherwise Ctrl+A misses this binding and lands on the
+      // three; otherwise Ctrl+T misses this binding and lands on the
       // escape branch below, leaving the dashboard instead of installing.
+      // Ctrl+T replaces Ctrl+A: A and S are adjacent on QWERTY, so a thumb
+      // drift would silently land on "save only" instead of "save and
+      // install". T is on the top row, far from S, with a clean control
+      // byte (0x14) that no major terminal misroutes to Tab.
       const ctrlChar = (ch: string, controlByte: string) => (key.ctrl || key.meta) && (key.name === ch || key.sequence === ch || key.raw === controlByte)
-      if (ctrlChar('a', '\u0001')) { key.preventDefault?.(); confirmSave(true); return }
+      if (ctrlChar('t', '\u0014')) { key.preventDefault?.(); confirmSave(true); return }
       if (ctrlChar('s', '\u0013')) { key.preventDefault?.(); confirmSave(false); return }
       if (host.dialog()) return
       if (isBareEscape(key)) { setRoute('wizard'); return }
@@ -785,7 +789,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
         setFocusArea('rail')
       }
     })
-    const content = () => <Modal title={`OpenCode Prime — ${copy('dashboardTitle', 'Dashboard')}`} footer={<>{copy('footerHelp', '↑/↓ selects · Enter opens choices or toggles · L language · Ctrl+A install · Esc exits')}{status() ? `\n${status()}` : ''}</>}>
+    const content = () => <Modal title={`OpenCode Prime — ${copy('dashboardTitle', 'Dashboard')}`} footer={<>{copy('footerHelp', '↑/↓ selects · Enter opens choices or toggles · L language · Ctrl+T install · Esc exits')}{status() ? `\n${status()}` : ''}</>}>
       <box flexDirection="column">
         <text marginBottom={1} fg={focusArea() === 'rail' ? ocpTheme.accent : ocpTheme.muted}>{focusArea() === 'rail' ? copy('dashboardTabsHint', 'Tabs · ←/→') : copy('dashboardTabsLabel', 'Tabs')}</text>
         <box flexDirection="row" height={3}>
@@ -806,7 +810,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
         </box>
       </box>
       <box flexDirection="column" marginTop={1}>
-        <text fg={ocpTheme.text}>{busy() ? copy('installingSpinner', 'Installing…') : `${copy('saveOnlyBtn', 'Save configuration')} Ctrl+S · ${copy('saveAndInstallBtn', 'Save and install')} Ctrl+A`}</text>
+        <text fg={ocpTheme.text}>{busy() ? copy('installingSpinner', 'Installing…') : `${copy('saveOnlyBtn', 'Save configuration')} Ctrl+S · ${copy('saveAndInstallBtn', 'Save and install')} Ctrl+T`}</text>
       </box>
     </Modal>
     return <Show when={host.dialog()} keyed fallback={content()}>{(dialog: Dialog) => <DialogView dialog={dialog} />}</Show>

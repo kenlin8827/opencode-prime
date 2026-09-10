@@ -154,12 +154,12 @@ reviewEnter.renderer.destroy()
 
 const dashboardShortcuts = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
 await dashboardShortcuts.flush()
-dashboardShortcuts.renderer.keyInput.emit('keypress', { name: 'a', ctrl: true, meta: false, shift: false, option: false, sequence: '\u0001', raw: '\u0001', eventType: 'press', source: 'raw', number: false })
+dashboardShortcuts.renderer.keyInput.emit('keypress', { name: 't', ctrl: true, meta: false, shift: false, option: false, sequence: '\u0014', raw: '\u0014', eventType: 'press', source: 'raw', number: false })
 await settle(dashboardShortcuts)
 // captureCharFrame() consumes the frame — capture once and assert all
 // confirmation-dialog properties against the same snapshot.
 const confirmFrame = dashboardShortcuts.captureCharFrame()
-assert.match(confirmFrame, /SAVE & INSTALL NOW|保存并立即安装/, 'Ctrl+A opens installation confirmation')
+assert.match(confirmFrame, /SAVE & INSTALL NOW|保存并立即安装/, 'Ctrl+T opens installation confirmation')
 assert.match(confirmFrame, /Confirm|确认/, 'confirmation action is localized')
 assert.match(confirmFrame, /Cancel|取消/, 'cancellation action is localized')
 dashboardShortcuts.renderer.keyInput.emit('keypress', { name: 'escape' })
@@ -175,7 +175,7 @@ dashboardShortcuts.renderer.destroy()
 // Regression guard for "confirmation opens but installation never starts".
 const dashboardInstall = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
 await dashboardInstall.flush()
-dashboardInstall.renderer.keyInput.emit('keypress', { name: 'a', ctrl: true, meta: false, shift: false, option: false, sequence: '\u0001', raw: '\u0001', eventType: 'press', source: 'raw', number: false })
+dashboardInstall.renderer.keyInput.emit('keypress', { name: 't', ctrl: true, meta: false, shift: false, option: false, sequence: '\u0014', raw: '\u0014', eventType: 'press', source: 'raw', number: false })
 await settle(dashboardInstall)
 dashboardInstall.renderer.keyInput.emit('keypress', { name: 'return' })
 await settle(dashboardInstall)
