@@ -394,7 +394,8 @@ $allFiles = @(
     # Config
     "tsconfig.json", "package.json",
     "tests/test-provider-core-unit.ts", "tests/test-profile-core-unit.ts",
-    "tests/test-ocp-wizard-cli-unit.ts", "tests/test-ocp-ui-router-unit.ts", "tests/test-ocp-ui-render.tsx"
+    "tests/test-ocp-wizard-cli-unit.ts", "tests/test-ocp-ui-router-unit.ts", "tests/test-ocp-ui-render.tsx",
+    "tests/test-sidebar-tgrep-badge.ts"
 )
 foreach ($f in $allFiles) {
     Check "file exists: $f" (Test-Path "$PSScriptRoot\..\$f")
@@ -958,6 +959,8 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-plugin-scope-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-project-profiler-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-sidebar-tgrep-badge.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-project-dprint-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
