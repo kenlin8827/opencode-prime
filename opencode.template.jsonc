@@ -262,6 +262,13 @@
       // multi-domain coding escalates to @code or @build by the user.
       "permission": {
         "*": { "*": "deny" },
+        // external_directory (any path outside the project worktree, %TEMP%
+        // included) needs this explicit punch-through: the catch-all above is
+        // the last matching rule for it (last-match-wins), so without it lite
+        // hard-denies read/edit/glob/grep on external paths. opencode's native
+        // default is "ask"; every other agent here inherits the root
+        // "permission": "allow" and needs no such key.
+        "external_directory": { "*": "allow" },
         // Scoped skill access: /handoff and the five Git commands have no
         // `agent:` frontmatter, so they follow the current agent — and lite is
         // the default. Allow exactly those six skills; every other skill stays
