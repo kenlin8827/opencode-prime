@@ -61,7 +61,8 @@
   "tuiModeHint": "How `ocp tui` starts: direct (current shell), Herdr workspace, or Luvus workspace. Selecting a workspace mode provisions its integration.",
   "toolLabels": {
     "rtk": { "label": "RTK Tokenizer", "hint": "Rust Token Killer proxy & plugin" },
-    "tgrep": { "label": "tgrep search index", "hint": "Optional external full-text cache; install tgrep yourself. Creates local .tgrep/ only, not an MCP or code graph." },
+    "ripgrep": { "label": "ripgrep (rg)", "hint": "Fast .gitignore-aware grep (BurntSushi/ripgrep); preferred backend for the in-agent search tool." },
+    "tgrep": { "label": "tgrep search index", "hint": "Trigram-indexed full-text search (microsoft/tgrep); accelerates regex search in large repositories." },
     "openchamber_web": { "label": "OpenChamber Web", "hint": "Install the OpenChamber web UI CLI powering `ocp web` (needs Node.js 22+)" },
     "openchamber_desktop": { "label": "OpenChamber Desktop", "hint": "Native desktop app powering `ocp desktop` / `ocp ui` — separate download (https://openchamber.dev/download); install only checks presence" },
     "openchamber_vscode": { "label": "OpenChamber VS Code", "hint": "Editor extension powering `ocp code` — auto-installs fedaykindev.openchamber via the editor CLI" },

@@ -281,7 +281,12 @@ function upgradeToolFromRegistry(repoDir: string, toolName: string): number {
     return 1;
   }
   console.log(`Running: ${cmd}`);
-  return runInstallCommand(cmd).status ?? 1;
+  const res = runInstallCommand(cmd);
+  if (res.error) {
+    console.error(`Failed to run upgrade for "${toolName}": ${res.error.message}`);
+    return 1;
+  }
+  return res.status ?? 1;
 }
 
 /**

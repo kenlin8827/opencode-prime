@@ -211,7 +211,7 @@ export const FALLBACK_EN: I18nText = {
     openchamber_vscode: { label: 'OpenChamber VS Code', hint: 'Editor extension powering `ocp code` — auto-installs fedaykindev.openchamber via the editor CLI' },
     herdr: { label: 'Herdr', hint: 'Terminal workspace manager for AI coding agents (https://herdr.dev) — `ocp herdr` opens current dir as workspace' },
     opencode: { label: 'OpenCode', hint: 'AI coding agent — powers `ocp tui`' },
-    tgrep: { label: 'tgrep', hint: 'Trigram-indexed full-text search — on by default; the tool self-hides until the tgrep CLI is on PATH (install from github.com/microsoft/tgrep), then /project init per repo' },
+    tgrep: { label: 'tgrep', hint: 'Trigram-indexed full-text search (microsoft/tgrep) — on by default; auto-installed or runs when on PATH, then /project init per repo' },
   },
   mcpLabels: {
     serena: { label: 'Serena', hint: 'Semantic code navigation and editing through its MCP server.' },

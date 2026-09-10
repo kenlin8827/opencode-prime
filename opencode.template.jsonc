@@ -292,7 +292,8 @@
         "todowrite": true,
         "task": true,
         "skill": true,
-        "question": true
+        "question": true,
+        "tgrep_search": true
       }
     },
     "code": {

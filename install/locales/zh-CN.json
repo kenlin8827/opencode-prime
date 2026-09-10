@@ -61,7 +61,8 @@
   "tuiModeHint": "`ocp tui` 启动方式：direct（当前 shell）、Herdr 工作区或 Luvus 工作区。选择工作区模式会自动配置对应集成。",
   "toolLabels": {
     "rtk": { "label": "RTK 令牌优化器", "hint": "Rust Token Killer 代理与代码压缩插件" },
-    "tgrep": { "label": "tgrep 检索索引", "hint": "可选外部全文检索缓存；需自行安装 tgrep。仅创建本地 .tgrep/，不是 MCP 或代码图谱。" },
+    "ripgrep": { "label": "ripgrep (rg)", "hint": "快速 .gitignore 感知的 grep 工具（BurntSushi/ripgrep），是代理内搜索工具的优先后端。" },
+    "tgrep": { "label": "tgrep 检索索引", "hint": "基于三元组的高性能全文检索工具（microsoft/tgrep），在大仓库中大幅加速搜索。" },
     "openchamber_web": { "label": "OpenChamber 网页版", "hint": "安装 OpenChamber 网页版 CLI，提供 `ocp web` 命令（需要 Node.js 22+）" },
     "openchamber_desktop": { "label": "OpenChamber 桌面版", "hint": "驱动 `ocp desktop` / `ocp ui` 的原生桌面应用——需另行下载（https://openchamber.dev/download）；安装时仅检测是否已安装" },
     "openchamber_vscode": { "label": "OpenChamber VS Code 扩展", "hint": "驱动 `ocp code` 的编辑器扩展——缺失时通过编辑器 CLI 自动安装 fedaykindev.openchamber" },
