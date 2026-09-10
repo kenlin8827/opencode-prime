@@ -1,52 +1,94 @@
 #!/usr/bin/env node
 // Auto-start OpenCode in every new tab/pane.
 //
-// Triggered by herdr's `tab.created` / `pane.created` plugin events. Reads
-// the new pane ID from HERDR_PLUGIN_CONTEXT_JSON (pane.created gives
-// pane.id directly; tab.created gives tab.id — we fetch its root pane).
-// Skips the pane if opencode is already running there, and uses a unique
-// agent name per pane so herdr's per-pane name uniqueness rule is satisfied.
+// Triggered by herdr's `tab.created` / `pane.created` plugin events. Reads the
+// new pane ID from HERDR_PLUGIN_CONTEXT_JSON (pane.created gives pane.id
+// directly; tab.created gives tab.id — we fetch its root pane). Skips the pane
+// if opencode is already running, and uses a unique agent name per pane so
+// herdr's per-pane name uniqueness rule is satisfied.
 //
-// Why this is so defensive
-// ------------------------
-// Two failure modes used to be invisible:
+// Runtime prerequisites — these are NOT validated by the plugin manager, and
+// silently failing here is the most common cause of "the plugin doesn't
+// seem to fire":
 //
-//   1. tab.created and pane.created both fire for the *same* initial tab
-//      when a workspace opens. The first call wins; the second call's
-//      `agent start` fails because the name `oc-<pane>` is taken. We now
-//      treat `name_in_use` / `agent_already_present` as a successful
-//      no-op so the second invocation doesn't error.
+//   1. herdr server must be running. The plugin only runs in response to
+//      `tab.created` / `pane.created` events emitted by the headless server.
+//      After any `herdr server stop` (e.g. protocol-mismatch restart, upgrade,
+//      manual stop) the plugin stays registered on disk but cannot fire until
+//      the server is restarted — open `herdr` or run `ocp herdr` to bring it
+//      back. Verify with `herdr agent list` (should return JSON, not
+//      `server_not_running`).
 //
-//   2. Earlier versions used bare `catch {}` everywhere, swallowing
-//      real failures (e.g. node missing from PATH, herdr server down,
-//      wrong pane ID, kind not supported). Every error now lands in
-//      `%APPDATA%/herdr/logs/ocp-auto-opencode.log` *and* on stderr so
-//      herdr-server.log can correlate it with the dispatched event.
+//   2. The plugin fires on CREATION events only — existing panes from a
+//      restored session are NOT reprocessed. To cover a pane, focus it and
+//      split it (`Ctrl+B` / `Cmd+D` in herdr) or open a new tab. The
+//      pane.created handler will fire and start opencode there.
+//
+//   3. opencode must be installed and on PATH (the agent.start handler will
+//      still try even if missing, but the resulting pane will sit at a
+//      shell prompt with the failure swallowed — see the log file below).
+//
+// All errors are written to stderr AND appended to a log file at
+//   ~/.config/opencode/logs/ocp-auto-opencode.log
+// so failures are never silent. Exit codes:
+//   0 = skipped (no pane, server not running, opencode already there, …)
+//   2 = recoverable error (logged; next event will retry)
 
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
-const path = require('node:path');
 const os = require('node:os');
+const path = require('node:path');
 
 const herdr = process.env.HERDR_BIN_PATH || 'herdr';
-const event = process.env.HERDR_PLUGIN_EVENT || '?';
-const ctxRaw = process.env.HERDR_PLUGIN_CONTEXT_JSON || '{}';
-let ctx;
-try { ctx = JSON.parse(ctxRaw); }
-catch (e) { logErr('context JSON parse failed:', e.message, '— raw:', ctxRaw.slice(0, 200)); process.exit(0); }
+const event = process.env.HERDR_PLUGIN_EVENT || '';
+const ctx = JSON.parse(process.env.HERDR_PLUGIN_CONTEXT_JSON || '{}');
 
-// 1. Resolve the target pane ID for this event.
+// --- logging --------------------------------------------------------------
+function logPath() {
+  // Honor OCP_LOG_DIR if set (lets tests / power users redirect), then fall
+  // back to a known config dir so the log survives across herdr restarts.
+  const dir =
+    process.env.OCP_LOG_DIR ||
+    (process.env.XDG_CONFIG_HOME
+      ? path.join(process.env.XDG_CONFIG_HOME, 'opencode', 'logs')
+      : path.join(os.homedir(), '.config', 'opencode', 'logs'));
+  try { fs.mkdirSync(dir, { recursive: true }); } catch { /* best effort */ }
+  return path.join(dir, 'ocp-auto-opencode.log');
+}
+
+function log(level, msg) {
+  const ts = new Date().toISOString();
+  const line = `[${ts}] [${level}] [ocp-auto-opencode] [${event || '?'}] ${msg}`;
+  // stderr first — survives even if the log file is locked / unwritable.
+  try { process.stderr.write(line + '\n'); } catch { /* noop */ }
+  try { fs.appendFileSync(logPath(), line + '\n'); } catch { /* best effort */ }
+}
+
+// Distinguish "not running / stale" from "real error" — only the former is
+// normal enough to skip without colouring the log red.
+function isServerUnavailable(err) {
+  const msg = String((err && err.message) || '');
+  return /server_not_running|no herdr server is running|protocol_mismatch/i.test(msg);
+}
+
+// --- pane resolution -------------------------------------------------------
 function resolvePaneId() {
+  // pane.created: herdr sets focused_pane_id directly on the context.
   if (ctx.focused_pane_id) return ctx.focused_pane_id;
+  // tab.created: herdr gives tab_id + workspace_id. We have to ask for
+  // the tab's root pane via the CLI.
   if (ctx.tab_id) {
     try {
       const out = execFileSync(herdr, ['tab', 'get', ctx.tab_id], { encoding: 'utf8' });
       const j = JSON.parse(out);
-      const pid = j?.result?.tab?.root_pane?.pane_id;
-      if (!pid) logErr('tab.get returned no root_pane.pane_id');
-      return pid || null;
-    } catch (e) {
-      logErr('resolvePaneId via tab.get failed:', errMsg(e));
+      return j.result.tab.root_pane.pane_id;
+    } catch (err) {
+      if (isServerUnavailable(err)) {
+        log('INFO', 'skip: herdr server not running — restart with `herdr` or `ocp herdr`');
+        return null;
+      }
+      log('ERROR', `tab.get failed: ${err && err.message}`);
+      process.exitCode = 2;
       return null;
     }
   }
@@ -54,85 +96,45 @@ function resolvePaneId() {
 }
 
 const paneId = resolvePaneId();
-if (!paneId) {
-  logErr('could not resolve pane ID; skipping');
-  process.exit(0);
-}
+if (!paneId && !process.exitCode) process.exit(0);
 
-// 2. Generate a unique agent name (herdr requires `[a-z][a-z0-9_-]{0,31}`).
-const safe = paneId.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(-12);
-const name = `oc-${safe}`.slice(0, 32);
-
-// 3. Skip if opencode already running in this pane, OR if our derived name
-//    is already in use anywhere (handles the tab.created → pane.created
-//    double-fire race cleanly without needing agent.start to fail).
+// --- skip if opencode is already in this pane ----------------------------
 try {
   const out = execFileSync(herdr, ['agent', 'list'], { encoding: 'utf8' });
   const j = JSON.parse(out);
-  const agents = (j?.result?.agents) || [];
+  const agents = (j.result && j.result.agents) || [];
   if (agents.some((a) => a.pane_id === paneId && (a.kind === 'opencode' || a.agent === 'opencode'))) {
     process.exit(0);
   }
-  if (agents.some((a) => a.name === name)) {
+} catch (err) {
+  // agent list failure is informational — let agent start decide.
+  if (isServerUnavailable(err)) {
+    log('INFO', 'skip: herdr server not running (agent.list)');
     process.exit(0);
   }
-} catch (e) {
-  // Agent list failing is unusual but recoverable — proceed and let the
-  // start attempt surface the real error.
-  logErr('agent list precheck failed (proceeding anyway):', errMsg(e));
+  log('WARN', `agent.list failed (continuing): ${err && err.message}`);
 }
 
-// 4. Start opencode in the pane. Herdr's agent start waits (default 30s)
-//    for the agent to reach `idle`, which is what we want — the next tab
-//    only finishes booting once opencode is actually ready.
+// --- start opencode ------------------------------------------------------
+// Generate a unique agent name (herdr requires `[a-z][a-z0-9_-]{0,31}`).
+const safe = paneId.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(-12);
+const name = `oc-${safe}`.slice(0, 32);
+
 try {
   execFileSync(
     herdr,
     ['agent', 'start', name, '--kind', 'opencode', '--pane', paneId],
-    { stdio: ['ignore', 'pipe', 'pipe'] }
+    { stdio: 'ignore' }
   );
-} catch (e) {
-  // Distinguish the idempotent race from a real failure.
-  const stdout = e.stdout ? e.stdout.toString() : '';
-  let code = null;
-  try { code = JSON.parse(stdout)?.error?.code; } catch {}
-  if (code === 'name_in_use' || code === 'agent_already_present') {
-    // Another plugin invocation (or manual user action) already started
-    // this agent. Treat as success.
-    process.exit(0);
-  }
-  logErr(
-    'agent start failed:',
-    'code=' + (code || '?'),
-    'stderr=' + (e.stderr ? e.stderr.toString().trim() : '(none)'),
-    'stdout=' + stdout.trim().slice(0, 300)
-  );
-}
-
-// --- helpers ---------------------------------------------------------------
-
-function errMsg(e) {
-  // node's spawn error has .code/.signal/.message; stdioerror wraps the
-  // captured stdout/stderr — surface both.
-  const parts = [e.message];
-  if (e.code) parts.push('code=' + e.code);
-  if (e.signal) parts.push('signal=' + e.signal);
-  return parts.join(' ');
-}
-
-function logErr(...parts) {
-  const line = `[${new Date().toISOString()}] [${event}] pane=${paneId || '?'} name=${name || '?'} ` +
-    parts.join(' ') + '\n';
+  log('INFO', `started opencode in pane ${paneId} as ${name}`);
+} catch (err) {
+  // Herdr returns JSON envelopes even on failure, so we surface the parsed
+  // error code when we can — far more useful than a raw spawn error.
+  let detail = (err && err.message) || String(err);
   try {
-    const dir = logDir();
-    fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, 'ocp-auto-opencode.log'), line);
-  } catch { /* best-effort — never let logging break the plugin */ }
-  try { process.stderr.write(line); } catch {}
-}
-
-function logDir() {
-  const base = process.env.APPDATA
-    || path.join(process.env.USERPROFILE || os.homedir(), 'AppData', 'Roaming');
-  return path.join(base, 'herdr', 'logs');
+    const j = JSON.parse((err.stdout || '').toString().trim());
+    if (j && j.error) detail = `${j.error.code || ''} ${j.error.message || ''}`.trim();
+  } catch { /* not JSON — keep raw */ }
+  log('ERROR', `agent.start failed for ${name} in ${paneId}: ${detail}`);
+  process.exitCode = 2;
 }

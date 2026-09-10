@@ -664,6 +664,13 @@ const STRINGS = {
     en: "⚠️ {count} compaction(s) detected — opencode has already auto-summarized earlier context. Past history may be lossy.",
     "zh-CN": "⚠️ 已发生 {count} 次自动压缩 — opencode 已经摘要过早期上下文，更早的历史可能有损。",
   },
+
+  // ════════════════════════════════════════════════════════════════
+  // ── Host (standalone OpenTUI shell: right-click copy) ──────────
+  // ════════════════════════════════════════════════════════════════
+  "host.copy.copied": { en: "📋 Copied {count} characters", "zh-CN": "📋 已复制 {count} 个字符" },
+  "host.copy.empty": { en: "📋 No selection — drag to select text, then right-click to copy", "zh-CN": "📋 未选中内容 — 先拖动选中文字，再右键复制" },
+  "host.copy.failed": { en: "📋 Copy failed — this terminal does not allow clipboard writes", "zh-CN": "📋 复制失败 — 当前终端不支持剪贴板写入" },
 } as const
 
 type StringKey = keyof typeof STRINGS

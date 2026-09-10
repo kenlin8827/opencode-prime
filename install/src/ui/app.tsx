@@ -11,6 +11,7 @@ import { parseDynamicOptionsSchema, updateOptionsJsoncInPlace } from '../options
 import path from 'node:path'
 import { writeFileSync } from 'node:fs'
 import { createTuiHost, type Dialog, type DialogOption } from './tui-host'
+import { writeClipboardText } from './clipboard'
 import { UI_INSTALL_EXIT } from '../dashboard'
 import { applyOpenCodeTheme } from './opencode-theme'
 import providerWizard from '../../../plugins/tui/provider-wizard'
@@ -70,6 +71,38 @@ function isBareEscape(key: { name?: string; ctrl?: boolean; meta?: boolean }): b
  *  background; compact lists wrap themselves in a matching box so a leading
  *  gap can sit INSIDE the panel (the kernel only spaces items after rows). */
 const SELECT_PANEL_BG = '#1a1a1a'
+
+/** Selection & clipboard surface the OpenTUI renderer exposes. Kept structural
+ *  (with optional members) because solid's `useRenderer()` returns an opaque
+ *  context value — same convention as the `height` reads elsewhere in the app. */
+type SelectionClipboardSurface = {
+  getSelection?: () => { getSelectedText(): string } | null | undefined
+  copyToClipboardOSC52?: (text: string) => boolean
+}
+
+/**
+ * Host-level right-click copy: OpenTUI delivers mouse events while its mouse
+ * tracking is on (default), and any `selectable` text renderable participates
+ * in the renderer's built-in drag selection. This single root-box handler
+ * (mouse events bubble up the renderable chain) turns that selection into a
+ * clipboard write — OSC 52 first, platform clipboard tools as the fallback —
+ * and keeps the selection highlighted afterwards (preventDefault stops the
+ * renderer from clearing it right after this dispatch).
+ */
+function rightClickCopy(event: { button: number; preventDefault?: () => void }, renderer: unknown, notify: (message: string) => void): void {
+  // OpenTUI MouseButton: 0 left, 1 middle, 2 right — only the right button
+  // copies; other buttons keep the renderer's default behavior.
+  if (event.button !== 2) return
+  event.preventDefault?.()
+  const surface = renderer as SelectionClipboardSurface
+  const text = surface.getSelection?.()?.getSelectedText()?.trim() ?? ''
+  if (!text) {
+    notify(tr('host.copy.empty'))
+    return
+  }
+  void writeClipboardText(text, { copyOsc52: (value) => surface.copyToClipboardOSC52?.(value) ?? false })
+    .then((result) => notify(result === 'failed' ? tr('host.copy.failed') : tr('host.copy.copied', { count: text.length })))
+}
 
 /** Nearest real (non-header) row index — headers are presentation-only, so
  *  navigation that lands on one skips past it IN THE MOVEMENT DIRECTION
@@ -234,7 +267,7 @@ function Screen(props: { title: string; lines: () => string[]; onEnter?: () => v
     else if (key.name === 'return' || key.name === 'space') props.onEnter?.()
   })
   return <Modal title={props.title} footer={<>{props.footer}</>}>
-    <For each={props.lines()}>{(line) => <text fg={ocpTheme.text}>{line}</text>}</For>
+    <For each={props.lines()}>{(line) => <text selectable fg={ocpTheme.text}>{line}</text>}</For>
   </Modal>
 }
 
@@ -399,7 +432,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
         const first = next.findIndex((row) => row.option)
         selectRef?.setSelectedIndex?.(cur >= 0 ? cur : Math.max(0, first))
       }, { defer: true }))
-      return <Modal title={dialog.title} size={host.size()} footer={<>{(!filterable && dialog.placeholder) ? `${dialog.placeholder}\n` : ''}↑/↓ selects · Enter opens · Esc returns</>}>
+      return <Modal title={dialog.title} size={host.size()} footer={<>{(!filterable && dialog.placeholder) ? `${dialog.placeholder}\n` : ''}↑/↓ selects · Enter opens · Esc returns · Right-click copies</>}>
         <Show when={filterable}>
           <text fg={filter() ? ocpTheme.text : ocpTheme.muted}>{filter() ? `⌕ ${filter()}▏` : `⌕ ${dialog.placeholder ?? 'Type to filter'}`}</text>
         </Show>
@@ -456,10 +489,10 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
       </box>
     }
     if (dialog.kind === 'confirm') return <Modal title={dialog.title} size={host.size()} footer={dialog.footer ?? 'Enter confirms · Esc cancels'}>
-      <text marginBottom={1} fg={ocpTheme.text}>{dialog.message}</text>
+      <text selectable marginBottom={1} fg={ocpTheme.text}>{dialog.message}</text>
       <ConfirmOptions {...dialog} />
     </Modal>
-    if (dialog.kind === 'alert') return <Modal title={dialog.title} size={host.size()} footer="Esc returns"><text fg={ocpTheme.text}>{dialog.message}</text></Modal>
+    if (dialog.kind === 'alert') return <Modal title={dialog.title} size={host.size()} footer="Esc returns · Right-click copies"><text selectable fg={ocpTheme.text}>{dialog.message}</text></Modal>
     return <Modal title={dialog.title} size={host.size()} footer={dialog.busy ? (dialog.busyText ?? 'Working…') : 'Enter confirms · Esc cancels'}>
       <input focused value={dialog.value ?? ''} placeholder={dialog.placeholder ?? ''}
         backgroundColor="transparent" textColor={ocpTheme.text}
@@ -764,10 +797,10 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
           <Show when={activeTab() === 4} fallback={<select focused={focusArea() === 'panel'} selectedIndex={panelIndex()} height={listHeight()} showScrollIndicator={rows().length * 3 > listHeight()} backgroundColor={ocpTheme.surface} focusedBackgroundColor={SELECT_PANEL_BG} textColor={ocpTheme.text} descriptionColor={ocpTheme.muted} selectedBackgroundColor={ocpTheme.accent} selectedTextColor={ocpTheme.surface} selectedDescriptionColor={ocpTheme.surface} itemSpacing={1} keyBindings={[{ name: 'space', action: 'select-current' }]} options={rows()} onChange={(index: number) => setPanelIndex(index)} onSelect={(_index: number, picked: { value?: string } | null) => select(picked)} />}>
             <box flexDirection="column" gap={1}>
               <text fg={ocpTheme.text}>{copy('dashboardTargetLabel', 'Installation target')}</text>
-              <text fg={ocpTheme.muted}>{target}</text>
+              <text selectable fg={ocpTheme.muted}>{target}</text>
               <text fg={ocpTheme.text}>{copy('dashboardChangeSummaryLabel', 'Change summary')}</text>
-              <text fg={ocpTheme.muted}>{copy('dashboardEnabledSummary', '{count} enabled integrations will be saved.').replace('{count}', String(changeCount()))}</text>
-              <text fg={ocpTheme.muted}>{copy('dashboardReviewHint', 'Use the shortcuts below to save or install.')}</text>
+              <text selectable fg={ocpTheme.muted}>{copy('dashboardEnabledSummary', '{count} enabled integrations will be saved.').replace('{count}', String(changeCount()))}</text>
+              <text selectable fg={ocpTheme.muted}>{copy('dashboardReviewHint', 'Use the shortcuts below to save or install.')}</text>
             </box>
           </Show>
         </box>
@@ -853,7 +886,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
     }
     useKeyboard((key) => { if (!host.dialog() && (isBareEscape(key) || (key.ctrl && key.name === 'c'))) exit() })
     return <Show when={host.dialog()} keyed fallback={<Modal title={`${copy('wizardTitle', 'OpenCode Prime — Interactive Setup Wizard')} v${getCurrentRepoVersion(repoDir)}`} footer={<>{busy() ? copy('installingSpinner', 'Installing…') : '↑/↓ selects · Enter opens · Esc exits'}{message() ? `\n${message()}` : ''}</>}>
-      <text marginBottom={1} fg={ocpTheme.muted}>{executeStatus(repoDir).installedVersion ? copy('installedNote', 'Installed version: v{version} (Target: {target})').replace('{version}', executeStatus(repoDir).installedVersion ?? '').replace('{target}', target()) : copy('notInstalledNote', 'Target not initialized: {target}').replace('{target}', target())}</text>
+      <text selectable marginBottom={1} fg={ocpTheme.muted}>{executeStatus(repoDir).installedVersion ? copy('installedNote', 'Installed version: v{version} (Target: {target})').replace('{version}', executeStatus(repoDir).installedVersion ?? '').replace('{target}', target()) : copy('notInstalledNote', 'Target not initialized: {target}').replace('{target}', target())}</text>
       <box backgroundColor={SELECT_PANEL_BG}>
         {/* Same head-gap symmetry as the compact host selects (itemSpacing
          * trails a gap row inside the panel; the kernel paints flush top). */}
@@ -864,7 +897,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
   }
   const Setup = () => <Screen title="OpenCode Prime — Setup" onBack={back} onEnter={() => setRoute('dashboard')} footer="Enter opens dashboard · Esc exits"
     lines={() => ['Configure installation defaults in the OpenTUI dashboard.', 'The installer and all option persistence remain in the existing business core.']} />
-  return <box width="100%" height="100%" flexDirection="column">
+  return <box width="100%" height="100%" flexDirection="column" onMouseDown={(event) => rightClickCopy(event, renderer, (message) => host.notify(message))}>
     <box flexGrow={1} flexDirection="column">
       <Show when={route()} keyed>{(current: OcpRoute) => {
         if (current === 'dashboard') return <Dashboard />

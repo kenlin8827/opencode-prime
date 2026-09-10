@@ -379,11 +379,12 @@ $allFiles = @(
     "plugins/tui/queue-manager.ts",
     "plugins/tui/provider-wizard.ts", "plugins/tui/profile-wizard.ts",
     "install/src/ui/tui-host.ts", "install/src/ui/app.tsx",
+    "install/src/ui/clipboard.ts",
     "install/src/ui/opencode-theme.ts", "install/src/ui/builtin-themes.ts",
     "install/src/options-schema.ts",
     "tests/test-ocp-ui-theme-unit.ts",
     "plugins/shared/profile-core.ts", "plugins/shared/provider-core.ts",
-    "tests/test-ocp-tui-host-unit.ts", "tests/test-provider-wizard-unit.ts",
+    "tests/test-ocp-tui-host-unit.ts", "tests/test-ocp-clipboard-unit.ts", "tests/test-provider-wizard-unit.ts",
     "tests/test-profile-apply-unit.ts", "tests/test-profile-reset-unit.ts",
     "plugins/lite-mode.ts",
     "plugins/lite-mode/lite-mode.ts",
@@ -783,6 +784,10 @@ Check "ui/app.tsx: loads the profile wizard plugin module" ($appUi -match "impor
 Check "ui/app.tsx: dispatches the plugins' own command names" (($appUi -match "provider\.wizard") -and ($appUi -match "profile\.switch"))
 Check "ui/app.tsx: compat host exposes DialogSelect/Prompt/Confirm/Alert" (($appUi -match "DialogSelect") -and ($appUi -match "DialogPrompt") -and ($appUi -match "DialogConfirm") -and ($appUi -match "DialogAlert"))
 Check "ui/app.tsx: host adopts the opencode theme before first render" ($appUi -match "applyOpenCodeTheme")
+Check "ui/app.tsx: root box binds the host-layer right-click copy" ($appUi -match "onMouseDown=\{\(event\) => rightClickCopy")
+Check "ui/app.tsx: host texts opt into renderer selection" ($appUi -match "<text selectable")
+$clipboardUi = Get-Content "$PSScriptRoot\..\install\src\ui\clipboard.ts" -Raw
+Check "ui/clipboard.ts: OSC 52 first, platform tools fallback" (($clipboardUi -match "copyOsc52") -and ($clipboardUi -match "platformClipboardCommands"))
 $btTheme = Get-Content "$PSScriptRoot\..\install\src\ui\builtin-themes.ts" -Raw
 Check "builtin-themes.ts: mirrors the opencode default theme" ($btTheme -match '"opencode"')
 Check "ui controllers do not re-implement the wizards" (-not (Test-Path "$PSScriptRoot\..\install\src\controllers"))
@@ -975,6 +980,8 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-ocp-wizard-cli-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-ocp-tui-host-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-ocp-clipboard-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-ocp-ui-router-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }

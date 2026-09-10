@@ -243,6 +243,8 @@ ocp profile                  # 交互式选择并应用配置方案
 
 不带子命令时，`ocp provider` 与 `ocp profile` 直接运行与 `/provider`、`/profile` 相同的 standalone 对话框向导，包含嵌套菜单、确认步骤和 Esc 逐级返回。模型目录走统一的 OpenCode bridge：内置 TUI 使用 OpenCode SDK bridge，standalone 使用 `opencode` CLI bridge（`models --verbose`）；不可用时自动落到 `models.dev` / 本地配置文件。交互与斜杠命令一致。`provider list`、`profile list`、`profile apply <名称>`、`profile reset --yes` 可非交互运行；非 TTY 下交互模式返回退出码 1 并提示替代命令。
 
+**复制文本：** 所有 standalone TUI 界面与对话框都支持鼠标拖选后**右键复制**。写入优先走 OSC 52（Windows Terminal ≥1.18、WezTerm、kitty、Alacritty、开启剪贴板权限的 iTerm2、开启 `set-clipboard on` 的 tmux），终端不支持时自动回退到系统剪贴板工具（`Set-Clipboard` / `pbcopy` / `wl-copy` / `xclip` / `xsel`）。若终端自身占用了右键（如 QuickEdit 右键粘贴），可按住 **Shift** 再右键，或直接用终端原生的 Shift 拖选复制。
+
 ## 相关页面
 
 - [安装器选项与进阶配置](/zh/maintenance/options) —— 安装命令、`options.jsonc` 开关（含 `global_commands` 与 `openchamber`）与字段保留策略

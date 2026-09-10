@@ -51,6 +51,8 @@ With no subcommand, both commands run the same standalone dialog wizard used by 
 Model catalogs go through a shared OpenCode bridge: the built-in TUI uses OpenCode's SDK bridge; the standalone CLI uses the `opencode` CLI bridge (`models --verbose`); when the bridge is unavailable the wizards automatically fall back to `models.dev` and the local config file. Interaction and slash commands remain identical.
 The interactive flow matches the slash-command experience, including nested menus, confirmations, and Esc back navigation.
 
+**Copying text:** all standalone TUI screens and dialogs support mouse selection — drag over any text, then **right-click to copy**. The write goes through OSC 52 first (Windows Terminal ≥1.18, WezTerm, kitty, Alacritty, iTerm2 with clipboard access enabled, tmux with `set-clipboard on`) and falls back to the platform clipboard tool (`Set-Clipboard` / `pbcopy` / `wl-copy` / `xclip` / `xsel`) when the terminal lacks it. In terminals whose right-click is consumed by the emulator itself (e.g. QuickEdit paste), hold **Shift** while right-clicking, or use the terminal's native Shift-drag selection.
+
 Non-interactive commands are `ocp provider list`, `ocp profile list`, `ocp profile apply <name>`, and `ocp profile reset --yes`.
 On a non-TTY, interactive mode exits with code 1 and prints the available alternatives; `profile reset` requires `--yes`.
 

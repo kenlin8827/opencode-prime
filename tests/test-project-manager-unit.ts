@@ -350,7 +350,7 @@ function test08_IndexPlanning() {
   assert(planFor(planInitBackends(probe({ dbhubCli: false })), "dbhub").note.includes("CLI not installed"), "dbhub CLI missing → skipped silently")
   assert(!planFor(planInitBackends(probe({ dbhubCli: false })), "dbhub").note.startsWith("scaffold"), "dbhub CLI missing → never scaffolds")
   assert(planFor(planInitBackends(probe({ dbhubToml: true })), "dbhub").note.includes("already present"), "dbhub.toml exists → no scaffold")
-  assert(planFor(planIndexBackends(probe({})), "dbhub").note.includes("/project init"), "index never scaffolds dbhub.toml")
+  assert(!planIndexBackends(probe({})).some((p) => p.backend === "dbhub"), "dbhub has no index phase — never listed by /project index")
 
   // writeDbhubToml — creates with env-var DSN, preserves existing content.
   const dirDb = mkdtempSync(join(tmpdir(), "pm-dbh-"))

@@ -17,6 +17,9 @@
  *                                          running (full `codegraph index`
  *                                          rebuild stays a manual escape hatch)
  *                      `gitnexus analyze`  only when the index is STALE
+ *                    Backends whose index action is null in the registry
+ *                    (dbhub — a live SQL proxy with no index) are omitted
+ *                    from the plan and report entirely.
  *
  * Gate (same AND-rule as project-profiler): a backend is touched only when
  * mcp.<name>.enabled in the installed opencode.jsonc is not false AND its
@@ -295,12 +298,17 @@ function planBackends(
     // Registry missing — every backend is skipped with a safe fallback note.
     return names.map((backend) => ({ backend, command: null, note: "project-hooks.jsonc not found" }))
   }
-  return names.map((backend) => {
+  return names.flatMap((backend) => {
     const entry = registry.backends[backend]
     if (!entry) {
-      return { backend, command: null, note: "not configured in project-hooks.jsonc" }
+      return [{ backend, command: null, note: "not configured in project-hooks.jsonc" }]
     }
-    return planBackendAction(backend, entry[phase], root, probe)
+    const action = entry[phase]
+    // null action = the backend has no step for this phase (e.g. dbhub is a
+    // live SQL proxy, not an index) — omit it entirely instead of reporting
+    // a permanent "skipped" line.
+    if (!action) return []
+    return [planBackendAction(backend, action, root, probe)]
   })
 }
 
