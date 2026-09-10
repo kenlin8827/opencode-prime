@@ -25,7 +25,8 @@ try {
   assert(run(["index", "."]).status === 0, "tgrep index succeeds")
   const diskStatus = run(["status", "."])
   // Without a server, status reports the on-disk index and no "Indexing:" line
-  // (verified against tgrep 1.0.5) — OCP maps this to "disk-index".
+  // (verified against tgrep 1.0.5) — OCP's readiness parser maps this to
+  // "disk-index" and the sidebar badge renders it as "NO WATCHER".
   assert(diskStatus.status === 0 && /Server:\s*not running/i.test(diskStatus.stdout), "status without server reports the disk index")
 
   // OCP's readiness parser keys on the SERVER status wording; a format change
