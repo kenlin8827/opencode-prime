@@ -41,9 +41,9 @@ Learn about installer commands, configuration options, token savings, and preser
      "tools": {
        // rtk output compression (60-90% token savings)
         "rtk": true,
-        // Optional external full-text cache — OCP never downloads tgrep.
+        // Optional external full-text cache (microsoft/tgrep) — auto-provisioned like rtk when missing.
         // It is not MCP, LSP, or a code graph; .tgrep/ must stay uncommitted.
-        "tgrep": false,
+        "tgrep": true,
        // OpenChamber ships as three independent surfaces, one switch each:
         // Web UI CLI (@openchamber/web; powers `ocp web`, needs Node.js 22+)
         // Disabled by default: enabling it installs a global package.
@@ -114,11 +114,10 @@ Every install re-evaluates `install/options.jsonc` in place and enforces your ch
 
 ## Optional tgrep full-text index
 
-`tools.tgrep` is **enabled by default**. OCP never downloads the external
-[`tgrep`](https://github.com/tgrep/tgrep) CLI or changes `PATH`: until you
-install it yourself, the `tgrep_search` tool stays hidden and every search
-uses the native grep/ripgrep path, so the default costs nothing. Once the CLI
-is on PATH, `/project init` creates the first local `.tgrep/` index;
+`tools.tgrep` is **enabled by default**. When enabled and missing from PATH,
+the OCP installer auto-provisions the official pre-built binary release
+(matching the `rtk` model), or reuses the existing CLI if already installed.
+Once the CLI is on PATH, `/project init` creates the first local `.tgrep/` index;
 `/project index` rebuilds only an existing unhealthy index. A healthy
 `tgrep serve .` watcher handles normal updates. Set `tools.tgrep` to `false`
 to opt out entirely.

@@ -41,9 +41,9 @@
      "tools": {
        // 是否启用 rtk 输出压缩（60-90% token 节省）
         "rtk": true,
-        // 可选外部全文检索缓存——OCP 不会下载 tgrep。
+        // 可选外部全文检索缓存（microsoft/tgrep），缺失时由安装器自动拉取预编译包。
         // 它不是 MCP、LSP 或代码图谱；.tgrep/ 不可提交。
-        "tgrep": false,
+        "tgrep": true,
        // OpenChamber 拆分为三个独立面，各自一个开关：
         // 网页版 CLI（缺失时自动安装 @openchamber/web；提供 `ocp web`，需 Node.js 22+）
         // 默认关闭：启用后会安装全局包。
@@ -113,9 +113,8 @@
 
 ## 可选 tgrep 全文检索索引
 
-`tools.tgrep` **默认启用**。OCP 不下载外部 [`tgrep`](https://github.com/tgrep/tgrep)
-CLI,也不会修改 `PATH`:在你自行安装之前,`tgrep_search` 工具保持隐藏,所有搜索走
-原生 grep/ripgrep 路径,默认零开销。CLI 就位后,`/project init` 创建首次本地
+`tools.tgrep` **默认启用**。启用时若系统尚未安装外部 [`tgrep`](https://github.com/microsoft/tgrep)
+CLI，OCP 安装器会自动拉取官方发布的预编译包（同 `rtk` 机制）；若已自行安装在 PATH 上则直接复用。CLI 就位后,`/project init` 创建首次本地
 `.tgrep/` 索引;`/project index` 只重建已有但不健康的索引。健康的 `tgrep serve .`
 watcher 负责日常增量更新。将 `tools.tgrep` 设为 `false` 可完全退出。
 
