@@ -114,11 +114,14 @@ Every install re-evaluates `install/options.jsonc` in place and enforces your ch
 
 ## Optional tgrep full-text index
 
-Set `tools.tgrep` to `true` only after installing and verifying the external
-[`tgrep`](https://github.com/tgrep/tgrep) CLI yourself. OCP never downloads it
-or changes `PATH`. `/project init` creates the first local `.tgrep/` index;
+`tools.tgrep` is **enabled by default**. OCP never downloads the external
+[`tgrep`](https://github.com/tgrep/tgrep) CLI or changes `PATH`: until you
+install it yourself, the `tgrep_search` tool stays hidden and every search
+uses the native grep/ripgrep path, so the default costs nothing. Once the CLI
+is on PATH, `/project init` creates the first local `.tgrep/` index;
 `/project index` rebuilds only an existing unhealthy index. A healthy
-`tgrep serve .` watcher handles normal updates.
+`tgrep serve .` watcher handles normal updates. Set `tools.tgrep` to `false`
+to opt out entirely.
 
 Use indexed search only for repeated broad text/regex queries. After saving,
 while validating a change, or before asserting there are no matches, use a
@@ -126,6 +129,13 @@ current/full scan (`tgrep --no-index` or `rg`) because watcher updates are
 asynchronous. Keep the default 64 MiB tgrep file-size policy and index/serve/
 search parameters consistent. tgrep does not replace Serena symbol navigation
 or CodeGraph/GitNexus relationship queries.
+
+If the on-disk index was built under a different policy (`indexPath`,
+`maxFileSize`, `exclude`, `noRequireGit`) or a different tgrep version, OCP
+reports it as `stale`: indexed searches fall back to full scans until
+`/project index` rebuilds it, so results never violate the configured policy.
+The `tgrep_search` tool accepts gitignore-style `glob` filters in addition to
+`-i`/`-F` flags.
 
 ### Verification and benchmark (opt-in)
 

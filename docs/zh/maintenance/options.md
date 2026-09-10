@@ -113,15 +113,21 @@
 
 ## 可选 tgrep 全文检索索引
 
-仅在自行安装并验证外部 [`tgrep`](https://github.com/tgrep/tgrep) CLI 后，将
-`tools.tgrep` 设为 `true`。OCP 不下载它，也不会修改 `PATH`。`/project init`
-创建首次本地 `.tgrep/` 索引；`/project index` 只重建已有但不健康的索引。健康的
-`tgrep serve .` watcher 负责日常增量更新。
+`tools.tgrep` **默认启用**。OCP 不下载外部 [`tgrep`](https://github.com/tgrep/tgrep)
+CLI,也不会修改 `PATH`:在你自行安装之前,`tgrep_search` 工具保持隐藏,所有搜索走
+原生 grep/ripgrep 路径,默认零开销。CLI 就位后,`/project init` 创建首次本地
+`.tgrep/` 索引;`/project index` 只重建已有但不健康的索引。健康的 `tgrep serve .`
+watcher 负责日常增量更新。将 `tools.tgrep` 设为 `false` 可完全退出。
 
 索引检索适合重复、宽泛的文本或正则查询。刚保存后、验证修改时，或要断言没有匹配时，
 须使用 current/full scan（`tgrep --no-index` 或 `rg`），因为 watcher 更新是异步的。
 保持默认 64 MiB 文件大小策略以及 index/serve/search 参数一致。tgrep 不替代 Serena
 符号导航或 CodeGraph/GitNexus 关系查询。
+
+若磁盘上的索引是在不同策略（`indexPath`、`maxFileSize`、`exclude`、`noRequireGit`）
+或不同 tgrep 版本下构建的，OCP 会将其报告为 `stale`：索引检索回退到 full scan，直到
+`/project index` 重建完成，结果因此不会违反已配置的策略。`tgrep_search` 工具除
+`-i`/`-F` 标志外还接受 gitignore 风格的 `glob` 过滤器。
 
 ### 验证与基准测试（显式启用）
 

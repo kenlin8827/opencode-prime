@@ -36,7 +36,7 @@ import { homedir } from "node:os"
 import { DBHUB_TOML_REL, scaffoldFile, writeDbhubToml } from "./project-manager-scaffold"
 import { loadProjectHooks, type BackendAction, type ProjectHooks } from "./project-hooks-loader"
 import { getProjectDir } from "./project-manager-config"
-import { tgrepOptionsFrom, type TgrepOptions } from "../tgrep/tgrep-config"
+import { loadTgrepOptions, type TgrepOptions } from "../tgrep/tgrep-config"
 import { hasTgrepIndex, probeTgrepStatus, recordSuccessfulIndex, tgrepNeedsRebuild, type TgrepReadiness } from "../tgrep/tgrep-service"
 
 // ─── Probes ──────────────────────────────────────────────────────────
@@ -153,8 +153,7 @@ export function probeBackends(root: string): BackendProbe {
   const cgEnabled = mcpEnabled("codegraph")
   const gnEnabled = mcpEnabled("gitnexus")
   const dhEnabled = mcpEnabled("dbhub")
-  let tgrepOptions: TgrepOptions = { enabled: false }
-  try { tgrepOptions = tgrepOptionsFrom(root, readFileSync(join(homedir(), ".config", "opencode", "options.jsonc"), "utf8")) } catch { /* invalid setting disables safely */ }
+  const tgrepOptions = loadTgrepOptions(root)
   const tgEnabled = tgrepOptions.enabled
   const tgCli = tgEnabled && cliInstalled("tgrep")
   return {
@@ -257,7 +256,11 @@ function conditionSkipNote(cond: string, probe: BackendProbe): string {
   if (cond === "index_missing:tgrep") return "local tgrep index already exists"
   if (cond === "!server_healthy:tgrep") return "healthy tgrep server keeps the index current"
   if (cond === "policy_current:tgrep") return "tgrep index policy/version changed — rebuild via /project index"
-  if (cond === "tgrep_rebuild_needed") return probe.tgrepReadiness === "server" ? "healthy tgrep server and current policy" : "no healthy tgrep server"
+  if (cond === "tgrep_rebuild_needed") {
+    return probe.tgrepReadiness === "server" ? "healthy tgrep server and current policy"
+      : probe.tgrepReadiness === "stale" ? "index policy/version changed — rebuild via /project index"
+        : "no healthy tgrep server"
+  }
   return `skipped (${cond})`
 }
 

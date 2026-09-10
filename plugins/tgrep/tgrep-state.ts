@@ -7,11 +7,13 @@ const STATE_NAME = ".ocp-tgrep-state.json"
 
 export interface TgrepIndexState { fingerprint: string; version: string; createdAt: string }
 
-export function tgrepPolicyFingerprint(options: TgrepOptions, version = "unknown"): string {
-  // Normalize exclusions so configuration formatting/order cannot cause a
-  // needless rebuild; binary version remains part of the compatibility key.
+/** Policy-only fingerprint: configuration formatting/order can never cause a
+ * needless rebuild, and the search path can check currency with a plain file
+ * read instead of spawning the CLI. The binary version is stored beside the
+ * fingerprint and compared only where a rebuild decision is actually made
+ * (/project index via tgrepNeedsRebuild). */
+export function tgrepPolicyFingerprint(options: TgrepOptions): string {
   const payload = JSON.stringify({
-    version,
     indexPath: options.indexPath ?? ".tgrep",
     maxFileSize: options.maxFileSize ?? null,
     exclude: [...(options.exclude ?? [])].sort(),
@@ -30,9 +32,12 @@ export function readTgrepIndexState(root: string, options: TgrepOptions): TgrepI
   } catch { return null }
 }
 
-export function isTgrepPolicyCurrent(root: string, options: TgrepOptions, version = "unknown"): boolean {
+/** True only when the on-disk index metadata matches the CURRENT policy.
+ * Indexes built outside OCP (no metadata) are intentionally reported as not
+ * current until /project index establishes the baseline. */
+export function isTgrepPolicyCurrent(root: string, options: TgrepOptions): boolean {
   const state = readTgrepIndexState(root, options)
-  return state?.fingerprint === tgrepPolicyFingerprint(options, version)
+  return state?.fingerprint === tgrepPolicyFingerprint(options)
 }
 
 /** Called only after a successful index build; uses rename for an atomic
@@ -40,7 +45,7 @@ export function isTgrepPolicyCurrent(root: string, options: TgrepOptions, versio
 export function writeTgrepIndexState(root: string, options: TgrepOptions, version = "unknown"): void {
   const target = statePath(root, options)
   if (!existsSync(join(root, options.indexPath ?? ".tgrep"))) return
-  const state: TgrepIndexState = { fingerprint: tgrepPolicyFingerprint(options, version), version, createdAt: new Date().toISOString() }
+  const state: TgrepIndexState = { fingerprint: tgrepPolicyFingerprint(options), version, createdAt: new Date().toISOString() }
   const temporary = `${target}.${process.pid}.tmp`
   writeFileSync(temporary, `${JSON.stringify(state)}\n`, "utf8")
   try { renameSync(temporary, target) } catch { try { unlinkSync(temporary) } catch { /* best effort */ } }

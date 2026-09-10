@@ -131,7 +131,9 @@ export function ensureTgrepGitignore(root: string): "added" | "present" | "not-g
   if (!existsSync(join(root, ".git"))) return "not-git"
   const target = join(root, ".gitignore")
   const existing = existsSync(target) ? readFileSync(target, "utf-8") : ""
-  if (/^(?:\.tgrep|\.tgrep\/|\*\*\/\.tgrep\/)\s*$/m.test(existing)) return "present"
+  // Equivalent ignore spellings: .tgrep, .tgrep/, /.tgrep/, .tgrep/**,
+  // **/.tgrep/, **/.tgrep/**
+  if (/^(?:\*\*\/)?\/?\.tgrep(?:\/\*\*)?\/?\s*$/m.test(existing)) return "present"
   const prefix = existing && !existing.endsWith("\n") ? "\n" : ""
   writeFileSync(target, `${existing}${prefix}.tgrep/\n`, "utf-8")
   return "added"

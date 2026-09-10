@@ -6,8 +6,10 @@
   "tools": {
     // false also removes the bundled OpenRTK plugin from the target.
     "rtk": true,
-    // Optional external full-text index. OCP never downloads tgrep or treats it as MCP.
-    "tgrep": false,
+    // Optional external full-text index. OCP never downloads tgrep or treats it
+    // as MCP. Enabled by default: the tgrep_search tool self-hides until the
+    // tgrep CLI is on PATH, so this costs nothing without the binary.
+    "tgrep": true,
     // OpenChamber ships as three independent surfaces, one switch each.
     // Web UI CLI (@openchamber/web) — powers `ocp web`. Needs Node.js 22+;
     // disabled by default because it installs a global package.

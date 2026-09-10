@@ -3,12 +3,15 @@ import { join } from "node:path"
 import { homedir } from "node:os"
 import type { Plugin } from "@opencode-ai/plugin"
 import { scoped } from "../shared/plugin-scope"
-import { tgrepOptionsFrom } from "../tgrep/tgrep-config"
+import { loadTgrepOptions } from "../tgrep/tgrep-config"
 import { probeTgrepStatus } from "../tgrep/tgrep-service"
 
 export const MARKER = "[PROJECT CAPABILITIES]"
 
-type Capability = "ready" | "building" | "disk-index" | "unavailable"
+/** "stale" = a healthy index exists but was built under a different policy or
+ * binary version; indexed searches must not trust it until /project index
+ * rebuilds it. */
+type Capability = "ready" | "building" | "disk-index" | "stale" | "unavailable"
 
 export interface ProjectProfile {
   readonly codegraph: Capability
@@ -43,8 +46,11 @@ function indexedCapability(root: string, directory: string, mcp: string): Capabi
 export function buildProfile(root: string = process.cwd()): ProjectProfile {
   let tgrep: Capability = "unavailable"
   try {
-    const options = tgrepOptionsFrom(root, readFileSync(join(homedir(), ".config", "opencode", "options.jsonc"), "utf8"))
-    if (options.enabled) tgrep = probeTgrepStatus(root, options)
+    const options = loadTgrepOptions(root)
+    if (options.enabled) {
+      const readiness = probeTgrepStatus(root, options)
+      tgrep = readiness === "server" ? "ready" : readiness
+    }
   } catch { /* optional backend stays unavailable */ }
   return {
     codegraph: indexedCapability(root, ".codegraph", "codegraph"),
