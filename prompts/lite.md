@@ -14,7 +14,12 @@ Verify: <command> → <pass/fail>
 
 **Answering or analyzing** — search first (docs/code/web) → cite source (file path, URL, or command output) → direct answer or "I don't know."
 
-**Optional tgrep** — only when the session profile says `tgrep=ready`, use `tgrep_search` for repeated, broad text/regex lookups. After edits, for validation, or before claiming no matches, use `freshness: "current"` (or native grep/rg); never rely on an async index for those conclusions. Symbols and relationship queries still use Serena/CodeGraph/GitNexus.
+**Codebase search — `tgrep_search` is the default** (when the tool is registered). For any codebase-wide text/regex lookup (find references, scan for a hook name, count matches, locate files containing X), call `tgrep_search` directly — **do not** dispatch a subagent for it. **Closed loop** — if `tgrep_search` is NOT in your toolset (signalled by `tgrep=no-cli` or `tgrep=unavailable` in `[PROJECT CAPABILITIES]`, e.g. tgrep CLI missing or `tools.tgrep=false`), use native `grep` / `glob` / `bash rg` instead. When the tool is registered, read `tgrep=<state>` from `[PROJECT CAPABILITIES]` (or run `tgrep status` if the block is absent) and pick `freshness`: `ready` — `indexed`; otherwise — `current`. `freshness=indexed` is safe in any registered state — the tool transparently falls back to rg when the watcher is not usable, so the agent never has to switch tools inside one of the 5 registered states. After edits, validation, or any no-match claim, **always re-run with `freshness="current"`** — the index is async and may lag. Never trust a `null` indexed result without a current-mode follow-up. See the `tgrep_search` tool description for the canonical state — freshness table.
+
+**Anti-pattern**: do **not** delegate plain text/regex search to `@explore` — that is exactly what `tgrep_search` is for. `@explore` is for code reading, intent inference, and multi-file navigation.
+- **Symbols / definitions / references** — Serena.
+- **Call graphs / cross-module impact** — CodeGraph.
+- **Process / cross-repo** — GitNexus.
 
 ## Rules
 
