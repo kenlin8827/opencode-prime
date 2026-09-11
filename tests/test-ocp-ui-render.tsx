@@ -276,18 +276,17 @@ for (const route of ['dashboard', 'setup', 'project', 'home'] as const) {
 const project = await testRender(() => <OcpApp initialRoute="project" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
 await settle(project)
 frame = project.captureCharFrame()
-assert.match(frame, /Select action|选择操作/, 'project action menu renders')
-project.renderer.keyInput.emit('keypress', { name: 'down' })
+assert.match(frame, /Project Setup Wizard|项目设置向导/, 'project action menu renders')
+project.renderer.keyInput.emit('keypress', { name: 'down' }) // Apply Changes -> Auto advisor (inline row)
 project.renderer.keyInput.emit('keypress', { name: 'return' })
 await settle(project)
-assert.match(project.captureCharFrame(), /Configure Switches|配置开关/, 'project action is selectable')
-project.renderer.keyInput.emit('keypress', { name: 'linefeed' })
 await settle(project)
-assert.match(project.captureCharFrame(), /lite|full|off|default/, 'Windows linefeed Enter opens the highlighted switch value chooser')
+assert.match(project.captureCharFrame(), /lite|full|off|default/, 'the inline advisor row opens its value picker')
 project.renderer.keyInput.emit('keypress', { name: 'down' })
-project.renderer.keyInput.emit('keypress', { name: 'return' })
+project.renderer.keyInput.emit('keypress', { name: 'linefeed' }) // Windows linefeed Enter selects a value
 await settle(project)
-assert.match(project.captureCharFrame(), /Configure Switches|配置开关/, 'value picker returns to the switch editor')
+await settle(project)
+assert.match(project.captureCharFrame(), /Project Setup Wizard|项目设置向导/, 'value picker returns to the main menu')
 project.renderer.destroy()
 
 // ─── /provider wizard is loaded verbatim into the standalone host ───
@@ -365,6 +364,18 @@ await usageUi.flush()
 const usageFrame = usageUi.captureCharFrame()
 assert.match(usageFrame, /Token usage/, 'usage report dialog renders through the compat host')
 assert.equal(dialogWidth(usageFrame), 88, 'usage dialog renders at the large tier width (88), not the default fluid width')
+// Enter must dismiss DialogAlert: opencode's native DialogAlert fires
+// onConfirm on Enter; the standalone host previously wired only Esc,
+// leaving Enter a silent no-op on every wizard result screen (init/
+// update/save/sync/index reports built via showAlertModal). The usage
+// DialogAlert passes no onConfirm, so the host's alert branch falls
+// through to host.close(), which fires the dialog's onClose and the
+// usage plugin's per-dialog removeKeyHandler.
+usageUi.renderer.keyInput.emit('keypress', { name: 'return' })
+await settle(usageUi)
+const dismissedFrame = usageUi.captureCharFrame()
+assert.doesNotMatch(dismissedFrame, /Token usage/, 'Enter on a DialogAlert dismisses the alert through the host close path')
+assert.match(dismissedFrame, /Session: ses_1|Checking session/, 'route falls back to the session-pending screen after the alert is dismissed')
 usageUi.renderer.destroy()
 usageMock.stop(true)
 delete process.env.OPENCODE_SERVER_URL

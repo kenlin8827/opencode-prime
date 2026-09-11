@@ -1,0 +1,54 @@
+{
+  "$schema": "../../docs/design/wizard-schema.schema.json",
+  "id": "adr",
+  "i18nKey": "project.adr.title",
+  "description": "ADR-related guards and structure mode. Schema-driven; new entries only require a JSON row, no wizard code change.",
+  "fields": [
+    {
+      "key": "adrGuard",
+      "type": "enum",
+      "labelKey": "project.switchAdrGuard",
+      "descriptionKey": "project.switchAdrGuard",
+      "badgeKind": "guard",
+      "icon": "🛡️",
+      "values": [
+        { "value": "on", "labelKey": "project.valueGuardAdrOn" },
+        { "value": "off", "labelKey": "project.valueGuardAdrOff" },
+        { "value": "default", "labelKey": "project.valueAdvisorDefault" }
+      ],
+      "default": "on"
+    },
+    {
+      "key": "adrGuardDir",
+      "type": "enum-with-custom",
+      "labelKey": "project.switchAdrGuardDir",
+      "descriptionKey": "project.switchAdrGuardDir",
+      "badgeKind": "string",
+      "icon": "📁",
+      "values": [
+        { "value": "docs/adr", "labelKey": "project.valueAdrDirDocsAdr" },
+        { "value": "docs/decisions", "labelKey": "project.valueAdrDirDocsDecisions" },
+        { "value": "architecture/decisions", "labelKey": "project.valueAdrDirArchitecture" }
+      ],
+      "allowCustom": true,
+      "customPromptKey": "project.promptAdrDirTitle",
+      "customPlaceholderKey": "project.promptAdrDirPlaceholder",
+      "default": "docs/adr"
+    },
+    {
+      "key": "adrMode",
+      "type": "enum",
+      "labelKey": "project.switchAdrMode",
+      "descriptionKey": "project.switchAdrMode",
+      "badgeKind": "adrMode",
+      "icon": "🏛️",
+      "values": [
+        { "value": "auto", "labelKey": "project.valueAdrModeAuto" },
+        { "value": "flat", "labelKey": "project.valueAdrModeFlat" },
+        { "value": "hierarchical", "labelKey": "project.valueAdrModeHierarchy" },
+        { "value": "default", "labelKey": "project.valueAdrModeDefault" }
+      ],
+      "default": "auto"
+    }
+  ]
+}

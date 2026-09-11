@@ -5,6 +5,7 @@ import type { TuiPluginModule } from '@opencode-ai/plugin/tui'
 import { createOpencodeClient } from '@opencode-ai/sdk/v2'
 import type { OcpRoute } from './router'
 import { Modal } from './components/modal'
+import { categoryRows, skipHeaderRow, SelectList, SELECT_PANEL_PAD, type SelectRow } from './components/select-list'
 import { ocpTheme } from './theme'
 import { executeInit, executeStatus, executeUninstall, getCurrentRepoVersion, getDefaultTargetDir, loadEffectiveOptions, loadToolRegistry } from '../installer'
 import { parseDynamicOptionsSchema, updateOptionsJsoncInPlace } from '../options-schema'
@@ -35,28 +36,6 @@ export function createUsageClient(directory?: string) {
   })
 }
 
-type SelectRow = { name: string; description: string; value: string; option?: DialogOption }
-
-/** OpenTUI's core select is flat; emulate the host's bold, non-focusable
- *  category headers with pseudo-rows that map back to no option. The core
- *  spends two lines per row (name + description, empty ones included), so
- *  the header text rides on the description line and its blank spacer
- *  line lands BEFORE it — groups separate with a gap, and no dead line
- *  sits between a header and the first option under it. Shared by DialogView
- *  and the usage session picker. */
-function categoryRows(options: DialogOption[]): SelectRow[] {
-  const rows: SelectRow[] = []
-  let lastCategory: string | undefined
-  for (const option of options) {
-    if (option.category && option.category !== lastCategory) {
-      rows.push({ name: '', description: `── ${option.category} ──`, value: `__category_${rows.length}__` })
-    }
-    lastCategory = option.category
-    rows.push({ name: option.title, description: option.description ?? '', value: option.value, option })
-  }
-  return rows
-}
-
 const DAY_MS = 86_400_000
 
 /** Plain-Esc test for every "escape = back/exit" binding. Terminals that
@@ -66,11 +45,6 @@ const DAY_MS = 86_400_000
 function isBareEscape(key: { name?: string; ctrl?: boolean; meta?: boolean }): boolean {
   return key.name === 'escape' && !key.ctrl && !key.meta
 }
-
-/** OpenTUI's kernel select fills its panel with this default focused
- *  background; compact lists wrap themselves in a matching box so a leading
- *  gap can sit INSIDE the panel (the kernel only spaces items after rows). */
-const SELECT_PANEL_BG = '#1a1a1a'
 
 /** Selection & clipboard surface the OpenTUI renderer exposes. Kept structural
  *  (with optional members) because solid's `useRenderer()` returns an opaque
@@ -104,33 +78,6 @@ function rightClickCopy(event: { button: number; preventDefault?: () => void }, 
     .then((result) => notify(result === 'failed' ? tr('host.copy.failed') : tr('host.copy.copied', { count: text.length })))
 }
 
-/** Nearest real (non-header) row index — headers are presentation-only, so
- *  navigation that lands on one skips past it IN THE MOVEMENT DIRECTION
- *  (otherwise upward navigation could never cross a header), falling back to
- *  the other direction at list edges. */
-function skipHeaderRow(rows: SelectRow[], index: number, direction: 1 | -1): number {
-  // The kernel select can emit indices from a stale options list (a filter
-  // narrowed the rows between the emit and this handler) — clamp before
-  // probing so a transient mismatch navigates, never crashes.
-  if (rows.length === 0) return index
-  const at = Math.max(0, Math.min(index, rows.length - 1))
-  if (rows[at].option) return at
-  if (direction === 1) {
-    const next = rows.slice(at + 1).find((row) => row.option)
-    if (next) return rows.indexOf(next)
-    for (let i = at - 1; i >= 0; i--) {
-      if (rows[i].option) return i
-    }
-  } else {
-    for (let i = at - 1; i >= 0; i--) {
-      if (rows[i].option) return i
-    }
-    const next = rows.slice(at + 1).find((row) => row.option)
-    if (next) return rows.indexOf(next)
-  }
-  return at
-}
-
 /** Date bucket for the usage session picker — sessions arrive sorted by
  *  most-recently-updated, so the buckets render in chronological order. */
 function dateBucket(updated: number | undefined): string {
@@ -161,7 +108,7 @@ interface CompatPromptProps {
   onConfirm?: (value: string) => void; onCancel?: () => void
 }
 interface CompatConfirmProps { title: string; message: string; onConfirm?: () => void; onCancel?: () => void }
-interface CompatAlertProps { title: string; message: string; onConfirm?: () => void }
+interface CompatAlertProps { title: string; message: string; busy?: boolean; busyText?: string; onConfirm?: () => void }
 interface CompatCommand { name: string; run(context?: unknown): void | Promise<void> }
 
 function createWizardApi(host: ReturnType<typeof createTuiHost>, context: OcpUiContext, renderer?: unknown) {
@@ -206,7 +153,14 @@ function createWizardApi(host: ReturnType<typeof createTuiHost>, context: OcpUiC
         return { kind: 'confirm', title: props.title, message: props.message, onConfirm: () => props.onConfirm?.(), onCancel: props.onCancel }
       },
       DialogAlert(props: CompatAlertProps): Dialog {
-        return { kind: 'alert', title: props.title, message: props.message, onClose: props.onConfirm }
+        return {
+          kind: 'alert',
+          title: props.title,
+          message: props.message,
+          ...(props.busy !== undefined ? { busy: props.busy } : {}),
+          ...(props.busyText !== undefined ? { busyText: props.busyText } : {}),
+          onClose: props.onConfirm,
+        }
       },
       toast(props: { title?: string; message: string }) { host.notify(props.message, props.title) },
     },
@@ -345,7 +299,24 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
     // between Windows hosts (`enter` vs `return`). Keep the active row in the
     // compatibility host and explicitly activate it for both spellings.
     const [selectedRow, setSelectedRow] = createSignal(0)
-    let selectRef: { setSelectedIndex?: (i: number) => void } | null = null
+    // The compat host now renders select lists itself (kernel `<select>` drew
+    // descriptions on a second line; we want opencode's inline title + muted
+    // description). So navigation, scrolling and the active-row highlight all
+    // live here: `selectedRow` is the cursor, `scrollOffset` the first visible
+    // row, and `listCap` the number of rows that fit the panel.
+    const [scrollOffset, setScrollOffset] = createSignal(0)
+    // Fit the list naturally; scroll only when the terminal is too short. The
+    // filter line (when shown) costs two more rows of vertical budget, and the
+    // panel's inner top/bottom padding (SELECT_PANEL_PAD) reserves two more.
+    // Each row is exactly one cell line, so the line budget is also the row count.
+    const listCap = () => Math.max(4, ((Number((renderer as unknown as { height?: number }).height) || 46) - 14) - (filterable ? 2 : 0) - SELECT_PANEL_PAD * 2)
+    // Keep the cursor inside the window after a move.
+    const revealRow = (index: number) => setScrollOffset((o) => {
+      const visible = listCap()
+      if (index < o) return index
+      if (index >= o + visible) return index - visible + 1
+      return o
+    })
 
     const filteredOptions = (): DialogOption[] => {
       if (dialog.kind !== 'select') return []
@@ -357,9 +328,14 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
 
     // Built from the FILTERED options so categories collapse as the filter
     // narrows the list.
-    const buildRows = (): SelectRow[] => categoryRows(filteredOptions())
+    const buildRows = (): SelectRow[] => categoryRows(filteredOptions(), { spacers: true })
 
     useKeyboard((key) => {
+      // Busy alerts (showBusyModal wrappers around async ops) swallow every
+      // key until the operation resolves and the wizard replaces the frame.
+      // Enter/Esc would otherwise dismiss the placeholder, leaving the async
+      // op's setTimeout-driven result alert to land on an empty stack.
+      if (dialog.kind === 'alert' && dialog.busy) return
       if (!isBareEscape(key)) {
         // Windows Terminal / conhost commonly report Enter as `linefeed`; the
         // synthetic OpenTUI test host reports it as `return`. Support both,
@@ -374,6 +350,21 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
           if (target) dialog.onSelect(target)
           return
         }
+        // Up/Down move the cursor through the custom list, skipping category
+        // headers in the movement direction (the kernel select used to do
+        // this; now the compat host owns navigation).
+        if (dialog.kind === 'select' && (key.name === 'up' || key.name === 'down')) {
+          key.preventDefault?.()
+          const list = buildRows()
+          if (list.length === 0) return
+          const dir: 1 | -1 = key.name === 'down' ? 1 : -1
+          const next = selectedRow() + dir
+          if (next < 0 || next >= list.length) return
+          const landed = skipHeaderRow(list, next, dir)
+          setSelectedRow(landed)
+          revealRow(landed)
+          return
+        }
         // Confirm dialogs use custom, vertically-spaced option rows rather
         // than the kernel select. Handle their keys in this dialog-level
         // listener: it is registered before child renderables and therefore
@@ -386,6 +377,18 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
             else dialog.onCancel?.()
             return
           }
+        }
+        // DialogAlert: opencode dismisses on Enter (fires onConfirm, mapped to
+        // dialog.onClose by the compat api) AND on Esc (host.close path below).
+        // The standalone host previously wired only Esc — Enter was a no-op
+        // on every wizard result screen (init/update/save/sync/index reports).
+        // showAlertModal's `navigated` flag guards the close callback against
+        // double-firing when both keys land in the same tick.
+        if (dialog.kind === 'alert' && (key.name === 'return' || key.name === 'enter' || key.name === 'linefeed' || key.name === 'space')) {
+          key.preventDefault?.()
+          dialog.onClose?.()
+          host.close()
+          return
         }
         if (!filterable) return
         if (key.name === 'backspace') { key.preventDefault?.(); setFilter((f) => f.slice(0, -1)); return }
@@ -407,22 +410,13 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
       // Memo: the branch body runs once per dialog — only the JSX expressions
       // re-evaluate, so the row list must be reactive for the filter to narrow it.
       const rows = createMemo(buildRows)
-      // The kernel select reserves two terminal rows per item when descriptions
-      // are shown. For terse host choices (yes/no, confirm/cancel, etc.), use a
-      // single centered text row and insert an explicit inter-item gap instead.
-      const showDescriptions = () => rows().some((row) => Boolean(row.description))
-      const rowHeight = () => (showDescriptions() ? 2 : 1) + (dialog.itemSpacing ?? (showDescriptions() ? 0 : 1))
       // Headers are presentation-only rows: focus must land on the first real
       // option (or the `current` pick), mirroring the host's non-selectable headers.
       const firstReal = rows().findIndex((row) => row.option)
       const currentIdx = dialog.current !== undefined ? rows().findIndex((row) => row.option?.value === dialog.current) : -1
       const initial = currentIdx >= 0 ? currentIdx : Math.max(0, firstReal)
       setSelectedRow(initial)
-      // A wizard can request breathing room for top-level action cards, while
-      // dense field/value editors intentionally remain compact.
-      // Fit the list naturally; scroll only when the terminal is too short.
-      // The filter line (when shown) costs two more rows of vertical budget.
-      const cap = Math.max(8, ((Number((renderer as unknown as { height?: number }).height) || 46) - 14) - (filterable ? 2 : 0))
+      revealRow(initial)
       // Filtering reshapes the list — land the selection on the first real
       // option (or the `current` pick) of the NEW list, like opencode does.
       createEffect(on(filter, () => {
@@ -430,8 +424,13 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
         const next = buildRows()
         const cur = dialog.current !== undefined ? next.findIndex((row) => row.option?.value === dialog.current) : -1
         const first = next.findIndex((row) => row.option)
-        selectRef?.setSelectedIndex?.(cur >= 0 ? cur : Math.max(0, first))
+        setScrollOffset(0)
+        setSelectedRow(cur >= 0 ? cur : Math.max(0, first))
       }, { defer: true }))
+      // Windowed slice actually painted; `listCap` bounds the panel height and
+      // `scrollOffset` keeps the cursor visible (reimplemented from the kernel
+      // select's internal scrolling now that we draw the rows ourselves).
+      const visible = () => rows().slice(scrollOffset(), scrollOffset() + listCap())
       return <Modal title={dialog.title} size={host.size()} footer={<>{(!filterable && dialog.placeholder) ? `${dialog.placeholder}\n` : ''}↑/↓ selects · Enter opens · Esc returns · Right-click copies</>}>
         <Show when={filterable}>
           <text fg={filter() ? ocpTheme.text : ocpTheme.muted}>{filter() ? `⌕ ${filter()}▏` : `⌕ ${dialog.placeholder ?? 'Type to filter'}`}</text>
@@ -439,38 +438,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
         <Show when={filterable && rows().length === 0}>
           <text fg={ocpTheme.muted}>No matches</text>
         </Show>
-        {(() => {
-          const list = <select focused height={Math.max(1, Math.min(rows().length * rowHeight(), cap))} showScrollIndicator={rows().length * rowHeight() > cap}
-            backgroundColor={ocpTheme.surface} focusedBackgroundColor={SELECT_PANEL_BG} textColor={ocpTheme.text} descriptionColor={ocpTheme.muted}
-            selectedBackgroundColor={ocpTheme.accent} selectedTextColor={ocpTheme.surface}
-            selectedDescriptionColor={ocpTheme.surface} showDescription={showDescriptions()} itemSpacing={dialog.itemSpacing ?? (showDescriptions() ? 0 : 1)}
-            keyBindings={[{ name: 'space', action: 'select-current' }]}
-            options={rows().map((row) => ({ name: row.name, value: row.value, description: row.description }))}
-            ref={(el: { setSelectedIndex?: (i: number) => void; moveDown?: (n: number) => void } | null) => {
-              selectRef = el
-              // Applying `selectedIndex` as a static prop races the wrapper's
-              // prop pipeline on remounts; drive the renderable directly.
-              if (initial > 0) queueMicrotask(() => el?.setSelectedIndex?.(initial))
-            }}
-            onChange={(index: number) => {
-              // Headers are non-focusable: if the highlight lands on one, push
-              // it to the nearest real option IN THE MOVEMENT DIRECTION
-              // (mirrors opencode's DialogSelect).
-              const direction: 1 | -1 = index >= selectedRow() ? 1 : -1
-              const target = skipHeaderRow(rows(), index, direction)
-              setSelectedRow(target)
-              if (target !== index) selectRef?.setSelectedIndex?.(target)
-            }}
-            onSelect={(_index: number, picked: { value?: string } | null) => {
-              const source = picked ? dialog.options.find((option) => option.value === picked.value) : undefined
-              if (source) dialog.onSelect(source)
-            }} />
-          // Compact rows carry their gap AFTER each item; the kernel paints
-          // items flush to the panel top, so wrap the list in a panel-colored
-          // box whose leading blank row makes the head gap symmetric.
-          if (showDescriptions()) return list
-          return <box backgroundColor={SELECT_PANEL_BG}><box height={1} />{list}</box>
-        })()}
+        <SelectList rows={visible()} offset={scrollOffset()} selected={selectedRow} />
       </Modal>
     }
     const ConfirmOptions = (confirmDialog: Extract<Dialog, { kind: 'confirm' }>) => {
@@ -478,10 +446,10 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
       // Mirror the compact select panel: same fill, a leading blank row, one
       // text row per option and a trailing gap after each (including the last)
       // so head and foot gaps inside the panel stay symmetric.
-      return <box backgroundColor={SELECT_PANEL_BG}>
+      return <box backgroundColor={ocpTheme.panel}>
         <box height={1} />
         <For each={options()}>{(label, index) => <>
-          <box flexDirection="row" height={1} justifyContent="flex-start" alignItems="center" paddingLeft={1} backgroundColor={index() === confirmSelection() ? ocpTheme.accent : SELECT_PANEL_BG}>
+          <box flexDirection="row" height={1} justifyContent="flex-start" alignItems="center" paddingLeft={1} backgroundColor={index() === confirmSelection() ? ocpTheme.accent : ocpTheme.panel}>
             <text fg={index() === confirmSelection() ? ocpTheme.surface : ocpTheme.text}>{`${index() === confirmSelection() ? '▶ ' : '  '}${label}`}</text>
           </box>
           <box height={1} />
@@ -492,7 +460,10 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
       <text selectable marginBottom={1} fg={ocpTheme.text}>{dialog.message}</text>
       <ConfirmOptions {...dialog} />
     </Modal>
-    if (dialog.kind === 'alert') return <Modal title={dialog.title} size={host.size()} footer="Esc returns · Right-click copies"><text selectable fg={ocpTheme.text}>{dialog.message}</text></Modal>
+    if (dialog.kind === 'alert') return <Modal title={dialog.title} size={host.size()} footer={dialog.busy ? `⏳ ${dialog.busyText ?? 'Working…'}` : 'Enter or Esc returns · Right-click copies'}>
+      <Show when={dialog.busy}><text fg={ocpTheme.muted}>⏳</text><text> </text></Show>
+      <text selectable fg={ocpTheme.text}>{dialog.message}</text>
+    </Modal>
     return <Modal title={dialog.title} size={host.size()} footer={dialog.busy ? (dialog.busyText ?? 'Working…') : 'Enter confirms · Esc cancels'}>
       <input focused value={dialog.value ?? ''} placeholder={dialog.placeholder ?? ''}
         backgroundColor="transparent" textColor={ocpTheme.text}
@@ -798,7 +769,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
           </box>}</For>
         </box>
         <box flexDirection="column" paddingTop={1}>
-          <Show when={activeTab() === 4} fallback={<select focused={focusArea() === 'panel'} selectedIndex={panelIndex()} height={listHeight()} showScrollIndicator={rows().length * 3 > listHeight()} backgroundColor={ocpTheme.surface} focusedBackgroundColor={SELECT_PANEL_BG} textColor={ocpTheme.text} descriptionColor={ocpTheme.muted} selectedBackgroundColor={ocpTheme.accent} selectedTextColor={ocpTheme.surface} selectedDescriptionColor={ocpTheme.surface} itemSpacing={1} keyBindings={[{ name: 'space', action: 'select-current' }]} options={rows()} onChange={(index: number) => setPanelIndex(index)} onSelect={(_index: number, picked: { value?: string } | null) => select(picked)} />}>
+          <Show when={activeTab() === 4} fallback={<select focused={focusArea() === 'panel'} selectedIndex={panelIndex()} height={listHeight()} showScrollIndicator={rows().length * 3 > listHeight()} backgroundColor={ocpTheme.surface} focusedBackgroundColor={ocpTheme.panel} textColor={ocpTheme.text} descriptionColor={ocpTheme.muted} selectedBackgroundColor={ocpTheme.accent} selectedTextColor={ocpTheme.surface} selectedDescriptionColor={ocpTheme.surface} itemSpacing={1} keyBindings={[{ name: 'space', action: 'select-current' }]} options={rows()} onChange={(index: number) => setPanelIndex(index)} onSelect={(_index: number, picked: { value?: string } | null) => select(picked)} />}>
             <box flexDirection="column" gap={1}>
               <text fg={ocpTheme.text}>{copy('dashboardTargetLabel', 'Installation target')}</text>
               <text selectable fg={ocpTheme.muted}>{target}</text>
@@ -891,11 +862,11 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
     useKeyboard((key) => { if (!host.dialog() && (isBareEscape(key) || (key.ctrl && key.name === 'c'))) exit() })
     return <Show when={host.dialog()} keyed fallback={<Modal title={`${copy('wizardTitle', 'OpenCode Prime — Interactive Setup Wizard')} v${getCurrentRepoVersion(repoDir)}`} footer={<>{busy() ? copy('installingSpinner', 'Installing…') : '↑/↓ selects · Enter opens · Esc exits'}{message() ? `\n${message()}` : ''}</>}>
       <text selectable marginBottom={1} fg={ocpTheme.muted}>{executeStatus(repoDir).installedVersion ? copy('installedNote', 'Installed version: v{version} (Target: {target})').replace('{version}', executeStatus(repoDir).installedVersion ?? '').replace('{target}', target()) : copy('notInstalledNote', 'Target not initialized: {target}').replace('{target}', target())}</text>
-      <box backgroundColor={SELECT_PANEL_BG}>
+      <box backgroundColor={ocpTheme.panel}>
         {/* Same head-gap symmetry as the compact host selects (itemSpacing
          * trails a gap row inside the panel; the kernel paints flush top). */}
         <box height={1} />
-        <select focused height={Math.max(6, Math.min(menu().length * 3, 26))} backgroundColor={ocpTheme.surface} focusedBackgroundColor={SELECT_PANEL_BG} textColor={ocpTheme.text} descriptionColor={ocpTheme.muted} selectedBackgroundColor={ocpTheme.accent} selectedTextColor={ocpTheme.surface} selectedDescriptionColor={ocpTheme.surface} itemSpacing={1} options={menu()} onSelect={(_index: number, picked: { value?: string } | null) => choose(picked)} />
+        <select focused height={Math.max(6, Math.min(menu().length * 3, 26))} backgroundColor={ocpTheme.surface} focusedBackgroundColor={ocpTheme.panel} textColor={ocpTheme.text} descriptionColor={ocpTheme.muted} selectedBackgroundColor={ocpTheme.accent} selectedTextColor={ocpTheme.surface} selectedDescriptionColor={ocpTheme.surface} itemSpacing={1} options={menu()} onSelect={(_index: number, picked: { value?: string } | null) => choose(picked)} />
       </box>
     </Modal>}>{(dialog: Dialog) => <DialogView dialog={dialog} />}</Show>
   }

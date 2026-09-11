@@ -1,0 +1,36 @@
+{
+  "$schema": "../../docs/design/wizard-schema.schema.json",
+  "id": "project_guards",
+  "i18nKey": "project.projectGuards.title",
+  "description": "On/off project guards (env, E2E). ADR-related guards live in adr.json. Schema-driven; new entries only require a JSON row, no wizard code change.",
+  "fields": [
+    {
+      "key": "envGuard",
+      "type": "enum",
+      "labelKey": "project.switchEnvGuard",
+      "descriptionKey": "project.switchEnvGuard",
+      "badgeKind": "guard",
+      "icon": "🔒",
+      "values": [
+        { "value": "on", "labelKey": "project.valueGuardEnvOn" },
+        { "value": "off", "labelKey": "project.valueGuardEnvOff" },
+        { "value": "default", "labelKey": "project.valueAdvisorDefault" }
+      ],
+      "default": "on"
+    },
+    {
+      "key": "e2eGuard",
+      "type": "enum",
+      "labelKey": "project.switchE2eGuard",
+      "descriptionKey": "project.switchE2eGuard",
+      "badgeKind": "guard",
+      "icon": "🧪",
+      "values": [
+        { "value": "on", "labelKey": "project.valueGuardE2eOn" },
+        { "value": "off", "labelKey": "project.valueGuardE2eOff" },
+        { "value": "default", "labelKey": "project.valueAdvisorDefault" }
+      ],
+      "default": "on"
+    }
+  ]
+}

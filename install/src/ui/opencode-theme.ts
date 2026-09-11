@@ -98,6 +98,9 @@ function pickPalette(file: ThemeFile, mode: ThemeMode): Partial<OcpPalette> {
   const palette: Partial<OcpPalette> = {}
   const background = get('background')
   const panel = opaque(get('backgroundPanel')) ?? opaque(get('backgroundElement')) ?? opaque(background)
+  // The inset list strip sits a step below the modal panel; prefer opencode's
+  // `backgroundElement` (its recessed layer), falling back to the panel color.
+  const inset = opaque(get('backgroundElement')) ?? panel
   const border = opaque(get('border')) ?? opaque(get('borderSubtle'))
   const text = opaque(get('text'))
   const muted = opaque(get('textMuted'))
@@ -105,6 +108,7 @@ function pickPalette(file: ThemeFile, mode: ThemeMode): Partial<OcpPalette> {
   const warning = opaque(get('warning'))
   if (background && background !== 'transparent') palette.background = background
   if (panel) palette.surface = panel
+  if (inset) palette.panel = inset
   if (border) palette.border = border
   if (text) palette.text = text
   if (muted) palette.muted = muted
