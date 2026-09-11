@@ -26,7 +26,7 @@ assert(throws(() => parseTgrepOptions(root, { enabled: true, maxFileSize: "64MiB
 assert(tgrepPolicyFingerprint({ ...options, exclude: ["vendor", "build"] }) === tgrepPolicyFingerprint({ ...options, exclude: ["build", "vendor"] }), "policy fingerprint normalizes exclude order")
 assert(throws(() => parseTgrepOptions(root, { enabled: true, indexPath: "../outside" })), "rejects escaping index path")
 assert(throws(() => parseTgrepOptions(root, { enabled: true, exclude: [""] })), "rejects empty exclusion")
-const args = buildTgrepSearchArgs(root, { pattern: 'a "quoted" -- value', path: "src", flags: ["-F"], freshness: "current" })
+const args = buildTgrepSearchArgs(root, { pattern: 'a "quoted" -- value', path: "src", flags: ["-F"], noIndex: true })
 assert(args[0] === "--no-index" && args.includes("--") && args.includes('a "quoted" -- value'), "pattern remains a single argv argument")
 const globArgs = buildTgrepSearchArgs(root, { pattern: "x", glob: ["*.ts", "src/**"] })
 assert(globArgs.filter((arg) => arg === "-g").length === 2 && globArgs.includes("*.ts") && globArgs.includes("src/**") && globArgs.indexOf("-g", 0) < globArgs.indexOf("--"), "glob filters travel as -g value pairs before --")
@@ -75,7 +75,7 @@ if (process.platform === "win32") {
 // Use `path: root` (absolute) instead of relying on cwd-anchored `.`
 // default — the literal pattern appears in this very test file, so
 // searching cwd would yield a false positive.
-const unavailable = searchTgrep(root, { pattern: "definitely-no-result", path: root, freshness: "indexed" }, "unavailable")
+const unavailable = searchTgrep(root, { pattern: "definitely-no-result", path: root }, "unavailable")
 assert(unavailable.backend === "fallback", "unready indexed search transparently falls back to rg")
 assert(unavailable.status === "no-matches", "rg exit code 1 maps to no matches")
 

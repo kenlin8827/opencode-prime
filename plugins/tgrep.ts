@@ -29,25 +29,22 @@ export const TgrepPlugin: Plugin = async ({ directory }) => {
   // failed probe on every search. hasTgrepCli hides only on ENOENT, so a
   // momentary --version timeout never uninstalls the tool mid-session.
   if (!config.enabled || !hasTgrepCli(directory)) return {}
-  return { tool: {
+return { tool: {
     tgrep_search: tool({
       description: TGREP_TOOL_DESCRIPTION,
       args: {
         pattern: tool.schema.string().describe("Text or regex pattern; passed as one argv value."),
         path: tool.schema.string().optional().describe("Relative workspace path. Default: ."),
-        glob: tool.schema.array(tool.schema.string()).optional().describe("Gitignore-style glob filters, each applied via -g."),
+        glob: tool.schema.array(tool.schema.string()).optional().describe("Gitignore-style globs, each applied via -g."),
         flags: tool.schema.array(tool.schema.enum(["-i", "--ignore-case", "-F", "--fixed-strings"])).optional().describe("Supported search flags only."),
-        freshness: tool.schema.enum(["indexed", "current"]).describe("REQUIRED. `indexed` = use live server index (fast); `current` = full scan via `tgrep --no-index` (slower but reflects latest edits). Pick per the [PROJECT CAPABILITIES] `tgrep=<state>` default: `indexed` for `ready`/`no-watcher`, `current` for `stale`/`building`/`no-index`. Override to `current` after a recent edit or before reporting 'no match'."),
+        noIndex: tool.schema.boolean().optional().describe("When true, force `tgrep --no-index` (bypass the index, read from disk). Default: false (use the index)."),
       },
       execute: async (args) => {
-        if (!args.freshness) {
-          return { title: "tgrep_search: freshness required", output: "`freshness` is required (no silent default). Pass `\"indexed\"` or `\"current\"` per the [PROJECT CAPABILITIES] `tgrep=<state>`." }
-        }
         const config = loadTgrepOptions(directory)
         if (!config.enabled) return { title: "tgrep unavailable", output: "tgrep is disabled; use the native grep/ripgrep path." }
         const readiness = await ensureWatcher(directory, config)
         const result = searchTgrep(directory, args as TgrepSearchInput, readiness)
-        const label = result.backend === "tgrep" ? `tgrep (${args.freshness ?? "indexed"})` : "rg fallback"
+        const label = result.backend === "tgrep" ? `tgrep (${args.noIndex ? "no-index" : "indexed"})` : "rg fallback"
         const raw = result.status === "no-matches" ? "No matches." : `${result.stdout}${result.stderr ? `\n${result.stderr}` : ""}`
         const output = raw.length > MAX_OUTPUT_CHARS
           ? `${raw.slice(0, MAX_OUTPUT_CHARS)}\n… output truncated at ${MAX_OUTPUT_CHARS} chars; narrow with path or glob`

@@ -67,7 +67,7 @@ check("scoped blocks subagent steps (parentID ground truth)", (await scoped({ se
 //   prompts/lite.md promotes tgrep_search to "the default" for codebase-wide
 //   text/regex search (replacing earlier @explore delegation). Without the
 //   [PROJECT CAPABILITIES] block, Lite is forced to either probe `tgrep status`
-//   or default blind to `freshness="current"` — the block is the cheaper,
+//   or default blind to `noIndex=true` — the block is the cheaper,
 //   single-source-of-truth path shared with subagents. Utility (title-generator,
 //   ~30k tok saved per session) stays denied — it never touches code search,
 //   so the block would be pure overhead there. If you revert this, also revert

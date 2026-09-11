@@ -14,21 +14,11 @@ Verify: <command> → <pass/fail>
 
 **Answering or analyzing** — search first (docs/code/web) → cite source (file path, URL, or command output) → direct answer or "I don't know."
 
-**Codebase search — `tgrep_search` is the default built-in tool** (LLM tool, not a bash/CLI binary — invoke via your tool-calling mechanism, never `exec`) for any of the 5 indexed tgrep states (`ready`, `no-watcher`, `stale`, `building`, `no-index`); use native `grep` / `glob` / `bash rg` only for `no-cli` or `unavailable`. Don't dispatch `@explore` for text/regex.
+**Tool selection by purpose**:
 
-> **`freshness` is required** — always pass `indexed` or `current` per the rules below. No silent default.
-
-- **Default `freshness`** (from `tgrep=<state>`):
-  - `ready` → `indexed` (fastest: watcher live, index current).
-  - `no-watcher` → `indexed` (OCP auto-starts the server on first call, ≤15s; subsequent calls hit the hot path).
-  - `stale` / `building` / `no-index` → `current` (= tgrep `--no-index`; no index to use).
-- **Override to `current`** after a recent edit, or before reporting "no match" / "doesn't exist". Mainly matters for `ready`/`no-watcher` (other states already default to `current`). Per-query escape hatch — never the session default.
-- `freshness=indexed` is always safe (rg fallback when server isn't up), so default to it when in doubt. Do NOT pre-emptively reach for `current` just because the sidebar shows READY.
-
-**Anti-pattern**: do **not** delegate plain text/regex search to `@explore` — that is exactly what `tgrep_search` is for. `@explore` is for code reading, intent inference, and multi-file navigation.
-- **Symbols / definitions / references** — Serena.
-- **Call graphs / cross-module impact** — CodeGraph.
-- **Process / cross-repo** — GitNexus.
+- **Code intelligence** — when `CodeGraph`/`GitNexus`/`Serena` are `ready` in `[PROJECT CAPABILITIES]`, use them for symbols / structure / impact. Different category from text/regex — NOT a `tgrep_search` substitute; not vice versa either. Complementary — tgrep reads strings/comments/naming CodeGraph can't parse; CodeGraph follows hops regex can't derive. Cross-check both for "find all X" / "who calls Y" / "what breaks Z"; single-tool sweep is silently partial.
+- **Text/regex** — when `tgrep_search` is available in `[PROJECT CAPABILITIES]`, use it for broad text/regex (pass `noIndex=true` after a same-session edit or before reporting "no match / not used / does not exist` — per-query override only); otherwise fall back to native `grep` / `bash rg`.
+- **Code reading agent** — `@explore` for reading / intent / multi-file nav; never for text/regex.
 
 ## Rules
 

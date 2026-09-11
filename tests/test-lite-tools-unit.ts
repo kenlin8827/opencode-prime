@@ -7,6 +7,7 @@
  *   - gating: rewrite applies only after chat.message reports agent=lite
  *   - chat.params provides redundant agent signal
  *   - unknown/MCP tools are left intact (not in OVERRIDES)
+ *   - tgrep_search description is owned by the tgrep plugin, not this one
  *
  * Run: bun tests/test-lite-tools-unit.ts
  */
@@ -93,7 +94,23 @@ await onMessage({ sessionID: "s2", agent: "build" } as any, {} as any)
 {
   const output = { description: "x".repeat(4655) }
   await onToolDef({ toolID: "bash" } as any, output)
-  assert(output.description.length === 4655, "no rewrite for non-lite agents")
+  assert(output.description.length === 4655, "no rewrite for non-lite agents (bash is lite-only)")
+}
+
+// ─── tgrep_search description is owned by the tgrep plugin, not lite-tools ─
+
+section("ownership: tgrep_search description is NOT modified by lite-tools")
+
+// tgrep_search now sets its own description via `plugins/tgrep.ts` (loaded
+// from `plugins/tgrep/tgrep-tool-description.md`). lite-tools only
+// short-circuits tools it knows about; an unknown tool ID leaves the
+// output untouched, so the plugin's description survives.
+await onMessage({ sessionID: "s3", agent: "code" } as any, {} as any)
+
+{
+  const output = { description: "Built-in OpenCode tool for codebase-wide text/regex search..." }
+  await onToolDef({ toolID: "tgrep_search" } as any, output)
+  assert(output.description.startsWith("Built-in OpenCode tool"), "tgrep_search description untouched by lite-tools (owned by tgrep plugin)")
 }
 
 // ─── chat.params provides redundant agent signal ─────────────────────────

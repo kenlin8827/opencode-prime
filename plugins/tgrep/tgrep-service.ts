@@ -57,7 +57,7 @@ export function isCliMissing(result: { error?: Error; status: number | null }): 
  *
  * State set (same names in sidebar badge, project-profiler marker, and
  * tool description):
- *   ready       — watcher up, index current; `freshness: "indexed"` is cheap + accurate
+ *   ready       — watcher up, index current; `noIndex: false` is cheap + accurate
  *   no-watcher  — index on disk but no live serve; indexed mode falls back to rg
  *   stale       — index built under different policy; do not trust indexed mode
  *   building    — index build in progress; wait or use rg

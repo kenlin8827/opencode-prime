@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process"
 import { existsSync, realpathSync } from "node:fs"
-import { isAbsolute, relative, resolve, sep } from "node:path"
+import { isAbsolute, resolve } from "node:path"
 import type { TgrepReadiness } from "./tgrep-service"
 
-export interface TgrepSearchInput { pattern: string; path?: string; glob?: string[]; flags?: string[]; freshness: "indexed" | "current" }
+export interface TgrepSearchInput { pattern: string; path?: string; glob?: string[]; flags?: string[]; noIndex?: boolean }
 export type TgrepSearchStatus = "matches" | "no-matches" | "error"
 export interface TgrepSearchResult { backend: "tgrep" | "fallback"; code: number; status: TgrepSearchStatus; stdout: string; stderr: string }
 const ALLOWED_FLAGS = new Set(["-i", "--ignore-case", "-F", "--fixed-strings"])
@@ -49,7 +49,7 @@ export function buildTgrepSearchArgs(root: string, input: TgrepSearchInput): str
   }
   const target = resolveSearchPath(root, input.path)
   return [
-    ...(input.freshness === "current" ? ["--no-index"] : []),
+    ...(input.noIndex ? ["--no-index"] : []),
     ...flags,
     ...globs.flatMap((glob) => ["-g", glob]),
     "--",
@@ -73,13 +73,14 @@ function resultFrom(backend: "tgrep" | "fallback", result: ReturnType<typeof spa
 function fallbackRg(root: string, input: TgrepSearchInput): TgrepSearchResult {
   // rg understands every remaining argument, "--" included, so the argv
   // stream is forwarded verbatim and dash-leading patterns stay protected.
-  const args = buildTgrepSearchArgs(root, { ...input, freshness: "indexed" })
+  const args = buildTgrepSearchArgs(root, { ...input, noIndex: false })
   return resultFrom("fallback", spawnSync("rg", args, { cwd: root, encoding: "utf8", windowsHide: true, timeout: SEARCH_TIMEOUT_MS }))
 }
 
 export function searchTgrep(root: string, input: TgrepSearchInput, readiness: TgrepReadiness): TgrepSearchResult {
-  const indexed = input.freshness === "indexed"
-  if (indexed && readiness !== "server") {
+  // Trust-the-index path needs the live watcher; anything else (disk-index
+  // or no-index) skips the server check entirely.
+  if (!input.noIndex && readiness !== "server") {
     return fallbackRg(root, input)
   }
   const mapped = resultFrom("tgrep", spawnSync("tgrep", buildTgrepSearchArgs(root, input), { cwd: root, encoding: "utf8", windowsHide: true, timeout: SEARCH_TIMEOUT_MS }))
