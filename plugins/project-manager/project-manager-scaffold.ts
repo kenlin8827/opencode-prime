@@ -281,23 +281,41 @@ export function generateConfigContent(switches: ProjectSwitches): string {
  *
  * Same iron rule as runInit: never overwrite unrelated content. An existing
  * file with the same switch values is reported as "skipped" with no write.
+ *
+ * Mirrors `runInitWithSwitches`'s root-fallback: a legacy project with only
+ * a root-level `opencode.jsonc` is updated in place (returning that relPath)
+ * rather than spawning a second config under `.opencode/` — the wizard
+ * detects and the runtime reads the same file throughout.
  */
 export function updateSwitchesOnly(switches: ProjectSwitches): ScaffoldResult {
-  const absPath = resolveTarget(CONFIG_REL)
-  if (existsSync(absPath)) {
-    const existing = readFileSync(absPath, "utf-8")
+  const configPath = resolveTarget(CONFIG_REL)
+  if (existsSync(configPath)) {
+    const existing = readFileSync(configPath, "utf-8")
     const updated = applySwitchesToConfigContent(existing, switches)
     if (updated !== existing) {
-      writeFileSync(absPath, updated, "utf-8")
+      writeFileSync(configPath, updated, "utf-8")
       return { relPath: CONFIG_REL, status: "updated" }
     }
     return { relPath: CONFIG_REL, status: "skipped" }
   }
+
+  // Legacy fallback: root opencode.jsonc, no .opencode/ yet.
+  const rootConfigPath = resolveTarget("opencode.jsonc" as ScaffoldTarget)
+  if (existsSync(rootConfigPath)) {
+    const existing = readFileSync(rootConfigPath, "utf-8")
+    const updated = applySwitchesToConfigContent(existing, switches)
+    if (updated !== existing) {
+      writeFileSync(rootConfigPath, updated, "utf-8")
+      return { relPath: "opencode.jsonc" as ScaffoldTarget, status: "updated" }
+    }
+    return { relPath: "opencode.jsonc" as ScaffoldTarget, status: "skipped" }
+  }
+
   // First-time: create the config from the template with switches applied.
   // Parent dirs created on demand; other baseline files (AGENTS.md,
   // docs/git-commits.md) are intentionally NOT created here.
-  ensureParentDir(absPath)
-  writeFileSync(absPath, generateConfigContent(switches), "utf-8")
+  ensureParentDir(configPath)
+  writeFileSync(configPath, generateConfigContent(switches), "utf-8")
   return { relPath: CONFIG_REL, status: "created" }
 }
 

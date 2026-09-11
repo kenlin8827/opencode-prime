@@ -269,8 +269,19 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
                 memoryField,
                 current.projectMemory,
                 (newValue) => {
+                  const prev = current.projectMemory
                   current.projectMemory = newValue as ProjectSwitches["projectMemory"]
-                  void saveInlineField(api, state, projectRoot(api), isExisting, "__field_projectMemory")
+                  saveInlineField(
+                    api,
+                    state,
+                    projectRoot(api),
+                    "projectMemory",
+                    "__field_projectMemory",
+                  ).catch(() => {
+                    // Revert the optimistic local mutation so the badge on
+                    // re-entry reflects what is actually on disk.
+                    current.projectMemory = prev
+                  })
                 },
                 () => showGroupMenu(api, { ...state, currentSelection: "__field_projectMemory" }),
               )
@@ -282,8 +293,17 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
                 advisorField,
                 current.autoAdvisorMode,
                 (newValue) => {
+                  const prev = current.autoAdvisorMode
                   current.autoAdvisorMode = newValue as ProjectSwitches["autoAdvisorMode"]
-                  void saveInlineField(api, state, projectRoot(api), isExisting, "__field_autoAdvisorMode")
+                  saveInlineField(
+                    api,
+                    state,
+                    projectRoot(api),
+                    "autoAdvisorMode",
+                    "__field_autoAdvisorMode",
+                  ).catch(() => {
+                    current.autoAdvisorMode = prev
+                  })
                 },
                 () => showGroupMenu(api, { ...state, currentSelection: "__field_autoAdvisorMode" }),
               )
@@ -659,16 +679,22 @@ async function saveInlineField(
   api: TuiPluginApi,
   state: WizardState,
   rootDir: string,
-  isExisting: boolean,
+  fieldKey: keyof ProjectSwitches,
   returnSelection: string,
 ): Promise<void> {
+  // Write ONLY the committed field. Sub-dialog edits live in
+  // `state.switches` without auto-persist until the user clicks "💾 Save
+  // & Apply Changes" — inline auto-save must not flush those unconfirmed
+  // edits. `applySwitchesToConfigContent` skips undefined values, so a
+  // single-key object is safe.
+  const switches = { [fieldKey]: state.switches[fieldKey] } as ProjectSwitches
   try {
-    await updateSwitches({ root: rootDir, switches: state.switches })
-    toast(
-      api,
-      isExisting ? tr("project.configSavedToast") : tr("project.initSuccess"),
-      "success",
-    )
+    await updateSwitches({ root: rootDir, switches })
+    // Config-only save is never a full project init; AGENTS.md /
+    // git-commits.md are still pending until the user clicks the main-menu
+    // skeleton button. Always use the saved-config toast to avoid the
+    // misleading "Project initialized" wording.
+    toast(api, tr("project.configSavedToast"), "success")
     showGroupMenu(api, { ...state, exists: true, currentSelection: returnSelection })
   } catch (err) {
     showAlertModal(api, {
@@ -676,6 +702,9 @@ async function saveInlineField(
       message: tr("project.saveFailedMsg", { err: (err as Error).message }),
       onDismiss: () => showGroupMenu(api, { ...state, currentSelection: returnSelection }),
     })
+    // Re-throw so the caller's optimistic local mutation is reverted — the
+    // in-memory `current` must reflect what is actually on disk.
+    throw err
   }
 }
 

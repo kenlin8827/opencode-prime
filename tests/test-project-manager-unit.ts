@@ -242,9 +242,9 @@ function test05_Scaffold() {
 function test05b_UpdateSwitchesOnly() {
   section("05b: updateSwitchesOnly — config-only, no AGENTS.md / git-commits.md scaffold")
 
-  // Empty project → only the config is created; other baseline files MUST
-  // remain absent. This is the Phase 1C sub-dialog Save path for first-time
-  // projects (responsibility separation from the main-menu skeleton action).
+  // (1) Empty project → only the config is created; other baseline files
+  //     MUST remain absent. Phase 1C sub-dialog Save path for first-time
+  //     projects (responsibility separation from the main-menu skeleton).
   const dirSync = mkdtempSync(join(tmpdir(), "pm-switches-only-"))
   setProjectDir(dirSync)
 
@@ -264,20 +264,46 @@ function test05b_UpdateSwitchesOnly() {
     "git-commits.md NOT scaffolded — that's the main-menu skeleton's job",
   )
 
-  // Second call with the same values → skipped (no write).
+  // (2) Idempotent when values unchanged.
   const r2 = updateSwitchesOnly(switches)
   assert(r2.status === "skipped", "idempotent when values unchanged")
 
-  // Different values → updated.
+  // (3) Different values → updated.
   const r3 = updateSwitchesOnly({ envGuard: "off", projectMemory: "on" } as const)
   assert(r3.status === "updated", "different switch value triggers an update")
   const after = readFileSync(cfgPath, "utf-8")
   assert(after.includes('"envGuard": "off"'), "updated config carries the new value")
   assert(after.includes('"projectMemory": "on"'), "untouched switches remain in place")
 
-  // Equivalent semantics: runInitWithSwitches DOES scaffold the other
-  // files — proves the responsibility separation at the scaffold layer.
-  writeFileSync(join(dirSync, "AGENTS.md"), "x", "utf-8") // sentinel
+  rmSync(dirSync, { recursive: true, force: true })
+
+  // (4) Legacy fallback: root opencode.jsonc is updated in place rather
+  //     than spawning a second config under .opencode/. Mirrors
+  //     runInitWithSwitches — without this, sub-dialog Save in a legacy
+  //     project silently creates a divergent second file.
+  const dirLegacy = mkdtempSync(join(tmpdir(), "pm-switches-legacy-"))
+  setProjectDir(dirLegacy)
+  const rootCfg = join(dirLegacy, "opencode.jsonc")
+  writeFileSync(
+    rootCfg,
+    '{\n  // "autoAdvisorMode": "lite",\n}\n',
+    "utf-8",
+  )
+  const rLegacy = updateSwitchesOnly({ envGuard: "off" } as const)
+  assert(
+    rLegacy.relPath === "opencode.jsonc" && rLegacy.status === "updated",
+    "legacy root-only config is updated in place (no .opencode/ divergence)",
+  )
+  assert(
+    !existsSync(join(dirLegacy, ".opencode", "opencode.jsonc")),
+    "no second config spawned under .opencode/",
+  )
+  assert(readFileSync(rootCfg, "utf-8").includes('"envGuard": "off"'), "root file carries the new switch")
+  rmSync(dirLegacy, { recursive: true, force: true })
+
+  // (5) Contrast: runInitWithSwitches (the skeleton path) still
+  //     scaffolds AGENTS.md + git-commits.md. Proves responsibility
+  //     separation from both sides.
   const dirInit = mkdtempSync(join(tmpdir(), "pm-switches-init-"))
   setProjectDir(dirInit)
   const ri = runInitWithSwitches({ envGuard: "on" } as const)
@@ -289,9 +315,8 @@ function test05b_UpdateSwitchesOnly() {
     existsSync(join(dirInit, "docs", "git-commits.md")),
     "runInitWithSwitches (skeleton path) still scaffolds git-commits.md",
   )
-
-  rmSync(dirSync, { recursive: true, force: true })
   rmSync(dirInit, { recursive: true, force: true })
+
   setProjectDir(projectDir)
 }
 
