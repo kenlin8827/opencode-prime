@@ -466,7 +466,6 @@ on install).
   "default_agent": "lite",
   "mcp":    { "serena": false, "codegraph": true, "gitnexus": false, "dbhub": true },
   "plugin": {
-    "@dietrichgebert/ponytail": true,
     "opencode-qoder-bridge": false,
     "opencode-mem@2.24.3": false
   }

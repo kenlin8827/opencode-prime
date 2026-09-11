@@ -1,6 +1,6 @@
 # Multi-Agent System Tests
 
-Tests for verifying that `instructions` in `opencode.template.jsonc` correctly injects shared protocols (Output Protocol + Ponytail) into all agent contexts.
+Tests for verifying that `opencode.template.jsonc` correctly wires the agent ecosystem: instruction L0 (iron rules), per-agent L1 prompts, optional MCP servers, and the opt-in npm plugin set (no plugin is default-on; OCP ships no `cp#10`-conflicting third-party framing).
 
 ## Prerequisites
 
@@ -39,7 +39,7 @@ $env:LLM_ROUTER_API_KEY = "<your-api-key>"
 # Structural checks + prompt tests (requires API)
 powershell -ExecutionPolicy Bypass -File tests/test-all.ps1
 
-# Include ponytail behavioral tests (lite: build + suggest)
+# Include prompt behavioral tests (requires LLM API access)
 powershell -ExecutionPolicy Bypass -File tests/test-all.ps1 -IncludePrompts
 
 # Or run individually
@@ -61,23 +61,19 @@ pwsh -ExecutionPolicy Bypass -File tests/test-anchor-benchmark.ps1 -Quick
 ## What test-all.ps1 checks
 
 ### Structural (no API calls)
-- `opencode.template.jsonc` instructions array contains both protocols
-- `ponytail.md` content: frontmatter, advisory checklist, lazier alternative, rules, off switch
-- `ponytail.md` is language-agnostic (no Java/Node-specific content)
-- `ponytail.md` has no Output/Intensity sections (orthogonality with output-protocol)
-- `ponytail.md` limits scope to coding tasks
+- `opencode.template.jsonc` instructions array contains the L0 iron rules
+- `opencode.template.jsonc:plugin` is empty by default (no default-on third-party plugins; see ADR-0003)
 - java/python/node agents mention ecosystem libraries
 - Security rules intact in all coding agents
-- researcher.md has no ponytail rules (non-coding isolation)
+- researcher.md is coding-rule-free (non-coding isolation)
 - All 20 agent files exist (including explore.md)
 - `profiles/*.json`: each profile applies cleanly to a fresh template
   copy (agent refs, root model, untouched tiers); every profile must cover
   all five tiers
 
-### Behavioral (opt-in via `-IncludePrompts`)
-- Prompt with speculative need → agent builds it, suggests lazier alternative
+### Behavioral (opt-in via `-IncludePrompts`, requires LLM API access)
+- Prompt with speculative need → agent builds it, then in its report briefly considers a YAGNI-aligned simpler alternative (per `cp#10` / `code.md` step 4 / `lite.md` Editing-code)
 - Prompt with existing utility → agent reuses it
-- Non-coding prompt → agent ignores ponytail
 
 ## Expected results
 
@@ -85,7 +81,6 @@ pwsh -ExecutionPolicy Bypass -File tests/test-anchor-benchmark.ps1 -Quick
 - `test-plan.ps1`: Output contains `**Conclusion**: ...` and suggests switching to Build mode.
 - `test-subagent.ps1`: Subagent output follows Protocol format (dispatched via build agent).
 - `test-default.ps1`: Default agent may NOT follow Protocol (no custom prompt, instructions may not inject).
-- Ponytail behavioral: Agent challenges speculative scope, reuses existing code, references ladder.
 
 ## DeepSeek Anchor Plugin Tests
 

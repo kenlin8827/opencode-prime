@@ -77,15 +77,13 @@
        // JetBrains IDE 桥接（需先在 IDE 中启用 MCP 服务器：Settings → Tools → MCP Server）
        "idea": true
      },
-     // 外部 npm 插件开关（true: 启用; false: 关闭）
-     "plugin": {
-       // 偷懒编码协议：实现目标并指出更轻量的替代方案
-       "@dietrichgebert/ponytail": true,
-       // Qoder 订阅桥接（通过官方 SDK 注入 qoder 服务商及模型，需 qoder login）
-       "opencode-qoder-bridge": false,
-       // 持久化项目记忆库（向量存储，空闲时产生额外 LLM 捕获调用）
-       "opencode-mem@2.24.3": false
-     }
+      // 外部 npm 插件开关（true: 启用; false: 关闭）
+      "plugin": {
+        // Qoder 订阅桥接（通过官方 SDK 注入 qoder 服务商及模型，需 qoder login）
+        "opencode-qoder-bridge": false,
+        // 持久化项目记忆库（向量存储，空闲时产生额外 LLM 提炼调用）
+        "opencode-mem@2.24.3": false
+      }
    }
    ```
 3. **执行安装命令**：

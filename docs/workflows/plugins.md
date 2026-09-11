@@ -231,7 +231,6 @@ In addition to bundled TypeScript plugins, this distribution integrates validate
 
 | Plugin | Default Status | Description & Prerequisites |
 |---|---|---|
-| `@dietrichgebert/ponytail` | Enabled (`true`) | **Lazy Coding Protocol**: Completes the request while actively naming the simpler, more elegant architectural alternative. |
 | `opencode-qoder-bridge` | Optional (`false`) | **Official Qoder Bridge**: Auto-injects `qoder` provider and all models via `@qoder-ai/qoder-agent-sdk` (requires `qoder login`). |
 | `opencode-mem@2.24.3` | Optional (`false`) | **Persistent Vector Memory**: Preserves project knowledge in a local vector store (issues extra lightweight LLM capture calls during idle periods). |
 

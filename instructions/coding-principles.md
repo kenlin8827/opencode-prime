@@ -15,6 +15,7 @@
 | 7 | No premature abstraction | **SHOULD NOT** abstract until ≥3 concrete use cases exist. Duplicate first, abstract when the pattern is proven. | Wrong abstractions are costlier to fix than duplication. |
 | 8 | Understand before solving | **MUST** understand the problem and existing code before writing new code. Read the surrounding context. | Solutions without understanding produce bugs and rework. |
 | 9 | Adaptive shell execution | **MUST** adapt shell commands to the active host OS/shell. Prefer cross-platform binaries (`git`, `npm`, `node`). On native Windows PowerShell/CMD, **MUST NOT** use Bash-only builtins (`export`, `cat`, `rm -rf`, `ls -la`). | Shell errors break workflows; commands must match the host environment. |
+| 10 | Top-tier floor + YAGNI discipline | **MUST NOT** ship code failing top-tier **quality** (correctness, security, testability, type safety, error/edge-case handling) or **philosophy** (maintainability, defensibility, platform-native design, simplicity) without triage: refactor inline / file-as-issue / explicit-out-of-scope, by impact on the current task. "Do less / lazy / pragmatic / good-enough" rationales are evaluated as **YAGNI** — welcome when the dropped work was genuinely unneeded for the stated goal, rejected when they bypass the floor. `cp#7` (≥3 use cases) and `cp#8` (understand first) still bind. | Rationalization is not engineering; lowering the bar to dodge refactor cost shifts the cost to every future reader. |
 
 ## Shell & OS command self-adaptation
 

@@ -78,7 +78,6 @@
     "idea": { "label": "JetBrains IDEA", "hint": "JetBrains IDE MCP 集成；请先在 IDE 内启用对应服务器。" }
   },
   "pluginLabels": {
-    "@dietrichgebert/ponytail": { "label": "Ponytail", "hint": "内置的 OpenCode 界面增强插件。" },
     "opencode-qoder-bridge": { "label": "Qoder Bridge", "hint": "Qoder 集成；需要受支持的 Node.js 版本并执行 `qoder login`。" },
     "opencode-mem@2.24.3": { "label": "OpenCode Memory", "hint": "持久化记忆捕获；空闲会话后可能产生 LLM 调用成本。" }
   },

@@ -236,7 +236,6 @@ echo on > <project>/.opencode/.env-guard
 
 | 插件名称 | 默认状态 | 说明与前置要求 |
 |---|---|---|
-| `@dietrichgebert/ponytail` | 启用 (`true`) | **偷懒编码协议**：在完成需求的同时，主动向开发者指出更轻量、更优雅的替代实现。 |
 | `opencode-qoder-bridge` | 可选 (`false`) | **Qoder 官方桥接**：通过官方 `@qoder-ai/qoder-agent-sdk` 自动注入 `qoder` 服务商与全部模型（需 `qoder login`）。 |
 | `opencode-mem@2.24.3` | 可选 (`false`) | **持久化向量记忆库**：基于本地向量库记录项目历史背景（空闲时会发起额外的轻量 LLM 提炼调用）。 |
 

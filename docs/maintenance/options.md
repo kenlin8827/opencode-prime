@@ -78,15 +78,13 @@ Learn about installer commands, configuration options, token savings, and preser
        // JetBrains IDE bridge (enable MCP Server in IDE: Settings → Tools → MCP Server)
        "idea": true
      },
-     // External npm plugin switches (true: enabled; false: disabled)
-     "plugin": {
-       // Lazy coding protocol: build what was asked, name the lazier alternative
-       "@dietrichgebert/ponytail": true,
-       // Injects Qoder provider/models via official SDK (needs qoder login)
-       "opencode-qoder-bridge": false,
-       // Persistent project memory (vector store; extra LLM capture call per idle session)
-       "opencode-mem@2.24.3": false
-     }
+      // External npm plugin switches (true: enabled; false: disabled)
+      "plugin": {
+        // Injects Qoder provider/models via official SDK (needs qoder login)
+        "opencode-qoder-bridge": false,
+        // Persistent project memory (vector store; extra LLM capture call per idle session)
+        "opencode-mem@2.24.3": false
+      }
    }
    ```
 3. **Run the installer**:

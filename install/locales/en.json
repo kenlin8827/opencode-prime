@@ -78,7 +78,6 @@
     "idea": { "label": "JetBrains IDEA", "hint": "JetBrains IDE MCP integration; enable the server in the IDE first." }
   },
   "pluginLabels": {
-    "@dietrichgebert/ponytail": { "label": "Ponytail", "hint": "Bundled OpenCode interface enhancements." },
     "opencode-qoder-bridge": { "label": "Qoder Bridge", "hint": "Qoder integration; requires a supported Node.js version and `qoder login`." },
     "opencode-mem@2.24.3": { "label": "OpenCode Memory", "hint": "Captures persistent memory and may incur an LLM cost after idle sessions." }
   },

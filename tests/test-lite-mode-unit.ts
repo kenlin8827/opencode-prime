@@ -3,8 +3,7 @@
  *
  * Covers:
  *   - stripLiteOverhead: instruction-block removal, sentinel KEPT as the
- *     cross-plugin lite signal, ponytail block trimming, non-instruction
- *     content preserved, idempotency
+ *     cross-plugin lite signal, non-instruction content preserved, idempotency
  *   - LiteModePlugin hook: strips only when the sentinel is present,
  *     leaves other agents' system prompts untouched
  *   - shared/plugin-scope: policy-driven agent identification (identifiers)
@@ -104,45 +103,6 @@ assert(gluedOut.includes("<available_skills>"), "tag terminator rescues glued sk
 const prose = `head line\nInstructions from: the docs\ntail line`
 const proseOut = stripLiteOverhead(prose)
 assert(proseOut === prose.replace(/\s+$/, "").trim(), "non-path marker kept verbatim")
-
-// ─── Ponytail trimming ─────────────────────────────────────────────────────
-
-section("stripLiteOverhead — ponytail block")
-
-const PONYTAIL_BLOCK = `PONYTAIL MODE ACTIVE — level: full
-
-# Ponytail
-
-You are a lazy senior developer. Lazy means efficient, not careless.
-
-## The ladder
-
-1. Does this need to exist at all?`
-
-{
-  // Status line first, heading second — the shape ponytail v4 actually emits.
-  const input = `${LITE_PROMPT}\n${ENV_BLOCK}\n\n${PONYTAIL_BLOCK}\n\nThe shortest path to done is the right path.`
-  const out = stripLiteOverhead(input)
-  assert(!out.includes("PONYTAIL MODE ACTIVE"), "status line removed (cut starts at first marker)")
-  assert(!out.includes("# Ponytail"), "ruleset heading removed")
-  assert(!out.includes("lazy senior developer"), "ruleset body removed")
-  assert(!out.includes("shortest path to done"), "tail after the block removed too")
-  assert(out.includes("You are lite") && out.includes(SENTINEL), "prompt + sentinel survive the cut")
-}
-
-{
-  // Heading-only variant (older releases skipped the status line).
-  const input = `${LITE_PROMPT}\n${ENV_BLOCK}\n\n# Ponytail\n\nruleset body here`
-  const out = stripLiteOverhead(input)
-  assert(!out.includes("ruleset body here"), "heading-only variant trimmed")
-  assert(out.includes("Working directory"), "env block survives heading-only trim")
-}
-
-{
-  // No ponytail at all → untouched apart from instruction stripping.
-  const input = `${LITE_PROMPT}\n${ENV_BLOCK}`
-  assert(stripLiteOverhead(input) === input, "no ponytail → no collateral cut")
-}
 
 // ─── isInstructionPath ────────────────────────────────────────────────────
 

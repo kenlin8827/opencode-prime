@@ -5,8 +5,7 @@
  * identifiers.lite). When detectAgent() recognizes the joined system prompt
  * as lite, this plugin strips every `Instructions from: <path>` block (L0
  * instruction files, project AGENTS.md, ~/.claude/CLAUDE.md, remote
- * instructions), plus the third-party ponytail protocol block (see PONYTAIL
- * note below), from the system text.
+ * instructions) from the system text.
  *
  * The identifier itself is KEPT: it is the cross-plugin lite signal — every
  * protocol injector's scoped() gate still needs to see it in the system
@@ -51,22 +50,7 @@ export function stripLiteOverhead(system: string): string {
     if (inBlock && SYSTEM_TAG.test(line)) inBlock = false
     if (!inBlock) kept.push(line)
   }
-  let out = kept.join("\n")
-  // PONYTAIL note: the third-party @dietrichgebert/ponytail npm plugin cannot
-  // see the sentinel contract, so its ruleset is cut here instead. Cut from
-  // the FIRST marker occurrence (the block opens with the status line, then
-  // the heading) to end of text — valid because ponytail appends its block
-  // last within its element; anything appended after it (only possible from
-  // plugins loaded before the local ones that also honor the sentinel) would
-  // be lost, which is the accepted trade-off.
-  const candidates = [
-    out.indexOf("\n\nPONYTAIL MODE ACTIVE"),
-    out.indexOf("\n\n# Ponytail"),
-  ].filter((i) => i >= 0)
-  if (candidates.length > 0) out = out.substring(0, Math.min(...candidates))
-  return out
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim()
 }
 
 export const LiteModePlugin: Plugin = async () => ({

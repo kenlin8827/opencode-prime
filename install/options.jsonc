@@ -50,7 +50,6 @@
   },
   // Controls membership in opencode.jsonc's plugin array.
   "plugin": {
-    "@dietrichgebert/ponytail": true,
     // Requires supported Node and `qoder login`.
     "opencode-qoder-bridge": false,
     // Persistent-memory capture has an LLM cost per idle session.
