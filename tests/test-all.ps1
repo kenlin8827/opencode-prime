@@ -3,7 +3,7 @@
 #
 # Usage:
 #   pwsh -ExecutionPolicy Bypass -File tests/test-all.ps1                       # all tests
-#   pwsh -ExecutionPolicy Bypass -File tests/test-all.ps1 -IncludePrompts       # include ponytail behavioral
+#   pwsh -ExecutionPolicy Bypass -File tests/test-all.ps1 -IncludePrompts       # include prompt behavioral (LLM API required)
 #   pwsh -ExecutionPolicy Bypass -File tests/test-all.ps1 -StructuralOnly       # no API calls; CI-safe, exits non-zero on failure
 
 param(
@@ -46,8 +46,8 @@ Check "root remote PowerShell bootstrap exists" (Test-Path "$PSScriptRoot\..\ins
 Check "root remote Bash bootstrap exists" (Test-Path "$PSScriptRoot\..\install.sh")
 Check "instructions contains output-protocol.md" `
     ($config.instructions -contains "~/.config/opencode/instructions/output-protocol.md")
-Check "plugin includes @dietrichgebert/ponytail" `
-    ($config.plugin -contains "@dietrichgebert/ponytail")
+Check "plugin array is empty by default (no default npm plugins shipped)" `
+    (@($config.plugin).Count -eq 0)
 # decision-advisor.md was removed in the split-into-plugins refactor — protocol
 # now lives embedded in plugins/auto-advisor/auto-advisor-instructions.ts.
 # Disclosure-layer rework: L0 (instructions array) keeps only the universal iron
@@ -159,20 +159,6 @@ Check "scout overrides the built-in with compact read-only reconnaissance" `
 Check "scout keeps graph tools and review routing out of its surface" `
     ($scout.permission.'codegraph_*'.'*' -eq 'deny' -and $scout.permission.'gitnexus_*'.'*' -eq 'deny' -and (Get-Content "$PSScriptRoot\\..\\prompts\\scout.md" -Raw) -match 'Route: @build' -and (Get-Content "$PSScriptRoot\\..\\prompts\\scout.md" -Raw) -match 'Never edit or review code')
 
-# Ponytail config (official plugin) — environment-dependent: SKIP when the
-# config file doesn't exist (fresh machine / CI), only assert when present.
-if ($env:APPDATA) {
-    $ponytailConfigPath = Join-Path $env:APPDATA "ponytail\config.json"
-    if (Test-Path $ponytailConfigPath) {
-        $ponytailConfig = Get-Content $ponytailConfigPath -Raw | ConvertFrom-Json
-        Check "ponytail config: defaultMode is lite" ($ponytailConfig.defaultMode -eq "lite")
-    } else {
-        Write-Host "  [SKIP] ponytail config check (config.json not present on this machine)" -ForegroundColor DarkGray
-    }
-} else {
-    Write-Host "  [SKIP] ponytail config check (no APPDATA — non-Windows host)" -ForegroundColor DarkGray
-}
-
 # Agent ecosystem library mentions
 $trustedAgents = @(
     @{ file = "java-dev.md";   libs = "Spring|HikariCP|Flyway" }
@@ -194,7 +180,7 @@ Check "node-dev.md: security rules intact" ($nodeContent -match "Validate all in
 
 # Non-coding agent isolation
 $researcherContent = Get-Content "$PSScriptRoot\..\prompts\researcher.md" -Raw
-Check "researcher.md: no ponytail rules (non-coding)" ($researcherContent -notmatch "ponytail|lazy coding")
+Check "researcher.md: no coding self-review protocol leakage (non-coding)" ($researcherContent -notmatch "YAGNI-aligned simpler|Before finalizing")
 
 # Coding agent contract (direct developer: codes itself, no proactive
 # delegation, never delegated to; vision is a three-tier cascade)
@@ -232,13 +218,13 @@ Check "lite and code map explicit review requests to the review agents" `
     ($litePrompt -match 'ordinary diff → `@code-review-fast`' -and $litePrompt -match 'sensitive or final → `@code-review`' -and (Get-Content "$PSScriptRoot\\..\\prompts\\code.md" -Raw) -match 'Explicit review/audit request')
 Check "plugin-scope: default policy denies lite, utility and all subagent steps" (($scope.plugins.'*'.deny -contains "lite") -and ($scope.plugins.'*'.deny -contains "utility") -and ($scope.plugins.'*'.deny -contains "subagent:*"))
 $injectorFiles = @(
-  "plugins\project-profiler\project-profiler.ts", "plugins\md-to-pdf\system-inject.ts",
+  "plugins\project-profiler\project-profiler.ts",
   "plugins\project-manager\project-manager-system-inject.ts", "plugins\adr-guard\adr-guard-system-inject.ts",
   "plugins\auto-advisor\auto-advisor-system-inject.ts", "plugins\deepseek-anchor\index.ts",
-  "plugins\md-to-docx\system-inject.ts", "plugins\e2e-guard\e2e-guard-system-inject.ts"
+  "plugins\e2e-guard\e2e-guard-system-inject.ts"
 )
 $unregisteredInjectors = @($injectorFiles | Where-Object { (Get-Content "$PSScriptRoot\..\$_" -Raw) -notmatch 'await scoped\(input, output\.system, "' })
-Check "plugin-scope: all 8 protocol injectors gate through scoped()" ($unregisteredInjectors.Count -eq 0)
+Check "plugin-scope: all 6 protocol injectors gate through scoped()" ($unregisteredInjectors.Count -eq 0)
 $pluginScope = Get-Content "$PSScriptRoot\..\plugins\shared\plugin-scope.ts" -Raw
 Check "plugin-scope.ts: reads the policy file and fails open" (($pluginScope -match "plugin-scope\.json") -and ($pluginScope -match "catch"))
 Check "lite-mode.ts: exports pure strip function" ($litePlugin -match "export function stripLiteOverhead")
@@ -353,14 +339,12 @@ $allFiles = @(
     "plugins/md-to-pdf/command.ts",
     "plugins/md-to-pdf/style.ts",
     "plugins/md-to-pdf/style.css",
-    "plugins/md-to-pdf/system-inject.ts",
     "install/src/shared/shell-command.ts",
     "plugins/shared/mermaid-renderer.ts",
     "plugins/md-to-docx.ts",
     "plugins/md-to-docx/index.ts",
     "plugins/md-to-docx/engine.ts",
     "plugins/md-to-docx/command.ts",
-    "plugins/md-to-docx/system-inject.ts",
     "plugins/md-to-docx/postprocess.ts",
     "plugins/md-to-docx/style.css",
     "plugins/md-to-docx/style-parser.ts",
@@ -394,7 +378,7 @@ $allFiles = @(
     # Config
     "tsconfig.json", "package.json",
     "tests/test-provider-core-unit.ts", "tests/test-profile-core-unit.ts",
-    "tests/test-ocp-wizard-cli-unit.ts", "tests/test-ocp-ui-router-unit.ts", "tests/test-ocp-ui-render.tsx",
+    "tests/test-ocp-wizard-cli-unit.ts", "tests/test-ocp-ui-router-unit.ts", "tests/test-ocp-ui-render.tsx", "tests/test-ocp-busy-alert-render.tsx",
     "tests/test-sidebar-tgrep-badge.ts"
 )
 foreach ($f in $allFiles) {
@@ -995,6 +979,8 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 # resolve to the SAME package copy (plain --jsx-import-source picks the
 # root copy and the renderer context mismatches).
 & bun --preload "$PSScriptRoot\..\install\node_modules\@opentui\solid\scripts\preload.js" "$PSScriptRoot\test-ocp-ui-render.tsx"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun --preload "$PSScriptRoot\..\install\node_modules\@opentui\solid\scripts\preload.js" "$PSScriptRoot\test-ocp-busy-alert-render.tsx"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-provider-wizard-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
