@@ -3,7 +3,7 @@ import { existsSync, realpathSync } from "node:fs"
 import { isAbsolute, relative, resolve, sep } from "node:path"
 import type { TgrepReadiness } from "./tgrep-service"
 
-export interface TgrepSearchInput { pattern: string; path?: string; glob?: string[]; flags?: string[]; freshness?: "indexed" | "current" }
+export interface TgrepSearchInput { pattern: string; path?: string; glob?: string[]; flags?: string[]; freshness: "indexed" | "current" }
 export type TgrepSearchStatus = "matches" | "no-matches" | "error"
 export interface TgrepSearchResult { backend: "tgrep" | "fallback"; code: number; status: TgrepSearchStatus; stdout: string; stderr: string }
 const ALLOWED_FLAGS = new Set(["-i", "--ignore-case", "-F", "--fixed-strings"])
@@ -25,14 +25,16 @@ function toStringArray(value: unknown): string[] {
 }
 
 export function resolveSearchPath(root: string, path = "."): string {
-  const base = realpathSync(root)
-  const unresolved = resolve(base, path)
-  const target = existsSync(unresolved) ? realpathSync(unresolved) : unresolved
-  const rel = relative(base, target)
-  // isAbsolute also rejects Windows UNC (\\server\share) and \\?\ targets
-  // that a drive-letter regex alone would let through.
-  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error("search path escapes workspace root")
-  return target
+  // Relative paths always resolve against `process.cwd()` — matches
+  // shell/tgrep/rg convention (`.` means "where I am", not "where the
+  // project root is"). Absolute paths pass through untouched. `root`
+  // (OpenCode's project directory) is kept in the signature for
+  // plugin-contract compatibility but intentionally unused here, so
+  // an agent cd'd into a subdir naturally searches the subdir without
+  // having to thread the project root through every call.
+  void root
+  const resolved = isAbsolute(path) ? path : resolve(process.cwd(), path)
+  return existsSync(resolved) ? realpathSync(resolved) : resolved
 }
 
 export function buildTgrepSearchArgs(root: string, input: TgrepSearchInput): string[] {
@@ -76,7 +78,7 @@ function fallbackRg(root: string, input: TgrepSearchInput): TgrepSearchResult {
 }
 
 export function searchTgrep(root: string, input: TgrepSearchInput, readiness: TgrepReadiness): TgrepSearchResult {
-  const indexed = (input.freshness ?? "indexed") === "indexed"
+  const indexed = input.freshness === "indexed"
   if (indexed && readiness !== "server") {
     return fallbackRg(root, input)
   }

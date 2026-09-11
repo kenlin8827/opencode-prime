@@ -115,8 +115,8 @@ if (process.platform === "win32") {
   assertEq(projectKey("C:\\OpenHub\\Foo"), projectKey("c:\\openhub\\foo"), "Windows case-insensitive project key")
 }
 
-assertEq(getState(), "off", "default state is OFF")
-assert(!isEnabled(), "isEnabled false by default")
+assertEq(getState(), "on", "default state is ON (opt-out switch)")
+assert(isEnabled(), "isEnabled true by default")
 
 writeFileSync(join(tmp, "opencode.jsonc"), `{
   // comment

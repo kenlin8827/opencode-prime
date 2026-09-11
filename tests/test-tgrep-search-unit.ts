@@ -1,11 +1,11 @@
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, join, resolve } from "node:path"
 import { parseTgrepOptions, stripJsonc, tgrepIndexArgs, tgrepOptionsFrom } from "../plugins/tgrep/tgrep-config"
 import { tgrepPolicyFingerprint } from "../plugins/tgrep/tgrep-state"
-import { acquireLeaseLock, parseTgrepStatusOutput, resolveTgrepCapability } from "../plugins/tgrep/tgrep-service"
+import { acquireLeaseLock, hasTgrepCli, isCliMissing, parseTgrepStatusOutput, probeTgrepCapability, resolveTgrepCapability } from "../plugins/tgrep/tgrep-service"
 import { buildTgrepSearchArgs, resolveSearchPath, searchTgrep } from "../plugins/tgrep/tgrep-search"
 import { loadTgrepOptions } from "../plugins/tgrep/tgrep-config"
 import { TgrepPlugin } from "../plugins/tgrep"
@@ -43,16 +43,39 @@ const nullFlagArgs = buildTgrepSearchArgs(root, { pattern: "x", flags: null as u
 assert(!nullFlagArgs.some((arg) => arg.startsWith("-i")) || nullFlagArgs.includes("-i"), "null flags does not throw (treated as no flags)")
 const undefinedArgs = buildTgrepSearchArgs(root, { pattern: "x" })
 assert(!undefinedArgs.includes("-g") && undefinedArgs[undefinedArgs.length - 1] !== "--", "undefined flags/glob yields clean argv")
-assert(throws(() => resolveSearchPath(root, "../outside")), "rejects lexical path escape")
+// Full tgrep/rg/shell compatibility — relative paths anchor to
+// process.cwd() (matches shell/tgrep/rg convention; `.` means "where
+// I am", not "where the project root is"). Absolute paths pass through.
+const absNonexistent = join(tmpdir(), "tgrep-abs-nonexistent-" + Date.now())
+assert(resolveSearchPath(root, absNonexistent) === absNonexistent, "absolute non-existent path returned unchanged")
+const absExisting = join(tmpdir(), "tgrep-abs-existing-" + Date.now() + ".txt")
+writeFileSync(absExisting, "x")
+try {
+  assert(resolveSearchPath(root, absExisting) === realpathSync(absExisting), "absolute existing path is realpathSync'd")
+} finally {
+  rmSync(absExisting, { force: true })
+}
+const parentTarget = realpathSync(resolve(process.cwd(), ".."))
+assert(resolveSearchPath(root, "..") === parentTarget, "relative `..` resolves to realpath of cwd-parent (matches shell convention)")
 if (process.platform !== "win32") {
-  const outside = mkdtempSync(join(tmpdir(), "tgrep-outside-")); symlinkSync(outside, join(root, "escape"))
-  assert(throws(() => resolveSearchPath(root, "escape")), "rejects symlink path escape")
-  rmSync(outside, { recursive: true, force: true })
+  // Symlink in cwd (relative paths now resolve against cwd, not root).
+  const outside = mkdtempSync(join(tmpdir(), "tgrep-outside-"))
+  const escapePath = join(process.cwd(), `.tgrep-test-escape-${Date.now()}`)
+  symlinkSync(outside, escapePath)
+  try {
+    assert(resolveSearchPath(root, basename(escapePath)) === realpathSync(outside), "symlinks followed even when target escapes cwd (matches rg)")
+  } finally {
+    unlinkSync(escapePath)
+    rmSync(outside, { recursive: true, force: true })
+  }
 }
 if (process.platform === "win32") {
-  assert(throws(() => resolveSearchPath(root, "\\\\localhost\\c$")), "rejects UNC path escape")
+  assert(!throws(() => resolveSearchPath(root, "\\\\localhost\\c$")), "absolute UNC paths accepted (matches tgrep/rg)")
 }
-const unavailable = searchTgrep(root, { pattern: "definitely-no-result", freshness: "indexed" }, "unavailable")
+// Use `path: root` (absolute) instead of relying on cwd-anchored `.`
+// default — the literal pattern appears in this very test file, so
+// searching cwd would yield a false positive.
+const unavailable = searchTgrep(root, { pattern: "definitely-no-result", path: root, freshness: "indexed" }, "unavailable")
 assert(unavailable.backend === "fallback", "unready indexed search transparently falls back to rg")
 assert(unavailable.status === "no-matches", "rg exit code 1 maps to no matches")
 
@@ -102,9 +125,11 @@ rmSync(parserRoot, { recursive: true, force: true })
 // ─── TTL cache: resolveTgrepCapability must not probe the CLI on every call ───
 // The sidebar ticks every 2s and the profiler runs per chat turn — an
 // uncached resolver spawns `tgrep --version` + `tgrep status` on each call.
-// Patch the shared spawnSync export to count probes (works because the
-// plugin reads it off the CJS module object at call time); a second
-// identical call must add zero spawns.
+// Patch attempts here are INERT: Bun binds the plugin's named `import
+// { spawnSync }` to the builtin at load, so patching the createRequire CJS
+// copy adds no calls (probeCalls stays 0 regardless). Kept as a stability
+// smoke check (same key → same state) only; a real spawn-count test needs a
+// production seam or bun:test mock.module.
 {
   // ESM namespace is readonly — patch via the mutable CJS exports object
   // (the plugin's named import resolves off it at call time).
@@ -127,6 +152,26 @@ rmSync(parserRoot, { recursive: true, force: true })
   } finally {
     cp.spawnSync = orig
   }
+}
+
+// ─── Flaky-probe regression: a --version timeout must not report "no-cli" ───
+// On Win32 (AV scan / CPU contention) the 5s spawnSync timeout can fire even
+// though the binary is installed; that pinned the sidebar badge READY → NO
+// CLI for a whole TTL window. Only ENOENT may mean "missing".
+// NB: spawnSync cannot be monkey-patched here — Bun ESM binds the plugin's
+// `import { spawnSync }` to the builtin directly, so a createRequire patch
+// never fires. Test the pure classifier plus real-process wiring instead.
+{
+  const enoent = Object.assign(new Error("spawnSync tgrep ENOENT"), { code: "ENOENT" })
+  const timedout = Object.assign(new Error("spawnSync timed out"), { code: "ETIMEDOUT" })
+  assert(isCliMissing({ error: enoent, status: null }) === true, "ENOENT alone classifies the CLI as missing")
+  assert(isCliMissing({ error: timedout, status: null }) === false, "a --version timeout keeps the CLI classified as present")
+  assert(isCliMissing({ status: 1 }) === false, "non-zero exit means unhealthy, not absent")
+  assert(isCliMissing({ status: 0, stdout: "tgrep 1.0.5" }) === false, "success means present")
+  const cliHere = spawnSync("tgrep", ["--version"], { encoding: "utf8", timeout: 5000, windowsHide: true }).status === 0
+  assert(hasTgrepCli(root) === cliHere, "hasTgrepCli tracks real PATH presence (real spawn, live machine)")
+  assert(hasTgrepCli(join(root, "no-such-dir")) === false, "dead cwd (ENOENT from spawn) reports missing")
+  assert(probeTgrepCapability(root, parseTgrepOptions(root, { enabled: true })) !== "no-cli" || !cliHere, "present CLI never resolves to no-cli")
 }
 
 rmSync(root, { recursive: true, force: true })

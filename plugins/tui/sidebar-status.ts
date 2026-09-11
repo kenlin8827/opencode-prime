@@ -2,14 +2,14 @@
 /**
  * Sidebar Status — TUI slot plugin that renders two vertical status groups
  * inside the OpenCode right sidebar:
- *   "OCP"         — active state of guard/mode plugins (adr-guard, e2e-guard,
- *                   project-memory, auto-advisor) + the active profile; `deepseek-anchor`
- *                   is only shown when the current model is DeepSeek V4 Pro
- *                   (the plugin is a no-op for other models, so showing it
- *                   unconditionally would be noise)
- *   "OCP project" — current-directory OCP project state (/project init
- *                   scaffolding, commit discipline) and code-intelligence
- *                   capabilities (codegraph/gitnexus indexes, serena)
+ *   "OCP"         — agent behavior/policy switches (independent of project):
+ *                   adr-guard, e2e-guard, auto-advisor, deepseek-anchor,
+ *                   plus the active profile.
+ *   "OCP project" — current-directory OCP project state and capabilities:
+ *                   scaffold (init state), memory (curated lessons for this
+ *                   project), git-commits, code-intelligence backends
+ *                   (codegraph/gitnexus indexes, serena LSP), and the
+ *                   project formatter (dprint).
  *
  * This replaces the per-plugin session.created announce (toast/inject) with
  * a single always-visible "OCP" section. When a user toggles a guard via
@@ -26,13 +26,15 @@
  * State sources (all read-only, same logic as each plugin's config module):
  *   - adrGuard        → project opencode.jsonc field (on | off, default off)
  *   - e2eGuard        → project opencode.jsonc field (on | off, default off)
- *   - projectMemory   → project opencode.jsonc field (on | off, default off)
+ *   - projectMemory   → project opencode.jsonc field (on | off, default on —
+ *                       advisory; nothing is injected unless a curated
+ *                       memory.md actually exists)
  *   - autoAdvisorMode → project opencode.jsonc field (off | lite | full, default off)
  *   - deepSeekAnchor  → ~/.config/opencode/.deepseek-anchor-enabled (on | off, default on)
  *   - activeProfile   → ~/.config/opencode/.active-profile (name | none)
  *   - projectScaffold → /project init targets exist? (.opencode/opencode.jsonc +
  *                        docs/git-commits.md + AGENTS.md → init | partial | none)
- *   - commitDiscipline→ docs/git-commits.md exists (file-as-switch, same rule
+ *   - gitCommits      → docs/git-commits.md exists (file-as-switch, same rule
  *                        as project-manager hasConventionFile())
  *   - capabilities     → codegraph/gitnexus: index dir exists AND MCP enabled
  *                        (global config); serena: MCP enabled. Same rules as
@@ -53,9 +55,11 @@
  *   - "OCP" group: every guard row renders (ON/OFF) — at-a-glance config
  *     snapshot. `profile` row only appears when one is active. The
  *     `deepseek-anchor` row is gated on the current model being V4 Pro.
- *   - "OCP project" group: `project` row always (INIT/PARTIAL/NOT INIT).
- *     The rest (commit-discipline, capabilities, formatter) are gated
- *     on `project === "init"`. OFF / NONE / NO PKG rows are filtered out.
+ *   - "OCP project" group: `scaffold` and `memory` rows always render
+ *     (memory is lifecycle-independent — /memory capture works pre-init
+ *     and the row nudges users toward capture with `ON · empty`).
+ *     The rest (git-commits, capabilities, formatter) are gated
+ *     on `scaffold === "INIT"`. OFF / NONE / NO PKG rows are filtered out.
  *     NOT INIT and NO INDEX are kept as actionable signals.
  *   - Header: `─ OCP v<version> ─`; grows a `↑ vX.Y.Z` warning-colour
  *     suffix when an async GitHub probe finds a newer release.
@@ -77,6 +81,7 @@ import { join } from "node:path"
 import { homedir } from "node:os"
 import { loadTgrepOptions } from "../tgrep/tgrep-config"
 import { resolveTgrepCapability, type TgrepCapabilityState } from "../tgrep/tgrep-service"
+import { countEntries, readMemory } from "../project-memory/project-memory-config"
 
 // ─── Theme shape ───────────────────────────────────────────────────
 
@@ -214,7 +219,11 @@ function resolveE2eGuard(projectDir: string): "on" | "off" {
 }
 
 function resolveProjectMemory(projectDir: string): "on" | "off" {
-  return normalizeOnOff(readProjectConfig(projectDir)?.projectMemory) ?? "off"
+  // Default flipped to "on" — memory is advisory (AGENTS.md wins on conflict),
+  // empty memory.md is a no-op anyway, so the friction of an extra opt-in
+  // switch costs more than it saves. Users who want it off can set
+  // "projectMemory": "off" explicitly. See sidebar "memory" row.
+  return normalizeOnOff(readProjectConfig(projectDir)?.projectMemory) ?? "on"
 }
 
 function resolveAutoAdvisor(projectDir: string): "off" | "lite" | "full" {
@@ -275,7 +284,7 @@ function resolveProjectScaffold(projectDir: string): "init" | "partial" | "none"
  * active (system-prompt injection + commit gate) exactly while
  * docs/git-commits.md exists.
  */
-function resolveCommitDiscipline(projectDir: string): "on" | "off" {
+function resolveGitCommits(projectDir: string): "on" | "off" {
   return existsSync(join(projectDir, "docs", "git-commits.md")) ? "on" : "off"
 }
 
@@ -578,8 +587,16 @@ export async function fetchLatestVersion(lifecycleSignal?: AbortSignal): Promise
 
 // ─── Badge builders ─────────────────────────────────────────────────
 // Two semantic groups, rendered as two sidebar sections:
-//   "OCP"         — agent behavior/policy switches (profile + guards)
-//   "OCP project" — current-directory OCP project state + code intelligence
+//   "OCP"         — agent behavior/policy switches (profile + guards):
+//                   profile, adr-guard, e2e-guard, auto-advisor,
+//                   deepseek-anchor. These change how the agent behaves
+//                   regardless of which project is open.
+//   "OCP project" — current-directory OCP project state + capabilities:
+//                   scaffold (init state), memory (curated lessons for this
+//                   project), git-commits, codegraph/gitnexus/serena/
+//                   tgrep indexes, dprint formatter. All keyed off the
+//                   current project (config lives in project opencode.jsonc;
+//                   memory data lives under OCP config root, per projectKey).
 
 /** Guard/mode badges — group "OCP" (exported for tests/smoke checks).
  * `currentModelId` gates `deepseek-anchor`: only rendered when the active
@@ -596,14 +613,13 @@ export function buildGuardBadges(projectDir: string, currentModelId?: string): B
 
   // Always show all plugin states — ON or OFF — so the user
   // can see the full configuration at a glance.
+  // Bare ON → success (green). OFF → info. State with a qualifier (e.g.
+  // memory `ON · N`, `ON · empty`) → info — the qualifier IS the signal.
   const adr = resolveAdrGuard(projectDir)
-  badges.push({ label: "adr-guard", state: adr.toUpperCase(), variant: adr === "on" ? "warning" : "info" })
+  badges.push({ label: "adr-guard", state: adr.toUpperCase(), variant: adr === "on" ? "success" : "info" })
 
   const e2e = resolveE2eGuard(projectDir)
-  badges.push({ label: "e2e-guard", state: e2e.toUpperCase(), variant: e2e === "on" ? "warning" : "info" })
-
-  const memory = resolveProjectMemory(projectDir)
-  badges.push({ label: "project-memory", state: memory.toUpperCase(), variant: memory === "on" ? "warning" : "info" })
+  badges.push({ label: "e2e-guard", state: e2e.toUpperCase(), variant: e2e === "on" ? "success" : "info" })
 
   const advisor = resolveAutoAdvisor(projectDir)
   badges.push({ label: "auto-advisor", state: advisor.toUpperCase(), variant: advisor === "full" ? "warning" : advisor === "lite" ? "info" : "info" })
@@ -612,7 +628,7 @@ export function buildGuardBadges(projectDir: string, currentModelId?: string): B
   // not V4 Pro, the row is omitted (the plugin itself would be a no-op).
   if (currentModelId && DEEPSEEK_V4_PRO_PATTERN.test(currentModelId)) {
     const ds = resolveDeepSeekAnchor()
-    badges.push({ label: "deepseek-anchor", state: ds.toUpperCase(), variant: ds === "on" ? "info" : "warning" })
+    badges.push({ label: "deepseek-anchor", state: ds.toUpperCase(), variant: ds === "on" ? "success" : "warning" })
   }
 
   return badges
@@ -623,13 +639,14 @@ export function buildGuardBadges(projectDir: string, currentModelId?: string): B
  * touching the real user config.
  *
  * Gating strategy:
- *   - `project` row always renders (the only row shown when NOT INIT /
- *     PARTIAL — those badges mean nothing on a directory that isn't an
- *     OCP project yet).
- *   - `commits` + code-intelligence capabilities (codegraph/gitnexus/
- *     serena) only render when the project is fully initialized
- *     (all three scaffold targets present). PARTIAL is treated as
- *     "init in progress" — finish it via /project sync before the
+ *   - `scaffold` and `memory` rows always render. memory's data lives
+ *     under the OCP config root (per-projectKey), independent of project
+ *     lifecycle, so /memory capture works even pre-init. Surfacing the
+ *     memory row always also nudges pre-init users toward /memory capture.
+ *   - `git-commits` + code-intelligence capabilities (codegraph /
+ *     gitnexus / serena) + formatter only render when the project is fully
+ *     initialized (all three scaffold targets present). PARTIAL is treated
+ *     as "init in progress" — finish it via /project sync before the
  *     project-level details become meaningful.
  *   - OFF rows are still filtered at the end as a final tidy. */
 export function buildProjectBadges(
@@ -641,8 +658,10 @@ export function buildProjectBadges(
 
   // OCP project state — is this directory managed by /project init?
   // Always rendered so the group never appears empty.
+  // Label "scaffold" (not "project") — the state is INIT/PARTIAL/NOT INIT,
+  // i.e. the result of /project init's scaffolding pass.
   badges.push({
-    label: "project",
+    label: "scaffold",
     state: proj === "init" ? "INIT" : proj === "partial" ? "PARTIAL" : "NOT INIT",
     // Variant tier mirrors the MCP right-sidebar convention:
     //   NOT INIT → error   (red)    — directory isn't an OCP project at
@@ -657,16 +676,37 @@ export function buildProjectBadges(
     variant: proj === "init" ? "success" : proj === "partial" ? "warning" : "error",
   })
 
+  // Project memory — always rendered (independent of init state). 3-state:
+  //   ON + entry count → real injection activity
+  //   ON + empty       → switch is on but no curated memory.md yet;
+  //                      nudges the user to /memory capture
+  //   OFF              → explicit opt-out
+  // Sidebar reads memory.md directly — same file the system-inject hook
+  // reads, so the count matches what's actually injected (modulo the 16k
+  // char cap, which collapses to a pointer block, not a count change).
+  const memory = resolveProjectMemory(projectDir)
+  const memoryState =
+    memory === "on"
+      ? (() => {
+          const content = readMemory()
+          const n = content === null ? 0 : countEntries(content)
+          return n > 0 ? `ON · ${n}` : "ON · empty"
+        })()
+      : "OFF"
+  // Qualifier-bearing ON (`ON · N` / `ON · empty`) → info: the qualifier
+  // is the signal; bare ON is reserved for single-state switches (green).
+  badges.push({ label: "memory", state: memoryState, variant: "info" })
+
   // Project-level details only render once init has fully completed.
   if (proj === "init") {
-    // Commit discipline — system-prompt injection + mechanical commit
-    // gate are active exactly while docs/git-commits.md exists
-    // (file-as-switch; same rule as project-manager hasConventionFile()).
-    // Label chosen for clarity over the previous terse "commits" which
-    // was ambiguous. With init=true this is always ON, but we resolve it
-    // via the file check for consistency.
-    const commits = resolveCommitDiscipline(projectDir)
-    badges.push({ label: "commit-discipline", state: commits.toUpperCase(), variant: commits === "on" ? "warning" : "info" })
+    // git-commits — system-prompt injection + mechanical commit gate are
+    // active exactly while docs/git-commits.md exists (file-as-switch;
+    // same rule as project-manager hasConventionFile()). Row label mirrors
+    // the file path so users can map the badge to the convention file at
+    // a glance. With init=true this is always ON, but we resolve it via
+    // the file check for consistency.
+    const commits = resolveGitCommits(projectDir)
+    badges.push({ label: "git-commits", state: commits.toUpperCase(), variant: commits === "on" ? "success" : "info" })
 
     // Code-intelligence capabilities (same rules as project-profiler).
     const caps: Array<{ label: string; cap: CapabilityState }> = [
@@ -728,7 +768,8 @@ export function buildProjectBadges(
   //   - NO WATCHER  → tgrep index on disk but no live serve — start serve
   //   - STALE       → tgrep index built under different policy — rebuild
   //   - BUILDING    → tgrep index build in progress — wait
-  // `project` is never OFF/NONE/NO PKG so the group always renders ≥1 row.
+  // `scaffold` is never OFF/NONE/NO PKG, so the group always renders ≥1 row;
+  // `memory` drops its row only on an explicit "off".
   return badges.filter((b) => b.state !== "OFF" && b.state !== "NONE" && b.state !== "NO PKG")
 }
 
@@ -749,7 +790,7 @@ export function buildProjectBadges(
  *   │ ● deepseek-anchor  ON     │
  *   │ ─ OCP project ────────────│
  *   │ ● project  INIT           │
- *   │ ● commit-discipline  ON   │
+ *   │ ● git-commits  ON        │
  *   │ ● codegraph  READY        │
  *   │ ● dprint  READY/OTHER/NONE│
  *   └───────────────────────────┘

@@ -272,11 +272,10 @@ flash  (fastest/cheapest)  <=  standard  (general workhorse)  <=  pro  (stronges
 | `anthropic` | Anthropic (official Anthropic API) | claude-haiku-4-5 / claude-haiku-4-5 / claude-sonnet-5 / claude-opus-5 / claude-sonnet-5 |
 | `google` | Google (official Vertex AI / Gemini API) | gemini-flash-lite-latest / gemini-2.5-flash / gemini-3-pro-preview / gemini-2.5-pro / gemini-2.5-flash |
 | `openai` | OpenAI (official OpenAI API) | gpt-5.6-luna / gpt-5.6-terra / gpt-5.6-terra / gpt-5.6-terra / gpt-5.6-luna |
-| `alibaba/coding-plan` | Alibaba Coding Plan (official) | qwen3.7-plus / qwen3.7-plus / qwen3-coder-next / MiniMax-M2.5 / qwen3.7-plus |
-| `alibaba/coding-plan-cn` | Alibaba Coding Plan China (official) | qwen3.7-plus / qwen3.7-plus / qwen3-coder-next / MiniMax-M2.5 / qwen3.7-plus |
 | `alibaba/token-plan` | Alibaba Token Plan (official) | deepseek-v4-flash-0731 / deepseek-v4-flash-0731 / qwen3.8-max / qwen3.8-max / qwen3.7-plus |
 | `alibaba/token-plan-cn` | Alibaba Token Plan China (official) | deepseek-v4-flash-0731 / deepseek-v4-flash-0731 / qwen3.8-max / qwen3.8-max / qwen3.7-plus |
 | `alibaba/token-plan-cn-deepseek` | Alibaba Token Plan China, all-DeepSeek | deepseek-v4-flash-0731 / deepseek-v4-flash-0731 / deepseek-v4-pro-0813 / deepseek-v4-pro-0813 / qwen3.7-plus |
+| `alibaba/token-plan-cn-qwen` | Alibaba Token Plan China, all-Qwen | qwen3.8-flash / qwen3.8-flash / qwen3.8-flash / qwen3.8-max / qwen3.8-flash |
 | `minimax/coding-plan` | MiniMax Coding Plan minimax.io (official) | MiniMax-M2.7 / MiniMax-M2.7 / MiniMax-M3 / MiniMax-M3 / MiniMax-M3 |
 | `minimax/cn-coding-plan` | MiniMax Coding Plan minimaxi.com (official) | MiniMax-M2.7 / MiniMax-M3 / MiniMax-M3 / MiniMax-M3 / MiniMax-M3 |
 | `tencent/coding-plan` | Tencent Coding Plan (official) | hunyuan-turbos / hunyuan-turbos / tc-code-latest / minimax-m2.5 / kimi-k2.5 |

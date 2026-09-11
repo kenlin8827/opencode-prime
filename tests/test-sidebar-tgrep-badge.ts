@@ -16,15 +16,18 @@ function assert(ok: boolean, message: string): void {
 // one MCP's rendering. Tests are deterministic on this dimension.
 const noMcp = { mcp: { codegraph: { enabled: false }, gitnexus: { enabled: false }, serena: { enabled: false } } }
 
-// ─── 1. Not-init project: only the "project" row renders, NOT INIT + error ───
+// ─── 1. Not-init project: only the "scaffold" row renders, NOT INIT + error ───
+// Label "scaffold" mirrors resolveProjectScaffold() and the INIT/PARTIAL/
+// NOT INIT state machine; "project" was ambiguous (collides visually with
+// the "memory" row in the OCP group).
 const rootNotInit = mkdtempSync(join(tmpdir(), "sidebar-badge-notinit-"))
 const badgesNotInit = buildProjectBadges(rootNotInit, noMcp)
-const projectNotInit = badgesNotInit.find((b) => b.label === "project")
-assert(projectNotInit?.state === "NOT INIT", "not-init: project badge = NOT INIT")
-assert(projectNotInit?.variant === "error", "not-init: project badge variant = error (red, distinct from warning)")
+const projectNotInit = badgesNotInit.find((b) => b.label === "scaffold")
+assert(projectNotInit?.state === "NOT INIT", "not-init: scaffold badge = NOT INIT")
+assert(projectNotInit?.variant === "error", "not-init: scaffold badge variant = error (red, distinct from warning)")
 assert(
-  badgesNotInit.filter((b) => b.label !== "project").length === 0,
-  "not-init: no other badges rendered (gating hides codegraph/gitnexus/serena/tgrep/dprint before init)",
+  badgesNotInit.filter((b) => b.label !== "scaffold" && b.label !== "memory").length === 0,
+  "not-init: only scaffold + memory render (gating hides git-commits/codegraph/gitnexus/serena/tgrep/dprint before init; memory is lifecycle-independent and always renders when ON)",
 )
 rmSync(rootNotInit, { recursive: true, force: true })
 
@@ -33,12 +36,12 @@ const rootPartial = mkdtempSync(join(tmpdir(), "sidebar-badge-partial-"))
 mkdirSync(join(rootPartial, ".opencode"))
 writeFileSync(join(rootPartial, ".opencode", "opencode.jsonc"), "{}")
 const badgesPartial = buildProjectBadges(rootPartial, noMcp)
-const projectPartial = badgesPartial.find((b) => b.label === "project")
-assert(projectPartial?.state === "PARTIAL", "partial: project badge = PARTIAL")
-assert(projectPartial?.variant === "warning", "partial: project badge variant = warning (yellow, less severe than error)")
+const projectPartial = badgesPartial.find((b) => b.label === "scaffold")
+assert(projectPartial?.state === "PARTIAL", "partial: scaffold badge = PARTIAL")
+assert(projectPartial?.variant === "warning", "partial: scaffold badge variant = warning (yellow, less severe than error)")
 rmSync(rootPartial, { recursive: true, force: true })
 
-// ─── 3. Fully-init project: INIT + success; commit-discipline rendered; MCP rows hidden ───
+// ─── 3. Fully-init project: INIT + success; git-commits rendered; MCP rows hidden ───
 const rootInit = mkdtempSync(join(tmpdir(), "sidebar-badge-init-"))
 mkdirSync(join(rootInit, ".opencode"))
 writeFileSync(join(rootInit, ".opencode", "opencode.jsonc"), "{}")
@@ -46,10 +49,10 @@ mkdirSync(join(rootInit, "docs"))
 writeFileSync(join(rootInit, "docs", "git-commits.md"), "")
 writeFileSync(join(rootInit, "AGENTS.md"), "")
 const badgesInit = buildProjectBadges(rootInit, noMcp)
-const projectInit = badgesInit.find((b) => b.label === "project")
-assert(projectInit?.state === "INIT", "init: project badge = INIT")
-assert(projectInit?.variant === "success", "init: project badge variant = success (green)")
-assert(badgesInit.some((b) => b.label === "commit-discipline"), "init: commit-discipline badge rendered")
+const projectInit = badgesInit.find((b) => b.label === "scaffold")
+assert(projectInit?.state === "INIT", "init: scaffold badge = INIT")
+assert(projectInit?.variant === "success", "init: scaffold badge variant = success (green)")
+assert(badgesInit.some((b) => b.label === "git-commits"), "init: git-commits badge rendered")
 assert(badgesInit.find((b) => b.label === "codegraph") === undefined, "init: codegraph hidden when MCP disabled")
 assert(badgesInit.find((b) => b.label === "gitnexus") === undefined, "init: gitnexus hidden when MCP disabled")
 assert(badgesInit.find((b) => b.label === "serena") === undefined, "init: serena hidden when MCP disabled")

@@ -151,6 +151,7 @@ plugins/tgrep/tgrep-config.ts
 plugins/tgrep/tgrep-search.ts
 plugins/tgrep/tgrep-service.ts
 plugins/tgrep/tgrep-state.ts
+plugins/tgrep/tgrep-tool-description.md
 plugins/tui/_wizard-helpers.ts
 plugins/tui/i18n.ts
 plugins/tui/profile-wizard.ts
@@ -164,9 +165,8 @@ plugins/tui/wizard-schema/adr.json
 plugins/tui/wizard-schema/auto-advisor.json
 plugins/tui/wizard-schema/project-guards.json
 plugins/tui/wizard-schema/project-memory.json
-profiles/alibaba/coding-plan-cn.json
-profiles/alibaba/coding-plan.json
 profiles/alibaba/token-plan-cn-deepseek.json
+profiles/alibaba/token-plan-cn-qwen.json
 profiles/alibaba/token-plan-cn.json
 profiles/alibaba/token-plan.json
 profiles/anthropic.json

@@ -2032,7 +2032,7 @@ const tui: TuiPlugin = async (api) => {
     commands: [
       {
         name: "provider.wizard",
-        title: tr("provider.wizardTitle"),
+        title: tr("provider.cmdTitle"),
         desc: tr("provider.cmdDesc"),
         category: "Provider",
         namespace: "palette",

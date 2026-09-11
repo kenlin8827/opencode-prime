@@ -3,8 +3,9 @@
  *
  * State is PROJECT-LEVEL in the `projectMemory` field of the project's
  * opencode.jsonc (via `plugins/shared/plugin-switch.ts`):
- *   - absent or "off" → off (default — memory.md is never injected)
- *   - "on"            → memory.md is injected into the system prompt
+ *   - absent or "on"  → on (default — memory.md is injected when non-empty;
+ *                       opt out with an explicit "off", see sidebar "memory" row)
+ *   - "off"           → never injected (explicit opt-out)
  *
  * Files live OUTSIDE the project, under the ocp user-level config root
  * (dirname of `ocpConfigPath()` — ~/.config/opencode by default, honors
@@ -38,7 +39,7 @@ const memorySwitch = createPluginSwitch<MemoryState>({
     on: "on", enabled: "on", true: "on",
     off: "off", disabled: "off", false: "off",
   },
-  defaultState: "off",
+  defaultState: "on",
   onStates: ["on"],
 })
 

@@ -9,7 +9,7 @@ export const PROJECT_SWITCH_DEFAULTS = {
   adrDir: "docs/adr",
   envGuard: "on",
   e2eGuard: "on",
-  projectMemory: "off",
+  projectMemory: "on",
 } as const satisfies Required<ProjectSwitches>
 
 export const PROJECT_SWITCH_OPTIONS = {

@@ -161,7 +161,7 @@
 
 1. 定义结构化搜索输入：`pattern`、相对 root 的 `path`、受 allowlist 限制的 flags、`freshness: indexed | current`。
 2. 对 path 做 canonicalize，拒绝解析后逃出 workspace root 的路径；pattern 永远通过 argv 传递，使用 `--` 分隔，禁止 shell 拼接。
-3. 默认 `freshness=indexed`：仅在 tgrep ready 时使用 tgrep，否则路由到现有 grep/ripgrep 搜索能力。
+3. 默认 `freshness=indexed`：tgrep ready 时直接走 watcher；no-watcher（磁盘索引存在但 watcher 未起）时工具内部 `ensureServer` 自动拉起 watcher 后再查询（首次有一次性启动开销）；no-index（CLI 在但 `.tgrep/` 不存在）时路由到现有 grep/ripgrep 搜索能力。自动拉起的目的是打破"LLM 看不到 ready 就不会调 tgrep_search、watcher 永远不会被触发"的死锁。
 4. `freshness=current` 强制 `tgrep --no-index`，或在 tgrep 不可用时使用现有 grep/ripgrep；该模式用于编辑后确认、搜不到的否定结论和验证任务。
 5. 对会绕过索引的 flags（如 `--hidden`、`--no-ignore`、`-a`、`--binary`、`--encoding`、显式单文件）做显式标注：要么直接执行 current/full scan，要么走回退，不可声称获得索引加速。
 6. 正确处理 exit code：0=有结果，1=无结果，2=错误；保留 stderr，避免吞掉“索引不存在”“server 不可达”等诊断。

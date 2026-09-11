@@ -26,14 +26,25 @@ export function tgrepVersion(root: string): string | null {
   return result.status === 0 ? String(result.stdout).trim() || null : null
 }
 
-/** CLI-on-PATH probe — bool form of tgrepVersion(). Same spawn contract
- * (windowsHide on Win32, 5s timeout, utf8 stdout). Used by sidebar-status
- * to distinguish "binary missing" (→ NO CLI badge) from "binary present,
- * no index yet" (→ NO INDEX badge) without paying for a second probe —
- * tgrepVersion is already cheap. Exported so other callers can short-
- * circuit on missing CLI without parsing version strings. */
+/** CLI-on-PATH probe. Deliberately NOT the bool form of tgrepVersion():
+ * only ENOENT means "binary missing". A spawn that started and then timed
+ * out (AV scan, CPU contention on Win32) or exited non-zero PROVES the
+ * binary exists — folding those into "missing" made the sidebar badge
+ * intermittently drop READY → NO CLI mid-session while the CLI was fine.
+ * Exported so other callers can short-circuit on missing CLI without
+ * parsing version strings. */
 export function hasTgrepCli(root: string): boolean {
-  return tgrepVersion(root) !== null
+  const result = spawnSync("tgrep", ["--version"], { cwd: root, encoding: "utf8", timeout: 5000, windowsHide: true })
+  return !isCliMissing(result)
+}
+
+/** Pure classifier over a spawnSync result: the CLI is missing only when
+ * the PATH lookup itself failed (ENOENT — also covers a dead cwd, which
+ * deserves the same "can't run it here" signal). Timeout / non-zero exit
+ * / EACCES all mean the binary is present but unhealthy — later probes
+ * report that honestly instead of lying about installation. */
+export function isCliMissing(result: { error?: Error; status: number | null }): boolean {
+  return (result.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT"
 }
 
 /**
@@ -246,9 +257,25 @@ export function acquireLeaseLock(root: string, options: TgrepOptions): string | 
 
 function releaseLeaseLock(path: string): void { try { unlinkSync(path) } catch { /* only best-effort cleanup */ } }
 
+/** Drop the capability-cache entry for `root` so the next resolver call
+ * re-probes. Used after the lease flips a project from `no-watcher` to
+ * `ready`; without this, resolveTgrepCapability would keep returning the
+ * stale `no-watcher` snapshot for up to CAPABILITY_CACHE_TTL_MS. */
+function invalidateCapabilityCacheFor(root: string): void {
+  const prefix = `${root}\n`
+  for (const key of capabilityCache.keys()) {
+    if (key.startsWith(prefix)) capabilityCache.delete(key)
+  }
+}
+
 /** Start at most one OCP-owned watcher per root. Existing user watchers are
  * deliberately reused and never recorded as a lease that OCP could kill. */
 export async function ensureServer(root: string, options: TgrepOptions, timeoutMs = 15_000): Promise<TgrepReadiness> {
+  // Fast-fail when the CLI itself is missing: probeTgrepStatus would
+  // return "disk-index" if a stale `.tgrep/` from a previous install is
+  // still on disk, and we would otherwise spin a wasted spawn cycle per
+  // project-profiler transform (and per tool call) until TTL expiry.
+  if (!hasTgrepCli(root)) return "unavailable"
   const before = probeTgrepStatus(root, options)
   if (before !== "disk-index") return before
   // Never babysit an index built under a different policy: the watcher would
@@ -270,12 +297,31 @@ export async function ensureServer(root: string, options: TgrepOptions, timeoutM
     child.once("error", clear)
   }
   const deadline = Date.now() + timeoutMs
+  let finalReadiness: TgrepReadiness
   do {
-    const readiness = probeTgrepStatus(root, options)
-    if (readiness !== "building" && readiness !== "disk-index") return readiness
+    finalReadiness = probeTgrepStatus(root, options)
+    if (finalReadiness !== "building" && finalReadiness !== "disk-index") {
+      // If we brought the watcher up this call, the capability cache (which
+      // was populated by an earlier "no-watcher" probe) must be invalidated
+      // so the next resolveTgrepCapability sees `ready` instead of serving
+      // the stale snapshot for up to TTL. `before` was already narrowed to
+      // "disk-index" by the early return above, so reaching here with
+      // "server" is always a transition worth invalidating for.
+      if (finalReadiness === "server") invalidateCapabilityCacheFor(root)
+      break
+    }
     await new Promise((resolve) => setTimeout(resolve, 250))
   } while (Date.now() < deadline)
-  return probeTgrepStatus(root, options)
+  return finalReadiness
+}
+
+/** Watcher-aware warm-up: probe once, and only spawn a serve if the
+ * watcher is actually down. The single probe doubles as the readiness
+ * verdict the tool caller wants back, so callers don't pay two probes
+ * for the common "already up" case. */
+export async function ensureWatcher(root: string, options: TgrepOptions, timeoutMs = 15_000): Promise<TgrepReadiness> {
+  const before = probeTgrepStatus(root, options)
+  return before === "server" ? before : await ensureServer(root, options, timeoutMs)
 }
 
 /** Only stop a process we spawned and still own. The child's exit handler

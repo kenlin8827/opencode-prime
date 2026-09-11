@@ -36,7 +36,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { scoped } from "../shared/plugin-scope"
 import { appendBlock, escapeRegExp, stripBlockByLine } from "../shared/system-block"
 import { loadTgrepOptions } from "../tgrep/tgrep-config"
-import { resolveTgrepCapability, type TgrepCapabilityState } from "../tgrep/tgrep-service"
+import { ensureServer, ensureWatcher, resolveTgrepCapability, type TgrepCapabilityState } from "../tgrep/tgrep-service"
 
 /** Line marker for the injected capabilities block. `stripBlockByLine`'s
  * regex is derived from this constant via `escapeRegExp` — single
@@ -127,7 +127,9 @@ export function profileKey(profile: ProjectProfile): string {
   return createHash("sha256").update(JSON.stringify(profile), "utf8").digest("hex")
 }
 
-export const ProjectProfilerPlugin: Plugin = async ({ client }) => ({
+export const ProjectProfilerPlugin: Plugin = async ({ client }) => {
+  ensureTgrepWatchdog()
+  return {
   "experimental.chat.system.transform": async (
     input: { sessionID?: string } | undefined,
     output: { system: string[] },
@@ -138,7 +140,23 @@ export const ProjectProfilerPlugin: Plugin = async ({ client }) => ({
       if (!await scoped(input, output.system, "project-profiler", client)) return
 
       const cwd = process.cwd()
-      const profile = buildProfile(cwd)
+      let profile = buildProfile(cwd)
+      // Warm the watcher before rendering the capabilities block: a
+      // live serve is the only way `tgrep=ready` becomes honest, and
+      // this hook is the only place that runs on every chat turn (the
+      // tool runs only on search). Gating on `no-watcher` keeps the
+      // unready states (stale/building/no-index/no-cli) from paying for
+      // a wasted probe — ensureServer itself short-circuits on them,
+      // but the gating avoids the spawn attempt entirely. After ensure,
+      // invalidate this hook's rendered-block cache so the block re-renders
+      // with the new `ready` state on the next turn; ensureServer
+      // invalidates the shared capability cache, so the re-build below
+      // sees the live watcher without paying a second stale probe.
+      if (profile.tgrep === "no-watcher") {
+        await ensureServer(cwd, loadTgrepOptions(cwd))
+        renderedBlocks.delete(cwd)
+        profile = buildProfile(cwd)
+      }
       const key = profileKey(profile)
 
       // Cache check: same key as last injection in this cwd → use the
@@ -184,7 +202,8 @@ export const ProjectProfilerPlugin: Plugin = async ({ client }) => ({
       await log("warn", `hook error (suppressed): ${String(err)}`)
     }
   },
-})
+  }
+}
 
 /** Per-cwd fragment cache: `cwd` → { key, text }. Tracks the last
  * rendered block per cwd so subsequent hook calls skip the
@@ -203,3 +222,35 @@ export const ProjectProfilerPlugin: Plugin = async ({ client }) => ({
  * (same profile → cache hit → no re-render), so even an interleaved
  * update is safe. */
 const renderedBlocks = new Map<string, { key: string; text: string }>()
+
+/** Watchdog cadence. Matches the shared capability-cache TTL in
+ * tgrep-service so a healthy watcher returns from the cache on every
+ * tick and costs only one `tgrep status` spawn. A crashed watcher
+ * drops out of cache the next time ensureServer invalidates it, so
+ * the worst-case detection latency is one interval. */
+const TGREP_POLL_INTERVAL_MS = 30_000
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+/** Fire-and-forget watcher for tgrep state. A watcher that dies
+ * between chat transforms is detected and restarted without waiting
+ * for the next user message — the transform hook only re-checks on
+ * user activity, so a long idle period would otherwise leave a dead
+ * watcher undiscovered until the next prompt. Skipped when the state
+ * is anything other than `no-watcher`: stale / building / no-index /
+ * no-cli / unavailable / ready all short-circuit at the gate, so
+ * disabled or non-tgrep users pay nothing. unref() so the timer
+ * never keeps the host process alive on shutdown. */
+function ensureTgrepWatchdog(): void {
+  if (pollTimer) return
+  pollTimer = setInterval(() => {
+    const cwd = process.cwd()
+    if (buildProfile(cwd).tgrep !== "no-watcher") return
+    ensureWatcher(cwd, loadTgrepOptions(cwd))
+      .then(() => { renderedBlocks.delete(cwd) })
+      // best-effort: the next tick retries if state is still no-watcher;
+      // surfacing a log here would spam the channel on transient probe
+      // failures (timeout, permission race during cwd change, …).
+      .catch(() => { /* noop */ })
+  }, TGREP_POLL_INTERVAL_MS)
+  pollTimer.unref?.()
+}

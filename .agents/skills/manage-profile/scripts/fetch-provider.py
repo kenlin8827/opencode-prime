@@ -88,8 +88,8 @@ BLACKLIST = [
 EXCEPTIONS = ["deepseek"]
 
 PLAN_SUGGESTIONS = {
-    "alibaba": "alibaba-coding-plan",
-    "alibaba-cn": "alibaba-coding-plan-cn",
+    "alibaba": "alibaba-token-plan",
+    "alibaba-cn": "alibaba-token-plan-cn",
     "minimax": "minimax-coding-plan",
     "minimax-cn": "minimax-cn-coding-plan",
     "moonshotai": "kimi-for-coding",

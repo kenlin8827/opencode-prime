@@ -14,13 +14,16 @@ Verify: <command> → <pass/fail>
 
 **Answering or analyzing** — search first (docs/code/web) → cite source (file path, URL, or command output) → direct answer or "I don't know."
 
-**Codebase search — `tgrep_search` is the default** when registered (`tgrep=ready` or any other state in `[PROJECT CAPABILITIES]`); use native `grep` / `glob` / `bash rg` only when it is NOT in your toolset (`tgrep=no-cli` or `tgrep=unavailable`). For any codebase-wide text/regex lookup (find references, scan for a hook name, count matches, locate files containing X), call `tgrep_search` directly — **do not** dispatch a subagent for it. Read `tgrep=<state>` from `[PROJECT CAPABILITIES]` (or `tgrep status` if the block is absent) and pick `freshness`:
+**Codebase search — `tgrep_search` is the default built-in tool** (LLM tool, not a bash/CLI binary — invoke via your tool-calling mechanism, never `exec`) for any of the 5 indexed tgrep states (`ready`, `no-watcher`, `stale`, `building`, `no-index`); use native `grep` / `glob` / `bash rg` only for `no-cli` or `unavailable`. Don't dispatch `@explore` for text/regex.
 
-- DEFAULT for a fresh query (no recent edit, no negative claim yet):
-  - `ready` → `freshness=indexed`
-  - everything else → `freshness=current`
-- `freshness=indexed` is safe in any REGISTERED state — the tool transparently falls back to rg when the watcher is not usable, so you never have to switch tools inside one of the 5 registered states. **Do NOT pre-emptively reach for `current` when the sidebar shows READY.**
-- OVERRIDE — verification step ONLY, scoped to the SAME query, NOT a global switch: after a fresh edit in this session, OR before reporting a "no match / doesn't exist / is not used" claim, re-run THAT query once with `freshness=current` to verify the indexed result. The override does not flip the default for the next query; each query starts fresh from the canonical mapping.
+> **`freshness` is required** — always pass `indexed` or `current` per the rules below. No silent default.
+
+- **Default `freshness`** (from `tgrep=<state>`):
+  - `ready` → `indexed` (fastest: watcher live, index current).
+  - `no-watcher` → `indexed` (OCP auto-starts the server on first call, ≤15s; subsequent calls hit the hot path).
+  - `stale` / `building` / `no-index` → `current` (= tgrep `--no-index`; no index to use).
+- **Override to `current`** after a recent edit, or before reporting "no match" / "doesn't exist". Mainly matters for `ready`/`no-watcher` (other states already default to `current`). Per-query escape hatch — never the session default.
+- `freshness=indexed` is always safe (rg fallback when server isn't up), so default to it when in doubt. Do NOT pre-emptively reach for `current` just because the sidebar shows READY.
 
 **Anti-pattern**: do **not** delegate plain text/regex search to `@explore` — that is exactly what `tgrep_search` is for. `@explore` is for code reading, intent inference, and multi-file navigation.
 - **Symbols / definitions / references** — Serena.

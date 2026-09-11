@@ -1,0 +1,10 @@
+{
+  "description": "Alibaba Token Plan (China) — qwen3.8-flash carries flash, pro, and vision tiers; qwen3.8-max judges on max (all-Qwen family variant, vision-capable via qwen3.8-flash). Requires ALIBABA_TOKEN_PLAN_API_KEY environment variable.",
+  "tiers": {
+    "flash": "alibaba-token-plan-cn/qwen3.8-flash",
+    "standard": "alibaba-token-plan-cn/qwen3.8-flash",
+    "pro": "alibaba-token-plan-cn/qwen3.8-flash",
+    "max": "alibaba-token-plan-cn/qwen3.8-max",
+    "vision": "alibaba-token-plan-cn/qwen3.8-flash"
+  }
+}

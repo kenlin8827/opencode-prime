@@ -44,9 +44,9 @@
 | `openai` | 官方 API 直连 | 官方 OpenAI API (GPT-5, o3-mini, o4-preview) |
 | `google` | 官方 API 直连 | 官方 Google Gemini API (Gemini 2.5 Flash, 2.5 Pro) |
 | `kimi-for-coding` | 官方 Coding Plan | 月之暗面 Kimi For Coding 官方开发套餐 (K1.5 / K2 系列) |
-| `alibaba/coding-plan` / `-cn` | 官方 Coding Plan | 阿里百炼通义千问 Coding 计划 (Qwen3-Coder, Qwen3.7-Plus) |
 | `alibaba/token-plan` / `-cn` | 官方 Coding Plan | 阿里百炼 Token 计划 (DeepSeek V4 Flash / Qwen 3.8 Max) |
 | `alibaba/token-plan-cn-deepseek` | 官方 Coding Plan | 阿里百炼 Token 计划的全 DeepSeek 变体 (V4 Flash / V4 Pro) |
+| `alibaba/token-plan-cn-qwen` | 官方 Coding Plan | 阿里百炼 Token 计划的全 Qwen 变体 (Qwen3.8-Flash / Qwen3.8-Max) |
 | `minimax/coding-plan` / `minimax/cn-coding-plan` | 官方 Coding Plan | 稀宇科技 MiniMax 官方开发套餐 (M2.7, M3) |
 | `zhipuai-coding-plan` | 官方 Coding Plan | 智谱 AI 官方 Coding 计划 (GLM-5.1, GLM-5.2, GLM-5v) |
 | `zai-coding-plan` | 官方 Coding Plan | Z.AI 官方开发套餐 (GLM 系列) |

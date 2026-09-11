@@ -4,10 +4,11 @@
  * <ocp config root>/memory/<projectKey>/memory.md) into the system prompt.
  *
  * Only the CURATED file is ever injected; the draft file stays
- * out of context until a human promotes entries (capture → review → inject,
- * opt-in at every stage). The gate is the project-config switch
- * (`projectMemory`, default off) AND file presence: off or missing file →
- * complete no-op plus defensive strip of any stale block.
+ * out of context until a human promotes entries (capture → review → inject).
+ * The gate is the project-config switch
+ * (`projectMemory`, default on) AND file presence: off or missing/empty file
+ * → complete no-op plus defensive strip of any stale block. Default-on is
+ * safe because an empty memory.md is itself a no-op.
  *
  * Authority: memory is ADVISORY. AGENTS.md (manually curated project facts)
  * wins on conflict — stated in the fragment so the model resolves it without

@@ -36,11 +36,13 @@ OpenCode 多智能体配置自带一系列生产级工作流斜杠命令。
 | **`/auto-advisor [off\|lite\|full]`** | 智能决策 | 切换 Advisor 智能决策模式（`off` 关闭 / `lite` 决策建议 / `full` 事实类自动代答） |
 | **`/md-to-pdf <file.md> [output.pdf]`** | 出版级导出 | Markdown 一键转高清 A4 PDF，支持 300 DPI Mermaid 图表、CSS 样式定制与 `--doctor` 自检修复 |
 | **`/md-to-docx <file.md> [output.docx]`** | 出版级导出 | Markdown 导出为行政级 Word (.docx)，支持纯 TS 引擎、中西双字排版、Mermaid 渲染与样式定制 |
-| **`/project [init\|index\|sync]`** | 项目管理 | 脚手架生成项目基线文件（`.opencode/opencode.jsonc` 等），并自动触发 CodeGraph 与 GitNexus 索引 |
-| **`/project-wizard`** | 交互向导 (TUI) | 打开交互式项目配置向导：通过终端可视化菜单一键开启或关闭各项 MCP 服务与功能插件 |
+| **`/project`（或 `init`/`index`/`sync` 子命令）** | 项目管理 | `init\|index\|sync` 子命令用于脚手架生成项目基线文件（`.opencode/opencode.jsonc` 等），并自动触发 CodeGraph 与 GitNexus 索引；裸的 `/project` 打开交互式项目配置向导（通过终端可视化菜单一键开启或关闭各项 MCP 服务与功能插件） |
+| **`/memory [capture\|on\|off\|status]`** | 项目记忆 | 可选项目记忆：捕获经验、查看或切换门控、查询注入状态（记忆文件存于项目之外的 ocp 记忆根目录） |
 | **`/profile`** | 交互向导 (TUI) | 打开模型预设弹窗选择器：一键切换或精细配置 Auto / Ultimate / Performance / Economy / Lightweight 各层级模型 |
 | **`/provider`** | 交互向导 (TUI) | 打开服务商向导：为已激活或仓库自带的服务商配置凭证（baseURL / apiKey），管理模型清单 |
+| **`/disconnect [id\|--all]`** | 交互向导 (TUI) | 断开服务商密钥：裸打开连接向导；`<id>` 直达确认；`--all` 一次确认所有连接 |
 | **`/queued`** | 交互向导 (TUI) | 打开排队消息管理对话框：实时查看、编辑或取消在会话忙碌期间提交的排队提示词 |
+| **`/usage [session\|agent\|model\|all]`** | 可观测性 | 按会话 / Agent / 模型分 tab 查看 token/费用消耗 —— 1/2/3 或 ←→ 切换，↑/↓ 滚动 |
 
 > 五个 `/git-*` 命令共用一套教义：前置检查只会停下而不替你收拾残局、适用时用 `--ff-only` 同步目标分支、`guard/` 备份、基线优先的冲突解决、逐 hunk 置信度自检（不确定则升级 `@advisor`，仍不确信就交还给你、绝不瞎猜）、只验证一次且诚实报告，以及**每次**调用都写入 `.git/ocp-*-reports/` 的脱敏哈希链审计轨迹。完整教义、flag 矩阵与故障表：**[Git 工作流](git.md)**。
 

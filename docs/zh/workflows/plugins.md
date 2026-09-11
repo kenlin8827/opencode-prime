@@ -21,7 +21,7 @@
 | `project-manager.ts` | `/project` 命令 + 提交纪律 |
 | `project-memory.ts` | `/memory` 命令 —— 可选的项目记忆：捕获经验教训，注入整理后的记忆文件（存于项目之外的 ocp 记忆根目录） |
 | `queue-manager.ts` | `/queued` 命令 —— 管理会话忙碌时排队的提示 |
-| `profile-wizard.ts`、`provider-wizard.ts`、`project-wizard.ts` | `/profile`、`/provider` 与 `/project-wizard` TUI 弹窗向导；未配置现有 formatter 的新 Node 项目可明确选择配置项目本地 dprint |
+| `profile-wizard.ts`、`provider-wizard.ts`、`project-wizard.ts` | `/profile`、`/provider` 与 `/project` TUI 弹窗向导；未配置现有 formatter 的新 Node 项目可明确选择配置项目本地 dprint |
 | `md-to-pdf.ts` | `/md-to-pdf` 命令与 `md_to_pdf` 工具 —— 将 Markdown 一键导出为高质量 A4 PDF（基于 Pandoc + Playwright） |
 | `md-to-docx.ts` | `/md-to-docx` 命令与 `md_to_docx` 工具 —— 将 Markdown 导出为出版级 Word (.docx) 文档（宋体/黑体排版、自动TOC、智能表格与代码美化） |
 
@@ -163,7 +163,7 @@ echo on > <project>/.opencode/.env-guard
 /memory status               # 开关状态 + 条目计数
 ```
 
-草稿 → `memory.md` 的晋升目前为手工编辑（保留带日期条目格式；删除过期条目）。`projectMemory` 开启且文件非空时，其内容以 `[PROJECT MEMORY]` 块追加进系统提示 —— 仅建议性质：冲突时以 AGENTS.md 为准。超过 16000 字符上限时不注入正文（改为指针块），请及时精简。默认关闭。设计文档：`docs/plan/project-memory-phase1.md`。
+草稿 → `memory.md` 的晋升目前为手工编辑（保留带日期条目格式；删除过期条目）。`projectMemory` 开启且文件非空时，其内容以 `[PROJECT MEMORY]` 块追加进系统提示 —— 仅建议性质：冲突时以 AGENTS.md 为准。超过 16000 字符上限时不注入正文（改为指针块），请及时精简。**默认开启**（memory.md 缺失或为空时是 no-op，侧栏显示 `ON · empty` 提示去 `/memory capture`）。设计文档：`docs/plan/project-memory-phase1.md`。
 
 ---
 

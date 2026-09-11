@@ -792,7 +792,11 @@ const tui: TuiPlugin = async (api) => {
         desc: tr("project.cmdDesc"),
         category: "Project",
         namespace: "palette",
-        slashName: "project-wizard",
+        // /project is also a server-side slash command (project-manager: init|index|sync).
+        // The TUI keymap owns the slash entry — typing `/project` opens the wizard
+        // menu (which itself dispatches init/index/sync via its own buttons).
+        // The server hook remains as the headless / `ocp project <sub>` entry point.
+        slashName: "project",
         run() {
           startProjectWizard(api)
         },
