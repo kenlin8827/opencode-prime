@@ -63,12 +63,19 @@ export function statusText(): string {
     /* no draft file yet */
   }
   const injected = gate === "on" && memory !== null
-  return tr("guard.memory.status", {
+  let text = tr("guard.memory.status", {
     gate,
     memory: memory === null ? tr("guard.memory.missing") : tr("guard.memory.entries", { count: countEntries(memory) }),
     draft,
     flag: injected ? "ACTIVE" : "INACTIVE",
   })
+  // gate on but nothing curated yet — the silent no-op users file as
+  // "switched on but nothing happens". Name the next action.
+  if (gate === "on" && memory === null) {
+    refreshLocale()
+    text += `\n${tr("guard.memory.noCurated", { draft: draftPath(), memory: memoryPath() })}`
+  }
+  return text
 }
 
 async function reply(client: PluginInput["client"], sessionID: string | undefined, text: string): Promise<void> {

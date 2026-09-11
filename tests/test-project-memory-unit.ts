@@ -256,6 +256,8 @@ await runHandled(() => cmdHook2({ command: COMMAND_NAME, arguments: "status", se
 assert(replied.includes("gate:"), "status reports gate")
 
 writeFileSync(join(tmp, "opencode.jsonc"), `{ "projectMemory": "on" }`)
+rmSync(memoryPath(), { force: true })
+assert(statusText().includes("no curated memory yet"), "statusText names the next action when gate on but memory missing")
 writeFileSync(memoryPath(), "- lesson A\n", "utf-8")
 assert(statusText().includes("gate: on"), "statusText reflects config")
 assert(statusText().includes("ACTIVE"), "statusText reports ACTIVE when on + file")

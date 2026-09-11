@@ -14,6 +14,10 @@
     "project-profiler": {
       "$comment": "Backend routing is a subagent's work discipline AND a Lite concern (Lite now defaults to tgrep_search per prompts/lite.md). Utility (title-generator, ~30k tok saved per session) stays out — it never touches code search, so the block is pure overhead there.",
       "deny": ["utility"]
+    },
+    "project-memory": {
+      "$comment": "Curated project lessons are the agent's working discipline — Lite sessions need them most (they carry no other project context). Only utility (title generation) and subagent steps stay denied.",
+      "deny": ["utility", "subagent:*"]
     }
   }
 }

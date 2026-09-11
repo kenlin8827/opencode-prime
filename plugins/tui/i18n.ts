@@ -764,6 +764,7 @@ const STRINGS = {
   "guard.memory.status": { en: "[project-memory] gate: {gate} — memory: {memory}, draft: {draft} pending. Injection {flag}.", "zh-CN": "[project-memory] gate: {gate} —— 记忆：{memory}，草稿 {draft} 条待整理。注入 {flag}。" },
   "guard.memory.entries": { en: "{count} entries", "zh-CN": "{count} 条" },
   "guard.memory.missing": { en: "missing/empty", "zh-CN": "缺失或为空" },
+  "guard.memory.noCurated": { en: "[project-memory] NOTE: gate is ON but no curated memory yet — nothing is injected. Capture with /memory capture \"<lesson>\", then promote {draft} → {memory} (manual edit) to activate.", "zh-CN": "[project-memory] 注意：开关已开但还没有整理后的记忆，当前无任何注入。先用 /memory capture \"<经验>\" 捕获，再手工把 {draft} 晋升到 {memory} 后生效。" },
 
   // ── e2e-guard (/e2e-guard) ──
   "guard.e2e.help": {

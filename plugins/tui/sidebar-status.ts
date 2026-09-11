@@ -3,7 +3,7 @@
  * Sidebar Status — TUI slot plugin that renders two vertical status groups
  * inside the OpenCode right sidebar:
  *   "OCP"         — active state of guard/mode plugins (adr-guard, e2e-guard,
- *                   auto-advisor) + the active profile; `deepseek-anchor`
+ *                   project-memory, auto-advisor) + the active profile; `deepseek-anchor`
  *                   is only shown when the current model is DeepSeek V4 Pro
  *                   (the plugin is a no-op for other models, so showing it
  *                   unconditionally would be noise)
@@ -26,6 +26,7 @@
  * State sources (all read-only, same logic as each plugin's config module):
  *   - adrGuard        → project opencode.jsonc field (on | off, default off)
  *   - e2eGuard        → project opencode.jsonc field (on | off, default off)
+ *   - projectMemory   → project opencode.jsonc field (on | off, default off)
  *   - autoAdvisorMode → project opencode.jsonc field (off | lite | full, default off)
  *   - deepSeekAnchor  → ~/.config/opencode/.deepseek-anchor-enabled (on | off, default on)
  *   - activeProfile   → ~/.config/opencode/.active-profile (name | none)
@@ -210,6 +211,10 @@ function resolveAdrGuard(projectDir: string): "on" | "off" {
 
 function resolveE2eGuard(projectDir: string): "on" | "off" {
   return normalizeOnOff(readProjectConfig(projectDir)?.e2eGuard) ?? "off"
+}
+
+function resolveProjectMemory(projectDir: string): "on" | "off" {
+  return normalizeOnOff(readProjectConfig(projectDir)?.projectMemory) ?? "off"
 }
 
 function resolveAutoAdvisor(projectDir: string): "off" | "lite" | "full" {
@@ -596,6 +601,9 @@ export function buildGuardBadges(projectDir: string, currentModelId?: string): B
 
   const e2e = resolveE2eGuard(projectDir)
   badges.push({ label: "e2e-guard", state: e2e.toUpperCase(), variant: e2e === "on" ? "warning" : "info" })
+
+  const memory = resolveProjectMemory(projectDir)
+  badges.push({ label: "project-memory", state: memory.toUpperCase(), variant: memory === "on" ? "warning" : "info" })
 
   const advisor = resolveAutoAdvisor(projectDir)
   badges.push({ label: "auto-advisor", state: advisor.toUpperCase(), variant: advisor === "full" ? "warning" : advisor === "lite" ? "info" : "info" })
