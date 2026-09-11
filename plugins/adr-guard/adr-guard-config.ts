@@ -1,12 +1,12 @@
 /**
  * Shared adr-guard config — project opencode.jsonc switch field + ADR
- * directory + ADR hierarchy mode. Single source of truth for reading,
+ * directory + ADR layout. Single source of truth for reading,
  * writing, and normalizing each.
  *
  * State is PROJECT-LEVEL and lives in:
  *   - `adrGuard` — the on/off switch (default off; `/adr-guard on|off`)
- *   - `adrGuardDir` — ADR directory (default "docs/adr")
- *   - `adrMode` — hierarchy mode (auto / flat / hierarchical, default auto)
+ *   - `adrDir` — ADR directory (default "docs/adr")
+ *   - `adrLayout` — hierarchy mode (auto / flat / hierarchical, default auto)
  *
  * The switch is delegated to `plugins/shared/plugin-switch.ts`. The
  * ADR-directory and hierarchy-mode helpers below are plugin-specific
@@ -89,7 +89,7 @@ export const DEFAULT_ADR_DIR = "docs/adr"
 
 export function getAdrDir(): string {
   const cfg = readProjectConfig()
-  const v = cfg?.adrGuardDir
+  const v = cfg?.adrDir
   if (typeof v === "string" && v.trim() !== "") {
     return v.trim().replace(/\\/g, "/").replace(/\/+$/, "")
   }
@@ -101,13 +101,13 @@ export function getAdrDir(): string {
 // Distinct from the on/off switch above — three modes with real
 // behavioral differences, so it stays as its own state machine.
 
-export type AdrMode = "auto" | "flat" | "hierarchical"
+export type AdrLayout = "auto" | "flat" | "hierarchical"
 
 const VALID_MODES = new Set<string>(["auto", "flat", "hierarchical"])
-const MODE_FIELD = "adrMode"
-const DEFAULT_MODE: AdrMode = "auto"
+const MODE_FIELD = "adrLayout"
+const DEFAULT_LAYOUT: AdrLayout = "auto"
 
-const MODE_ALIASES: Record<string, AdrMode> = {
+const LAYOUT_ALIASES: Record<string, AdrLayout> = {
   // auto
   auto: "auto",
   a: "auto",
@@ -133,25 +133,25 @@ const MODE_ALIASES: Record<string, AdrMode> = {
   l: "hierarchical",
 }
 
-export function normalizeAdrMode(mode: unknown): AdrMode | null {
-  if (typeof mode !== "string") return null
-  const s = mode.trim().toLowerCase()
-  return MODE_ALIASES[s] ?? null
+export function normalizeAdrLayout(layout: unknown): AdrLayout | null {
+  if (typeof layout !== "string") return null
+  const s = layout.trim().toLowerCase()
+  return LAYOUT_ALIASES[s] ?? null
 }
 
-export function getAdrMode(): AdrMode {
+export function getAdrLayout(): AdrLayout {
   const cfg = readProjectConfig()
-  const m = normalizeAdrMode(cfg?.adrMode)
-  return m ?? DEFAULT_MODE
+  const normalized = normalizeAdrLayout(cfg?.adrLayout)
+  return normalized ?? DEFAULT_LAYOUT
 }
 
-export function setAdrMode(mode: AdrMode): boolean {
-  const normalized = normalizeAdrMode(mode)
+export function setAdrLayout(layout: AdrLayout): boolean {
+  const normalized = normalizeAdrLayout(layout)
   if (!normalized) return false
   return setConfigField(MODE_FIELD, normalized)
 }
 
-export function clearAdrMode(): boolean {
+export function clearAdrLayout(): boolean {
   return clearConfigField(MODE_FIELD)
 }
 

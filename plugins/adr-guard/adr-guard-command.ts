@@ -11,6 +11,7 @@
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
+import { refreshLocale, tr } from "../tui/i18n"
 import {
   analyzeAdrComplexity,
   checkAdrIntegrity,
@@ -24,15 +25,15 @@ import {
 import { announce, announceStatus, announceSwitch } from "./adr-guard-announce"
 import {
   ADR_COMMAND,
-  clearAdrMode,
+  clearAdrLayout,
   clearState,
   COMMAND_NAME,
-  getAdrMode,
+  getAdrLayout,
   getProjectDir,
-  normalizeAdrMode,
+  normalizeAdrLayout,
   parseResetArg,
   parseStateArg,
-  setAdrMode,
+  setAdrLayout,
   setState,
 } from "./adr-guard-config"
 import { makeLogger } from "./adr-guard-runtime"
@@ -88,20 +89,10 @@ async function handleAdrCommand(
   log: Log,
 ): Promise<{ handled: boolean }> {
   const projectDir = getProjectDir()
+  refreshLocale()
   const trimmed = rawArgs.trim()
   if (!trimmed || trimmed === "help") {
-    const mode = getAdrMode()
-    const helpText =
-      `### 🏛️ Architecture Decision Records (/adr)\n\n` +
-      `Current Mode: **\`${mode}\`**\n\n` +
-      `Commands:\n` +
-      `- \`/adr [new] [layer/scope] <title> [--empty]\` — Create and auto-draft a new ADR (use --empty for template only)\n` +
-      `- \`/adr supersede <old-id> <new-title> [--empty]\` — Supersede an old decision & auto-draft replacement\n` +
-      `- \`/adr tree\` — Visualize hierarchical decision tree & Mermaid DAG\n` +
-      `- \`/adr check\` — Verify ADR integrity, links, and complexity advice\n` +
-      `- \`/adr mode [auto|flat|hierarchical]\` — Configure ADR hierarchy mode\n` +
-      `- \`/adr migrate [flat|hierarchical] [--confirm]\` — Plan and restructure ADR architecture\n` +
-      `- \`/adr-guard on|off|status\` — Toggle commit guard enforcement\n`
+    const helpText = tr("guard.adr.help", { mode: getAdrLayout() })
     await announce(client, helpText, "info", sessionID)
     return { handled: true }
   }
@@ -110,45 +101,45 @@ async function handleAdrCommand(
   const sub = parts[0].toLowerCase()
   const rest = trimmed.slice(parts[0].length).trim()
 
-  if (sub === "mode") {
+  if (sub === "layout") {
     if (!rest) {
-      const mode = getAdrMode()
+      const layout = getAdrLayout()
       await announce(
         client,
-        `🏛️ ADR Mode is currently set to: **\`${mode}\`** (in project opencode.jsonc)\nOptions: \`/adr mode auto\`, \`/adr mode flat\`, \`/adr mode hierarchical\``,
+        tr("guard.adr.layoutCurrent", { mode: layout }),
         "info",
         sessionID,
       )
       return { handled: true }
     }
-    const targetMode = normalizeAdrMode(rest)
-    if (!targetMode) {
+    const targetLayout = normalizeAdrLayout(rest)
+    if (!targetLayout) {
       await announce(
         client,
-        `❌ Invalid ADR mode \`${rest}\`. Valid modes are: \`auto\`, \`flat\`, \`hierarchical\`.`,
+        tr("guard.adr.layoutInvalid", { rest }),
         "warning",
         sessionID,
       )
       return { handled: true }
     }
-    const written = setAdrMode(targetMode)
+    const written = setAdrLayout(targetLayout)
     await log(
       written ? "info" : "warn",
       written
-        ? `adrMode=${targetMode} written to project config`
-        : `failed to write adrMode=${targetMode} to project config`,
+        ? `adrLayout=${targetLayout} written to project config`
+        : `failed to write adrLayout=${targetLayout} to project config`,
     )
     
     // Check if migration is available
-    const migrationPlan = planAdrMigration(projectDir, targetMode)
+    const migrationPlan = planAdrMigration(projectDir, targetLayout)
     let extraNotice = ""
     if (migrationPlan.moves.length > 0) {
-      extraNotice = `\n\n💡 **Restructuring Available**: ${migrationPlan.moves.length} file(s) can be automatically reorganized to match \`${targetMode}\` mode.\nRun \`/adr migrate ${targetMode}\` to preview and apply.`
+      extraNotice = `\n\n${tr("guard.adr.migrateHint", { count: migrationPlan.moves.length, mode: targetLayout })}`
     }
 
     await announce(
       client,
-      `✅ ADR Mode updated to: **\`${targetMode}\`** (saved in project opencode.jsonc).${extraNotice}`,
+      tr("guard.adr.layoutSet", { mode: targetLayout }) + extraNotice,
       "info",
       sessionID,
     )
@@ -158,14 +149,14 @@ async function handleAdrCommand(
   if (sub === "migrate" || sub === "refactor") {
     const isConfirm = rest.includes("--confirm") || rest.includes("-y")
     const cleanRest = rest.replace(/--confirm|-y|--dry-run/g, "").trim()
-    const targetMode = normalizeAdrMode(cleanRest) || (getAdrMode() === "flat" ? "hierarchical" : "flat")
+    const targetLayout = normalizeAdrLayout(cleanRest) || (getAdrLayout() === "flat" ? "hierarchical" : "flat")
 
-    const plan = planAdrMigration(projectDir, targetMode)
+    const plan = planAdrMigration(projectDir, targetLayout)
 
     if (plan.moves.length === 0) {
       await announce(
         client,
-        `ℹ️ **ADR Migration Plan (${plan.currentMode} $\\to$ ${plan.targetMode})**:\nAll ADR files are already in optimal locations. No file moves required.`,
+        tr("guard.adr.migrateNone", { cur: plan.currentLayout, target: plan.targetLayout }),
         "info",
         sessionID,
       )
@@ -175,22 +166,19 @@ async function handleAdrCommand(
     if (isConfirm) {
       const result = executeAdrMigration(projectDir, plan)
       await log("info", `executed ADR migration: ${result.executedCount} files moved`)
-      let msg = `🎉 **ADR Migration Completed (${plan.currentMode} $\\to$ ${plan.targetMode})**\n\n`
-      msg += `Successfully relocated **${result.executedCount}** file(s) and synchronized indexes:\n\n`
+      let msg = tr("guard.adr.migrateDoneHead", { cur: plan.currentLayout, target: plan.targetLayout, count: result.executedCount })
       for (const m of plan.moves) {
         msg += `- \`${m.fromRelPath}\` $\\to$ \`${m.toRelPath}\`\n`
       }
       await announce(client, msg, "info", sessionID)
     } else {
-      let preview = `📋 **ADR Migration Preview (${plan.currentMode} $\\to$ ${plan.targetMode})**\n\n`
-      preview += `Proposed Restructuring Plan (**${plan.moves.length}** moves):\n\n`
-      preview += `| Source Path | Target Path | Title | Layer |\n`
-      preview += `| :--- | :--- | :--- | :--- |\n`
+      let preview = tr("guard.adr.migratePreviewHead", { cur: plan.currentLayout, target: plan.targetLayout, count: plan.moves.length })
+      preview += tr("guard.adr.migrateTableHead")
       for (const m of plan.moves) {
         preview += `| \`${m.fromRelPath}\` | \`${m.toRelPath}\` | ${m.title} | \`${m.targetLayer}\` |\n`
       }
-      preview += `\n⚠️ *No files have been modified yet.* To execute this migration, run:\n`
-      preview += `\`\`\`bash\n/adr migrate ${targetMode} --confirm\n\`\`\``
+      preview += tr("guard.adr.migrateNoWrite")
+      preview += `\`\`\`bash\n/adr migrate ${targetLayout} --confirm\n\`\`\``
       await announce(client, preview, "info", sessionID)
     }
     return { handled: true }
@@ -208,9 +196,9 @@ async function handleAdrCommand(
 
     let report = ""
     if (issues.length === 0) {
-      report += `✅ **ADR Integrity Check Passed**: All ADRs, links, and indexes are consistent.\n\n`
+      report += tr("guard.adr.checkOk")
     } else {
-      report += `⚠️ **ADR Integrity Issues Found (${issues.length})**:\n\n`
+      report += tr("guard.adr.checkIssues", { count: issues.length })
       for (const iss of issues) {
         const icon = iss.severity === "error" ? "❌" : "⚠️"
         report += `- ${icon} \`[${iss.type}]\` **${iss.file}**: ${iss.message}\n`
@@ -219,9 +207,9 @@ async function handleAdrCommand(
     }
 
     if (complexity.recommendation) {
-      report += `💡 **Architecture Complexity Advisory**:\n`
+      report += tr("guard.adr.complexityHead")
       report += `${complexity.recommendation.reason}\n`
-      report += `👉 Run \`/adr migrate ${complexity.recommendation.suggestedMode}\` to preview the recommended restructuring.`
+      report += tr("guard.adr.complexityRun", { mode: complexity.recommendation.suggestedLayout })
     }
 
     await announce(client, report, issues.length > 0 ? "warning" : "info", sessionID)
@@ -229,7 +217,7 @@ async function handleAdrCommand(
   }
 
 
-  if (sub === "new" || !["mode", "migrate", "refactor", "tree", "map", "check", "lint", "supersede"].includes(sub)) {
+  if (sub === "new" || !["layout", "migrate", "refactor", "tree", "map", "check", "lint", "supersede"].includes(sub)) {
     const rawDecisionText = sub === "new" ? rest : trimmed
     const emptyFlagRegex = /(?:^|\s)(--empty|--scaffold|--no-draft)(?:\s|$)/i
     const isEmptyOnly = emptyFlagRegex.test(rawDecisionText)
@@ -238,7 +226,7 @@ async function handleAdrCommand(
     if (!cleanRest) {
       await announce(
         client,
-        `❌ Usage: \`/adr [new] [system|domain|component|scope] <title> [--empty]\`\nExample: \`/adr "Core Event Architecture"\` or \`/adr new system "Core Event Architecture"\``,
+        tr("guard.adr.newUsage"),
         "warning",
         sessionID,
       )
@@ -277,24 +265,17 @@ async function handleAdrCommand(
       await log("info", `scaffolded ADR: ${created.relPath}`)
 
       if (isEmptyOnly) {
-        const successMsg =
-          `✅ **Created ADR [${created.id}] (${layer}) [Scaffold Only]**\n\n` +
-          `- File: \`${created.relPath}\`\n` +
-          `- Empty template ready. Edit file and commit alongside your code.`
+        const successMsg = tr("guard.adr.createdScaffold", { id: created.id, layer, file: created.relPath })
         await announce(client, successMsg, "info", sessionID)
         return { handled: true }
       } else {
-        const successMsg =
-          `✅ **Created ADR [${created.id}] (${layer})**\n\n` +
-          `- File: \`${created.relPath}\`\n` +
-          `- 🤖 *Agent is analyzing codebase context and auto-drafting decision document...*\n` +
-          `- 💡 *SDD Lifecycle: After drafting this ADR, proceed to \`/plan\` or jump directly to \`/impl\`.*`
+        const successMsg = tr("guard.adr.created", { id: created.id, layer, file: created.relPath })
         await announce(client, successMsg, "info", sessionID)
         // Return handled: false so OpenCode dispatches the prompt to LLM!
         return { handled: false }
       }
     } catch (err) {
-      await announce(client, `❌ Failed to create ADR: ${String(err)}`, "warning", sessionID)
+      await announce(client, tr("guard.adr.createFail", { err: String(err) }), "warning", sessionID)
       return { handled: true }
     }
   }
@@ -307,7 +288,7 @@ async function handleAdrCommand(
     if (spaceIdx === -1) {
       await announce(
         client,
-        `❌ Usage: \`/adr supersede <old-id-or-path> <new-title> [--empty]\`\nExample: \`/adr supersede 0001 "NATS Streaming Standard"\``,
+        tr("guard.adr.supUsage"),
         "warning",
         sessionID,
       )
@@ -320,7 +301,7 @@ async function handleAdrCommand(
     if (!newTitle) {
       await announce(
         client,
-        `❌ Missing new ADR title.\nUsage: \`/adr supersede <old-id-or-path> <new-title> [--empty]\``,
+        tr("guard.adr.supMissingTitle"),
         "warning",
         sessionID,
       )
@@ -332,33 +313,24 @@ async function handleAdrCommand(
       await log("info", `superseded ADR: ${oldAdr.id} -> ${newAdr.id}`)
 
       if (isEmptyOnly) {
-        const successMsg =
-          `🔄 **Superseded ADR [${oldAdr.id}] $\\to$ [${newAdr.id}] [Scaffold Only]**\n\n` +
-          `- Old ADR: \`${oldAdr.relPath}\` (marked as superseded)\n` +
-          `- New ADR: \`${newAdr.relPath}\` (accepted)\n` +
-          `- Indexes updated.`
+        const successMsg = tr("guard.adr.supDoneScaffold", { old: oldAdr.id, new: newAdr.id, oldPath: oldAdr.relPath, newPath: newAdr.relPath })
         await announce(client, successMsg, "info", sessionID)
         return { handled: true }
       } else {
-        const successMsg =
-          `🔄 **Superseded ADR [${oldAdr.id}] $\\to$ [${newAdr.id}]**\n\n` +
-          `- Old ADR: \`${oldAdr.relPath}\` (marked as superseded)\n` +
-          `- New ADR: \`${newAdr.relPath}\` (accepted)\n` +
-          `- 🤖 *Agent is analyzing codebase context and auto-drafting replacement decision...*\n` +
-          `- 💡 *SDD Lifecycle: After drafting this ADR, proceed to \`/plan\` or jump directly to \`/impl\`.*`
+        const successMsg = tr("guard.adr.supDone", { old: oldAdr.id, new: newAdr.id, oldPath: oldAdr.relPath, newPath: newAdr.relPath })
         await announce(client, successMsg, "info", sessionID)
         // Return handled: false so OpenCode dispatches the prompt to LLM!
         return { handled: false }
       }
     } catch (err) {
-      await announce(client, `❌ Failed to supersede ADR: ${String(err)}`, "warning", sessionID)
+      await announce(client, tr("guard.adr.supFail", { err: String(err) }), "warning", sessionID)
       return { handled: true }
     }
   }
 
   await announce(
     client,
-    `Unknown subcommand \`${sub}\`. Run \`/adr help\` for available commands.`,
+    tr("guard.adr.unknown", { sub }),
     "warning",
     sessionID,
   )

@@ -9,8 +9,9 @@
   //
   // "autoAdvisorMode": "lite",  // off | lite | full — /auto-advisor <mode>
   // "adrGuard": "on",           // on | off          — /adr-guard <state>
-  // "adrGuardDir": "docs/adr",  // ADR directory
-  // "adrMode": "auto",          // auto | flat | hierarchical — /adr mode <mode>
+  // "adrLayout": "auto",          // auto | flat | hierarchical — /adr layout <layout>
+  // "adrDir": "docs/adr",       // ADR directory
   // "envGuard": "on",           // on | off — blocks agent access to secret .env* files (.env.example exempt)
   // "e2eGuard": "on",           // on | off — E2E quality red line: prompts LLM to assess diff impact on feat/fix tasks and interactively confirm with user via ask
+  // "projectMemory": "off",      // on | off — inject the curated project memory (ocp memory root, outside the project) into context — /memory on|off
 }

@@ -186,10 +186,11 @@ export interface SwitchLine {
 export interface ProjectSwitches {
   autoAdvisorMode?: "off" | "lite" | "full" | "default"
   adrGuard?: "on" | "off" | "default"
-  adrGuardDir?: string
-  adrMode?: "auto" | "flat" | "hierarchical" | "default"
+  adrDir?: string
+  adrLayout?: "auto" | "flat" | "hierarchical" | "default"
   envGuard?: "on" | "off" | "default"
   e2eGuard?: "on" | "off" | "default"
+  projectMemory?: "on" | "off" | "default"
 }
 
 /** Commented switch lines (`// "key": ...`) offered by the config template. */
@@ -237,14 +238,14 @@ export function applySwitchesToConfigContent(
         defaultLine: '  // "adrGuard": "on",           // on | off          — /adr-guard <state>',
       },
       {
-        key: "adrGuardDir",
-        value: switches.adrGuardDir,
-        defaultLine: `  // "adrGuardDir": "${switches.adrGuardDir ?? "docs/adr"}",  // ADR directory`,
+        key: "adrLayout",
+        value: switches.adrLayout,
+        defaultLine: '  // "adrLayout": "auto",          // auto | flat | hierarchical — /adr layout <layout>',
       },
       {
-        key: "adrMode",
-        value: switches.adrMode,
-        defaultLine: '  // "adrMode": "auto",          // auto | flat | hierarchical — /adr mode <mode>',
+        key: "adrDir",
+        value: switches.adrDir,
+        defaultLine: `  // "adrDir": "${switches.adrDir ?? "docs/adr"}",       // ADR directory`,
       },
       {
         key: "envGuard",
@@ -255,6 +256,11 @@ export function applySwitchesToConfigContent(
         key: "e2eGuard",
         value: switches.e2eGuard,
         defaultLine: '  // "e2eGuard": "on",           // on | off — E2E quality red line: prompts LLM to assess diff impact on feat/fix tasks and interactively confirm with user via ask',
+      },
+      {
+        key: "projectMemory",
+        value: switches.projectMemory,
+        defaultLine: '  // "projectMemory": "off",      // on | off — inject the curated project memory (ocp memory root) into context — /memory on|off',
       },
     ]
 
@@ -272,7 +278,7 @@ export function applySwitchesToConfigContent(
       const prefix = match[3]
       const suffix = match[5]
       const val = isDefault
-        ? (entry.key === "autoAdvisorMode" ? "lite" : entry.key === "adrMode" ? "auto" : entry.key === "adrGuardDir" ? (switches.adrGuardDir ?? "docs/adr") : "on")
+        ? (entry.key === "autoAdvisorMode" ? "lite" : entry.key === "adrLayout" ? "auto" : entry.key === "adrDir" ? (switches.adrDir ?? "docs/adr") : entry.key === "projectMemory" ? "off" : "on")
         : entry.value
 
       const newLine = isDefault
@@ -284,7 +290,7 @@ export function applySwitchesToConfigContent(
       const close = result.lastIndexOf("}")
       if (close >= 0) {
         const val = isDefault
-          ? (entry.key === "autoAdvisorMode" ? "lite" : entry.key === "adrMode" ? "auto" : entry.key === "adrGuardDir" ? (switches.adrGuardDir ?? "docs/adr") : "on")
+          ? (entry.key === "autoAdvisorMode" ? "lite" : entry.key === "adrLayout" ? "auto" : entry.key === "adrDir" ? (switches.adrDir ?? "docs/adr") : entry.key === "projectMemory" ? "off" : "on")
           : entry.value
         const line = isDefault
           ? `  // "${entry.key}": "${val}",`
