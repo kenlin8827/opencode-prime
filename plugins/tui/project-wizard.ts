@@ -8,13 +8,32 @@
  *     extracted to `./_wizard-helpers.ts`; not a separate framework directory by design.
  *   - Phase 1B refactor (2026-09-11): "git-workflow" group renamed and split into
  *     three meaningful units:
- *       - `autoAdvisor`  → inline row on the main menu (1 field, single value)
  *       - `projectGuards`→ sub-dialog (envGuard + e2eGuard, on/off guards)
  *       - `adr`          → sub-dialog (adrGuard + adrDir + adrLayout)
- *     Renamed `showGitWorkflowGroup` → `showSchemaGroup(groupId, schema)` helper.
- *     Schema files: `plugins/tui/wizard-schema/{auto-advisor,project-guards,adr}.json`.
- *     `.opencode/opencode.jsonc` remains the runtime source of truth for switch values;
- *     the JSON schemas only describe the wizard picker UI.
+ *       - `autoAdvisor`  → inline row on the main menu (1 field, single value)
+ *   - Phase 1C refactor (2026-09-11): responsibility separation + UX scaling.
+ *     1. Single-field groups (`projectMemory`, `autoAdvisor`) stay as
+ *        INLINE rows on the main menu. Picking a value auto-saves in
+ *        one step (no sub-dialog, no explicit Save button) via
+ *        `saveInlineField`. Multi-step sub-dialog flow was tried and
+ *        abandoned as too deep (5 clicks for one value).
+ *     2. Multi-field groups (`projectGuards`, `adr`) open a sub-dialog
+ *        with a "💾 Save & Apply Changes" button so users can
+ *        accumulate multiple field edits before persisting.
+ *     3. The main-menu button is now "🏗 Initialize / Update Project
+ *        Skeleton" — its responsibility is the FILE skeleton
+ *        (AGENTS.md, docs/git-commits.md, opencode.jsonc structure,
+ *        template evolution via sync, backends, hooks). It is NOT a
+ *        save-switches action.
+ *     4. Both save flows (`saveInlineField`, `runSaveSwitches`) call
+ *        `updateSwitches` → scaffold layer's `updateSwitchesOnly`:
+ *        writes only the switch values to opencode.jsonc, never
+ *        touches the other baseline files.
+ *     Schema files: `plugins/tui/wizard-schema/{project-memory,
+ *     auto-advisor,project-guards,adr}.json`.
+ *     `.opencode/opencode.jsonc` remains the runtime source of truth
+ *     for switch values; the JSON schemas only describe the wizard
+ *     picker UI.
  *
  * Menu selection flow:
  *   - Each group opens a dedicated DialogSelect dialog with clear choices.
@@ -31,7 +50,7 @@
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { tr, initI18n, languageOption, switchLanguage, SWITCH_LANG, type DialogOption } from "./i18n"
 import { CONFIG_REL, getProjectDir, setProjectDir } from "../project-manager/project-manager-config"
-import { indexProject, initProject, syncProject } from "../project-manager/project-manager-operations"
+import { indexProject, initProject, syncProject, updateSwitches } from "../project-manager/project-manager-operations"
 import { planDprintSetup, setupDprint } from "../project-manager/project-manager-dprint"
 import { PROJECT_SWITCH_OPTIONS } from "../project-manager/project-manager-options"
 import { detectProjectSwitches } from "../project-manager/project-manager-options"
@@ -43,6 +62,7 @@ import {
   backendLine,
   initReport,
   breadcrumbHeader,
+  scaffoldLine,
   type WizardGroupId,
 } from "./_wizard-helpers"
 import autoAdvisorSchemaJson from "./wizard-schema/auto-advisor.json" with { type: "json" }
@@ -136,8 +156,7 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
 
   // Per-group summary hints shown as the description of each group row on
   // the main menu. Built inline (no i18n template) — these are compact
-  // status snapshots, not user-facing messages. The inline auto-advisor
-  // row displays its current value in the title directly.
+  // status snapshots, not user-facing messages.
   const projectGuardsSummary = `env:${current.envGuard ?? "def"} · e2e:${current.e2eGuard ?? "def"} · adr:${current.adrGuard ?? "def"}`
   const adrSummary = `layout:${current.adrLayout ?? "def"}`
 
@@ -146,17 +165,12 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
     ? tr("project.tooling.summaryEligible")
     : tr("project.tooling.summaryNotEligible")
 
-  // Inline auto-advisor field — single-value enum, no sub-dialog needed.
-  // Use the friendly i18n label ("自动顾问" / "Auto advisor") instead of the
-  // raw config key so the host's inline description has room to render
-  // without being truncated at the dialog edge.
+  // Single-field groups render inline on the main menu and auto-save on
+  // commit (one-step UX). Multi-field groups open a sub-dialog + Save.
   const advisorField = AUTO_ADVISOR_SCHEMA.fields[0]!
-  const advisorInlineTitle = `${advisorField.icon} ${tr("project.groups.autoAdvisor")}: ${badgeFor(advisorField, current.autoAdvisorMode)}`
-
-  // Project memory — inline first-class control, ahead of the advisor:
-  // curated knowledge injection is deliberate user curation, not a guard.
   const memoryField = PROJECT_MEMORY_SCHEMA.fields[0]!
-  const memoryInlineTitle = `${memoryField.icon} ${tr("project.nameProjectMemory")}: ${badgeFor(memoryField, current.projectMemory)}`
+  const memoryInlineTitle = `${memoryField.icon} ${tr("project.groups.projectMemory")}: ${badgeFor(memoryField, current.projectMemory)}`
+  const advisorInlineTitle = `${advisorField.icon} ${tr("project.groups.autoAdvisor")}: ${badgeFor(advisorField, current.autoAdvisorMode)}`
 
   const items: DialogOption<string>[] = [
     {
@@ -256,7 +270,7 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
                 current.projectMemory,
                 (newValue) => {
                   current.projectMemory = newValue as ProjectSwitches["projectMemory"]
-                  showGroupMenu(api, { ...state, currentSelection: "__field_projectMemory" })
+                  void saveInlineField(api, state, projectRoot(api), isExisting, "__field_projectMemory")
                 },
                 () => showGroupMenu(api, { ...state, currentSelection: "__field_projectMemory" }),
               )
@@ -269,7 +283,7 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
                 current.autoAdvisorMode,
                 (newValue) => {
                   current.autoAdvisorMode = newValue as ProjectSwitches["autoAdvisorMode"]
-                  showGroupMenu(api, { ...state, currentSelection: "__field_autoAdvisorMode" })
+                  void saveInlineField(api, state, projectRoot(api), isExisting, "__field_autoAdvisorMode")
                 },
                 () => showGroupMenu(api, { ...state, currentSelection: "__field_autoAdvisorMode" }),
               )
@@ -317,11 +331,14 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
  *   }
  *
  * Note (2026-09-11, post-recovery): wired into all 4 async sites —
- * runInitOrUpdate (init/update), runIndexRefresh (index), runDprintSetup
- * (dprint), and runSaveSwitches (save). runSyncAction (sync) is sync-only
- * and intentionally unwired — the spinner would just flash. The dismiss
- * callback in runIndexRefresh was also fixed (was `__group_index__`,
- * stale post-refactor — now `__action_index__`).
+ * runInitOrUpdate (skeleton), runIndexRefresh (index), runDprintSetup
+ * (dprint), and runSaveSwitches (save — per-group, config only).
+ * runSyncAction (sync) is sync-only and intentionally unwired — the
+ * spinner would just flash. The dismiss callback in runIndexRefresh
+ * was also fixed (was `__group_index__`, stale post-refactor — now
+ * `__action_index__`). Phase 1C separated responsibilities: main-menu
+ * skeleton action stays in place (file scaffolding + backends + hooks),
+ * sub-dialog Save is config-only (writeSwitchValues, no file scaffold).
  */
 function showBusyModal(
   api: TuiPluginApi,
@@ -519,7 +536,16 @@ function showToolingGroup(api: TuiPluginApi, state: WizardState): void {
   )
 }
 
-// ─── Action: init / update ───────────────────────────────────────────
+// ─── Action: init / update (skeleton only — switches live in sub-dialog Save) ──
+//
+// Main-menu "🏗 Initialize / Update Project Skeleton" handles the SKELETON
+// layer: scaffold AGENTS.md / docs/git-commits.md / .opencode/opencode.jsonc
+// (first time) and append missing template switch lines to an existing
+// config (update). It applies the current `state.switches` to the config
+// it creates/updates, but the user-facing responsibility is the file
+// skeleton, not switch editing — switch editing lives in each sub-dialog's
+// "💾 Save & Apply Changes" button (runSaveSwitches → updateSwitchesOnly,
+// which writes the config WITHOUT touching the other baseline files).
 
 async function runInitOrUpdate(
   api: TuiPluginApi,
@@ -614,6 +640,46 @@ async function runIndexRefresh(api: TuiPluginApi, state: WizardState): Promise<v
 }
 
 // ─── Action: save switches ───────────────────────────────────────────
+//
+// Two flows share the same write path (`updateSwitches` → scaffold
+// layer's `updateSwitchesOnly`) and the same iron rule (never overwrite
+// unrelated content). They differ in UX:
+//   - `saveInlineField`: single-field groups on the main menu
+//     (`projectMemory`, `autoAdvisor`). One-step UX — pick a value,
+//     commit, persist. No sub-dialog, no explicit Save.
+//   - `runSaveSwitches`: multi-field sub-dialogs (`projectGuards`,
+//     `ADR`). User accumulates multiple field edits in a DialogSelect
+//     then clicks "💾 Save & Apply Changes" to persist.
+// Neither flow touches AGENTS.md / docs/git-commits.md — that's the
+// main-menu skeleton's job (runInitOrUpdate → initProject).
+
+// ─── Action: save inline (single-field auto-save on commit) ──────────
+
+async function saveInlineField(
+  api: TuiPluginApi,
+  state: WizardState,
+  rootDir: string,
+  isExisting: boolean,
+  returnSelection: string,
+): Promise<void> {
+  try {
+    await updateSwitches({ root: rootDir, switches: state.switches })
+    toast(
+      api,
+      isExisting ? tr("project.configSavedToast") : tr("project.initSuccess"),
+      "success",
+    )
+    showGroupMenu(api, { ...state, exists: true, currentSelection: returnSelection })
+  } catch (err) {
+    showAlertModal(api, {
+      title: tr("project.saveFailed"),
+      message: tr("project.saveFailedMsg", { err: (err as Error).message }),
+      onDismiss: () => showGroupMenu(api, { ...state, currentSelection: returnSelection }),
+    })
+  }
+}
+
+// ─── Action: save switches (sub-dialog "💾 Save & Apply Changes") ────
 
 async function runSaveSwitches(
   api: TuiPluginApi,
@@ -629,8 +695,8 @@ async function runSaveSwitches(
     busyText: tr("project.saveBusyText"),
   })
   try {
-    const result = await initProject({ root: rootDir, switches: state.switches })
-    const report = initReport(result.files, result.backends, result.hooks, rootDir)
+    const result = await updateSwitches({ root: rootDir, switches: state.switches })
+    const fileLine = scaffoldLine(result.file)
     toast(
       api,
       isExisting ? tr("project.configSavedToast") : tr("project.initSuccess"),
@@ -638,7 +704,7 @@ async function runSaveSwitches(
     )
     showAlertModal(api, {
       title: isExisting ? tr("project.saveResult") : tr("project.initResult"),
-      message: report,
+      message: `Target: ${result.root}\n\nFiles:\n  ${fileLine}`,
       onDismiss: () =>
         showSchemaGroup(api, { ...state, exists: true, currentSelection: "__save_switches__" }, groupId, schema),
     })

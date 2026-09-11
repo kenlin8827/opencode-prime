@@ -467,6 +467,7 @@ const STRINGS = {
   "project.firstScreenPlaceholder": { en: "Skeleton → conventions → maintenance → system (Esc: close)", "zh-CN": "骨架 → 规范 → 维护 → 系统 (Esc: 关闭)" },
   "project.groupsHeader": { en: "Groups", "zh-CN": "分组" },
   "project.groups.autoAdvisor": { en: "Auto advisor", "zh-CN": "自动顾问" },
+  "project.groups.projectMemory": { en: "Project memory", "zh-CN": "项目记忆" },
   "project.groups.projectGuards": { en: "Project guards", "zh-CN": "项目护栏" },
   "project.groups.adr": { en: "ADR Settings", "zh-CN": "ADR设置" },
   "project.groups.tooling": { en: "Project tooling", "zh-CN": "项目工具" },
@@ -517,9 +518,9 @@ const STRINGS = {
   "project.indexError": { en: "Index Error", "zh-CN": "索引错误" },
   "project.newProject": { en: "Project Setup Wizard — new project", "zh-CN": "项目设置向导 — 新建项目" },
   "project.setupExisting": { en: "Project Setup Wizard — {config}", "zh-CN": "项目设置向导 — {config}" },
-  "project.applyUpdate": { en: "🚀 Apply Changes", "zh-CN": "🚀 应用更改" },
-  "project.applyInit": { en: "🚀 Initialize Project", "zh-CN": "🚀 初始化项目" },
-  "project.applyUpdateDesc": { en: "Save switches & update baseline files", "zh-CN": "保存开关并更新基线文件" },
+  "project.applyUpdate": { en: "🏗 Update Project Skeleton", "zh-CN": "🏗 更新项目骨架" },
+  "project.applyInit": { en: "🏗 Initialize Project Skeleton", "zh-CN": "🏗 初始化项目骨架" },
+  "project.applyUpdateDesc": { en: "Append missing template lines & re-run backends", "zh-CN": "追加缺失的模板行并重新运行后端" },
   "project.applyInitDesc": { en: "Create config, AGENTS.md & git-commits.md", "zh-CN": "创建配置、AGENTS.md 和 git-commits.md" },
   "project.setupDprint": { en: "✨ Set up dprint", "zh-CN": "✨ 配置 dprint" },
   "project.setupDprintDesc": { en: "Add local dprint and generate a config from detected files", "zh-CN": "添加项目本地 dprint，并根据检测到的文件生成配置" },
@@ -541,7 +542,7 @@ const STRINGS = {
   "project.noBackends": { en: "ℹ️ No backends needed index refresh.", "zh-CN": "ℹ️ 无后端需要索引刷新。" },
 
   // ─── Async-operation loading states (showBusyModal placeholders) ────
-  // Replaces the menu with a busy DialogAlert while init/dprint/index run
+  // Replaces the menu with a busy DialogAlert while init/dprint/index/save run
   // in the background. Footer shows the spinner + busyText; Enter/Esc are
   // suppressed until the wizard replaces the frame with the result alert.
   "project.initWorkingTitle": { en: "Initializing project", "zh-CN": "正在初始化项目" },
@@ -551,7 +552,7 @@ const STRINGS = {
   "project.updateWorking": { en: "Updating baseline files and re-running detected backends.\nThis usually takes a few seconds.", "zh-CN": "正在更新基线文件并重新运行检测到的后端。\n这通常需要几秒钟。" },
   "project.updateBusyText": { en: "Updating…", "zh-CN": "正在更新…" },
   "project.saveWorkingTitle": { en: "Saving configuration", "zh-CN": "正在保存配置" },
-  "project.saveWorking": { en: "Writing switches and refreshing baseline files.\nThis usually takes a few seconds.", "zh-CN": "正在写入开关并刷新基线文件。\n这通常需要几秒钟。" },
+  "project.saveWorking": { en: "Writing switches to config file.\nThis usually takes less than a second.", "zh-CN": "正在写入开关到配置文件。\n这通常不到一秒。" },
   "project.saveBusyText": { en: "Saving…", "zh-CN": "正在保存…" },
   "project.setupDprintWorkingTitle": { en: "Setting up dprint", "zh-CN": "正在配置 dprint" },
   "project.setupDprintWorking": { en: "Installing dprint and generating dprint.json from detected files.\nThis may take a few seconds.", "zh-CN": "正在安装 dprint 并根据检测到的文件生成 dprint.json。\n这可能需要几秒钟。" },

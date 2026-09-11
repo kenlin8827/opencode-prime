@@ -36,11 +36,12 @@ export function projectRoot(api: TuiPluginApi): string {
  * The wizard sub-dialogs that use a breadcrumb header (the ones with
  * their own DialogSelect screen). Order matches their lifecycle position.
  *
- * `autoAdvisor` is intentionally NOT here: it is rendered as an inline
- * field row on the main menu (its enum picker is reached directly via
- * `__field_autoAdvisorMode`), not as a separate sub-dialog. Adding it
- * to this tuple would put a redundant `●Auto advisor` marker on every
- * breadcrumb while the user is in another group.
+ * Multi-field groups have their own sub-dialog + "💾 Save & Apply Changes"
+ * button (multiple fields to compose before persisting). Single-field
+ * groups (`projectMemory`, `autoAdvisor`) are intentionally NOT here —
+ * they render as inline rows on the main menu and auto-save on commit
+ * (one-step UX: pick value → write → back to main). The order here also
+ * drives the breadcrumb prefix shown on every sub-dialog.
  *
  * The legacy "Project structure" group was merged into the Skeleton
  * section (inline actions on the main menu); index maintenance is also
