@@ -272,6 +272,36 @@ export function generateConfigContent(switches: ProjectSwitches): string {
 }
 
 /**
+ * Update ONLY the project config (opencode.jsonc) with the given switches.
+ * Does NOT touch AGENTS.md, docs/git-commits.md, or any other baseline file
+ * — that's the main-menu "Apply Init/Update" skeleton's job. When the config
+ * is missing, creates it from the template with the switches applied
+ * (skeleton-free first-time init path for sub-dialog Save in an empty
+ * project directory).
+ *
+ * Same iron rule as runInit: never overwrite unrelated content. An existing
+ * file with the same switch values is reported as "skipped" with no write.
+ */
+export function updateSwitchesOnly(switches: ProjectSwitches): ScaffoldResult {
+  const absPath = resolveTarget(CONFIG_REL)
+  if (existsSync(absPath)) {
+    const existing = readFileSync(absPath, "utf-8")
+    const updated = applySwitchesToConfigContent(existing, switches)
+    if (updated !== existing) {
+      writeFileSync(absPath, updated, "utf-8")
+      return { relPath: CONFIG_REL, status: "updated" }
+    }
+    return { relPath: CONFIG_REL, status: "skipped" }
+  }
+  // First-time: create the config from the template with switches applied.
+  // Parent dirs created on demand; other baseline files (AGENTS.md,
+  // docs/git-commits.md) are intentionally NOT created here.
+  ensureParentDir(absPath)
+  writeFileSync(absPath, generateConfigContent(switches), "utf-8")
+  return { relPath: CONFIG_REL, status: "created" }
+}
+
+/**
  * Run `/project init` with explicit switches configured.
  * When config already exists, it updates the switches in-place.
  * When missing, creates .opencode/opencode.jsonc with the configured switches.

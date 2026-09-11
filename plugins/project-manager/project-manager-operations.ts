@@ -16,6 +16,7 @@ import {
   runInit,
   runInitWithSwitches,
   runSync,
+  updateSwitchesOnly,
   ensureTgrepGitignore,
   type ProjectSwitches,
   type ScaffoldResult,
@@ -34,6 +35,16 @@ export interface ProjectInitResult {
   readonly files: ScaffoldResult[]
   readonly backends: BackendResult[]
   readonly hooks: HookResult[]
+}
+
+export interface UpdateSwitchesOptions {
+  readonly root?: string
+  readonly switches: ProjectSwitches
+}
+
+export interface UpdateSwitchesResult {
+  readonly root: string
+  readonly file: ScaffoldResult
 }
 
 async function inProjectDir<T>(root: string, operation: () => T | Promise<T>): Promise<T> {
@@ -87,6 +98,22 @@ export async function indexProject(root = getProjectDir()): Promise<BackendResul
   return inProjectDir(root, async () => {
     const probe = probeBackends(root)
     return runBackends(planIndexBackends(probe), root)
+  })
+}
+
+/**
+ * Write only the switch values to .opencode/opencode.jsonc (or the root
+ * opencode.jsonc fallback). Does NOT touch AGENTS.md / docs/git-commits.md
+ * (that's `initProject`'s skeleton job) and does NOT re-run backends or
+ * register hooks (switches don't change that). Pair this with the
+ * sub-dialog Save button; use `initProject` for the main-menu skeleton
+ * action.
+ */
+export async function updateSwitches(options: UpdateSwitchesOptions): Promise<UpdateSwitchesResult> {
+  const root = options.root ?? getProjectDir()
+  return inProjectDir(root, async () => {
+    const file = updateSwitchesOnly(options.switches)
+    return { root, file }
   })
 }
 

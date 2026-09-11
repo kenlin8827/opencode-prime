@@ -43,7 +43,9 @@ import {
   extractSwitchLines,
   mergeSwitchLines,
   runInit,
+  runInitWithSwitches,
   runSync,
+  updateSwitchesOnly,
   writeDbhubToml,
   ensureTgrepGitignore,
 } from "../plugins/project-manager/project-manager-scaffold"
@@ -231,6 +233,66 @@ function test05_Scaffold() {
     !readFileSync(join(projectDir, "AGENTS.md"), "utf-8").includes("Generated"),
     "custom AGENTS.md content untouched",
   )
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  5b. updateSwitchesOnly — config-only write, never touches other files
+// ═════════════════════════════════════════════════════════════════════════
+
+function test05b_UpdateSwitchesOnly() {
+  section("05b: updateSwitchesOnly — config-only, no AGENTS.md / git-commits.md scaffold")
+
+  // Empty project → only the config is created; other baseline files MUST
+  // remain absent. This is the Phase 1C sub-dialog Save path for first-time
+  // projects (responsibility separation from the main-menu skeleton action).
+  const dirSync = mkdtempSync(join(tmpdir(), "pm-switches-only-"))
+  setProjectDir(dirSync)
+
+  const switches = { envGuard: "on", projectMemory: "on" } as const
+  const result = updateSwitchesOnly(switches)
+  assert(result.relPath === CONFIG_REL, "result targets the config file")
+  assert(result.status === "created", "first call creates the config")
+
+  const cfgPath = join(dirSync, ".opencode", "opencode.jsonc")
+  assert(existsSync(cfgPath), "config file written")
+  assert(
+    !existsSync(join(dirSync, "AGENTS.md")),
+    "AGENTS.md NOT scaffolded — that's the main-menu skeleton's job",
+  )
+  assert(
+    !existsSync(join(dirSync, "docs", "git-commits.md")),
+    "git-commits.md NOT scaffolded — that's the main-menu skeleton's job",
+  )
+
+  // Second call with the same values → skipped (no write).
+  const r2 = updateSwitchesOnly(switches)
+  assert(r2.status === "skipped", "idempotent when values unchanged")
+
+  // Different values → updated.
+  const r3 = updateSwitchesOnly({ envGuard: "off", projectMemory: "on" } as const)
+  assert(r3.status === "updated", "different switch value triggers an update")
+  const after = readFileSync(cfgPath, "utf-8")
+  assert(after.includes('"envGuard": "off"'), "updated config carries the new value")
+  assert(after.includes('"projectMemory": "on"'), "untouched switches remain in place")
+
+  // Equivalent semantics: runInitWithSwitches DOES scaffold the other
+  // files — proves the responsibility separation at the scaffold layer.
+  writeFileSync(join(dirSync, "AGENTS.md"), "x", "utf-8") // sentinel
+  const dirInit = mkdtempSync(join(tmpdir(), "pm-switches-init-"))
+  setProjectDir(dirInit)
+  const ri = runInitWithSwitches({ envGuard: "on" } as const)
+  assert(
+    ri.find((r) => r.relPath === "AGENTS.md")?.status === "created",
+    "runInitWithSwitches (skeleton path) still scaffolds AGENTS.md",
+  )
+  assert(
+    existsSync(join(dirInit, "docs", "git-commits.md")),
+    "runInitWithSwitches (skeleton path) still scaffolds git-commits.md",
+  )
+
+  rmSync(dirSync, { recursive: true, force: true })
+  rmSync(dirInit, { recursive: true, force: true })
+  setProjectDir(projectDir)
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -638,6 +700,7 @@ await test02_FileAsSwitch()
 await test03_ToolGuard()
 await test04_SwitchOff()
 test05_Scaffold()
+test05b_UpdateSwitchesOnly()
 await test06_Command()
 await test07_Injection()
 test08_IndexPlanning()
