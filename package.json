@@ -16,7 +16,7 @@
 		"@opencode-ai/plugin": "1.18.15",
 		"@opentui/core": "^0.5.4",
 		"@opentui/solid": "^0.5.4",
-		"@xmldom/xmldom": "^0.9.13",
+    "@xmldom/xmldom": "^0.9.12",
 		"adm-zip": "^0.6.0",
 		"opencode-qoder-bridge": "^0.1.1",
 		"playwright": "^1.45.0"
