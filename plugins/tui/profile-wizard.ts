@@ -686,6 +686,9 @@ function tierDescription(tier: string): string {
 function startWizard(api: TuiPluginApi): void {
   const active = getActiveProfile()
 
+  const selectionCat = tr("profile.selectionHeader")
+  const editCat = tr("profile.editHeader")
+  const manageCat = tr("profile.manageHeader")
   const actionsCat = tr("profile.actionsHeader")
   const interfaceCat = tr("common.interfaceHeader")
 
@@ -694,39 +697,41 @@ function startWizard(api: TuiPluginApi): void {
       title: tr("profile.mainTitle"),
       placeholder: tr("profile.mainPlaceholder"),
       options: [
+        // ── Selection: pick a profile to apply
         {
           title: active ? tr("profile.selectProfileActive", { active }) : tr("profile.selectProfile"),
           value: SELECT_PROFILE,
           description: tr("profile.selectProfileDesc"),
-          category: actionsCat,
+          category: selectionCat,
         },
+        // ── Edit: change tier/model mappings
         {
           title: tr("profile.editAgentTier"),
           value: EDIT_TIERS,
           description: tr("profile.editAgentTierDesc"),
-          category: actionsCat,
+          category: editCat,
         },
         {
           title: tr("profile.editTierModels"),
           value: EDIT_TIER_MODELS,
           description: tr("profile.editTierModelsDesc"),
-          category: actionsCat,
+          category: editCat,
         },
         {
           title: tr("profile.manageModels"),
           value: MANAGE_MODELS,
           description: tr("profile.manageModelsDesc"),
-          category: actionsCat,
+          category: editCat,
         },
+        // ── Manage: add a new profile
         {
-          // adding is low-frequency — keep it discoverable but unpinned
           title: tr("profile.addProfile"),
           value: ADD_PROFILE,
           description: tr("profile.addProfileDesc"),
-          category: actionsCat,
+          category: manageCat,
         },
+        // ── Actions: destructive / low-frequency
         {
-          // destructive + low-frequency — last in the Actions group
           title: tr("profile.resetModels"),
           value: RESET_MODELS,
           description: tr("profile.resetModelsDesc"),

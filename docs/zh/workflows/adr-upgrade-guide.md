@@ -11,8 +11,8 @@
 | 文件路径 | 变动类型 | 核心职责说明 |
 | :--- | :---: | :--- |
 | `plugins/adr-guard/adr-engine.ts` | **新增** | 分层 ADR 核心引擎：多路径自动嗅探、自增序号计算、分层模板生成、原子化 Supersede 状态机、Mermaid DAG 拓扑渲染及断链体检 |
-| `plugins/adr-guard/adr-guard-config.ts` | **修改** | 增加 `adrMode`（`auto` \| `flat` \| `hierarchical`）治理模式读取、归一化与持久化配置 |
-| `plugins/adr-guard/adr-guard-command.ts` | **修改** | 注册并实现 `/adr` 统一命令调度器（`new`, `supersede`, `tree`, `check`, `mode`, `help`） |
+| `plugins/adr-guard/adr-guard-config.ts` | **修改** | 增加 `adrLayout`（`auto` \| `flat` \| `hierarchical`）治理布局读取、归一化与持久化配置 |
+| `plugins/adr-guard/adr-guard-command.ts` | **修改** | 注册并实现 `/adr` 统一命令调度器（`new`, `supersede`, `tree`, `check`, `layout`, `help`） |
 | `plugins/adr-guard/adr-guard.ts` | **修改** | 向 OpenCode 注册 `/adr` 与 `/adr-guard` Slash 命令 |
 | `plugins/adr-guard/adr-guard-runtime.ts` | **修改** | 增强 `hasAdrChanges` 支持对子包 `**/docs/adr/**` 与全局 `docs/adr/` 的 Git Working-Tree 变动感知 |
 | `plugins/adr-guard/adr-guard-protocol.md` | **修改** | 更新 ADR 铁律协议，增加三层决策模型（L1/L2/L3）与 `/adr` 指南 |
@@ -41,13 +41,13 @@
 - [x] **`/adr check`（或 `/adr lint`）**：
   - 检查全仓 ADR 引用完整性（父子引用断链、替代目标不存在）；
   - 检查 frontmatter 必填字段与同目录序号冲突；
-  - **复杂度自动感知与升级顾问（Complexity Advisor）**：自动嗅探 ADR 规模与 Monorepo 包数量，并在适合时主动给出模式切换建议。
+  - **复杂度自动感知与升级顾问（Complexity Advisor）**：自动嗅探 ADR 规模与 Monorepo 包数量，并在适合时主动给出布局切换建议。
 - [x] **`/adr migrate [flat|hierarchical] [--confirm]`（自动重构与文件迁移引擎）**：
   - **预览模式（Dry-Run）**：一览重构方案、文件移动源/目标路径、层级映射与新序号；
   - **执行模式（Confirm）**：原子化移动文件、重写 frontmatter、更新相互引用链接并重新生成所有目录的 `INDEX.md`；
   - 支持 **双向自由重构**（`flat` → `hierarchical` 分层扩散 或 `hierarchical` → `flat` 单层收拢）。
-- [x] **`/adr mode [auto|flat|hierarchical]`**：
-  - 查看或一键切换项目级分层治理模式（切换时若有可迁移文件，会自动提示一键重构命令）。
+- [x] **`/adr layout [auto|flat|hierarchical]`**：
+  - 查看或一键切换项目级分层治理布局（切换时若有可迁移文件，会自动提示一键重构命令）。
 
 
 ---
@@ -62,13 +62,13 @@
   "adrGuard": "on",
 
   // ADR 自定义根目录 (默认 "docs/adr")
-  "adrGuardDir": "docs/adr",
+  "adrDir": "docs/adr",
 
-  // ADR 分层治理模式 (默认 "auto")
-  // "auto": 智能自适应模式 (常规单体项目表现为纯扁平，出现子包时自动拓展)
-  // "flat": 极简纯扁平单层模式 (强制只使用根目录 docs/adr/)
-  // "hierarchical": 严格分层模式 (强制 L1/L2/L3 多层划分)
-  "adrMode": "auto"
+  // ADR 分层治理布局 (默认 "auto")
+  // "auto": 智能自适应布局 (常规单体项目表现为纯扁平，出现子包时自动拓展)
+  // "flat": 极简纯扁平单层布局 (强制只使用根目录 docs/adr/)
+  // "hierarchical": 严格分层布局 (强制 L1/L2/L3 多层划分)
+  "adrLayout": "auto"
 }
 ```
 

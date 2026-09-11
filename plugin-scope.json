@@ -12,8 +12,8 @@
       "deny": ["lite", "utility", "subagent:*"]
     },
     "project-profiler": {
-      "$comment": "Backend routing is a subagent's work discipline, not orchestration protocol — explore.md defers backend choice to the session profile, so explore/qa/code-review must receive it. Only lite/utility stay out.",
-      "deny": ["lite", "utility"]
+      "$comment": "Backend routing is a subagent's work discipline AND a Lite concern (Lite now defaults to tgrep_search per prompts/lite.md). Utility (title-generator, ~30k tok saved per session) stays out — it never touches code search, so the block is pure overhead there.",
+      "deny": ["utility"]
     }
   }
 }

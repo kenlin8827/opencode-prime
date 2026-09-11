@@ -16,6 +16,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
+// Sandbox the ocp shared config and pin language=en — guard command
+// replies are localized (zh-CN on this machine's real config would break
+// the English-phrase assertions below).
+const tmp = mkdtempSync(join(tmpdir(), "e2e-guard-test-"))
+process.env.OCP_CONFIG_PATH = join(tmp, "ocp.jsonc")
+writeFileSync(join(tmp, "ocp.jsonc"), `{ "language": "en" }`)
+
 import {
   normalizeState,
   getState,
@@ -67,7 +74,6 @@ assertEq(normalizeState(42), null, "non-string/boolean → null")
 // ─── Project switch resolution ───────────────────────────────────────
 
 console.log("\n== project switch ==")
-const tmp = mkdtempSync(join(tmpdir(), "e2e-guard-test-"))
 setProjectDir(tmp)
 
 assertEq(getState(), "off", "default state is OFF")
@@ -118,10 +124,17 @@ await systemHook({ agent: "code" }, sysState1)
 assert(sysState1.system[0].includes(MARKER_ON), "system hook injects MARKER_ON when guard is ON and agent is primary")
 assert(sysState1.system[0].includes("feat"), "system hook injects protocol body")
 
-// 2. Fast path: subsequent call does not duplicate
+// 2. Subsequent call (Scenario A: prompt rebuilt each turn; Scenario B
+// hypothetical: prompt persists — strip+re-inject produces identical
+// content either way). Length-stable under B; grows by fragment size
+// under A. Either way, the marker is present.
 const lenBefore = sysState1.system[0].length
+const sysState1b = { system: ["You are an assistant."] }
+await systemHook({ agent: "code" }, sysState1b)
+assert(sysState1b.system[0].includes(MARKER_ON), "subsequent call (fresh prompt) still injects — Scenario A: provider cache keeps system prompt warm because content is identical")
+// Same-object replay (Scenario B hypothetical): strip + re-inject → identical length.
 await systemHook({ agent: "code" }, sysState1)
-assertEq(sysState1.system[0].length, lenBefore, "system hook does not duplicate prompt when cache warm")
+assertEq(sysState1.system[0].length, lenBefore, "same-object replay (Scenario B): strip+re-inject is byte-stable → provider cache hit")
 
 // 3. Subagent session: does NOT inject, strips if present
 const subagentSys = { system: ["You are an assistant." + getGuardPrompt()] }

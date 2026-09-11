@@ -16,6 +16,7 @@ import {
   runInit,
   runInitWithSwitches,
   runSync,
+  ensureTgrepGitignore,
   type ProjectSwitches,
   type ScaffoldResult,
   type SyncResult,
@@ -57,6 +58,15 @@ export async function initProject(options: ProjectInitOptions = {}): Promise<Pro
     const files = options.switches === undefined ? runInit() : runInitWithSwitches(options.switches)
     const probe = probeBackends(root)
     let backends = await runBackends(planInitBackends(probe), root)
+
+    // The ignore rule is only an outcome of a successful, explicitly enabled
+    // tgrep initialization; a disabled or absent binary never changes files.
+    if (backends.some((result) => result.backend === "tgrep" && result.status === "ran")) {
+      const ignore = ensureTgrepGitignore(root)
+      if (ignore === "not-git") backends = backends.map((result) => result.backend === "tgrep"
+        ? { ...result, detail: `${result.detail}; local cache (non-Git directory)` }
+        : result)
+    }
 
     if (options.refreshExistingIndexes === true && existed) {
       const indexBackends = await runBackends(planIndexBackends(probe), root)

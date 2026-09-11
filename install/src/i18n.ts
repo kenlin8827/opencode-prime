@@ -211,6 +211,7 @@ export const FALLBACK_EN: I18nText = {
     openchamber_vscode: { label: 'OpenChamber VS Code', hint: 'Editor extension powering `ocp code` — auto-installs fedaykindev.openchamber via the editor CLI' },
     herdr: { label: 'Herdr', hint: 'Terminal workspace manager for AI coding agents (https://herdr.dev) — `ocp herdr` opens current dir as workspace' },
     opencode: { label: 'OpenCode', hint: 'AI coding agent — powers `ocp tui`' },
+    tgrep: { label: 'tgrep', hint: 'Trigram-indexed full-text search (microsoft/tgrep) — on by default; auto-installed or runs when on PATH, then /project init per repo' },
   },
   mcpLabels: {
     serena: { label: 'Serena', hint: 'Semantic code navigation and editing through its MCP server.' },
@@ -221,7 +222,6 @@ export const FALLBACK_EN: I18nText = {
     idea: { label: 'JetBrains IDEA', hint: 'JetBrains IDE MCP integration; enable the server in the IDE first.' },
   },
   pluginLabels: {
-    '@dietrichgebert/ponytail': { label: 'Ponytail', hint: 'Bundled OpenCode interface enhancements.' },
     'opencode-qoder-bridge': { label: 'Qoder Bridge', hint: 'Qoder integration; requires a supported Node.js version and `qoder login`.' },
     'opencode-mem@2.24.3': { label: 'OpenCode Memory', hint: 'Captures persistent memory and may incur an LLM cost after idle sessions.' },
   },
@@ -240,7 +240,7 @@ export const FALLBACK_EN: I18nText = {
   exitBtnHint: 'Close control center without saving',
   backBtn: '↩ BACK TO MAIN MENU',
   backBtnHint: 'Return to the wizard main menu',
-  footerHelp: '[ ↑/↓/j/k: Move ]  [ Space: Toggle ]  [ L: Lang ]  [ Enter: Apply ]  [ ^S: Save ]  [ ^Z: Reset ]  [ ^A: Install ]  [ ^Q: Quit ]  [ Esc: Back ]',
+  footerHelp: '[ ↑/↓/j/k: Move ]  [ Space: Toggle ]  [ L: Lang ]  [ Enter: Apply ]  [ ^S: Save ]  [ ^Z: Reset ]  [ ^T: Install ]  [ ^Q: Quit ]  [ Esc: Back ]',
   switchLangHint: 'Language switched to English',
   enabled: 'ENABLED',
   disabled: 'DISABLED',

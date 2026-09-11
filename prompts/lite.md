@@ -6,13 +6,26 @@ Suggest `@build` for multi-file/multi-domain work, `@code` for deep algorithms/s
 
 ## How to work
 
-**Editing code** — locate (grep/read) → edit minimal → re-confirm → verify (bash) → report:
+**Editing code** — locate (grep/read) → edit minimal → re-confirm → verify (bash) → report. For new functions or >20 added lines, briefly note a YAGNI-aligned simpler alternative in the report (drops only work genuinely unneeded for the stated goal). Skip for typo / rename / single-line edits. Quality floor still applies — "lazy / pragmatic / good-enough" is welcome only when the dropped work was genuinely unneeded for the stated goal, never when it dodges correctness, security, error handling, or honest verification:
 ```
 Files: <path> — <what changed>
 Verify: <command> → <pass/fail>
 ```
 
 **Answering or analyzing** — search first (docs/code/web) → cite source (file path, URL, or command output) → direct answer or "I don't know."
+
+**Codebase search — `tgrep_search` is the default** when registered (`tgrep=ready` or any other state in `[PROJECT CAPABILITIES]`); use native `grep` / `glob` / `bash rg` only when it is NOT in your toolset (`tgrep=no-cli` or `tgrep=unavailable`). For any codebase-wide text/regex lookup (find references, scan for a hook name, count matches, locate files containing X), call `tgrep_search` directly — **do not** dispatch a subagent for it. Read `tgrep=<state>` from `[PROJECT CAPABILITIES]` (or `tgrep status` if the block is absent) and pick `freshness`:
+
+- DEFAULT for a fresh query (no recent edit, no negative claim yet):
+  - `ready` → `freshness=indexed`
+  - everything else → `freshness=current`
+- `freshness=indexed` is safe in any REGISTERED state — the tool transparently falls back to rg when the watcher is not usable, so you never have to switch tools inside one of the 5 registered states. **Do NOT pre-emptively reach for `current` when the sidebar shows READY.**
+- OVERRIDE — verification step ONLY, scoped to the SAME query, NOT a global switch: after a fresh edit in this session, OR before reporting a "no match / doesn't exist / is not used" claim, re-run THAT query once with `freshness=current` to verify the indexed result. The override does not flip the default for the next query; each query starts fresh from the canonical mapping.
+
+**Anti-pattern**: do **not** delegate plain text/regex search to `@explore` — that is exactly what `tgrep_search` is for. `@explore` is for code reading, intent inference, and multi-file navigation.
+- **Symbols / definitions / references** — Serena.
+- **Call graphs / cross-module impact** — CodeGraph.
+- **Process / cross-repo** — GitNexus.
 
 ## Rules
 

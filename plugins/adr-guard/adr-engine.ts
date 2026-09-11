@@ -13,7 +13,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs"
 import { dirname, join, relative, resolve } from "node:path"
-import { type AdrMode, getAdrMode, setAdrMode } from "./adr-guard-config"
+import { type AdrLayout, getAdrLayout, setAdrLayout } from "./adr-guard-config"
 
 export type AdrLayer = "system" | "domain" | "component"
 
@@ -72,13 +72,13 @@ export function slugify(title: string): string {
 export function discoverAdrDirectories(
   projectDir: string,
   defaultDir = "docs/adr",
-  mode?: AdrMode,
+  layout?: AdrLayout,
 ): string[] {
-  const currentMode = mode ?? getAdrMode()
+  const currentLayout = layout ?? getAdrLayout()
   const normalizedDefault = defaultDir.replace(/\\/g, "/").replace(/\/+$/, "")
 
   // In flat mode, strictly return only the single configured/default ADR directory
-  if (currentMode === "flat") {
+  if (currentLayout === "flat") {
     return [normalizedDefault]
   }
 
@@ -198,8 +198,8 @@ export function parseAdrFile(fullPath: string, projectDir: string): AdrMeta | nu
 /**
  * Discover all ADRs in the project.
  */
-export function getAllAdrs(projectDir: string, defaultDir = "docs/adr", mode?: AdrMode): AdrMeta[] {
-  const dirs = discoverAdrDirectories(projectDir, defaultDir, mode)
+export function getAllAdrs(projectDir: string, defaultDir = "docs/adr", layout?: AdrLayout): AdrMeta[] {
+  const dirs = discoverAdrDirectories(projectDir, defaultDir, layout)
   const adrs: AdrMeta[] = []
 
   for (const relDir of dirs) {
@@ -295,14 +295,14 @@ export interface CreateAdrOptions {
   targetDir?: string
   parent?: string
   status?: string
-  mode?: AdrMode
+  layout?: AdrLayout
 }
 
 /**
  * Scaffold a new ADR file and update its index.
  */
 export function createAdr(options: CreateAdrOptions): { relPath: string; fullPath: string; id: string } {
-  const currentMode = options.mode ?? getAdrMode()
+  const currentLayout = options.layout ?? getAdrLayout()
   let {
     projectDir,
     title,
@@ -314,7 +314,7 @@ export function createAdr(options: CreateAdrOptions): { relPath: string; fullPat
 
   // In flat mode, force single root docs/adr target
   let targetRelDir = options.targetDir
-  if (currentMode === "flat") {
+  if (currentLayout === "flat") {
     targetRelDir = "docs/adr"
     layer = "system"
   } else if (!targetRelDir) {
@@ -431,16 +431,16 @@ export function supersedeAdr(
 /**
  * Generate full Markdown hierarchy tree and Mermaid DAG diagram.
  */
-export function generateDecisionMap(projectDir: string, mode?: AdrMode): string {
-  const currentMode = mode ?? getAdrMode()
-  const adrs = getAllAdrs(projectDir, "docs/adr", currentMode)
+export function generateDecisionMap(projectDir: string, layout?: AdrLayout): string {
+  const currentLayout = layout ?? getAdrLayout()
+  const adrs = getAllAdrs(projectDir, "docs/adr", currentLayout)
   if (adrs.length === 0) {
     return `### Architecture Decision Map\n\n*No Architecture Decision Records found in this workspace.*\nUse \`/adr new <title>\` to initialize your first decision.`
   }
 
   let output = `### 🏛️ Architecture Decision Map\n\n`
 
-  if (currentMode === "flat") {
+  if (currentLayout === "flat") {
     output += `#### Decisions (${adrs.length})\n\n`
     for (const item of adrs) {
       const badge = statusBadge(item.status)
@@ -605,10 +605,10 @@ export interface ComplexityAnalysis {
   totalAdrs: number
   rootAdrCount: number
   discoveredPackages: string[]
-  currentMode: AdrMode
+  currentLayout: AdrLayout
   isComplex: boolean
   recommendation?: {
-    suggestedMode: AdrMode
+    suggestedLayout: AdrLayout
     reason: string
   }
 }
@@ -624,8 +624,8 @@ export interface AdrMovePlan {
 }
 
 export interface MigrationPlan {
-  currentMode: AdrMode
-  targetMode: AdrMode
+  currentLayout: AdrLayout
+  targetLayout: AdrLayout
   moves: AdrMovePlan[]
   summary: string
 }
@@ -657,15 +657,15 @@ export function discoverWorkspacePackages(projectDir: string): string[] {
  * Analyze ADR complexity and recommend mode switches when thresholds are reached.
  */
 export function analyzeAdrComplexity(projectDir: string): ComplexityAnalysis {
-  const currentMode = getAdrMode()
+  const currentLayout = getAdrLayout()
   const adrs = getAllAdrs(projectDir, "docs/adr", "auto")
   const rootAdrs = adrs.filter((a) => a.dir === "docs/adr")
   const packages = discoverWorkspacePackages(projectDir)
 
   let isComplex = false
-  let recommendation: { suggestedMode: AdrMode; reason: string } | undefined
+  let recommendation: { suggestedLayout: AdrLayout; reason: string } | undefined
 
-  if (currentMode === "flat" || currentMode === "auto") {
+  if (currentLayout === "flat" || currentLayout === "auto") {
     // Triggers for recommending hierarchical mode:
     // 1. High number of root ADRs (> 12)
     // 2. Monorepo structure with multiple domain ADRs
@@ -673,18 +673,18 @@ export function analyzeAdrComplexity(projectDir: string): ComplexityAnalysis {
     if (rootAdrs.length >= 12 || (hasMonorepo && rootAdrs.length >= 6)) {
       isComplex = true
       recommendation = {
-        suggestedMode: "hierarchical",
+        suggestedLayout: "hierarchical",
         reason: hasMonorepo
           ? `Detected ${packages.length} packages and ${rootAdrs.length} ADRs in root docs/adr/. Migrating to hierarchical mode will scope decisions per subsystem.`
           : `High density of decisions (${rootAdrs.length} ADRs in root docs/adr/). Upgrading to hierarchical mode improves discoverability and governance.`,
       }
     }
-  } else if (currentMode === "hierarchical") {
+  } else if (currentLayout === "hierarchical") {
     // Triggers for recommending flat mode:
     // Very few ADRs (<= 4) and no subpackages
     if (adrs.length <= 4 && packages.length === 0) {
       recommendation = {
-        suggestedMode: "flat",
+        suggestedLayout: "flat",
         reason: `Lightweight project with only ${adrs.length} ADRs and no subpackages. Switching to flat mode simplifies management.`,
       }
     }
@@ -694,22 +694,22 @@ export function analyzeAdrComplexity(projectDir: string): ComplexityAnalysis {
     totalAdrs: adrs.length,
     rootAdrCount: rootAdrs.length,
     discoveredPackages: packages,
-    currentMode,
+    currentLayout,
     isComplex,
     recommendation,
   }
 }
 
 /**
- * Plan restructuring and file movements for ADR mode migration.
+ * Plan restructuring and file movements for ADR layout migration.
  */
-export function planAdrMigration(projectDir: string, targetMode: AdrMode): MigrationPlan {
-  const currentMode = getAdrMode()
+export function planAdrMigration(projectDir: string, targetLayout: AdrLayout): MigrationPlan {
+  const currentLayout = getAdrLayout()
   const allAdrs = getAllAdrs(projectDir, "docs/adr", "auto")
   const moves: AdrMovePlan[] = []
   const packages = discoverWorkspacePackages(projectDir)
 
-  if (targetMode === "hierarchical") {
+  if (targetLayout === "hierarchical") {
     // Migrate flat root ADRs into subsystem or domain directories
     const rootAdrs = allAdrs.filter((a) => a.dir === "docs/adr")
     const dirCounters = new Map<string, number>()
@@ -750,7 +750,7 @@ export function planAdrMigration(projectDir: string, targetMode: AdrMode): Migra
         })
       }
     }
-  } else if (targetMode === "flat") {
+  } else if (targetLayout === "flat") {
     // Flatten all non-root ADRs back to docs/adr/
     const nonRootAdrs = allAdrs.filter((a) => a.dir !== "docs/adr")
     let maxRootNum = 0
@@ -777,14 +777,14 @@ export function planAdrMigration(projectDir: string, targetMode: AdrMode): Migra
     }
   }
 
-  let summary = `Migration Plan (${currentMode} $\\to$ ${targetMode}): ${moves.length} file(s) to restructure.`
+  let summary = `Migration Plan (${currentLayout} $\\to$ ${targetLayout}): ${moves.length} file(s) to restructure.`
   if (moves.length === 0) {
-    summary = `Migration Plan (${currentMode} $\\to$ ${targetMode}): No file movements needed.`
+    summary = `Migration Plan (${currentLayout} $\\to$ ${targetLayout}): No file movements needed.`
   }
 
   return {
-    currentMode,
-    targetMode,
+    currentLayout,
+    targetLayout,
     moves,
     summary,
   }
@@ -867,7 +867,7 @@ export function executeAdrMigration(
   }
 
   // Update project configuration
-  setAdrMode(plan.targetMode)
+  setAdrLayout(plan.targetLayout)
 
   return {
     executedCount: plan.moves.length,

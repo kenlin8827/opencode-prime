@@ -126,6 +126,19 @@ export interface ScaffoldResult {
 
 export { ensureOpencodeGitignore }
 
+/** Append the local tgrep cache rule once, without modifying non-Git folders. */
+export function ensureTgrepGitignore(root: string): "added" | "present" | "not-git" {
+  if (!existsSync(join(root, ".git"))) return "not-git"
+  const target = join(root, ".gitignore")
+  const existing = existsSync(target) ? readFileSync(target, "utf-8") : ""
+  // Equivalent ignore spellings: .tgrep, .tgrep/, /.tgrep/, .tgrep/**,
+  // **/.tgrep/, **/.tgrep/**
+  if (/^(?:\*\*\/)?\/?\.tgrep(?:\/\*\*)?\/?\s*$/m.test(existing)) return "present"
+  const prefix = existing && !existing.endsWith("\n") ? "\n" : ""
+  writeFileSync(target, `${existing}${prefix}.tgrep/\n`, "utf-8")
+  return "added"
+}
+
 /**
  * Run `/project init`: create each missing target file. Existing files are
  * never overwritten — EXCEPT the project config, which gets an append-only
@@ -171,12 +184,13 @@ export interface SwitchLine {
 }
 
 export interface ProjectSwitches {
-  autoAdvisorMode?: "off" | "lite" | "full" | "default"
-  adrGuard?: "on" | "off" | "default"
-  adrGuardDir?: string
-  adrMode?: "auto" | "flat" | "hierarchical" | "default"
-  envGuard?: "on" | "off" | "default"
-  e2eGuard?: "on" | "off" | "default"
+  autoAdvisorMode?: "off" | "lite" | "full"
+  adrGuard?: "on" | "off"
+  adrDir?: string
+  adrLayout?: "auto" | "flat" | "hierarchical"
+  envGuard?: "on" | "off"
+  e2eGuard?: "on" | "off"
+  projectMemory?: "on" | "off"
 }
 
 /** Commented switch lines (`// "key": ...`) offered by the config template. */
@@ -197,9 +211,11 @@ export function contentHasKey(content: string, key: string): boolean {
 
 /**
  * Apply project switch settings to a JSONC config string (template or existing).
- * - active value ("lite", "on", etc.) → active line `"key": "value",`
- * - "default" → commented line `// "key": "...",`
- * - preserves indentation, comments, and remaining lines.
+ * Each entry's `value` (when set) replaces the matching line in active form
+ * `"key": "value",` — replacing a previously commented template line or
+ * appending before the closing `}` when the key is absent. Undefined entries
+ * are skipped (template defaults stay commented). Indentation, comments, and
+ * unrelated lines are preserved.
  */
 export function applySwitchesToConfigContent(
   content: string,
@@ -211,38 +227,14 @@ export function applySwitchesToConfigContent(
   const switchEntries: Array<{
     key: string
     value?: string
-    defaultLine: string
   }> = [
-      {
-        key: "autoAdvisorMode",
-        value: switches.autoAdvisorMode,
-        defaultLine: '  // "autoAdvisorMode": "lite",  // off | lite | full — /auto-advisor <mode>',
-      },
-      {
-        key: "adrGuard",
-        value: switches.adrGuard,
-        defaultLine: '  // "adrGuard": "on",           // on | off          — /adr-guard <state>',
-      },
-      {
-        key: "adrGuardDir",
-        value: switches.adrGuardDir,
-        defaultLine: `  // "adrGuardDir": "${switches.adrGuardDir ?? "docs/adr"}",  // ADR directory`,
-      },
-      {
-        key: "adrMode",
-        value: switches.adrMode,
-        defaultLine: '  // "adrMode": "auto",          // auto | flat | hierarchical — /adr mode <mode>',
-      },
-      {
-        key: "envGuard",
-        value: switches.envGuard,
-        defaultLine: '  // "envGuard": "on",           // on | off — blocks agent access to secret .env* files (.env.example exempt)',
-      },
-      {
-        key: "e2eGuard",
-        value: switches.e2eGuard,
-        defaultLine: '  // "e2eGuard": "on",           // on | off — E2E quality red line: prompts LLM to assess diff impact on feat/fix tasks and interactively confirm with user via ask',
-      },
+      { key: "autoAdvisorMode", value: switches.autoAdvisorMode },
+      { key: "adrGuard", value: switches.adrGuard },
+      { key: "adrLayout", value: switches.adrLayout },
+      { key: "adrDir", value: switches.adrDir },
+      { key: "envGuard", value: switches.envGuard },
+      { key: "e2eGuard", value: switches.e2eGuard },
+      { key: "projectMemory", value: switches.projectMemory },
     ]
 
   for (const entry of switchEntries) {
@@ -251,31 +243,19 @@ export function applySwitchesToConfigContent(
     // Match active or commented switch line: e.g. `  // "key": "val", ...` or `  "key": "val", ...`
     const lineRegex = new RegExp(`^(\\s*)(//\\s*)?("${escaped}"\\s*:\\s*)"([^"]*)"(.*)$`, "m")
     const match = lineRegex.exec(result)
-
-    const isDefault = entry.value === "default"
+    const val = entry.value
 
     if (match) {
       const indent = match[1] || "  "
       const prefix = match[3]
       const suffix = match[5]
-      const val = isDefault
-        ? (entry.key === "autoAdvisorMode" ? "lite" : entry.key === "adrMode" ? "auto" : entry.key === "adrGuardDir" ? (switches.adrGuardDir ?? "docs/adr") : "on")
-        : entry.value
-
-      const newLine = isDefault
-        ? `${indent}// ${prefix}"${val}"${suffix}`
-        : `${indent}${prefix}"${val}"${suffix}`
+      const newLine = `${indent}${prefix}"${val}"${suffix}`
       result = result.replace(match[0], newLine)
     } else {
       // Key absent in existing content: append before closing brace
       const close = result.lastIndexOf("}")
       if (close >= 0) {
-        const val = isDefault
-          ? (entry.key === "autoAdvisorMode" ? "lite" : entry.key === "adrMode" ? "auto" : entry.key === "adrGuardDir" ? (switches.adrGuardDir ?? "docs/adr") : "on")
-          : entry.value
-        const line = isDefault
-          ? `  // "${entry.key}": "${val}",`
-          : `  "${entry.key}": "${val}",`
+        const line = `  "${entry.key}": "${val}",`
         result = result.slice(0, close) + line + eol + result.slice(close)
       }
     }
@@ -334,7 +314,7 @@ export function runInitWithSwitches(switches: ProjectSwitches): ScaffoldResult[]
       }
     }
 
-    mkdirSync(dirname(absPath), { recursive: true })
+    ensureParentDir(absPath)
     if (relPath === CONFIG_REL) {
       writeFileSync(absPath, generateConfigContent(switches), "utf-8")
     } else {

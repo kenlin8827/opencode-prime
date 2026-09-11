@@ -6,6 +6,14 @@
   "tools": {
     // false also removes the bundled OpenRTK plugin from the target.
     "rtk": true,
+    // ripgrep (rg) — fast .gitignore-aware grep. Auto-provisions like rtk/tgrep;
+    // uses an existing binary if already on PATH. The in-agent search tool prefers
+    // rg when present and falls back to native grep otherwise.
+    "ripgrep": true,
+    // Optional external full-text index (microsoft/tgrep). Enabled by default:
+    // auto-provisions like rtk or uses binary if already on PATH.
+    // The tgrep_search tool self-hides until the tgrep CLI is on PATH.
+    "tgrep": true,
     // OpenChamber ships as three independent surfaces, one switch each.
     // Web UI CLI (@openchamber/web) — powers `ocp web`. Needs Node.js 22+;
     // disabled by default because it installs a global package.
@@ -42,7 +50,6 @@
   },
   // Controls membership in opencode.jsonc's plugin array.
   "plugin": {
-    "@dietrichgebert/ponytail": true,
     // Requires supported Node and `qoder login`.
     "opencode-qoder-bridge": false,
     // Persistent-memory capture has an LLM cost per idle session.

@@ -263,38 +263,85 @@ function readProjectTemplate(): string | null {
 }
 
 /**
- * Write `"field": "value"` into the project-level config. Returns false when
- * the write fails (e.g. read-only project dir).
+ * Write `"field": "value"` into the project-level config. Returns the
+ * failure reason on error (string) — `null` on success, never throws.
+ * Plugin hooks log the reason to `client.app.log({ level: "warn" })` so
+ * users see a real diagnosis (read-only fs vs parse error vs permission
+ * denied) instead of an opaque "couldn't set switch". Backward compat:
+ * the previous boolean contract is preserved via `SetConfigOk`/`SetConfigFail`.
  */
-export function setConfigField(field: string, value: string): boolean {
+export type SetConfigResult =
+  | { ok: true }
+  | { ok: false; reason: "read-only-fs" | "permission-denied" | "parse-error" | "no-target" | "unknown"; detail: string }
+
+export function setConfigField(field: string, value: string): SetConfigResult {
+  let file: string
   try {
-    const file = writableProjectConfigFile()
-    const raw = existsSync(file) ? readFileSync(file, "utf-8") : (readProjectTemplate() ?? "")
-    const updated = upsertConfigField(raw, field, value)
+    file = writableProjectConfigFile()
+  } catch (err) {
+    return { ok: false, reason: "no-target", detail: errMsg(err) }
+  }
+  let raw: string
+  try {
+    raw = existsSync(file) ? readFileSync(file, "utf-8") : (readProjectTemplate() ?? "")
+  } catch (err) {
+    return { ok: false, reason: "read-only-fs", detail: errMsg(err) }
+  }
+  let updated: string
+  try {
+    updated = upsertConfigField(raw, field, value)
+  } catch (err) {
+    return { ok: false, reason: "parse-error", detail: errMsg(err) }
+  }
+  try {
     mkdirSync(dirname(file), { recursive: true })
     writeFileSync(file, updated, "utf-8")
-    return true
-  } catch {
-    return false
+    return { ok: true }
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException)?.code
+    return {
+      ok: false,
+      reason: code === "EACCES" || code === "EPERM" ? "permission-denied" : "unknown",
+      detail: errMsg(err),
+    }
   }
 }
 
 /**
  * Remove `field` from the project-level config so the switch reverts to its
- * default. Returns false when the write fails; true when the field is already
- * absent (nothing to do).
+ * default. Returns the same result envelope as `setConfigField`. Missing
+ * file is success (nothing to do).
  */
-export function clearConfigField(field: string): boolean {
+export function clearConfigField(field: string): SetConfigResult {
+  let file: string
   try {
-    const file = writableProjectConfigFile()
-    if (!existsSync(file)) return true
-    const updated = removeConfigField(readFileSync(file, "utf-8"), field)
+    file = writableProjectConfigFile()
+    if (!existsSync(file)) return { ok: true }
+  } catch (err) {
+    return { ok: false, reason: "no-target", detail: errMsg(err) }
+  }
+  let updated: string
+  try {
+    updated = removeConfigField(readFileSync(file, "utf-8"), field)
     writeFileSync(file, updated, "utf-8")
-    return true
-  } catch {
-    return false
+    return { ok: true }
+  } catch (err) {
+    const code = (err as ErrnoException)?.code
+    return {
+      ok: false,
+      reason: code === "EACCES" || code === "EPERM" ? "permission-denied" : "unknown",
+      detail: errMsg(err),
+    }
   }
 }
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+// Internal alias so the existing `plugin-switch.ts` boolean contract keeps
+// compiling; plugin-switch can opt into the rich result in a follow-up.
+type ErrnoException = NodeJS.ErrnoException
 
 // ─── Project Log & Gitignore Utilities ────────────────────────────────
 

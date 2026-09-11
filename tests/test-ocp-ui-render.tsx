@@ -154,12 +154,12 @@ reviewEnter.renderer.destroy()
 
 const dashboardShortcuts = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
 await dashboardShortcuts.flush()
-dashboardShortcuts.renderer.keyInput.emit('keypress', { name: 'a', ctrl: true, meta: false, shift: false, option: false, sequence: '\u0001', raw: '\u0001', eventType: 'press', source: 'raw', number: false })
+dashboardShortcuts.renderer.keyInput.emit('keypress', { name: 't', ctrl: true, meta: false, shift: false, option: false, sequence: '\u0014', raw: '\u0014', eventType: 'press', source: 'raw', number: false })
 await settle(dashboardShortcuts)
 // captureCharFrame() consumes the frame — capture once and assert all
 // confirmation-dialog properties against the same snapshot.
 const confirmFrame = dashboardShortcuts.captureCharFrame()
-assert.match(confirmFrame, /SAVE & INSTALL NOW|保存并立即安装/, 'Ctrl+A opens installation confirmation')
+assert.match(confirmFrame, /SAVE & INSTALL NOW|保存并立即安装/, 'Ctrl+T opens installation confirmation')
 assert.match(confirmFrame, /Confirm|确认/, 'confirmation action is localized')
 assert.match(confirmFrame, /Cancel|取消/, 'cancellation action is localized')
 dashboardShortcuts.renderer.keyInput.emit('keypress', { name: 'escape' })
@@ -175,7 +175,7 @@ dashboardShortcuts.renderer.destroy()
 // Regression guard for "confirmation opens but installation never starts".
 const dashboardInstall = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
 await dashboardInstall.flush()
-dashboardInstall.renderer.keyInput.emit('keypress', { name: 'a', ctrl: true, meta: false, shift: false, option: false, sequence: '\u0001', raw: '\u0001', eventType: 'press', source: 'raw', number: false })
+dashboardInstall.renderer.keyInput.emit('keypress', { name: 't', ctrl: true, meta: false, shift: false, option: false, sequence: '\u0014', raw: '\u0014', eventType: 'press', source: 'raw', number: false })
 await settle(dashboardInstall)
 dashboardInstall.renderer.keyInput.emit('keypress', { name: 'return' })
 await settle(dashboardInstall)
@@ -276,18 +276,17 @@ for (const route of ['dashboard', 'setup', 'project', 'home'] as const) {
 const project = await testRender(() => <OcpApp initialRoute="project" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
 await settle(project)
 frame = project.captureCharFrame()
-assert.match(frame, /Select action|选择操作/, 'project action menu renders')
-project.renderer.keyInput.emit('keypress', { name: 'down' })
+assert.match(frame, /Project Setup Wizard|项目设置向导/, 'project action menu renders')
+project.renderer.keyInput.emit('keypress', { name: 'down' }) // Apply Changes -> Auto advisor (inline row)
 project.renderer.keyInput.emit('keypress', { name: 'return' })
 await settle(project)
-assert.match(project.captureCharFrame(), /Configure Switches|配置开关/, 'project action is selectable')
-project.renderer.keyInput.emit('keypress', { name: 'linefeed' })
 await settle(project)
-assert.match(project.captureCharFrame(), /lite|full|off|default/, 'Windows linefeed Enter opens the highlighted switch value chooser')
+assert.match(project.captureCharFrame(), /lite|full|off|default/, 'the inline advisor row opens its value picker')
 project.renderer.keyInput.emit('keypress', { name: 'down' })
-project.renderer.keyInput.emit('keypress', { name: 'return' })
+project.renderer.keyInput.emit('keypress', { name: 'linefeed' }) // Windows linefeed Enter selects a value
 await settle(project)
-assert.match(project.captureCharFrame(), /Configure Switches|配置开关/, 'value picker returns to the switch editor')
+await settle(project)
+assert.match(project.captureCharFrame(), /Project Setup Wizard|项目设置向导/, 'value picker returns to the main menu')
 project.renderer.destroy()
 
 // ─── /provider wizard is loaded verbatim into the standalone host ───
@@ -365,8 +364,67 @@ await usageUi.flush()
 const usageFrame = usageUi.captureCharFrame()
 assert.match(usageFrame, /Token usage/, 'usage report dialog renders through the compat host')
 assert.equal(dialogWidth(usageFrame), 88, 'usage dialog renders at the large tier width (88), not the default fluid width')
+// Enter must dismiss DialogAlert: opencode's native DialogAlert fires
+// onConfirm on Enter; the standalone host previously wired only Esc,
+// leaving Enter a silent no-op on every wizard result screen (init/
+// update/save/sync/index reports built via showAlertModal). The usage
+// DialogAlert passes no onConfirm, so the host's alert branch falls
+// through to host.close(), which fires the dialog's onClose and the
+// usage plugin's per-dialog removeKeyHandler.
+usageUi.renderer.keyInput.emit('keypress', { name: 'return' })
+await settle(usageUi)
+const dismissedFrame = usageUi.captureCharFrame()
+assert.doesNotMatch(dismissedFrame, /Token usage/, 'Enter on a DialogAlert dismisses the alert through the host close path')
+assert.match(dismissedFrame, /Session: ses_1|Checking session/, 'route falls back to the session-pending screen after the alert is dismissed')
 usageUi.renderer.destroy()
 usageMock.stop(true)
 delete process.env.OPENCODE_SERVER_URL
+
+// ─── host-layer right-click copy (drag-select + clipboard write) ─────────
+// The root box binds onMouseDown; mouse events bubble up the renderable
+// chain, so one handler covers every route and dialog. Two paths matter:
+// a right-click with no selection toasts guidance, and a right-click over a
+// finished in-app selection writes it to the clipboard (OSC 52 first —
+// monkey-patched here to capture the payload — platform tools are opted out
+// so the test never touches a real OS clipboard).
+process.env.OCP_TUI_NO_PLATFORM_CLIPBOARD = '1'
+const copyUi = await testRender(() => <OcpApp initialRoute="home" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+await copyUi.flush()
+type MouseRenderer = {
+  processSingleMouseEvent: (event: { type: string; button: number; x: number; y: number; modifiers: { shift: boolean; alt: boolean; ctrl: boolean } }) => boolean
+  getSelection?: () => { getSelectedText(): string } | null
+  copyToClipboardOSC52?: (text: string) => boolean
+  startSelection?: (renderable: unknown, x: number, y: number) => void
+  updateSelection?: (renderable: unknown | undefined, x: number, y: number, options?: { finishDragging?: boolean }) => void
+}
+const copyRenderer = copyUi.renderer as unknown as MouseRenderer
+const rightClick = (x: number, y: number) => copyRenderer.processSingleMouseEvent({ type: 'down', button: 2, x, y, modifiers: { shift: false, alt: false, ctrl: false } })
+rightClick(10, 10)
+await copyUi.flush()
+assert.match(copyUi.captureCharFrame(), /No selection|未选中/, 'right-click with no selection toasts guidance instead of failing silently')
+
+// Build the in-app selection the same way the renderer's own mouse pipeline
+// does (left-down starts, drag extends, up finishes): select across the first
+// selectable text renderable — the modal title on the home screen. The Solid
+// tree mounts through slot mechanics, so `renderer.root.children` stays empty;
+// the shared Renderable registry (same @opentui/core copy the app imports)
+// lists every live renderable instead.
+const { Renderable } = await import('../install/node_modules/@opentui/core/index.bun.js') as typeof import('@opentui/core')
+const selectableText = [...(Renderable.renderablesByNumber as Map<number, unknown>).values()]
+  .map((node) => node as { selectable?: boolean; x?: number; y?: number; width?: number })
+  .filter((node) => node.selectable === true && typeof node.x === 'number' && typeof node.y === 'number' && typeof node.width === 'number')
+  .sort((a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0))[0]
+assert.ok(selectableText && typeof selectableText.x === 'number' && typeof selectableText.y === 'number' && typeof selectableText.width === 'number', 'host texts opt into the renderer selection system (selectable)')
+copyRenderer.startSelection?.(selectableText, selectableText.x!, selectableText.y!)
+copyRenderer.updateSelection?.(selectableText, (selectableText.x ?? 0) + (selectableText.width ?? 1) - 1, selectableText.y!, { finishDragging: true })
+let copiedViaOsc52 = ''
+const rendererWithClipboard = copyUi.renderer as unknown as { copyToClipboardOSC52: (text: string) => boolean }
+rendererWithClipboard.copyToClipboardOSC52 = (text: string) => { copiedViaOsc52 = text; return true }
+rightClick(10, 10)
+await copyUi.flush()
+assert.ok(copiedViaOsc52.includes('OpenCode Prime'), 'right-click writes the finished selection through the OSC 52 clipboard path')
+assert.match(copyUi.captureCharFrame(), /Copied \d+ characters|已复制 \d+ 个字符/, 'a successful copy confirms with a toast')
+delete process.env.OCP_TUI_NO_PLATFORM_CLIPBOARD
+copyUi.renderer.destroy()
 
 console.log('ocp standalone host loads the original provider/profile OpenTUI wizards end to end')

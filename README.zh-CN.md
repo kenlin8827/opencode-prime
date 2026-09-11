@@ -4,7 +4,7 @@
 
 **面向 [OpenCode](https://opencode.ai) 的生产级多智能体工程套件。**
 
-[![版本](https://img.shields.io/badge/version-0.32.0-blue.svg)](https://github.com/kenlin8827/opencode-prime/releases)
+[![版本](https://img.shields.io/badge/version-0.33.0-blue.svg)](https://github.com/kenlin8827/opencode-prime/releases)
 ![许可证](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)
 ![平台](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-lightgrey.svg)
 

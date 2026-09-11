@@ -1,4 +1,4 @@
-# install (v0.32.0)
+# install (v0.33.0)
 
 Self-installing OpenCode Prime (OCP) powered by a unified **TypeScript engine** and an **interactive TUI Setup Wizard**.
 
@@ -466,7 +466,6 @@ on install).
   "default_agent": "lite",
   "mcp":    { "serena": false, "codegraph": true, "gitnexus": false, "dbhub": true },
   "plugin": {
-    "@dietrichgebert/ponytail": true,
     "opencode-qoder-bridge": false,
     "opencode-mem@2.24.3": false
   }
@@ -522,6 +521,103 @@ If you prefer hardcoded values over env vars, edit the target
 `opencode.jsonc` directly to replace the token with a literal.
 The installer will preserve that literal across future reinstalls, so a
 literal key is never silently overwritten.
+
+## TUI launch engine (`ocp tui` herdr/luvus modes)
+
+The workspace-manager launch sequence is data-driven, not hardcoded: each
+tool declares a `tui` block in `install/tools.jsonc`, executed by the generic
+runner `install/src/tui-engine.ts`. The runner knows nothing about servers,
+workspaces, or agents — it only runs an ordered list of shell steps and then
+execs the TUI binary.
+
+```
+pre_launch: [step, step, ...]   fire-and-forget commands (mirrors post_install)
+attach:     <bin>               the interactive TUI, with passthrough args
+```
+
+Conventions:
+
+- **Exit codes**: a step exits `0` (ok) · `2` (warn, keep going) · anything
+  else aborts the launch before attaching. Steps print their own messages.
+- **Step shell**: `cmd.exe` on Windows, `sh` on POSIX (`spawnSync shell:true`).
+  Unlike post_install (which runs through PowerShell), steps must be portable
+  one-liners — canonical form `node "<script>"` — because PowerShell collapses
+  any nonzero exit code to 1 and would break the `2` convention (measured).
+- **Context env** handed to every step: `OCP_CWD`, `OCP_LABEL`,
+  `OCP_TUI_ARGS` (JSON), `OCP_ENGINE_BIN`, `OCP_REPO_DIR` (also substituted
+  into command strings, same as post_install).
+- **Steps are Node scripts** under `install/scripts/engines/<id>/`, sharing
+  `install/scripts/engines/lib/ocp-cli.js` (CLI calls, JSON envelopes,
+  detached server start, polling) — one copy across Windows/macOS/Linux.
+- **Debugging**: `OCP_TUI_DRY_RUN=1 ocp herdr` prints the resolved plan
+  without running anything; each script is also standalone-runnable
+  (e.g. `OCP_ENGINE_ID=herdr node install/scripts/engines/herdr/ensure-server.js --probe`).
+- **New TUI provider** = one `tui` block in tools.jsonc + scripts under
+  `install/scripts/engines/<id>/`. The engine and launcher.ts never change.
+
+Regression tests: `bun run tests/test-tui-engine-unit.ts` (mock CLI via PATH
+shims; no real herdr/luvus needed).
+
+Intentional behavior changes from the previous hardcoded launchers:
+herdr workspace focus failure now really falls back to `workspace create`
+(the old message promised it but didn't do it); a missing TUI binary fails
+fast with the install hint instead of failing inside every step (herdr) or
+after a 15 s poll stall.
+
+## Herdr / Luvus plugins (auto-start OpenCode in TUI workspaces)
+
+When `tui_mode` is `herdr` (the default) or `luvus`, the installer links a
+plugin that runs `herdr agent start opencode` (or the luvus equivalent) every
+time a new tab or pane is created. The goal: every managed workspace boots
+with opencode already running in its terminal.
+
+### Runtime gotchas — read these if the plugin "doesn't work"
+
+1. **The herdr server must be running.** The plugin is event-driven and only
+   fires on `tab.created` / `pane.created` emitted by the headless server.
+   It stays *registered* on disk across `herdr server stop`, but it cannot
+   fire until you bring the server back. Restart with `herdr` (interactive)
+   or `ocp herdr`. Verify with `herdr agent list` — it returns JSON, not
+   `{"error":{"code":"server_not_running"}}`. If you see
+   `protocol_mismatch`, the server is running an old build — `herdr server
+   stop` then re-open.
+2. **Existing panes from a restored session are not reprocessed.** The
+   plugin only reacts to *new* tabs/panes. To cover an old pane, focus it
+   and split it (`Ctrl+B` / `Cmd+D`), or open a new tab — the creation
+   event will fire and start opencode there.
+3. **Failures are logged, never silent.** The plugin writes
+   `~/.config/opencode/logs/ocp-auto-opencode.log` with one line per event:
+   ```
+   [2026-09-10T07:16:04.104Z] [INFO] [ocp-auto-opencode] [tab.created] skip: herdr server not running — restart with `herdr` or `ocp herdr`
+   ```
+   `[ERROR]` lines are real failures (exit code 2); `[INFO]` is the
+   expected skip path; `[WARN]` is a degraded step that continued.
+4. **`tui_mode` must match an installed TUI driver.** The installer links
+   the herdr post-install steps only when `tui_mode === 'herdr'`, and the
+   luvus steps only when `tui_mode === 'luvus'`. If your user
+   `~/.config/opencode/options.jsonc` does not list `tools.luvus`, the
+   installer now auto-disables it for you when `tui_mode === 'herdr'`
+   (and symmetrically the other way), printing
+   ```
+   [ocp] tui_mode=herdr — auto-disabling tools.luvus (set tools.luvus=true explicitly to opt back in).
+   ```
+   so you can always see when defaults were inferred.
+
+### Diagnosing a "broken" plugin in 30 seconds
+
+```powershell
+# 1. is the server up?
+herdr agent list
+
+# 2. is the plugin enabled and what does it point at?
+herdr plugin list
+
+# 3. what did the plugin do last?
+Get-Content "$env:USERPROFILE\.config\opencode\logs\ocp-auto-opencode.log" -Tail 20
+
+# 4. (advanced) herdr's own view of recent API failures:
+Get-Content "$env:APPDATA\herdr\herdr-server.log" -Tail 200 | Select-String "agent.start"
+```
 
 ## Scripts
 

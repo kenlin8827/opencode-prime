@@ -1,5 +1,5 @@
 {
-	"version": "0.32.0",
+	"version": "0.33.0",
 	"license": "AGPL-3.0-or-later",
 	"scripts": {
 		"docs:dev": "vitepress dev docs",
@@ -13,11 +13,10 @@
 		"png:webp": "bun run scripts/png-to-webp.ts"
 	},
 	"dependencies": {
-		"@dietrichgebert/ponytail": "^4.9.0",
 		"@opencode-ai/plugin": "1.18.15",
 		"@opentui/core": "^0.5.4",
 		"@opentui/solid": "^0.5.4",
-		"@xmldom/xmldom": "^0.9.12",
+		"@xmldom/xmldom": "^0.9.13",
 		"adm-zip": "^0.6.0",
 		"opencode-qoder-bridge": "^0.1.1",
 		"playwright": "^1.45.0"

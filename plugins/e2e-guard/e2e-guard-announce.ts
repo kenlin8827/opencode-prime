@@ -23,6 +23,7 @@
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
+import { refreshLocale, tr } from "../tui/i18n"
 import { getState, type GuardState } from "./e2e-guard-config"
 import { revokeApproval } from "./e2e-guard-runtime"
 import { makeLogger } from "../adr-guard/adr-guard-runtime"
@@ -37,42 +38,20 @@ type SessionEvent = {
 
 /** One user-visible line per state. ON MUST name the enforcement surface. */
 export function announceMessage(state: GuardState): string {
-  if (state === "on") {
-    return (
-      `[e2e-guard] ON — E2E runs are blocked until the user confirms and ` +
-      `/e2e-guard allow grants a one-shot pass. /e2e-guard off to disable.`
-    )
-  }
-  return (
-    "[e2e-guard] OFF — no E2E gating. /e2e-guard on to require user confirmation before E2E runs in this project."
-  )
+  refreshLocale()
+  return state === "on" ? tr("guard.e2e.announceOn") : tr("guard.e2e.announceOff")
 }
 
 /** Read-only status report for `/e2e-guard` without a state argument. */
 export function statusMessage(): string {
-  const state = getState()
-  return (
-    `[e2e-guard] Status: ${state.toUpperCase()} | ` +
-    `switch: /e2e-guard on|off (project-level, stored in opencode.jsonc) | ` +
-    `allow: /e2e-guard allow (one full-suite pass) | ` +
-    `allow targeted: unlock affected-spec re-runs only, full suites stay gated`
-  )
+  refreshLocale()
+  return tr("guard.e2e.statusMsg", { state: getState().toUpperCase() })
 }
 
 /** Confirmation for `/e2e-guard allow [targeted]` — names the grant scope. */
 export function allowMessage(scope: "full" | "targeted" = "full"): string {
-  if (scope === "targeted") {
-    return (
-      "[e2e-guard] Approved (TARGETED only) — targeted spec re-runs now pass " +
-      "for the rest of this session. Full-suite runs stay gated and still " +
-      "need a fresh confirmation + `/e2e-guard allow`."
-    )
-  }
-  return (
-    "[e2e-guard] Approved — the next FULL-suite run passes (one-shot). " +
-    "Targeted single-spec re-runs stay unlocked for the rest of this session; " +
-    "each later FULL-suite run needs a fresh user confirmation."
-  )
+  refreshLocale()
+  return scope === "targeted" ? tr("guard.e2e.allowTargeted") : tr("guard.e2e.allowFull")
 }
 
 /**

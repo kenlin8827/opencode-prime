@@ -6,6 +6,7 @@
  *   /e2e-guard status  → reports the current project gate state
  */
 
+import { refreshLocale, tr } from "../tui/i18n"
 import { getState, setState, writableProjectConfigFile } from "./e2e-guard-config"
 
 export const COMMAND_NAME = "e2e-guard"
@@ -14,15 +15,16 @@ export const SUBCOMMAND_STATUS = "status"
 export const SUBCOMMAND_ON = "on"
 export const SUBCOMMAND_OFF = "off"
 
-const HELP = `[e2e-guard] E2E Red-Line Guard — project switch controls.
-Usage:
-/e2e-guard status   → check current guard status (on / off)
-/e2e-guard on | off → flip the project gate in opencode.jsonc (persisted)`
+function helpText(): string {
+  refreshLocale()
+  return tr("guard.e2e.help")
+}
 
 /** One-line gate report for `/e2e-guard status`. */
 export function statusText(): string {
+  refreshLocale()
   const gate = getState() === "on" ? "on" : "off"
-  return `[e2e-guard] gate: ${gate}. (Protocol injection is ${gate === "on" ? "ACTIVE" : "INACTIVE"})`
+  return tr("guard.e2e.status", { gate, flag: gate === "on" ? "ACTIVE" : "INACTIVE" })
 }
 
 export function makeCommandHook() {
@@ -39,11 +41,18 @@ export function makeCommandHook() {
     if (sub === SUBCOMMAND_STATUS) {
       text = statusText()
     } else if (sub === SUBCOMMAND_ON || sub === SUBCOMMAND_OFF) {
+      refreshLocale()
       text = setState(sub)
-        ? `[e2e-guard] Gate ${sub.toUpperCase()} — wrote "e2eGuard": "${sub}" to ${writableProjectConfigFile()}.`
-        : `[e2e-guard] Failed to write the project config — edit the "e2eGuard" field of opencode.jsonc by hand.`
+        ? tr("guard.e2e.set", {
+            state: sub,
+            STATE: sub.toUpperCase(),
+            zhState: sub === "on" ? "启用" : "关闭",
+            path: writableProjectConfigFile(),
+          })
+        : tr("guard.e2e.setFail")
     } else {
-      text = sub ? `[e2e-guard] Unknown subcommand "${sub}".\n\n${HELP}` : HELP
+      refreshLocale()
+      text = sub ? `${tr("guard.e2e.unknown", { sub })}\n\n${helpText()}` : helpText()
     }
 
     output.parts = [{ type: "text", text }]

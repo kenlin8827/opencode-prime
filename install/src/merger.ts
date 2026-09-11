@@ -12,7 +12,11 @@ import { InstallOptions, PreserveBag } from "./types";
  * Regex-based stripping is unsafe here — shipped comments legitimately
  * contain glob patterns like `instructions/*.md`, and a naive
  * block-comment regex swallows them plus every line in between.
- * Trailing commas before } or ] are removed, then plain JSON.parse runs.
+ * Trailing commas before } or ] are stripped by the same single-pass
+ * scanner (string-aware) so a comma inside a quoted string never
+ * counts as structural — the previous regex pass silently mangled
+ * values like `"a, b]"`, a P1 foot-gun for any provider/model block
+ * with prose descriptions. Then plain JSON.parse runs.
  */
 export function parseJsonc<T = any>(content: string): T {
   let out = "";
@@ -47,10 +51,20 @@ export function parseJsonc<T = any>(content: string): T {
       i = stop - 1;
       continue;
     }
+    if (ch === ",") {
+      // String-aware trailing-comma strip: peek past whitespace for `}`
+      // or `]`. Same contract as the shared opencode-prime helper
+      // (plugins/shared/opencode-prime.ts: stripTrailingCommas) — kept
+      // inline so installer/ has zero cross-layer imports.
+      let j = i + 1;
+      while (j < content.length && /\s/.test(content[j])) j++;
+      if (j < content.length && (content[j] === "}" || content[j] === "]")) {
+        continue; // drop the comma, keep the brace for the next iteration
+      }
+    }
     out += ch;
   }
-  const cleaned = out.replace(/,(\s*[}\]])/g, "$1");
-  return JSON.parse(cleaned);
+  return JSON.parse(out);
 }
 
 export function readJsoncFile<T = any>(filePath: string): T | null {

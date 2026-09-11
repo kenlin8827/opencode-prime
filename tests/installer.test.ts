@@ -56,6 +56,16 @@ const parsed = parseJsonc(sampleJsonc);
 if (parsed.key !== 'value' || parsed.num !== 42) throw new Error('JSONC parsing failed');
 console.log('✓ JSONC Parser passed');
 
+// Bug guarded (P1 #2): parseJsonc's old regex `replace(/,(\s*[}\]])/g, "$1")`
+// was string-unsafe — a value containing `,]` or `,}` inside quotes was
+// silently mangled. Any provider/model block with prose like "fast (<200ms)"
+// followed by `,}` hit this. The single-pass scanner is now string-aware.
+const tricky = parseJsonc(`{ "a": "x, y]", "b": [1, 2,], "c": "ok", }`);
+if (tricky.a !== 'x, y]' || !Array.isArray(tricky.b) || tricky.b.length !== 2 || tricky.c !== 'ok') {
+  throw new Error(`parseJsonc mangled a quoted string or trailing comma: ${JSON.stringify(tricky)}`);
+}
+console.log('✓ JSONC string-safe trailing-comma passed');
+
 // 2. Dynamic Locales
 console.log('\nTest 2: Locales Auto-Discovery & Loading');
 const locales = getAvailableLocales(repoDir);
@@ -87,13 +97,13 @@ console.log(`✓ Schema passed (Found ${schema.mcpItems.length} MCPs, ${schema.p
 // 3b. User options merging
 console.log('\nTest 3b: User Options Merge Logic');
 const merged = mergeUserOptions(
-  { default_agent: 'code', tools: { rtk: true }, mcp: { serena: true, codegraph: true }, plugin: { '@dietrichgebert/ponytail': true } },
+  { default_agent: 'code', tools: { rtk: true }, mcp: { serena: true, codegraph: true }, plugin: { 'opencode-mem@2.24.3': true } },
   { default_agent: 'build', mcp: { serena: false }, plugin: { 'opencode-qoder-bridge': true } }
 );
 if (merged.default_agent !== 'build') throw new Error('mergeUserOptions failed to override top-level key');
 if (merged.tools?.rtk !== true) throw new Error('mergeUserOptions dropped an unchanged key');
 if (merged.mcp?.serena !== false || merged.mcp?.codegraph !== true) throw new Error('mergeUserOptions failed to merge nested mcp map');
-if (merged.plugin?.['@dietrichgebert/ponytail'] !== true || merged.plugin?.['opencode-qoder-bridge'] !== true) throw new Error('mergeUserOptions failed to merge nested plugin map');
+if (merged.plugin?.['opencode-mem@2.24.3'] !== true || merged.plugin?.['opencode-qoder-bridge'] !== true) throw new Error('mergeUserOptions failed to merge nested plugin map');
 console.log('✓ User options merge passed');
 
 // 3d. mergeTuiConfig — first install writes template; user plugins preserved on upgrade
@@ -460,7 +470,7 @@ updateOptionsJsoncInPlace(scratchOptionsPath, {
   globalCommands: false,
   tools: { rtk: false, openchamber: false, herdr: true, luvus: true },
   mcps: { serena: false, codegraph: true },
-  plugins: { '@dietrichgebert/ponytail': true },
+  plugins: { 'opencode-mem@2.24.3': true },
 });
 if (!fs.existsSync(scratchOptionsPath)) throw new Error('updateOptionsJsoncInPlace did not create the file');
 const writtenOptions = readJsoncFile<InstallOptions>(scratchOptionsPath);
@@ -470,7 +480,7 @@ if (writtenOptions?.tools?.luvus !== true) throw new Error('tools.luvus not writ
 if (writtenOptions?.tools?.openchamber !== false) throw new Error('tools.openchamber not written to scratch file');
 if (writtenOptions?.global_commands !== false) throw new Error('global_commands not written to scratch file');
 if (writtenOptions?.mcp?.serena !== false || writtenOptions?.mcp?.codegraph !== true) throw new Error('mcp map not written to scratch file');
-if (writtenOptions?.plugin?.['@dietrichgebert/ponytail'] !== true) throw new Error('plugin map not written to scratch file');
+if (writtenOptions?.plugin?.['opencode-mem@2.24.3'] !== true) throw new Error('plugin map not written to scratch file');
 
 // Update again to verify merge behavior
 updateOptionsJsoncInPlace(scratchOptionsPath, {
@@ -490,7 +500,7 @@ updateOptionsJsoncInPlace(scratchOptionsPath, {
   mcps: { dbhub: false },
 });
 const preservedOptions = readJsoncFile<InstallOptions>(scratchOptionsPath);
-if (preservedOptions?.plugin?.['@dietrichgebert/ponytail'] !== true) {
+if (preservedOptions?.plugin?.['opencode-mem@2.24.3'] !== true) {
   throw new Error('plugin map was dropped by generic serialization');
 }
 if (preservedOptions?.default_agent !== 'plan') {

@@ -8,6 +8,18 @@ platforms = ["linux", "macos", "windows"]
 # Fire on every new tab and every new pane (a split pane or a new tab both
 # create panes). Both events are needed because tab.created fires once per tab,
 # while pane.created fires for every additional pane created via splits.
+#
+# Runtime prerequisites — these are NOT enforced by the plugin manager:
+#   1. herdr server must be running (verify: `herdr agent list` returns JSON).
+#      Plugin registration survives `herdr server stop`, but events do not fire
+#      until the server is back. Use `herdr` or `ocp herdr` to restart.
+#   2. CREATION events only — existing panes from a restored session are not
+#      reprocessed. Focus a pane and split it, or open a new tab, to trigger.
+#   3. opencode must be on PATH (the `agent.start` call will silently swallow
+#      spawn failures; check `~/.config/opencode/logs/ocp-auto-opencode.log`).
+# Failures are appended to that log file with [ERROR] / [INFO] / [WARN] levels
+# and an [event=<tab.created|pane.created>] tag, so the next time something
+# looks broken you can `tail -n 20` the file instead of guessing.
 
 [[events]]
 on = "tab.created"

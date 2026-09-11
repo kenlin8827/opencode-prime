@@ -4,7 +4,7 @@
 
 **Production-ready multi-agent engineering for [OpenCode](https://opencode.ai).**
 
-[![Version](https://img.shields.io/badge/version-0.32.0-blue.svg)](https://github.com/kenlin8827/opencode-prime/releases)
+[![Version](https://img.shields.io/badge/version-0.33.0-blue.svg)](https://github.com/kenlin8827/opencode-prime/releases)
 ![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-lightgrey.svg)
 

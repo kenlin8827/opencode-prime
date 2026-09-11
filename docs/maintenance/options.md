@@ -40,7 +40,10 @@ Learn about installer commands, configuration options, token savings, and preser
      // Opt-in external binaries declared in install/tools.jsonc
      "tools": {
        // rtk output compression (60-90% token savings)
-       "rtk": true,
+        "rtk": true,
+        // Optional external full-text cache (microsoft/tgrep) — auto-provisioned like rtk when missing.
+        // It is not MCP, LSP, or a code graph; .tgrep/ must stay uncommitted.
+        "tgrep": true,
        // OpenChamber ships as three independent surfaces, one switch each:
         // Web UI CLI (@openchamber/web; powers `ocp web`, needs Node.js 22+)
         // Disabled by default: enabling it installs a global package.
@@ -75,15 +78,13 @@ Learn about installer commands, configuration options, token savings, and preser
        // JetBrains IDE bridge (enable MCP Server in IDE: Settings → Tools → MCP Server)
        "idea": true
      },
-     // External npm plugin switches (true: enabled; false: disabled)
-     "plugin": {
-       // Lazy coding protocol: build what was asked, name the lazier alternative
-       "@dietrichgebert/ponytail": true,
-       // Injects Qoder provider/models via official SDK (needs qoder login)
-       "opencode-qoder-bridge": false,
-       // Persistent project memory (vector store; extra LLM capture call per idle session)
-       "opencode-mem@2.24.3": false
-     }
+      // External npm plugin switches (true: enabled; false: disabled)
+      "plugin": {
+        // Injects Qoder provider/models via official SDK (needs qoder login)
+        "opencode-qoder-bridge": false,
+        // Persistent project memory (vector store; extra LLM capture call per idle session)
+        "opencode-mem@2.24.3": false
+      }
    }
    ```
 3. **Run the installer**:
@@ -106,6 +107,41 @@ Every install re-evaluates `install/options.jsonc` in place and enforces your ch
    ```bash
    ./install/install.sh install -f
    ```
+
+---
+
+## Optional tgrep full-text index
+
+`tools.tgrep` is **enabled by default**. When enabled and missing from PATH,
+the OCP installer auto-provisions the official pre-built binary release
+(matching the `rtk` model), or reuses the existing CLI if already installed.
+Once the CLI is on PATH, `/project init` creates the first local `.tgrep/` index;
+`/project index` rebuilds only an existing unhealthy index. A healthy
+`tgrep serve .` watcher handles normal updates. Set `tools.tgrep` to `false`
+to opt out entirely.
+
+Use indexed search only for repeated broad text/regex queries. After saving,
+while validating a change, or before asserting there are no matches, use a
+current/full scan (`tgrep --no-index` or `rg`) because watcher updates are
+asynchronous. Keep the default 64 MiB tgrep file-size policy and index/serve/
+search parameters consistent. tgrep does not replace Serena symbol navigation
+or CodeGraph/GitNexus relationship queries.
+
+If the on-disk index was built under a different policy (`indexPath`,
+`maxFileSize`, `exclude`, `noRequireGit`) or a different tgrep version, OCP
+reports it as `stale`: indexed searches fall back to full scans until
+`/project index` rebuilds it, so results never violate the configured policy.
+The `tgrep_search` tool accepts gitignore-style `glob` filters in addition to
+`-i`/`-F` flags.
+
+### Verification and benchmark (opt-in)
+
+OCP's normal test run never downloads a binary. After installing a fixed,
+user-controlled tgrep version, run `OCP_TGREP_BIN=tgrep bun run
+tests/test-tgrep-integration.ts` (PowerShell: `$env:OCP_TGREP_BIN = "tgrep"`)
+to verify the actual CLI contract. Measure a repository locally with `bun run
+scripts/benchmark-tgrep.ts <repo> <literal>`; retain the JSON output alongside
+the tgrep version and repository revision before claiming a performance gain.
 
 ---
 

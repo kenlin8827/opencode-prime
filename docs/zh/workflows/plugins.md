@@ -19,6 +19,7 @@
 | `env-guard.ts` | 按项目的密钥文件门控 |
 | `e2e-guard.ts` | `/e2e-guard` 命令 —— 按项目门控：E2E 运行需用户确认 |
 | `project-manager.ts` | `/project` 命令 + 提交纪律 |
+| `project-memory.ts` | `/memory` 命令 —— 可选的项目记忆：捕获经验教训，注入整理后的记忆文件（存于项目之外的 ocp 记忆根目录） |
 | `queue-manager.ts` | `/queued` 命令 —— 管理会话忙碌时排队的提示 |
 | `profile-wizard.ts`、`provider-wizard.ts`、`project-wizard.ts` | `/profile`、`/provider` 与 `/project-wizard` TUI 弹窗向导；未配置现有 formatter 的新 Node 项目可明确选择配置项目本地 dprint |
 | `md-to-pdf.ts` | `/md-to-pdf` 命令与 `md_to_pdf` 工具 —— 将 Markdown 一键导出为高质量 A4 PDF（基于 Pandoc + Playwright） |
@@ -35,7 +36,7 @@
 1. **提交铁律门禁（`/adr-guard`）** — 软/硬双层护栏，杜绝在 `feat`/`refactor` 提交中出现未记录的架构漂移。
 2. **分层活化架构引擎（`/adr`）** — 极简脚手架、决策生命周期流转、多层级拓扑与 Mermaid DAG 可视化。
 
-### 开关与治理模式
+### 开关与治理布局
 
 提交门禁开关为**项目级**（存储于 `opencode.jsonc`）：
 
@@ -45,13 +46,13 @@
 /adr-guard          # 状态报告（开关 + ADR 目录）
 ```
 
-分层治理模式通过 `/adr mode` 进行配置：
+分层治理布局通过 `/adr layout` 进行配置：
 
 ```text
-/adr mode                   # 查看当前治理模式 (auto | flat | hierarchical)
-/adr mode flat              # 极简纯扁平单层模式 (仅 docs/adr/)
-/adr mode hierarchical      # 严格分层模式 (强制 L1/L2/L3 多层划分)
-/adr mode auto              # 智能自适应模式 (默认: 单体项目保持扁平，出现子包时自动拓展)
+/adr layout                   # 查看当前布局 (auto | flat | hierarchical)
+/adr layout flat              # 极简纯扁平单层布局 (仅 docs/adr/)
+/adr layout hierarchical      # 严格分层布局 (强制 L1/L2/L3 多层划分)
+/adr layout auto              # 智能自适应布局 (默认: 单体项目保持扁平，出现子包时自动拓展)
 ```
 
 ### Slash 命令族（`/adr`）
@@ -152,6 +153,20 @@ echo on > <project>/.opencode/.env-guard
 
 ---
 
+## 项目记忆（`project-memory`）
+
+轻量、可选、按项目的"经验教训"记忆 —— 与 `AGENTS.md`（人工整理的项目事实，权威）和 `opencode-mem`（自动捕获的会话历史，更重、粒度不同）互补。存储位置在项目之外：ocp 用户级记忆根目录（`~/.config/opencode/memory/<projectKey>/`，路径哈希 key —— 支持 `OCP_CONFIG_PATH`/`XDG_CONFIG_HOME` 覆盖）。三阶段、每阶段都需显式启用；阶段 1 = 捕获 + 注入：
+
+```text
+/memory capture "<lesson>"   # 追加一条带日期的条目到 <记忆根目录>/draft.md
+/memory on | off             # 切换是否注入 <记忆根目录>/memory.md
+/memory status               # 开关状态 + 条目计数
+```
+
+草稿 → `memory.md` 的晋升目前为手工编辑（保留带日期条目格式；删除过期条目）。`projectMemory` 开启且文件非空时，其内容以 `[PROJECT MEMORY]` 块追加进系统提示 —— 仅建议性质：冲突时以 AGENTS.md 为准。超过 16000 字符上限时不注入正文（改为指针块），请及时精简。默认关闭。设计文档：`docs/plan/project-memory-phase1.md`。
+
+---
+
 ## 提交纪律（`project-manager`）
 
 按项目的提交规范强制机制，采用**文件即开关**：无状态文件、无 on/off 命令 —— `docs/git-commits.md` 存在即生效。
@@ -236,7 +251,6 @@ echo on > <project>/.opencode/.env-guard
 
 | 插件名称 | 默认状态 | 说明与前置要求 |
 |---|---|---|
-| `@dietrichgebert/ponytail` | 启用 (`true`) | **偷懒编码协议**：在完成需求的同时，主动向开发者指出更轻量、更优雅的替代实现。 |
 | `opencode-qoder-bridge` | 可选 (`false`) | **Qoder 官方桥接**：通过官方 `@qoder-ai/qoder-agent-sdk` 自动注入 `qoder` 服务商与全部模型（需 `qoder login`）。 |
 | `opencode-mem@2.24.3` | 可选 (`false`) | **持久化向量记忆库**：基于本地向量库记录项目历史背景（空闲时会发起额外的轻量 LLM 提炼调用）。 |
 

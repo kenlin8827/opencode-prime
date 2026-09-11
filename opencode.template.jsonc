@@ -5,7 +5,6 @@
   // agents and preserved forever. Consumed by install/src/merger.ts and
   // stripped from the merged output; never reaches the opencode runtime.
   "removed_agents": ["coworker", "explorer"],
-  "adrMode": "flat",
   "$schema": "https://opencode.ai/config.json",
   "snapshot": true,
   // No root `model`/`small_model` and no per-agent `model` presets below:
@@ -37,9 +36,7 @@
   // cheapest configured model — resolved with the host's own
   // protocol/credential handling. If the small-model call fails, opencode
   // leaves the default title; no plugin involved.
-  "plugin": [
-    "@dietrichgebert/ponytail"
-  ],
+  "plugin": [],
   // Serena: LSP-based semantic code retrieval (symbol-level queries instead of
   // full file reads) — shared by all agents, avoids duplicate file reads.
   // CLI provisioning: the install script runs the `install` field automatically
@@ -132,8 +129,9 @@
     // Headroom (optional): local context compression — compresses tool outputs,
     // logs, and RAG chunks before they reach the LLM; originals stay
     // retrievable on demand via CCR (`headroom_retrieve`). Apache 2.0,
-    // local-first. Complements rtk/ponytail, which cover the OUTPUT side —
-    // headroom targets the INPUT side. MCP mode is agent-driven (compress on
+    // local-first. Complements rtk, which covers the OUTPUT side —
+    // headroom targets the INPUT side.
+    // MCP mode is agent-driven (compress on
     // demand); the fully automatic `headroom proxy` mode is NOT wired in here
     // because it rewrites provider base URLs. Heavy provisioning: uv tool
     // with Python 3.13, and the first run downloads the ONNX runtime
@@ -299,7 +297,8 @@
         "todowrite": true,
         "task": true,
         "skill": true,
-        "question": true
+        "question": true,
+        "tgrep_search": true
       }
     },
     "code": {

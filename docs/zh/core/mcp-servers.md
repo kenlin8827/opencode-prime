@@ -78,7 +78,7 @@ L3 的普通单仓影响面选 CodeGraph，流程、群组或跨仓问题才选 
 
 #### Headroom 说明
 
-- **定位**：Headroom 是套件中唯一的输入侧省 token 机制 —— `rtk` 与 `ponytail` 已覆盖输出侧。MCP 模式下由 agent 按需调用 `headroom_compress`；压缩可逆（`headroom_retrieve` 可在 CCR 有效期内取回原文）。
+- **定位**：Headroom 是套件中唯一的输入侧省 token 机制 —— `rtk` 覆盖输出侧。MCP 模式下由 agent 按需调用 `headroom_compress`；压缩可逆（`headroom_retrieve` 可在 CCR 有效期内取回原文）。
 - **默认关闭的原因**：provisioning 执行 `uv tool install --python 3.13 "headroom-ai[all]"`，且首次运行还需下载 ONNX 运行时（cdn.pyke.io）与 Kompress 压缩模型（huggingface.co）。仅在接受这些下载的前提下启用。
 - **不要与 `headroom wrap opencode` 或 `headroom proxy` 并用**：二者都会改写由 OCP 管理的 agent / provider 配置（`mergeConfig` / `/profile apply` 管理同一份 `opencode.jsonc`），会互相覆盖。上面的 MCP 条目是受支持的集成面。
 

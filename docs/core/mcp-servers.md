@@ -79,7 +79,7 @@ sends L3 directly to `@code-review`.
 
 #### Headroom Notes
 
-- **Scope**: Headroom is the only INPUT-side saver in the stack — `rtk` and `ponytail` already compress the output side. In MCP mode the agent calls `headroom_compress` on demand; compression is reversible (`headroom_retrieve` restores originals within the CCR TTL).
+- **Scope**: Headroom is the only INPUT-side saver in the stack — `rtk` covers the output side. In MCP mode the agent calls `headroom_compress` on demand; compression is reversible (`headroom_retrieve` restores originals within the CCR TTL).
 - **Why default-off**: provisioning runs `uv tool install --python 3.13 "headroom-ai[all]"`, and the first run additionally downloads the ONNX runtime (cdn.pyke.io) and the Kompress compression model (huggingface.co). Enable only if you accept those downloads.
 - **Do NOT combine with `headroom wrap opencode` or `headroom proxy`**: both rewrite agent/provider configuration that OCP owns (`mergeConfig` / `/profile apply` manage the same `opencode.jsonc`), so they overwrite each other. The MCP entry above is the supported integration surface.
 
