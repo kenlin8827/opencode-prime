@@ -81,11 +81,29 @@ function readinessToCapability(readiness: TgrepReadiness, hasIndex: boolean): Tg
  * responsibility — see resolveTgrep() in sidebar-status.ts for the
  * example wrapper that folds it in. */
 export function resolveTgrepCapability(root: string, options: TgrepOptions): TgrepCapabilityState {
+  const key = `${root}\n${JSON.stringify(options)}`
+  const hit = capabilityCache.get(key)
+  if (hit && Date.now() - hit.at < CAPABILITY_CACHE_TTL_MS) return hit.state
+  const state = probeTgrepCapability(root, options)
+  capabilityCache.set(key, { at: Date.now(), state })
+  return state
+}
+
+/** Uncached probe behind resolveTgrepCapability — exported for tests so the
+ * probe matrix stays verifiable without fighting the TTL cache. */
+export function probeTgrepCapability(root: string, options: TgrepOptions): TgrepCapabilityState {
   if (!hasTgrepCli(root)) return "no-cli"
   const hasIndex = hasTgrepIndex(root, options)
   const readiness = probeTgrepStatus(root, options)
   return readinessToCapability(readiness, hasIndex)
 }
+
+// ponytail: single global TTL cache — capability probes are per-root cheap
+// and monotonic within a TTL window; a Map keyed by root+options is enough,
+// no per-root invalidation channel needed. A hung tgrep binary would still
+// block one event-loop turn per TTL window (up to 2×5s), not per tick.
+const CAPABILITY_CACHE_TTL_MS = 30_000
+const capabilityCache = new Map<string, { at: number; state: TgrepCapabilityState }>()
 
 /** Pure parser for `tgrep status` output. Extracted from probeTgrepStatus()
  * so the field-by-field mapping is unit-testable without spawning a real

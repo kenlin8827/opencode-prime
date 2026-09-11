@@ -1,10 +1,11 @@
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { spawnSync } from "node:child_process"
+import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { parseTgrepOptions, stripJsonc, tgrepIndexArgs, tgrepOptionsFrom } from "../plugins/tgrep/tgrep-config"
 import { tgrepPolicyFingerprint } from "../plugins/tgrep/tgrep-state"
-import { acquireLeaseLock, parseTgrepStatusOutput } from "../plugins/tgrep/tgrep-service"
+import { acquireLeaseLock, parseTgrepStatusOutput, resolveTgrepCapability } from "../plugins/tgrep/tgrep-service"
 import { buildTgrepSearchArgs, resolveSearchPath, searchTgrep } from "../plugins/tgrep/tgrep-search"
 import { loadTgrepOptions } from "../plugins/tgrep/tgrep-config"
 import { TgrepPlugin } from "../plugins/tgrep"
@@ -97,6 +98,36 @@ const downOutput = liveOutput.replace(/  Watcher:\s*active/, "  Watcher:    not 
 assert(parseTgrepStatusOutput(downOutput, parserRoot, parserOptions, true) === "disk-index",
   "Watcher: not running classifies as disk-index")
 rmSync(parserRoot, { recursive: true, force: true })
+
+// ─── TTL cache: resolveTgrepCapability must not probe the CLI on every call ───
+// The sidebar ticks every 2s and the profiler runs per chat turn — an
+// uncached resolver spawns `tgrep --version` + `tgrep status` on each call.
+// Patch the shared spawnSync export to count probes (works because the
+// plugin reads it off the CJS module object at call time); a second
+// identical call must add zero spawns.
+{
+  // ESM namespace is readonly — patch via the mutable CJS exports object
+  // (the plugin's named import resolves off it at call time).
+  const cp = createRequire(import.meta.url)("node:child_process") as typeof import("node:child_process")
+  const orig = cp.spawnSync
+  let probeCalls = 0
+  cp.spawnSync = ((...args: unknown[]) => {
+    probeCalls += 1
+    return (orig as (...a: unknown[]) => unknown).apply(cp, args)
+  }) as typeof orig
+  try {
+    const cacheRoot = mkdtempSync(join(tmpdir(), "tgrep-cache-"))
+    const cacheOpts = parseTgrepOptions(cacheRoot, { enabled: true })
+    const first = resolveTgrepCapability(cacheRoot, cacheOpts)
+    const probesAfterFirst = probeCalls
+    const second = resolveTgrepCapability(cacheRoot, cacheOpts)
+    assert(second === first, "TTL cache returns the same capability state")
+    assert(probeCalls === probesAfterFirst, "second resolveTgrepCapability call hits the TTL cache (0 new probes)")
+    rmSync(cacheRoot, { recursive: true, force: true })
+  } finally {
+    cp.spawnSync = orig
+  }
+}
 
 rmSync(root, { recursive: true, force: true })
 if (failed) process.exit(1)

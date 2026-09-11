@@ -327,9 +327,18 @@ function showBusyModal(
   api: TuiPluginApi,
   params: { title: string; message: string; busyText?: string },
 ): void {
+  // @opencode-ai/plugin 1.18.15's TuiDialogAlertProps lacks busy/busyText
+  // (they exist only on Prompt); the OCP host accepts and renders them
+  // (install/src/ui/app.tsx CompatAlertProps). Same compat cast as app.tsx.
+  const busyAlert = api.ui.DialogAlert as (props: {
+    title: string
+    message: string
+    busy?: boolean
+    busyText?: string
+  }) => ReturnType<typeof api.ui.DialogAlert>
   api.ui.dialog.replace(
     () =>
-      api.ui.DialogAlert({
+      busyAlert({
         title: params.title,
         message: params.message,
         busy: true,
