@@ -62,6 +62,12 @@ import { makeToolGuardHook, validateMessage } from "../plugins/project-manager/p
 
 // ─── Test framework ───────────────────────────────────────────────────────
 
+// Pin language=en via a sandboxed ocp config — guard command reports are
+// localized and this machine's real ~/.config/opencode/ocp.jsonc may say
+// zh-CN, which would break the English-phrase assertions below.
+process.env.OCP_CONFIG_PATH = join(tmpdir(), "pm-unit-ocp.jsonc")
+writeFileSync(process.env.OCP_CONFIG_PATH, `{ "language": "en" }`)
+
 let passed = 0
 let failed = 0
 
@@ -452,7 +458,7 @@ async function test09_Announce() {
 
 const TEMPLATE_SNIPPET = [
   "// \"adrGuard\": \"on\",",
-  "// \"adrGuardDir\": \"docs/adr\",",
+  "// \"adrDir\": \"docs/adr\",",
   "// \"e2eGuard\": \"on\",",
 ].join("\n")
 
@@ -466,10 +472,10 @@ function test10_Sync() {
   assert(contentHasKey('{"e2eGuard": "on"}', "e2eGuard"), "active key counts as present")
   assert(contentHasKey('// "e2eGuard": "on",', "e2eGuard"), "commented key counts as present")
   assert(!contentHasKey('{"e2eGuardDir": "x"}', "e2eGuard"), "prefix collision not matched")
-  assert(!contentHasKey('{"adrGuardDir": "x"}', "adrGuard"), "adrGuard vs adrGuardDir distinguished")
+  assert(!contentHasKey('{"adrDir": "x"}', "adrGuard"), "adrGuard vs adrDir distinguished")
 
   // Pure: merge semantics.
-  const upToDate = mergeSwitchLines('{"e2eGuard": "on",\n"adrGuard": "off",\n"adrGuardDir": "d"\n}', TEMPLATE_SNIPPET)
+  const upToDate = mergeSwitchLines('{"e2eGuard": "on",\n"adrGuard": "off",\n"adrDir": "d"\n}', TEMPLATE_SNIPPET)
   assert(upToDate !== null && upToDate.added.length === 0, "all keys present → nothing added")
   assert(upToDate !== null && upToDate.content.includes("e2eGuard"), "content untouched when up to date")
   const merged = mergeSwitchLines('{\n  "custom": 1\n}\n', TEMPLATE_SNIPPET)

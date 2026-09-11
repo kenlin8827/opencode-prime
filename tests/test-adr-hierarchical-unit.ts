@@ -31,7 +31,7 @@ import {
   slugify,
   supersedeAdr,
 } from "../plugins/adr-guard/adr-engine"
-import { normalizeAdrMode, setProjectDir } from "../plugins/adr-guard/adr-guard-config"
+import { normalizeAdrLayout, setProjectDir } from "../plugins/adr-guard/adr-guard-config"
 import { hasAdrChanges } from "../plugins/adr-guard/adr-guard-runtime"
 
 let passed = 0
@@ -57,7 +57,7 @@ function runTests() {
   // Setup temporary test sandbox
   const sandbox = mkdtempSync(join(tmpdir(), "adr-test-"))
   setProjectDir(sandbox)
-  writeFileSync(join(sandbox, "opencode.jsonc"), JSON.stringify({ adrMode: "hierarchical" }, null, 2))
+  writeFileSync(join(sandbox, "opencode.jsonc"), JSON.stringify({ adrLayout: "hierarchical" }, null, 2))
 
   try {
     // 2. Discover directories & calculate next numbers
@@ -159,7 +159,7 @@ function runTests() {
       "hasAdrChanges multi-path check executes safely",
     )
 
-    // 11. adrMode testing (flat vs hierarchical)
+    // 11. adrLayout testing (flat vs hierarchical)
     const flatDirs = discoverAdrDirectories(sandbox, "docs/adr", "flat")
     assert(
       flatDirs.length === 1 && flatDirs[0] === "docs/adr",
@@ -181,17 +181,17 @@ function runTests() {
       title: "Flat Decision",
       layer: "domain", // should be forced to system in flat mode
       scope: "ignored-in-flat",
-      mode: "flat",
+      layout: "flat",
     })
     assert(flatAdr.relPath.startsWith("docs/adr/"), "flat mode routes creation strictly to docs/adr")
 
     // 11b. Short alias normalization for modes
-    assert(normalizeAdrMode("h") === "hierarchical", "normalizeAdrMode handles 'h'")
-    assert(normalizeAdrMode("hierarchy") === "hierarchical", "normalizeAdrMode handles 'hierarchy'")
-    assert(normalizeAdrMode("tree") === "hierarchical", "normalizeAdrMode handles 'tree'")
-    assert(normalizeAdrMode("f") === "flat", "normalizeAdrMode handles 'f'")
-    assert(normalizeAdrMode("single") === "flat", "normalizeAdrMode handles 'single'")
-    assert(normalizeAdrMode("a") === "auto", "normalizeAdrMode handles 'a'")
+    assert(normalizeAdrLayout("h") === "hierarchical", "normalizeAdrLayout handles 'h'")
+    assert(normalizeAdrLayout("hierarchy") === "hierarchical", "normalizeAdrLayout handles 'hierarchy'")
+    assert(normalizeAdrLayout("tree") === "hierarchical", "normalizeAdrLayout handles 'tree'")
+    assert(normalizeAdrLayout("f") === "flat", "normalizeAdrLayout handles 'f'")
+    assert(normalizeAdrLayout("single") === "flat", "normalizeAdrLayout handles 'single'")
+    assert(normalizeAdrLayout("a") === "auto", "normalizeAdrLayout handles 'a'")
 
 
     // 12. Complexity analysis

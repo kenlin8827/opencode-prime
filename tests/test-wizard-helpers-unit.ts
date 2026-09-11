@@ -12,7 +12,7 @@ import { strict as assert } from "node:assert"
 import {
   formatGuardBadge,
   formatAdvisorBadge,
-  formatAdrModeBadge,
+  formatAdrLayoutBadge,
   backendLine,
   hookLine,
   scaffoldLine,
@@ -50,12 +50,12 @@ check("advisorBadge off → off", formatAdvisorBadge("off") === "🔴 off")
 check("advisorBadge default → default", formatAdvisorBadge("default") === "⚪ default")
 check("advisorBadge undefined → default", formatAdvisorBadge(undefined) === "⚪ default")
 
-// formatAdrModeBadge
-check("adrModeBadge auto → auto", formatAdrModeBadge("auto") === "🟢 auto")
-check("adrModeBadge flat → flat", formatAdrModeBadge("flat") === "📄 flat")
-check("adrModeBadge hierarchical → hierarchy", formatAdrModeBadge("hierarchical") === "📦 hierarchy")
-check("adrModeBadge default → default", formatAdrModeBadge("default") === "⚪ default")
-check("adrModeBadge undefined → default", formatAdrModeBadge(undefined) === "⚪ default")
+// formatAdrLayoutBadge
+check("adrLayoutBadge auto → auto", formatAdrLayoutBadge("auto") === "🟢 auto")
+check("adrLayoutBadge flat → flat", formatAdrLayoutBadge("flat") === "📄 flat")
+check("adrLayoutBadge hierarchical → hierarchy", formatAdrLayoutBadge("hierarchical") === "📦 hierarchy")
+check("adrLayoutBadge default → default", formatAdrLayoutBadge("default") === "⚪ default")
+check("adrLayoutBadge undefined → default", formatAdrLayoutBadge(undefined) === "⚪ default")
 
 console.log("\n=== Report line formatters ===")
 

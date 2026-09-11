@@ -1,6 +1,6 @@
 # Multi-Agent System Tests
 
-Tests for verifying that `opencode.template.jsonc` correctly wires the agent ecosystem: instruction L0 (iron rules), per-agent L1 prompts, optional MCP servers, and the opt-in npm plugin set (no plugin is default-on; OCP ships no `cp#10`-conflicting third-party framing).
+Tests for verifying that `opencode.template.jsonc` correctly wires the agent ecosystem: instruction L0 (iron rules), per-agent L1 prompts, optional MCP servers, and the opt-in npm plugin set (no plugin is default-on; OCP ships no `cp-triage`-conflicting third-party framing).
 
 ## Prerequisites
 
@@ -72,7 +72,7 @@ pwsh -ExecutionPolicy Bypass -File tests/test-anchor-benchmark.ps1 -Quick
   all five tiers
 
 ### Behavioral (opt-in via `-IncludePrompts`, requires LLM API access)
-- Prompt with speculative need → agent builds it, then in its report briefly considers a YAGNI-aligned simpler alternative (per `cp#10` / `code.md` step 4 / `lite.md` Editing-code)
+- Prompt with speculative need → agent builds it, then in its report briefly considers a YAGNI-aligned simpler alternative (per `cp-triage` / `code.md` step 4 / `lite.md` Editing-code)
 - Prompt with existing utility → agent reuses it
 
 ## Expected results

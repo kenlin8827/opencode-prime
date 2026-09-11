@@ -60,27 +60,27 @@ const guardField: SchemaField = {
   default: "on",
 }
 
-const adrModeField: SchemaField = {
-  key: "adrMode",
+const adrLayoutField: SchemaField = {
+  key: "adrLayout",
   type: "enum",
-  labelKey: "project.switchAdrMode",
-  descriptionKey: "project.switchAdrMode",
-  badgeKind: "adrMode",
+  labelKey: "project.switchAdrLayout",
+  descriptionKey: "project.switchAdrLayout",
+  badgeKind: "adrLayout",
   icon: "🏛️",
   values: [
-    { value: "auto", labelKey: "project.valueAdrModeAuto" },
-    { value: "flat", labelKey: "project.valueAdrModeFlat" },
-    { value: "hierarchical", labelKey: "project.valueAdrModeHierarchy" },
-    { value: "default", labelKey: "project.valueAdrModeDefault" },
+    { value: "auto", labelKey: "project.valueAdrLayoutAuto" },
+    { value: "flat", labelKey: "project.valueAdrLayoutFlat" },
+    { value: "hierarchical", labelKey: "project.valueAdrLayoutHierarchy" },
+    { value: "default", labelKey: "project.valueAdrLayoutDefault" },
   ],
   default: "auto",
 }
 
 const stringField: SchemaField = {
-  key: "adrGuardDir",
+  key: "adrDir",
   type: "enum-with-custom",
-  labelKey: "project.switchAdrGuardDir",
-  descriptionKey: "project.switchAdrGuardDir",
+  labelKey: "project.switchAdrDir",
+  descriptionKey: "project.switchAdrDir",
   badgeKind: "string",
   icon: "📁",
   values: [
@@ -90,7 +90,7 @@ const stringField: SchemaField = {
   default: "docs/adr",
 }
 
-const adrGuardDirFieldNoDefault: SchemaField = {
+const adrDirFieldNoDefault: SchemaField = {
   ...stringField,
   default: undefined,
 }
@@ -132,23 +132,23 @@ check(
   badgeFor(guardField, undefined) === "🟢 ON",
 )
 
-// ─── badgeFor — adrMode field ───────────────────────────────────────
+// ─── badgeFor — adrLayout field ───────────────────────────────────────
 
-console.log("\n=== badgeFor (adrMode field) ===")
+console.log("\n=== badgeFor (adrLayout field) ===")
 
-check("adrMode auto → auto", badgeFor(adrModeField, "auto") === "🟢 auto")
-check("adrMode flat → flat", badgeFor(adrModeField, "flat") === "📄 flat")
+check("adrLayout auto → auto", badgeFor(adrLayoutField, "auto") === "🟢 auto")
+check("adrLayout flat → flat", badgeFor(adrLayoutField, "flat") === "📄 flat")
 check(
-  "adrMode hierarchical → hierarchy",
-  badgeFor(adrModeField, "hierarchical") === "📦 hierarchy",
+  "adrLayout hierarchical → hierarchy",
+  badgeFor(adrLayoutField, "hierarchical") === "📦 hierarchy",
 )
 check(
-  "adrMode default → default",
-  badgeFor(adrModeField, "default") === "⚪ default",
+  "adrLayout default → default",
+  badgeFor(adrLayoutField, "default") === "⚪ default",
 )
 check(
-  "adrMode undefined → falls back to default (auto)",
-  badgeFor(adrModeField, undefined) === "🟢 auto",
+  "adrLayout undefined → falls back to default (auto)",
+  badgeFor(adrLayoutField, undefined) === "🟢 auto",
 )
 
 // ─── badgeFor — string field ─────────────────────────────────────────
@@ -169,7 +169,7 @@ check(
 )
 check(
   "string no-default → empty when undefined",
-  badgeFor(adrGuardDirFieldNoDefault, undefined) === "",
+  badgeFor(adrDirFieldNoDefault, undefined) === "",
 )
 
 // ─── Schema contract — every label is an i18n key, never raw text ─────
@@ -181,7 +181,7 @@ console.log("\n=== Schema contract ===")
 // contributor inlines raw strings into the schema, the test still passes,
 // but the structural rule (and review) should catch it. Here we assert
 // the type/contract: `labelKey` is required, not optional.
-for (const field of [advisorField, guardField, adrModeField, stringField]) {
+for (const field of [advisorField, guardField, adrLayoutField, stringField]) {
   check(
     `field ${field.key} has labelKey (non-empty)`,
     typeof field.labelKey === "string" && field.labelKey.length > 0,

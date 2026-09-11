@@ -379,7 +379,13 @@ $allFiles = @(
     "tsconfig.json", "package.json",
     "tests/test-provider-core-unit.ts", "tests/test-profile-core-unit.ts",
     "tests/test-ocp-wizard-cli-unit.ts", "tests/test-ocp-ui-router-unit.ts", "tests/test-ocp-ui-render.tsx", "tests/test-ocp-busy-alert-render.tsx",
-    "tests/test-sidebar-tgrep-badge.ts"
+    "tests/test-sidebar-tgrep-badge.ts",
+    "plugins/project-memory.ts",
+    "plugins/project-memory/project-memory.ts",
+    "plugins/project-memory/project-memory-config.ts",
+    "plugins/project-memory/project-memory-command.ts",
+    "plugins/project-memory/project-memory-system-inject.ts",
+    "tests/test-project-memory-unit.ts"
 )
 foreach ($f in $allFiles) {
     Check "file exists: $f" (Test-Path "$PSScriptRoot\..\$f")
@@ -943,6 +949,8 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-plugin-scope-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-project-profiler-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-project-memory-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-sidebar-tgrep-badge.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }

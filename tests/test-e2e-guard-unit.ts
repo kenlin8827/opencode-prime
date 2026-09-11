@@ -16,6 +16,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
+// Sandbox the ocp shared config and pin language=en — guard command
+// replies are localized (zh-CN on this machine's real config would break
+// the English-phrase assertions below).
+const tmp = mkdtempSync(join(tmpdir(), "e2e-guard-test-"))
+process.env.OCP_CONFIG_PATH = join(tmp, "ocp.jsonc")
+writeFileSync(join(tmp, "ocp.jsonc"), `{ "language": "en" }`)
+
 import {
   normalizeState,
   getState,
@@ -67,7 +74,6 @@ assertEq(normalizeState(42), null, "non-string/boolean → null")
 // ─── Project switch resolution ───────────────────────────────────────
 
 console.log("\n== project switch ==")
-const tmp = mkdtempSync(join(tmpdir(), "e2e-guard-test-"))
 setProjectDir(tmp)
 
 assertEq(getState(), "off", "default state is OFF")
