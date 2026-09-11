@@ -11,6 +11,19 @@ const ALLOWED_FLAGS = new Set(["-i", "--ignore-case", "-F", "--fixed-strings"])
  * a pathological pattern must never wedge the session. */
 const SEARCH_TIMEOUT_MS = 60_000
 
+/** Coerce a possibly-mis-shaped flags/glob payload to a string array.
+ * The schema declares `array(string)` but some callers (LLM tool-call
+ * middleboxes seen in the wild) occasionally send a bare string or a
+ * non-array value — we normalize here so `buildTgrepSearchArgs` never
+ * dereferences `.some` on a non-array. Unknown or empty values drop
+ * silently rather than throwing — the caller is the LLM, which retries
+ * with the correct shape; an opaque error buys nothing. */
+function toStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string")
+  if (typeof value === "string") return value.trim() ? [value] : []
+  return []
+}
+
 export function resolveSearchPath(root: string, path = "."): string {
   const base = realpathSync(root)
   const unresolved = resolve(base, path)
@@ -24,11 +37,11 @@ export function resolveSearchPath(root: string, path = "."): string {
 
 export function buildTgrepSearchArgs(root: string, input: TgrepSearchInput): string[] {
   if (!input.pattern) throw new Error("search pattern must not be empty")
-  const flags = input.flags ?? []
+  const flags = toStringArray(input.flags)
   if (flags.some((flag) => !ALLOWED_FLAGS.has(flag))) throw new Error("unsupported tgrep search flag; use current/full scan fallback")
   // Globs are value-taking flags: they must travel as explicit "-g <value>"
   // pairs, never as a bare flag that would swallow the next argv.
-  const globs = input.glob ?? []
+  const globs = toStringArray(input.glob)
   if (globs.some((glob) => typeof glob !== "string" || !glob.trim() || glob.startsWith("-"))) {
     throw new Error("glob filters must be non-empty and must not start with '-'")
   }

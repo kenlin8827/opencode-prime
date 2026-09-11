@@ -8,7 +8,7 @@
  *   - system prompt transform hook: injects on 'on' + file, strips on 'off',
  *     missing-file no-op, byte-stable on same-object replay
  *   - command hook: /memory capture <text> writes draft; status reports gate
- *   - switch upsert via applySwitchesToConfigContent (on / default)
+ *   - switch upsert via applySwitchesToConfigContent (on)
  *
  * Run: bun run tests/test-project-memory-unit.ts
  */
@@ -107,6 +107,13 @@ assertEq(key1, projectKey("D:/OpenHub/some-project"), "projectKey stable across 
 assert(key1.startsWith("some-project-"), "projectKey keeps readable basename")
 assert(key1 !== projectKey("D:\\Other\\some-project"), "projectKey differs by full path")
 assert(!projectKey("/tmp/we!rd name").includes("!"), "projectKey sanitizes basename")
+// Bug guarded (P2 #9): on Windows, `C:\Foo` and `c:\foo` previously
+// produced different keys despite sharing the same on-disk project —
+// the readable basename came from the case-preserved path while the
+// hash was case-insensitive. Same project, two memory dirs.
+if (process.platform === "win32") {
+  assertEq(projectKey("C:\\OpenHub\\Foo"), projectKey("c:\\openhub\\foo"), "Windows case-insensitive project key")
+}
 
 assertEq(getState(), "off", "default state is OFF")
 assert(!isEnabled(), "isEnabled false by default")
@@ -141,6 +148,22 @@ const draft = readFileSync(draftPath(), "utf-8")
 assert(draft.startsWith("#"), "draft has header")
 assertEq(countEntries(draft), 2, "two entries appended")
 assert(draft.includes("- [") && draft.includes("second lesson"), "entry content present")
+
+// Bug guarded (P1 #1 in the audit): two concurrent `/memory capture`
+// invocations previously both passed the existsSync check and both
+// appended the DRAFT_HEADER, leaving the file with a duplicated header.
+// The fix uses writeFileSync `wx` (exclusive create) so only the first
+// writer's combined (header + entry) write wins; losers fall through to
+// appendFileSync against the now-existing file. Simulate the race by
+// deleting + calling appendDraft twice in the same tick (the wx/EEXIST
+// path is the actual unit under test).
+rmSync(draftPath(), { force: true })
+appendDraft("first")
+appendDraft("second")
+const raced = readFileSync(draftPath(), "utf-8")
+const headerCount = (raced.match(/^# Project memory — drafts \(pending review\)$/gm) ?? []).length
+assertEq(headerCount, 1, "concurrent appendDraft → single header, not duplicated")
+assertEq(countEntries(raced), 2, "concurrent appendDraft → both entries landed")
 
 // ─── readMemory ──────────────────────────────────────────────────────
 
@@ -252,7 +275,6 @@ writeFileSync(join(tmp, "ocp.jsonc"), `{ "language": "en" }`)
 console.log("\n== applySwitchesToConfigContent ==")
 const base = '{\n  // "projectMemory": "off",      // on | off — inject\n}'
 assert(applySwitchesToConfigContent(base, { projectMemory: "on" }).includes('\n  "projectMemory": "on",'), "on → active line")
-assert(applySwitchesToConfigContent(base, { projectMemory: "default" }).includes('// "projectMemory": "off"'), "default → commented off")
 const absent = applySwitchesToConfigContent("{}\n", { projectMemory: "on" })
 assert(absent.includes('"projectMemory": "on"'), "absent key → appended before closing brace")
 

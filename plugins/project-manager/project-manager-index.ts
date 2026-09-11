@@ -344,6 +344,42 @@ export function runBackends(plans: BackendPlan[], root: string): Promise<Backend
   )
 }
 
+/**
+ * POSIX-style argv tokenizer for a single command string. Honors
+ * single-quoted, double-quoted, and backslash-escaped whitespace so a
+ * registry command like `tgrep index --filter "*.ts"` lands as four
+ * distinct argv tokens instead of being split at the embedded space.
+ * Today's `project-hooks.jsonc` ships no quoted args, so this is forward-
+ * looking safety — naive `split(" ")` would silently break the moment a
+ * backend gains a quoted filter or path. ponytail: hand-rolled POSIX
+ * shellwords, ~30 lines; upgrade to `shell-quote` if escaping gets richer.
+ */
+export function shellwords(command: string): string[] {
+  const out: string[] = []
+  let buf = ""
+  let quote: '"' | "'" | null = null
+  let escaped = false
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]
+    if (escaped) { buf += ch; escaped = false; continue }
+    if (quote) {
+      if (ch === "\\" && quote === '"') { escaped = true; continue }
+      if (ch === quote) { quote = null; continue }
+      buf += ch
+      continue
+    }
+    if (ch === "\\") { escaped = true; continue }
+    if (ch === '"' || ch === "'") { quote = ch; continue }
+    if (/\s/.test(ch)) {
+      if (buf.length > 0) { out.push(buf); buf = "" }
+      continue
+    }
+    buf += ch
+  }
+  if (buf.length > 0) out.push(buf)
+  return out
+}
+
 /** Run one planned backend command (async, never throws). Non-CLI actions
  * such as "scaffold" are handled here as well. */
 function runBackend(plan: BackendPlan, root: string): Promise<BackendResult> {
@@ -371,7 +407,7 @@ function runBackend(plan: BackendPlan, root: string): Promise<BackendResult> {
   if (!plan.command) {
     return Promise.resolve({ backend: plan.backend, status: "skipped", detail: plan.note })
   }
-  const [cmd, ...args] = plan.command.split(" ")
+  const [cmd, ...args] = shellwords(plan.command)
   return new Promise((resolve) => {
     const child = spawn(cmd, args, { cwd: root, shell: true, stdio: ["ignore", "ignore", "pipe"] })
     let stderr = ""

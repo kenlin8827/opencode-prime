@@ -27,6 +27,14 @@ import {
   setConfigField,
 } from "./opencode-prime"
 
+/** Coerce the rich SetConfigResult down to the historical boolean contract.
+ *  Existing plugin hooks that only need pass/fail (e.g. project-memory's
+ *  `setState`) keep working unchanged; new callers can opt into the rich
+ *  envelope by calling `setConfigField` directly. */
+function toBool(result: { ok: boolean }): boolean {
+  return result.ok
+}
+
 /** Normalize a raw config value (boolean or string) to a canonical
  * switch state via the plugin's alias table. Boolean true/false
  * support requires `"true"` / `"false"` keys in the alias table —
@@ -109,10 +117,10 @@ export function createPluginSwitch<TState extends string>(
         : "default"
     },
     setState(state: TState): boolean {
-      return setConfigField(spec.field, state)
+      return toBool(setConfigField(spec.field, state))
     },
     clear(): boolean {
-      return clearConfigField(spec.field)
+      return toBool(clearConfigField(spec.field))
     },
     parseArg(args: unknown): TState | null {
       if (typeof args !== "string") return null

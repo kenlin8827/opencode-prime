@@ -52,6 +52,7 @@ import {
   planIndexBackends,
   planInitBackends,
   probeBackends,
+  shellwords,
   type BackendProbe,
 } from "../plugins/project-manager/project-manager-index"
 import { registerProjectHooks } from "../plugins/project-manager/project-manager-hooks"
@@ -643,7 +644,29 @@ test08_IndexPlanning()
 await test09_Announce()
 test10_Sync()
 test11_Hooks()
+function test13_Shellwords() {
+  section("13: shellwords — POSIX argv tokenizer for registry commands")
+  // Bug guarded (P2 #1 in the audit): naive `split(" ")` would silently
+  // mangle a command like `tgrep index --filter "*.ts"` into 4 tokens at
+  // the wrong boundaries. shellwords honors quotes + backslash escapes.
+  assertEq(shellwords("a b c").length, 3, "plain split stays split")
+  assertEq(shellwords("a \"b c\" d").length, 3, "double-quoted space stays inside the token")
+  assertEq(shellwords("a 'b c' d").length, 3, "single-quoted space stays inside the token")
+  assertEq(shellwords("a b\\ c d").length, 3, "backslash-escaped space outside quotes stays inside the token (POSIX)")
+  assertEq(shellwords("  a   b  ").length, 2, "runs of whitespace collapse")
+  assertEq(shellwords("").length, 0, "empty string → empty argv")
+  // The actual motivating case from the audit.
+  const argv = shellwords(`tgrep index --filter "*.ts"`)
+  assertEq(argv.length, 4, "realistic quoted-filter argv stays 4 tokens")
+  assertEq(argv[3], "*.ts", "quoted filter value preserved verbatim")
+}
+
+function assertEq<T>(actual: T, expected: T, msg: string): void {
+  assert(actual === expected, `${msg} (got ${JSON.stringify(actual)}, want ${JSON.stringify(expected)})`)
+}
+
 test12_TgrepGitignore()
+test13_Shellwords()
 
 rmSync(projectDir, { recursive: true, force: true })
 

@@ -20,7 +20,7 @@
  * Phase 2 — until then promotion from draft to memory.md is a manual edit.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs"
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { dirname, join } from "node:path"
 import { getProjectDir, setProjectDir, writableProjectConfigFile } from "../shared/opencode-prime"
@@ -63,12 +63,18 @@ export function setState(state: MemoryState): boolean {
 // ─── Files ───────────────────────────────────────────────────────────
 
 /** Stable identity of the current project: readable basename + path hash.
- * Pure — exported for tests. */
+ * Pure — exported for tests.
+ *
+ * Windows note: the basename is derived from the case-normalized path so
+ * `C:\Foo` and `c:\foo` produce the same key (the hash is case-insensitive
+ * on Windows by file-system convention; the readable prefix must agree too,
+ * otherwise the same project on disk ends up with two memory dirs). */
 export function projectKey(dir = getProjectDir()): string {
   const norm = dir.replace(/\\/g, "/").replace(/\/+$/, "")
-  const base = norm.split("/").pop() ?? "project"
+  const lowered = process.platform === "win32" ? norm.toLowerCase() : norm
+  const base = lowered.split("/").pop() ?? "project"
   const san = base.replace(/[^a-zA-Z0-9._-]/g, "-")
-  const hash = createHash("sha256").update(norm.toLowerCase()).digest("hex").slice(0, 8)
+  const hash = createHash("sha256").update(lowered).digest("hex").slice(0, 8)
   return `${san}-${hash}`
 }
 
@@ -104,14 +110,25 @@ const DRAFT_HEADER = "# Project memory — drafts (pending review)\n\n"
 
 /** Append a lesson to the draft file (creates dir + header when missing).
  * Returns the resolved draft path. Throws only on unrecoverable fs errors —
- * callers surface those as a user-visible failure line. */
+ * callers surface those as a user-visible failure line.
+ *
+ * Concurrency: the create-with-header step uses `wx` (exclusive create) so
+ * two simultaneous `/memory capture` invocations can never both win the
+ * `existsSync` race and duplicate the header. The first writer's combined
+ * (header + entry) write is atomic from the others' perspective; losers
+ * fall through to a plain appendFileSync against the now-existing file. */
 export function appendDraft(lesson: string): string {
   const path = draftPath()
-  if (!existsSync(path)) {
-    mkdirSync(dirname(path), { recursive: true })
-    appendFileSync(path, DRAFT_HEADER, "utf-8")
+  mkdirSync(dirname(path), { recursive: true })
+  try {
+    writeFileSync(path, DRAFT_HEADER + formatDraftEntry(lesson), {
+      flag: "wx",
+      encoding: "utf-8",
+    })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") throw err
+    appendFileSync(path, formatDraftEntry(lesson), "utf-8")
   }
-  appendFileSync(path, formatDraftEntry(lesson), "utf-8")
   return path
 }
 

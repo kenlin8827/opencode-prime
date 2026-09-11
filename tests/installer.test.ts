@@ -56,6 +56,16 @@ const parsed = parseJsonc(sampleJsonc);
 if (parsed.key !== 'value' || parsed.num !== 42) throw new Error('JSONC parsing failed');
 console.log('✓ JSONC Parser passed');
 
+// Bug guarded (P1 #2): parseJsonc's old regex `replace(/,(\s*[}\]])/g, "$1")`
+// was string-unsafe — a value containing `,]` or `,}` inside quotes was
+// silently mangled. Any provider/model block with prose like "fast (<200ms)"
+// followed by `,}` hit this. The single-pass scanner is now string-aware.
+const tricky = parseJsonc(`{ "a": "x, y]", "b": [1, 2,], "c": "ok", }`);
+if (tricky.a !== 'x, y]' || !Array.isArray(tricky.b) || tricky.b.length !== 2 || tricky.c !== 'ok') {
+  throw new Error(`parseJsonc mangled a quoted string or trailing comma: ${JSON.stringify(tricky)}`);
+}
+console.log('✓ JSONC string-safe trailing-comma passed');
+
 // 2. Dynamic Locales
 console.log('\nTest 2: Locales Auto-Discovery & Loading');
 const locales = getAvailableLocales(repoDir);
