@@ -5,7 +5,6 @@ import { readFileSync } from "node:fs"
 import { basename } from "node:path"
 import { convertSingleFile, type DocxConversionOptions } from "./engine"
 import { makeCommandHook, COMMAND_NAMES } from "./command"
-import { makeSystemHook } from "./system-inject"
 
 export const MdToDocxPlugin: Plugin = async ({ client, directory }) => {
   return {
@@ -19,7 +18,6 @@ export const MdToDocxPlugin: Plugin = async ({ client, directory }) => {
       }
     },
     "command.execute.before": makeCommandHook(client, directory),
-    "experimental.chat.system.transform": makeSystemHook(client),
     tool: {
       md_to_docx: tool({
         description:
