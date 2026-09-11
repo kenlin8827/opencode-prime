@@ -16,7 +16,7 @@
 | # | Rule |
 |---|---|
 | 1 | **MUST NOT** hand-escape a long verbatim block into a regex needle. Full escaping is all-or-nothing: one wrong escape (e.g. `[]` written as `\(\)\]`) yields zero matches, and the error does not show where the needle diverged. |
-| 2 | **MUST** build every needle from content actually read in this session (`read_file`, symbol overview), never from remembered code — `cp#8`. |
+| 2 | **MUST** build every needle from content actually read in this session (`read_file`, symbol overview), never from remembered code — `cp-understand`. |
 | 3 | On `No matches of search expression`: **MUST NOT** retry the same needle or a trivial variant; **MUST** read the target region first, then rebuild the needle from what the read returned. |
 | 4 | On multiple-match or ambiguity errors: **MUST** tighten the anchors with unique context; never loosen them. |
 | 5 | **MUST NOT** put `\r` in needles or blame CRLF when using serena's tools — they normalize line endings (CRLF→LF) before matching. |

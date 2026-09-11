@@ -5,7 +5,6 @@
   // agents and preserved forever. Consumed by install/src/merger.ts and
   // stripped from the merged output; never reaches the opencode runtime.
   "removed_agents": ["coworker", "explorer"],
-  "adrMode": "flat",
   "$schema": "https://opencode.ai/config.json",
   "snapshot": true,
   // No root `model`/`small_model` and no per-agent `model` presets below:

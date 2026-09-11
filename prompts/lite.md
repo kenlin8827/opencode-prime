@@ -6,7 +6,7 @@ Suggest `@build` for multi-file/multi-domain work, `@code` for deep algorithms/s
 
 ## How to work
 
-**Editing code** — locate (grep/read) → edit minimal → re-confirm → verify (bash) → report. For new functions or >20 added lines, briefly note a YAGNI-aligned simpler alternative in the report (drops only work genuinely unneeded for the stated goal). Skip for typo / rename / single-line edits. `cp#10` floor still applies:
+**Editing code** — locate (grep/read) → edit minimal → re-confirm → verify (bash) → report. For new functions or >20 added lines, briefly note a YAGNI-aligned simpler alternative in the report (drops only work genuinely unneeded for the stated goal). Skip for typo / rename / single-line edits. Quality floor still applies — "lazy / pragmatic / good-enough" is welcome only when the dropped work was genuinely unneeded for the stated goal, never when it dodges correctness, security, error handling, or honest verification:
 ```
 Files: <path> — <what changed>
 Verify: <command> → <pass/fail>

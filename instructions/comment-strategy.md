@@ -1,6 +1,6 @@
 # Comment strategy — right medium for the right intent
 
-> Refines cp#5 (Comments explain why) + cp#3 (Readability first). Two anti-patterns: **wall of text** (>15 lines pure prose without diagram = **MUST NOT**) and **diagram spam** (diagram on ≤3-line logic = **SHOULD NOT**). Use the simplest medium that communicates intent.
+> Refines cp-why (Comments explain why) + cp-readable (Readability first). Two anti-patterns: **wall of text** (>15 lines pure prose without diagram = **MUST NOT**) and **diagram spam** (diagram on ≤3-line logic = **SHOULD NOT**). Use the simplest medium that communicates intent.
 
 ## Escalation ladder
 
@@ -56,4 +56,4 @@ Diagram **SHOULD** be used only when: 3+ collaborators (non-obvious), 4+ state t
 
 ## Agent roles
 
-- **Code-writers/reviewers**: escalate rungs when prose >8 lines. **MUST** diagram or restructure at 15. **SHOULD NOT** diagram trivial logic. Flag walls (cp#3 Readability first), spam (cp#1 Write less code), Mermaid-in-code, `@param` spam (cp#5 Comments explain why). **Doc-writers**: use Mermaid in `.md`; apply same ladder. 1-line comment is best case.
+- **Code-writers/reviewers**: escalate rungs when prose >8 lines. **MUST** diagram or restructure at 15. **SHOULD NOT** diagram trivial logic. Flag walls (cp-readable Readability first), spam (cp-less Write less — reuse ladder), Mermaid-in-code, `@param` spam (cp-why Comments explain why). **Doc-writers**: use Mermaid in `.md`; apply same ladder. 1-line comment is best case.
