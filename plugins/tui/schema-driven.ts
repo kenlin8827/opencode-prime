@@ -81,11 +81,11 @@ export function badgeFor(field: SchemaField, value: string | undefined): string 
   if (v === undefined) return ""
   switch (field.badgeKind) {
     case "guard":
-      return formatGuardBadge(v as "on" | "off" | "default")
+      return formatGuardBadge(v as "on" | "off")
     case "advisor":
-      return formatAdvisorBadge(v as "off" | "lite" | "full" | "default")
+      return formatAdvisorBadge(v as "off" | "lite" | "full")
     case "adrLayout":
-      return formatAdrLayoutBadge(v as "auto" | "flat" | "hierarchical" | "default")
+      return formatAdrLayoutBadge(v as "auto" | "flat" | "hierarchical")
     case "string":
     default:
       return v
@@ -240,14 +240,13 @@ function renderCustomPrompt(
 
 /**
  * Pick an icon for an enum value. Determined by value semantics
- * (on/off/default, lite/full/off, etc.), NOT by the field — same icon
+ * (on/off, lite/full/off, etc.), NOT by the field — same icon
  * for the same value across all fields that use it.
  */
 function iconForValueKind(field: SchemaField, value: string): string {
-  // Boolean-like tri-state (on/off/default) — used by guard fields.
+  // Boolean-like (on/off) — used by guard fields.
   if (value === "on") return "🟢"
   if (value === "off") return "🔴"
-  if (value === "default") return "⚪"
   // Advisor mode — uses its own color set.
   if (field.badgeKind === "advisor") {
     if (value === "lite") return "🟢"

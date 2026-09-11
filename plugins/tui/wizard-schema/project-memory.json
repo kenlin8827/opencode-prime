@@ -13,8 +13,7 @@
       "icon": "🧠",
       "values": [
         { "value": "on", "labelKey": "project.valueGuardMemoryOn" },
-        { "value": "off", "labelKey": "project.valueGuardMemoryOff" },
-        { "value": "default", "labelKey": "project.valueAdvisorDefault" }
+        { "value": "off", "labelKey": "project.valueGuardMemoryOff" }
       ],
       "default": "off"
     }

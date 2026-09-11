@@ -14,8 +14,7 @@
       "values": [
         { "value": "lite", "labelKey": "project.valueAdvisorLite" },
         { "value": "full", "labelKey": "project.valueAdvisorFull" },
-        { "value": "off", "labelKey": "project.valueAdvisorOff" },
-        { "value": "default", "labelKey": "project.valueAdvisorDefault" }
+        { "value": "off", "labelKey": "project.valueAdvisorOff" }
       ],
       "default": "lite"
     }

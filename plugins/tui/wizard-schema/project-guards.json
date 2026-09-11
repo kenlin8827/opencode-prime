@@ -14,8 +14,7 @@
       "icon": "🔒",
       "values": [
         { "value": "on", "labelKey": "project.valueGuardEnvOn" },
-        { "value": "off", "labelKey": "project.valueGuardEnvOff" },
-        { "value": "default", "labelKey": "project.valueAdvisorDefault" }
+        { "value": "off", "labelKey": "project.valueGuardEnvOff" }
       ],
       "default": "on"
     },
@@ -29,8 +28,7 @@
       "icon": "🧪",
       "values": [
         { "value": "on", "labelKey": "project.valueGuardE2eOn" },
-        { "value": "off", "labelKey": "project.valueGuardE2eOff" },
-        { "value": "default", "labelKey": "project.valueAdvisorDefault" }
+        { "value": "off", "labelKey": "project.valueGuardE2eOff" }
       ],
       "default": "on"
     },
@@ -44,8 +42,7 @@
       "icon": "🛡️",
       "values": [
         { "value": "on", "labelKey": "project.valueGuardAdrOn" },
-        { "value": "off", "labelKey": "project.valueGuardAdrOff" },
-        { "value": "default", "labelKey": "project.valueAdvisorDefault" }
+        { "value": "off", "labelKey": "project.valueGuardAdrOff" }
       ],
       "default": "on"
     }

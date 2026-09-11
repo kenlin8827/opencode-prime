@@ -38,24 +38,21 @@ function check(name: string, condition: boolean): void {
 console.log("\n=== Badge formatters ===")
 
 // formatGuardBadge
-check("guardBadge on → ON", formatGuardBadge("on") === "🟢 ON")
-check("guardBadge off → OFF", formatGuardBadge("off") === "🔴 OFF")
-check("guardBadge default → default", formatGuardBadge("default") === "⚪ default")
-check("guardBadge undefined → default", formatGuardBadge(undefined) === "⚪ default")
+check("guardBadge on → On", formatGuardBadge("on") === "🟢 On")
+check("guardBadge off → Off", formatGuardBadge("off") === "🔴 Off")
+check("guardBadge undefined → empty", formatGuardBadge(undefined) === "")
 
 // formatAdvisorBadge
-check("advisorBadge lite → lite", formatAdvisorBadge("lite") === "🟢 lite")
-check("advisorBadge full → full", formatAdvisorBadge("full") === "🔵 full")
-check("advisorBadge off → off", formatAdvisorBadge("off") === "🔴 off")
-check("advisorBadge default → default", formatAdvisorBadge("default") === "⚪ default")
-check("advisorBadge undefined → default", formatAdvisorBadge(undefined) === "⚪ default")
+check("advisorBadge lite → Lite", formatAdvisorBadge("lite") === "🟢 Lite")
+check("advisorBadge full → Full", formatAdvisorBadge("full") === "🔵 Full")
+check("advisorBadge off → Off", formatAdvisorBadge("off") === "🔴 Off")
+check("advisorBadge undefined → empty", formatAdvisorBadge(undefined) === "")
 
 // formatAdrLayoutBadge
-check("adrLayoutBadge auto → auto", formatAdrLayoutBadge("auto") === "🟢 auto")
-check("adrLayoutBadge flat → flat", formatAdrLayoutBadge("flat") === "📄 flat")
-check("adrLayoutBadge hierarchical → hierarchy", formatAdrLayoutBadge("hierarchical") === "📦 hierarchy")
-check("adrLayoutBadge default → default", formatAdrLayoutBadge("default") === "⚪ default")
-check("adrLayoutBadge undefined → default", formatAdrLayoutBadge(undefined) === "⚪ default")
+check("adrLayoutBadge auto → Auto", formatAdrLayoutBadge("auto") === "🟢 Auto")
+check("adrLayoutBadge flat → Flat", formatAdrLayoutBadge("flat") === "📄 Flat")
+check("adrLayoutBadge hierarchical → Hierarchy", formatAdrLayoutBadge("hierarchical") === "📦 Hierarchy")
+check("adrLayoutBadge undefined → empty", formatAdrLayoutBadge(undefined) === "")
 
 console.log("\n=== Report line formatters ===")
 

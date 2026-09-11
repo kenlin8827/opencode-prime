@@ -128,28 +128,28 @@ export function showAlertModal(
 
 // ─── Badge formatters ────────────────────────────────────────────────
 
-export type GuardValue = "on" | "off" | "default" | undefined
-export type AdvisorValue = "off" | "lite" | "full" | "default" | undefined
-export type AdrLayoutValue = "auto" | "flat" | "hierarchical" | "default" | undefined
+export type GuardValue = "on" | "off" | undefined
+export type AdvisorValue = "off" | "lite" | "full" | undefined
+export type AdrLayoutValue = "auto" | "flat" | "hierarchical" | undefined
 
 export function formatGuardBadge(val: GuardValue): string {
-  if (val === "on") return "🟢 ON"
-  if (val === "off") return "🔴 OFF"
-  return "⚪ default"
+  if (val === "on") return "🟢 On"
+  if (val === "off") return "🔴 Off"
+  return ""
 }
 
 export function formatAdvisorBadge(val: AdvisorValue): string {
-  if (val === "lite") return "🟢 lite"
-  if (val === "full") return "🔵 full"
-  if (val === "off") return "🔴 off"
-  return "⚪ default"
+  if (val === "lite") return "🟢 Lite"
+  if (val === "full") return "🔵 Full"
+  if (val === "off") return "🔴 Off"
+  return ""
 }
 
 export function formatAdrLayoutBadge(val: AdrLayoutValue): string {
-  if (val === "auto") return "🟢 auto"
-  if (val === "flat") return "📄 flat"
-  if (val === "hierarchical") return "📦 hierarchy"
-  return "⚪ default"
+  if (val === "auto") return "🟢 Auto"
+  if (val === "flat") return "📄 Flat"
+  if (val === "hierarchical") return "📦 Hierarchy"
+  return ""
 }
 
 // ─── Report formatters ───────────────────────────────────────────────

@@ -31,6 +31,17 @@ const globArgs = buildTgrepSearchArgs(root, { pattern: "x", glob: ["*.ts", "src/
 assert(globArgs.filter((arg) => arg === "-g").length === 2 && globArgs.includes("*.ts") && globArgs.includes("src/**") && globArgs.indexOf("-g", 0) < globArgs.indexOf("--"), "glob filters travel as -g value pairs before --")
 assert(throws(() => buildTgrepSearchArgs(root, { pattern: "x", glob: ["-evil"] })), "rejects glob that looks like a flag")
 assert(throws(() => buildTgrepSearchArgs(root, { pattern: "x", flags: ["-g"] })), "rejects valueless -g flag")
+
+// ─── Schema-shape normalization (LLM middleboxes occasionally send bare
+// strings instead of arrays; the execute boundary must not crash). ───
+const stringFlagArgs = buildTgrepSearchArgs(root, { pattern: "x", flags: "--ignore-case" as unknown as string[] })
+assert(stringFlagArgs.includes("--ignore-case"), "bare-string flags is coerced to a single-element array")
+const stringGlobArgs = buildTgrepSearchArgs(root, { pattern: "x", glob: "!node_modules/**" as unknown as string[] })
+assert(stringGlobArgs.includes("!node_modules/**"), "bare-string glob is coerced to a single-element array")
+const nullFlagArgs = buildTgrepSearchArgs(root, { pattern: "x", flags: null as unknown as string[] })
+assert(!nullFlagArgs.some((arg) => arg.startsWith("-i")) || nullFlagArgs.includes("-i"), "null flags does not throw (treated as no flags)")
+const undefinedArgs = buildTgrepSearchArgs(root, { pattern: "x" })
+assert(!undefinedArgs.includes("-g") && undefinedArgs[undefinedArgs.length - 1] !== "--", "undefined flags/glob yields clean argv")
 assert(throws(() => resolveSearchPath(root, "../outside")), "rejects lexical path escape")
 if (process.platform !== "win32") {
   const outside = mkdtempSync(join(tmpdir(), "tgrep-outside-")); symlinkSync(outside, join(root, "escape"))

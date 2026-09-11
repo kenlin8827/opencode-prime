@@ -148,11 +148,11 @@ export function getAdrLayout(): AdrLayout {
 export function setAdrLayout(layout: AdrLayout): boolean {
   const normalized = normalizeAdrLayout(layout)
   if (!normalized) return false
-  return setConfigField(MODE_FIELD, normalized)
+  return setConfigField(MODE_FIELD, normalized).ok
 }
 
 export function clearAdrLayout(): boolean {
-  return clearConfigField(MODE_FIELD)
+  return clearConfigField(MODE_FIELD).ok
 }
 
 // ─── Slash command parsing ────────────────────────────────────────────

@@ -69,21 +69,21 @@ export interface DetectedProjectState {
   switches: ProjectSwitches
 }
 
-/** Toggle helper for on/off/default boolean-like switches (exported for tests). */
+/** Toggle helper for on/off boolean-like switches (exported for tests). */
 export function toggleGuardState(
-  current?: "on" | "off" | "default",
-): "on" | "off" | "default" {
+  current?: "on" | "off",
+): "on" | "off" {
   const values = PROJECT_SWITCH_OPTIONS.adrGuard.map((option) => option.value)
-  const index = values.indexOf(current ?? "default")
+  const index = values.indexOf(current ?? "on")
   return values[(index + 1) % values.length]
 }
 
-/** Cycle helper for autoAdvisorMode (lite -> full -> off -> default -> lite). */
+/** Cycle helper for autoAdvisorMode (lite → full → off → lite). */
 export function cycleAdvisorMode(
-  current?: "off" | "lite" | "full" | "default",
-): "off" | "lite" | "full" | "default" {
+  current?: "off" | "lite" | "full",
+): "off" | "lite" | "full" {
   const values = PROJECT_SWITCH_OPTIONS.autoAdvisorMode.map((option) => option.value)
-  const index = values.indexOf(current ?? "default")
+  const index = values.indexOf(current ?? "lite")
   return values[(index + 1) % values.length]
 }
 

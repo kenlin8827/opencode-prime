@@ -40,7 +40,6 @@ const advisorField: SchemaField = {
     { value: "lite", labelKey: "project.valueAdvisorLite" },
     { value: "full", labelKey: "project.valueAdvisorFull" },
     { value: "off", labelKey: "project.valueAdvisorOff" },
-    { value: "default", labelKey: "project.valueAdvisorDefault" },
   ],
   default: "lite",
 }
@@ -55,7 +54,6 @@ const guardField: SchemaField = {
   values: [
     { value: "on", labelKey: "project.valueGuardAdrOn" },
     { value: "off", labelKey: "project.valueGuardAdrOff" },
-    { value: "default", labelKey: "project.valueAdvisorDefault" },
   ],
   default: "on",
 }
@@ -71,7 +69,6 @@ const adrLayoutField: SchemaField = {
     { value: "auto", labelKey: "project.valueAdrLayoutAuto" },
     { value: "flat", labelKey: "project.valueAdrLayoutFlat" },
     { value: "hierarchical", labelKey: "project.valueAdrLayoutHierarchy" },
-    { value: "default", labelKey: "project.valueAdrLayoutDefault" },
   ],
   default: "auto",
 }
@@ -100,55 +97,46 @@ const adrDirFieldNoDefault: SchemaField = {
 console.log("\n=== badgeFor (advisor field) ===")
 
 check(
-  "advisor on → lite badge",
-  badgeFor(advisorField, "lite") === "🟢 lite",
+  "advisor lite badge",
+  badgeFor(advisorField, "lite") === "🟢 Lite",
 )
 check(
-  "advisor on → full badge",
-  badgeFor(advisorField, "full") === "🔵 full",
+  "advisor full badge",
+  badgeFor(advisorField, "full") === "🔵 Full",
 )
 check(
   "advisor off badge",
-  badgeFor(advisorField, "off") === "🔴 off",
-)
-check(
-  "advisor default badge",
-  badgeFor(advisorField, "default") === "⚪ default",
+  badgeFor(advisorField, "off") === "🔴 Off",
 )
 check(
   "advisor undefined → falls back to default (lite)",
-  badgeFor(advisorField, undefined) === "🟢 lite",
+  badgeFor(advisorField, undefined) === "🟢 Lite",
 )
 
 // ─── badgeFor — guard field ──────────────────────────────────────────
 
 console.log("\n=== badgeFor (guard field) ===")
 
-check("guard on → ON", badgeFor(guardField, "on") === "🟢 ON")
-check("guard off → OFF", badgeFor(guardField, "off") === "🔴 OFF")
-check("guard default → default", badgeFor(guardField, "default") === "⚪ default")
+check("guard on → On", badgeFor(guardField, "on") === "🟢 On")
+check("guard off → Off", badgeFor(guardField, "off") === "🔴 Off")
 check(
   "guard undefined → falls back to default (on)",
-  badgeFor(guardField, undefined) === "🟢 ON",
+  badgeFor(guardField, undefined) === "🟢 On",
 )
 
 // ─── badgeFor — adrLayout field ───────────────────────────────────────
 
 console.log("\n=== badgeFor (adrLayout field) ===")
 
-check("adrLayout auto → auto", badgeFor(adrLayoutField, "auto") === "🟢 auto")
-check("adrLayout flat → flat", badgeFor(adrLayoutField, "flat") === "📄 flat")
+check("adrLayout auto → Auto", badgeFor(adrLayoutField, "auto") === "🟢 Auto")
+check("adrLayout flat → Flat", badgeFor(adrLayoutField, "flat") === "📄 Flat")
 check(
-  "adrLayout hierarchical → hierarchy",
-  badgeFor(adrLayoutField, "hierarchical") === "📦 hierarchy",
-)
-check(
-  "adrLayout default → default",
-  badgeFor(adrLayoutField, "default") === "⚪ default",
+  "adrLayout hierarchical → Hierarchy",
+  badgeFor(adrLayoutField, "hierarchical") === "📦 Hierarchy",
 )
 check(
   "adrLayout undefined → falls back to default (auto)",
-  badgeFor(adrLayoutField, undefined) === "🟢 auto",
+  badgeFor(adrLayoutField, undefined) === "🟢 Auto",
 )
 
 // ─── badgeFor — string field ─────────────────────────────────────────

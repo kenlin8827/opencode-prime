@@ -184,13 +184,13 @@ export interface SwitchLine {
 }
 
 export interface ProjectSwitches {
-  autoAdvisorMode?: "off" | "lite" | "full" | "default"
-  adrGuard?: "on" | "off" | "default"
+  autoAdvisorMode?: "off" | "lite" | "full"
+  adrGuard?: "on" | "off"
   adrDir?: string
-  adrLayout?: "auto" | "flat" | "hierarchical" | "default"
-  envGuard?: "on" | "off" | "default"
-  e2eGuard?: "on" | "off" | "default"
-  projectMemory?: "on" | "off" | "default"
+  adrLayout?: "auto" | "flat" | "hierarchical"
+  envGuard?: "on" | "off"
+  e2eGuard?: "on" | "off"
+  projectMemory?: "on" | "off"
 }
 
 /** Commented switch lines (`// "key": ...`) offered by the config template. */
@@ -211,9 +211,11 @@ export function contentHasKey(content: string, key: string): boolean {
 
 /**
  * Apply project switch settings to a JSONC config string (template or existing).
- * - active value ("lite", "on", etc.) → active line `"key": "value",`
- * - "default" → commented line `// "key": "...",`
- * - preserves indentation, comments, and remaining lines.
+ * Each entry's `value` (when set) replaces the matching line in active form
+ * `"key": "value",` — replacing a previously commented template line or
+ * appending before the closing `}` when the key is absent. Undefined entries
+ * are skipped (template defaults stay commented). Indentation, comments, and
+ * unrelated lines are preserved.
  */
 export function applySwitchesToConfigContent(
   content: string,
@@ -225,43 +227,14 @@ export function applySwitchesToConfigContent(
   const switchEntries: Array<{
     key: string
     value?: string
-    defaultLine: string
   }> = [
-      {
-        key: "autoAdvisorMode",
-        value: switches.autoAdvisorMode,
-        defaultLine: '  // "autoAdvisorMode": "lite",  // off | lite | full — /auto-advisor <mode>',
-      },
-      {
-        key: "adrGuard",
-        value: switches.adrGuard,
-        defaultLine: '  // "adrGuard": "on",           // on | off          — /adr-guard <state>',
-      },
-      {
-        key: "adrLayout",
-        value: switches.adrLayout,
-        defaultLine: '  // "adrLayout": "auto",          // auto | flat | hierarchical — /adr layout <layout>',
-      },
-      {
-        key: "adrDir",
-        value: switches.adrDir,
-        defaultLine: `  // "adrDir": "${switches.adrDir ?? "docs/adr"}",       // ADR directory`,
-      },
-      {
-        key: "envGuard",
-        value: switches.envGuard,
-        defaultLine: '  // "envGuard": "on",           // on | off — blocks agent access to secret .env* files (.env.example exempt)',
-      },
-      {
-        key: "e2eGuard",
-        value: switches.e2eGuard,
-        defaultLine: '  // "e2eGuard": "on",           // on | off — E2E quality red line: prompts LLM to assess diff impact on feat/fix tasks and interactively confirm with user via ask',
-      },
-      {
-        key: "projectMemory",
-        value: switches.projectMemory,
-        defaultLine: '  // "projectMemory": "off",      // on | off — inject the curated project memory (ocp memory root) into context — /memory on|off',
-      },
+      { key: "autoAdvisorMode", value: switches.autoAdvisorMode },
+      { key: "adrGuard", value: switches.adrGuard },
+      { key: "adrLayout", value: switches.adrLayout },
+      { key: "adrDir", value: switches.adrDir },
+      { key: "envGuard", value: switches.envGuard },
+      { key: "e2eGuard", value: switches.e2eGuard },
+      { key: "projectMemory", value: switches.projectMemory },
     ]
 
   for (const entry of switchEntries) {
@@ -270,31 +243,19 @@ export function applySwitchesToConfigContent(
     // Match active or commented switch line: e.g. `  // "key": "val", ...` or `  "key": "val", ...`
     const lineRegex = new RegExp(`^(\\s*)(//\\s*)?("${escaped}"\\s*:\\s*)"([^"]*)"(.*)$`, "m")
     const match = lineRegex.exec(result)
-
-    const isDefault = entry.value === "default"
+    const val = entry.value
 
     if (match) {
       const indent = match[1] || "  "
       const prefix = match[3]
       const suffix = match[5]
-      const val = isDefault
-        ? (entry.key === "autoAdvisorMode" ? "lite" : entry.key === "adrLayout" ? "auto" : entry.key === "adrDir" ? (switches.adrDir ?? "docs/adr") : entry.key === "projectMemory" ? "off" : "on")
-        : entry.value
-
-      const newLine = isDefault
-        ? `${indent}// ${prefix}"${val}"${suffix}`
-        : `${indent}${prefix}"${val}"${suffix}`
+      const newLine = `${indent}${prefix}"${val}"${suffix}`
       result = result.replace(match[0], newLine)
     } else {
       // Key absent in existing content: append before closing brace
       const close = result.lastIndexOf("}")
       if (close >= 0) {
-        const val = isDefault
-          ? (entry.key === "autoAdvisorMode" ? "lite" : entry.key === "adrLayout" ? "auto" : entry.key === "adrDir" ? (switches.adrDir ?? "docs/adr") : entry.key === "projectMemory" ? "off" : "on")
-          : entry.value
-        const line = isDefault
-          ? `  // "${entry.key}": "${val}",`
-          : `  "${entry.key}": "${val}",`
+        const line = `  "${entry.key}": "${val}",`
         result = result.slice(0, close) + line + eol + result.slice(close)
       }
     }
@@ -353,7 +314,7 @@ export function runInitWithSwitches(switches: ProjectSwitches): ScaffoldResult[]
       }
     }
 
-    mkdirSync(dirname(absPath), { recursive: true })
+    ensureParentDir(absPath)
     if (relPath === CONFIG_REL) {
       writeFileSync(absPath, generateConfigContent(switches), "utf-8")
     } else {

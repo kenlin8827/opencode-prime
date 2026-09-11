@@ -560,7 +560,7 @@ const STRINGS = {
   "project.indexWorking": { en: "Running index backends against the project.\nThis may take a few seconds for large repos.", "zh-CN": "正在对项目运行索引后端。\n大型仓库可能需要几秒钟。" },
   "project.indexBusyText": { en: "Refreshing…", "zh-CN": "正在刷新…" },
 
-  // Switch picker labels and descriptions (each guard has its own on/off/default).
+  // Switch picker labels and descriptions (each guard has its own on/off; default = the recommended runtime value).
   "project.currentMarker": { en: "  (current)", "zh-CN": "  (当前)" },
   "project.currentValue": { en: "Current: {value}", "zh-CN": "当前: {value}" },
   "project.cancel": { en: "🔙 Cancel", "zh-CN": "🔙 取消" },
@@ -570,7 +570,6 @@ const STRINGS = {
   "project.valueAdvisorLite": { en: "Advisory mode (recommended)", "zh-CN": "顾问模式 (推荐)" },
   "project.valueAdvisorFull": { en: "Decisive review mode", "zh-CN": "决定性审查模式" },
   "project.valueAdvisorOff": { en: "Disable advisor completely", "zh-CN": "完全关闭顾问" },
-  "project.valueAdvisorDefault": { en: "Leave commented in config (default off)", "zh-CN": "在配置中保留为注释 (默认关闭)" },
   "project.toastAdvisor": { en: "autoAdvisorMode -> {value}", "zh-CN": "autoAdvisorMode -> {value}" },
 
   "project.pickAdrGuard": { en: "Select adrGuard", "zh-CN": "选择 adrGuard" },
@@ -596,7 +595,6 @@ const STRINGS = {
   "project.valueAdrLayoutAuto": { en: "Smart adaptive (flat <=15, hierarchy >15)", "zh-CN": "智能适配 (≤15 平铺, >15 分层)" },
   "project.valueAdrLayoutFlat": { en: "Single directory (0001-xxx.md)", "zh-CN": "单目录 (0001-xxx.md)" },
   "project.valueAdrLayoutHierarchy": { en: "Domain subdirectories (auth/0001-xxx.md)", "zh-CN": "按域划分子目录 (auth/0001-xxx.md)" },
-  "project.valueAdrLayoutDefault": { en: "Leave commented in config (default auto)", "zh-CN": "在配置中保留为注释 (默认 auto)" },
   "project.toastAdrLayout": { en: "adrLayout -> {value}", "zh-CN": "adrLayout -> {value}" },
 
   "project.pickAdrDir": { en: "Select ADR Directory (adrDir)", "zh-CN": "选择 ADR 目录 (adrDir)" },

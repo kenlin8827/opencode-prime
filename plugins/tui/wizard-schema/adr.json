@@ -14,8 +14,7 @@
       "values": [
         { "value": "auto", "labelKey": "project.valueAdrLayoutAuto" },
         { "value": "flat", "labelKey": "project.valueAdrLayoutFlat" },
-        { "value": "hierarchical", "labelKey": "project.valueAdrLayoutHierarchy" },
-        { "value": "default", "labelKey": "project.valueAdrLayoutDefault" }
+        { "value": "hierarchical", "labelKey": "project.valueAdrLayoutHierarchy" }
       ],
       "default": "auto"
     },
