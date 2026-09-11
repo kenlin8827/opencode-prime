@@ -10,28 +10,25 @@
  * made without reading it — so progressive disclosure carries no
  * compliance risk here.
  *
- * Cache-friendly strategy (same as adr-guard):
- *   - file present + line-start marker already there → complete no-op,
- *     prompt-cache warm.
- *   - file present + marker absent → append the pointer fragment.
- *   - file absent + marker present → strip the block (file deleted
- *     mid-session).
- *   - file absent + marker absent → complete no-op.
- *
- * The fragment is appended to the LAST system string entry only — appending
- * to every entry would duplicate it across multi-entry system prompts
- * (same fix as project-profiler).
+ * Opencode runtime note (verified 2026-09-11, see ADR 0002): the
+ * runtime rebuilds `output.system` per chat request. See adr-guard
+ * for the full Scenario A / B rationale — same fragment-cache +
+ * defensive-strip pattern applies here. Marker match is line-start
+ * (rather than substring) to avoid false positives from inline
+ * mentions of the marker text elsewhere in the prompt.
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
 import { scoped } from "../shared/plugin-scope"
+import { appendBlock, escapeRegExp, stripBlockByLine } from "../shared/system-block"
 import { GIT_COMMITS_REL, hasConventionFile } from "./project-manager-config"
 
 export const MARKER = "[PROJECT COMMIT CONVENTION]"
 
-// Line-start marker check — avoids false positives from inline mentions of
-// the marker text elsewhere in the prompt (same as project-profiler).
-const MARKER_RE = /\n\[PROJECT COMMIT CONVENTION\]/
+// Line-start marker check is handled inside stripBlockByLine, which derives
+// the regex from MARKER via escapeRegExp. Keeping the literal here as the
+// single source of truth for both the marker text and the (now shared)
+// idempotency check.
 
 /**
  * Pointer fragment appended to the system prompt. Progressive disclosure:
@@ -54,35 +51,32 @@ function buildFragment(): string {
 // ─── System prompt helpers ───────────────────────────────────────────
 
 function hasMarker(system: string[]): boolean {
-  return system.some((s) => typeof s === "string" && MARKER_RE.test(s))
+  // Line-start match — avoids false positives from inline mentions of the
+  // marker text elsewhere in the prompt (same as project-profiler). The
+  // shared stripBlockByLine uses the exact same regex shape, so this
+  // check stays in sync with the strip path's match semantics.
+  const re = new RegExp(`\\n${escapeRegExp(MARKER)}`)
+  return system.some((s) => typeof s === "string" && re.test(s))
 }
 
 function stripMarker(system: string[]): boolean {
-  let changed = false
-  for (let i = 0; i < system.length; i++) {
-    const s = system[i]
-    if (typeof s !== "string") continue
-    // Cut at the same line-start position the dedup check (MARKER_RE) uses.
-    const m = s.match(MARKER_RE)
-    if (!m || m.index === undefined) continue
-    // Trim the separator whitespace that preceded the marker so the
-    // original prompt restores without leftover blank space.
-    system[i] = s.substring(0, m.index).replace(/\s+$/, "")
-    changed = true
-  }
-  return changed
+  return stripBlockByLine(system, MARKER)
 }
 
-/** Append the fragment to the LAST string entry only. */
+/** Append the fragment to the LAST string entry, with a fallback push when
+ * the runtime passes an empty or all-object array. Inherited from
+ * `plugins/shared/system-block.ts` so this plugin benefits from the same
+ * defensive fix project-profiler landed (see the 2026-09-11 hook regression). */
 function appendFragment(system: string[], fragment: string): boolean {
-  for (let i = system.length - 1; i >= 0; i--) {
-    const s = system[i]
-    if (typeof s !== "string") continue
-    system[i] = s + fragment
-    return true
-  }
-  return false
+  return appendBlock(system, fragment)
 }
+
+/** Cached rendered fragment. Same rationale as adr-guard's
+ * `cachedPrompt` — the fragment text is constant for a given
+ * `GIT_COMMITS_REL`. The path is a module-level constant
+ * (`plugins/project-manager/project-manager-config.ts`), so the
+ * fragment doesn't change within a process. */
+let cachedPrompt: string | undefined
 
 export function makeSystemHook(client: PluginInput["client"]) {
   const log = (level: "info" | "warn", message: string) =>
@@ -90,24 +84,19 @@ export function makeSystemHook(client: PluginInput["client"]) {
 
   return async (input: { sessionID?: string } | undefined, output: { system: string[] }) => {
     // Lite mode: bare-prompt contract — no convention pointer for @lite.
-    // (A lite session can never carry a stale block: all injectors skip it.)
     if (!await scoped(input, output.system, "project-manager", client)) return
 
+    // Defensive strip — see adr-guard rationale (Scenario A/B).
+    // Line-start match via the shared helper.
+    const stripped = hasMarker(output.system) ? stripMarker(output.system) : false
+
     if (!hasConventionFile()) {
-      // No convention file — make sure no stale block lingers in the prompt.
-      if (hasMarker(output.system)) {
-        stripMarker(output.system)
-        await log("info", "system prompt: stale commit-convention block stripped (file missing)")
-      }
+      if (stripped) await log("info", "system prompt: stale commit-convention block stripped (file missing)")
       return
     }
 
-    // Fast path: pointer already present → don't touch anything.
-    // Keeps the prompt-cache warm.
-    if (hasMarker(output.system)) return
-
-    // Slow path: inject the pointer for this generation step.
-    const changed = appendFragment(output.system, buildFragment())
+    if (!cachedPrompt) cachedPrompt = buildFragment()
+    const changed = appendFragment(output.system, cachedPrompt)
     if (changed) await log("info", "system prompt: commit-convention pointer injected (progressive disclosure)")
   }
 }

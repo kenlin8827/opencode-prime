@@ -3,24 +3,31 @@
  * protocol (loaded from adr-guard-protocol.md) into the system prompt
  * when the switch is on; strip any stale marker when it is off.
  *
- * Cache-friendly strategy (same as auto-advisor):
- *   - on + exact marker already present → complete no-op, prompt-cache warm.
- *   - on + marker absent/stale → strip stale block, append fresh fragment.
- *   - off + marker present → strip the block (switch flipped off mid-session).
- *   - off + marker absent → complete no-op.
+ * Opencode runtime note (verified 2026-09-11, see ADR 0002): the
+ * runtime rebuilds `output.system` per chat request — output.system
+ * never contains fragments injected on a previous step. Behavior:
+ *
+ *   - on + fresh prompt → strip no-op + inject → marker present.
+ *   - on + persistent prompt (Scenario B hypothetical) → strip stale
+ *     + re-inject → byte-identical to previous turn → provider cache
+ *     hit. The defensive strip is what keeps the cache stable under
+ *     a future Scenario-B runtime.
+ *   - off + fresh prompt → strip no-op + no inject → prompt clean.
+ *   - off + persistent prompt → strip stale → prompt clean.
+ *
+ * The fragment is cached in `cachedPrompt` so we don't re-concat the
+ * ~few-KB body every chat. The protocol body never changes during a
+ * session; cache invalidation is unnecessary within a process lifetime.
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
 import { scoped } from "../shared/plugin-scope"
+import { appendBlock } from "../shared/system-block"
 import { isEnabled } from "./adr-guard-config"
-import { getGuardPrompt, MARKER, MARKER_ON } from "./adr-guard-instructions"
+import { getGuardPrompt, MARKER } from "./adr-guard-instructions"
 import { makeLogger } from "./adr-guard-runtime"
 
 type Log = ReturnType<typeof makeLogger>
-
-function hasExactMarker(system: string[], exact: string): boolean {
-  return system.some((s) => typeof s === "string" && s.includes(exact))
-}
 
 function hasAnyMarker(system: string[]): boolean {
   return system.some((s) => typeof s === "string" && s.includes(MARKER))
@@ -41,43 +48,34 @@ function stripMarker(system: string[]): boolean {
   return changed
 }
 
-/** Append the fragment to the LAST string entry only — appending to every
- * entry would duplicate it across multi-entry system prompts (same fix as
- * project-profiler / project-manager). */
-function appendPrompt(system: string[], fragment: string): boolean {
-  for (let i = system.length - 1; i >= 0; i--) {
-    const s = system[i]
-    if (typeof s !== "string") continue
-    system[i] = s + fragment
-    return true
-  }
-  return false
-}
+/** Cached rendered fragment. The protocol body is constant across
+ * turns, so caching avoids re-concatenating the fragment on every
+ * chat. Module-level: the on/off switch is a project-level
+ * preference. */
+let cachedPrompt: string | undefined
 
 export function makeSystemHook(client: PluginInput["client"]) {
   const log: Log = makeLogger(client, "adr-guard")
 
   return async (input: { sessionID?: string } | undefined, output: { system: string[] }) => {
     // Lite mode: bare-prompt contract — no iron-law protocol for @lite.
-    // (A lite session can never carry a stale block: all injectors skip it.)
     if (!await scoped(input, output.system, "adr-guard", client)) return
 
+    // Defensive strip — correct under Scenario B (hypothetical
+    // prompt-persistence), no-op under Scenario A (verified current
+    // runtime, see ADR 0002). Cheap substring scan; keeps the
+    // behavior correct if opencode ever changes to preserve
+    // output.system across turns.
+    const hadMarker = hasAnyMarker(output.system)
+    const stripped = hadMarker ? stripMarker(output.system) : false
+
     if (!isEnabled()) {
-      // Switch off — make sure no stale protocol lingers in the prompt.
-      if (hasAnyMarker(output.system)) {
-        stripMarker(output.system)
-        await log("info", "system prompt: stale iron-law block stripped (state=off)")
-      }
+      if (stripped) await log("info", "system prompt: stale iron-law block stripped (state=off)")
       return
     }
 
-    // Fast path: already injected for the active state → don't touch
-    // anything. Keeps the prompt-cache warm.
-    if (hasExactMarker(output.system, MARKER_ON)) return
-
-    // Slow path: first injection (or stale block from another state).
-    if (hasAnyMarker(output.system)) stripMarker(output.system)
-    const changed = appendPrompt(output.system, getGuardPrompt())
+    if (!cachedPrompt) cachedPrompt = getGuardPrompt()
+    const changed = appendBlock(output.system, cachedPrompt)
     if (changed) await log("info", "system prompt: iron-law protocol injected (state=on)")
   }
 }
