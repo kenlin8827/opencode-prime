@@ -2,27 +2,28 @@
   "$schema": "../../docs/design/wizard-schema.schema.json",
   "id": "adr",
   "i18nKey": "project.adr.title",
-  "description": "ADR-related guards and structure mode. Schema-driven; new entries only require a JSON row, no wizard code change.",
+  "description": "ADR structure settings (layout first, then directory). The adrGuard on/off switch lives in the Project guards group (project-guards.json). Schema-driven; new entries only require a JSON row, no wizard code change.",
   "fields": [
     {
-      "key": "adrGuard",
+      "key": "adrLayout",
       "type": "enum",
-      "labelKey": "project.switchAdrGuard",
-      "descriptionKey": "project.switchAdrGuard",
-      "badgeKind": "guard",
-      "icon": "🛡️",
+      "labelKey": "project.switchAdrLayout",
+      "descriptionKey": "project.switchAdrLayout",
+      "badgeKind": "adrLayout",
+      "icon": "🏛️",
       "values": [
-        { "value": "on", "labelKey": "project.valueGuardAdrOn" },
-        { "value": "off", "labelKey": "project.valueGuardAdrOff" },
-        { "value": "default", "labelKey": "project.valueAdvisorDefault" }
+        { "value": "auto", "labelKey": "project.valueAdrLayoutAuto" },
+        { "value": "flat", "labelKey": "project.valueAdrLayoutFlat" },
+        { "value": "hierarchical", "labelKey": "project.valueAdrLayoutHierarchy" },
+        { "value": "default", "labelKey": "project.valueAdrLayoutDefault" }
       ],
-      "default": "on"
+      "default": "auto"
     },
     {
-      "key": "adrGuardDir",
+      "key": "adrDir",
       "type": "enum-with-custom",
-      "labelKey": "project.switchAdrGuardDir",
-      "descriptionKey": "project.switchAdrGuardDir",
+      "labelKey": "project.switchAdrDir",
+      "descriptionKey": "project.switchAdrDir",
       "badgeKind": "string",
       "icon": "📁",
       "values": [
@@ -34,21 +35,6 @@
       "customPromptKey": "project.promptAdrDirTitle",
       "customPlaceholderKey": "project.promptAdrDirPlaceholder",
       "default": "docs/adr"
-    },
-    {
-      "key": "adrMode",
-      "type": "enum",
-      "labelKey": "project.switchAdrMode",
-      "descriptionKey": "project.switchAdrMode",
-      "badgeKind": "adrMode",
-      "icon": "🏛️",
-      "values": [
-        { "value": "auto", "labelKey": "project.valueAdrModeAuto" },
-        { "value": "flat", "labelKey": "project.valueAdrModeFlat" },
-        { "value": "hierarchical", "labelKey": "project.valueAdrModeHierarchy" },
-        { "value": "default", "labelKey": "project.valueAdrModeDefault" }
-      ],
-      "default": "auto"
     }
   ]
 }

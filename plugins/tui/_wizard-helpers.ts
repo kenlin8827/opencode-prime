@@ -130,7 +130,7 @@ export function showAlertModal(
 
 export type GuardValue = "on" | "off" | "default" | undefined
 export type AdvisorValue = "off" | "lite" | "full" | "default" | undefined
-export type AdrModeValue = "auto" | "flat" | "hierarchical" | "default" | undefined
+export type AdrLayoutValue = "auto" | "flat" | "hierarchical" | "default" | undefined
 
 export function formatGuardBadge(val: GuardValue): string {
   if (val === "on") return "🟢 ON"
@@ -145,7 +145,7 @@ export function formatAdvisorBadge(val: AdvisorValue): string {
   return "⚪ default"
 }
 
-export function formatAdrModeBadge(val: AdrModeValue): string {
+export function formatAdrLayoutBadge(val: AdrLayoutValue): string {
   if (val === "auto") return "🟢 auto"
   if (val === "flat") return "📄 flat"
   if (val === "hierarchical") return "📦 hierarchy"

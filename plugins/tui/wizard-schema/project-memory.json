@@ -1,0 +1,22 @@
+{
+  "$schema": "../../docs/design/wizard-schema.schema.json",
+  "id": "project_memory",
+  "i18nKey": "project.nameProjectMemory",
+  "description": "Project-memory injection switch — schema-driven inline field (main menu, ahead of Auto advisor). Memory is deliberate user-curated knowledge: a first-class control, not a guard.",
+  "fields": [
+    {
+      "key": "projectMemory",
+      "type": "enum",
+      "labelKey": "project.switchProjectMemory",
+      "descriptionKey": "project.switchProjectMemory",
+      "badgeKind": "guard",
+      "icon": "🧠",
+      "values": [
+        { "value": "on", "labelKey": "project.valueGuardMemoryOn" },
+        { "value": "off", "labelKey": "project.valueGuardMemoryOff" },
+        { "value": "default", "labelKey": "project.valueAdvisorDefault" }
+      ],
+      "default": "off"
+    }
+  ]
+}

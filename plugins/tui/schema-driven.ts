@@ -22,30 +22,33 @@
  */
 
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
-import { tr } from "./i18n"
+import { tr, type StringKey } from "./i18n"
 import {
   formatGuardBadge,
   formatAdvisorBadge,
-  formatAdrModeBadge,
+  formatAdrLayoutBadge,
 } from "./_wizard-helpers"
 
 // ─── Schema types ────────────────────────────────────────────────────
 
 export type SchemaFieldType = "enum" | "enum-with-custom"
-export type BadgeKind = "guard" | "advisor" | "adrMode" | "string"
+export type BadgeKind = "guard" | "advisor" | "adrLayout" | "string"
 
 export interface SchemaFieldValue {
   readonly value: string
-  readonly labelKey: string
+  readonly labelKey: StringKey
   /** Optional description shown alongside the value label in the picker. */
-  readonly descriptionKey?: string
+  readonly descriptionKey?: StringKey
 }
 
 export interface SchemaField {
   readonly key: string
   readonly type: SchemaFieldType
-  readonly labelKey: string
-  readonly descriptionKey: string
+  readonly labelKey: StringKey
+  readonly descriptionKey: StringKey
+  /** Optional i18n key for the field's DISPLAY NAME on the group menu row
+   * (localized item name); falls back to the raw config key when absent. */
+  readonly nameKey?: StringKey
   readonly badgeKind: BadgeKind
   /** Emoji prefix shown before the field key in the wizard menu. */
   readonly icon: string
@@ -53,9 +56,9 @@ export interface SchemaField {
   /** enum-with-custom only — show a "Custom…" row. */
   readonly allowCustom?: boolean
   /** enum-with-custom only — title for the custom value prompt. */
-  readonly customPromptKey?: string
+  readonly customPromptKey?: StringKey
   /** enum-with-custom only — placeholder for the custom value prompt. */
-  readonly customPlaceholderKey?: string
+  readonly customPlaceholderKey?: StringKey
   readonly default?: string
 }
 
@@ -81,8 +84,8 @@ export function badgeFor(field: SchemaField, value: string | undefined): string 
       return formatGuardBadge(v as "on" | "off" | "default")
     case "advisor":
       return formatAdvisorBadge(v as "off" | "lite" | "full" | "default")
-    case "adrMode":
-      return formatAdrModeBadge(v as "auto" | "flat" | "hierarchical" | "default")
+    case "adrLayout":
+      return formatAdrLayoutBadge(v as "auto" | "flat" | "hierarchical" | "default")
     case "string":
     default:
       return v
@@ -250,8 +253,8 @@ function iconForValueKind(field: SchemaField, value: string): string {
     if (value === "lite") return "🟢"
     if (value === "full") return "🔵"
   }
-  // ADR mode — uses document/folder icons.
-  if (field.badgeKind === "adrMode") {
+  // ADR layout — uses document/folder icons.
+  if (field.badgeKind === "adrLayout") {
     if (value === "auto") return "🟢"
     if (value === "flat") return "📄"
     if (value === "hierarchical") return "📦"

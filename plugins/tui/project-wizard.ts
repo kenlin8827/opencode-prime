@@ -10,7 +10,7 @@
  *     three meaningful units:
  *       - `autoAdvisor`  → inline row on the main menu (1 field, single value)
  *       - `projectGuards`→ sub-dialog (envGuard + e2eGuard, on/off guards)
- *       - `adr`          → sub-dialog (adrGuard + adrGuardDir + adrMode)
+ *       - `adr`          → sub-dialog (adrGuard + adrDir + adrLayout)
  *     Renamed `showGitWorkflowGroup` → `showSchemaGroup(groupId, schema)` helper.
  *     Schema files: `plugins/tui/wizard-schema/{auto-advisor,project-guards,adr}.json`.
  *     `.opencode/opencode.jsonc` remains the runtime source of truth for switch values;
@@ -46,6 +46,7 @@ import {
   type WizardGroupId,
 } from "./_wizard-helpers"
 import autoAdvisorSchemaJson from "./wizard-schema/auto-advisor.json" with { type: "json" }
+import projectMemorySchemaJson from "./wizard-schema/project-memory.json" with { type: "json" }
 import projectGuardsSchemaJson from "./wizard-schema/project-guards.json" with { type: "json" }
 import adrSchemaJson from "./wizard-schema/adr.json" with { type: "json" }
 import {
@@ -55,6 +56,7 @@ import {
 } from "./schema-driven"
 
 const AUTO_ADVISOR_SCHEMA: WizardGroupSchema = autoAdvisorSchemaJson as WizardGroupSchema
+const PROJECT_MEMORY_SCHEMA: WizardGroupSchema = projectMemorySchemaJson as WizardGroupSchema
 const PROJECT_GUARDS_SCHEMA: WizardGroupSchema = projectGuardsSchemaJson as WizardGroupSchema
 const ADR_SCHEMA: WizardGroupSchema = adrSchemaJson as WizardGroupSchema
 
@@ -136,8 +138,8 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
   // the main menu. Built inline (no i18n template) — these are compact
   // status snapshots, not user-facing messages. The inline auto-advisor
   // row displays its current value in the title directly.
-  const projectGuardsSummary = `env:${current.envGuard ?? "def"} · e2e:${current.e2eGuard ?? "def"}`
-  const adrSummary = `adr:${current.adrGuard ?? "def"} · mode:${current.adrMode ?? "def"}`
+  const projectGuardsSummary = `env:${current.envGuard ?? "def"} · e2e:${current.e2eGuard ?? "def"} · adr:${current.adrGuard ?? "def"}`
+  const adrSummary = `layout:${current.adrLayout ?? "def"}`
 
   const dprintPlan = planDprintSetup(projectRoot(api))
   const toolingSummary = dprintPlan.status === "eligible"
@@ -151,6 +153,11 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
   const advisorField = AUTO_ADVISOR_SCHEMA.fields[0]!
   const advisorInlineTitle = `${advisorField.icon} ${tr("project.groups.autoAdvisor")}: ${badgeFor(advisorField, current.autoAdvisorMode)}`
 
+  // Project memory — inline first-class control, ahead of the advisor:
+  // curated knowledge injection is deliberate user curation, not a guard.
+  const memoryField = PROJECT_MEMORY_SCHEMA.fields[0]!
+  const memoryInlineTitle = `${memoryField.icon} ${tr("project.nameProjectMemory")}: ${badgeFor(memoryField, current.projectMemory)}`
+
   const items: DialogOption<string>[] = [
     {
       title: isExisting ? tr("project.applyUpdate") : tr("project.applyInit"),
@@ -159,6 +166,12 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
         ? tr("project.applyUpdateDesc")
         : tr("project.applyInitDesc"),
       category: skeletonHeader,
+    },
+    {
+      title: memoryInlineTitle,
+      value: "__field_projectMemory",
+      description: tr(memoryField.descriptionKey),
+      category: conventionsHeader,
     },
     {
       title: advisorInlineTitle,
@@ -234,6 +247,19 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
             }
             case "__action_index__": {
               await runIndexRefresh(api, state)
+              break
+            }
+            case "__field_projectMemory": {
+              renderSchemaField(
+                api,
+                memoryField,
+                current.projectMemory,
+                (newValue) => {
+                  current.projectMemory = newValue as ProjectSwitches["projectMemory"]
+                  showGroupMenu(api, { ...state, currentSelection: "__field_projectMemory" })
+                },
+                () => showGroupMenu(api, { ...state, currentSelection: "__field_projectMemory" }),
+              )
               break
             }
             case "__field_autoAdvisorMode": {
@@ -349,12 +375,15 @@ function showSchemaGroup(
   const actionsCat = tr("project.actionsHeader")
   const navCat = tr("project.navigationHeader")
 
-  const items: DialogOption<string>[] = schema.fields.map((field) => ({
-    title: `${field.icon} ${field.key}:${" ".repeat(Math.max(1, 15 - field.key.length))} ${badgeFor(field, current[field.key as keyof ProjectSwitches] as string | undefined)}`,
-    value: `__field_${field.key}`,
-    description: tr(field.descriptionKey),
-    category: field.badgeKind === "advisor" ? advisorCat : guardsCat,
-  }))
+  const items: DialogOption<string>[] = schema.fields.map((field) => {
+    const displayName = field.nameKey ? tr(field.nameKey) : field.key
+    return {
+      title: `${field.icon} ${displayName}:${" ".repeat(Math.max(1, 15 - displayName.length))} ${badgeFor(field, current[field.key as keyof ProjectSwitches] as string | undefined)}`,
+      value: `__field_${field.key}`,
+      description: tr(field.descriptionKey),
+      category: field.badgeKind === "advisor" ? advisorCat : guardsCat,
+    }
+  })
   items.push(
     {
       title: tr("project.saveApply"),
