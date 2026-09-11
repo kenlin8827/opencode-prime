@@ -19,6 +19,7 @@ Plugins provide runtime enforcement and workflows that prompts alone cannot achi
 | `env-guard.ts` | Per-project secret-file gate |
 | `e2e-guard.ts` | `/e2e-guard` command — per-project gate: E2E runs need user confirmation |
 | `project-manager.ts` | `/project` command + commit discipline |
+| `project-memory.ts` | `/memory` command — opt-in project memory: capture lessons, inject curated memory (stored outside the project under the ocp memory root) |
 | `queue-manager.ts` | `/queued` command — manage prompts queued while the session is busy |
 | `profile-wizard.ts`, `provider-wizard.ts`, `project-wizard.ts` | `/profile`, `/provider`, and `/project-wizard` TUI dialog wizards; new Node projects without an existing formatter may explicitly set up project-local dprint |
 | `md-to-pdf.ts` | `/md-to-pdf` command & `md_to_pdf` tool — export Markdown files as publication-quality A4 PDFs (via Pandoc + Playwright) |
@@ -45,13 +46,13 @@ The commit guard switch is **project-level** (stored in `opencode.jsonc`):
 /adr-guard          # status report (state + ADR dir)
 ```
 
-The hierarchy governance mode is configured via `/adr mode`:
+The ADR hierarchy layout is configured via `/adr layout`:
 
 ```text
-/adr mode                   # show current governance mode (auto | flat | hierarchical)
-/adr mode flat              # pure flat single-directory mode (docs/adr/)
-/adr mode hierarchical      # strict multi-tier hierarchy (L1/L2/L3)
-/adr mode auto              # smart adaptive mode (default: flat by default, expands on multi-package)
+/adr layout                   # show current layout (auto | flat | hierarchical)
+/adr layout flat              # pure flat single-directory layout (docs/adr/)
+/adr layout hierarchical      # strict multi-tier hierarchy (L1/L2/L3)
+/adr layout auto              # smart adaptive layout (default: flat by default, expands on multi-package)
 ```
 
 ### Slash Commands (`/adr`)
@@ -145,6 +146,31 @@ Optional per-project gate requiring explicit user confirmation before any E2E su
 Gating is graded by risk:
 - **full**: Suite run with no explicit target (`npm run e2e`, bare `playwright test`) — every run needs a fresh one-shot `/e2e-guard allow` pass.
 - **targeted**: Explicit spec/test-file argument (`playwright test tests/login.spec.ts`) — passes automatically once the session has confirmed approval.
+
+---
+
+## Project memory (`project-memory`)
+
+Lightweight, opt-in project-level "lessons learned" memory — complementary
+to `AGENTS.md` (manual facts, authoritative) and `opencode-mem` (automatic
+session history). Stored OUTSIDE the project, under the ocp user-level
+memory root (`~/.config/opencode/memory/<projectKey>/`, path-hashed key —
+honors `OCP_CONFIG_PATH`/`XDG_CONFIG_HOME`). Three stages, opt-in at every
+one; phase 1 = capture + inject:
+
+```text
+/memory capture "<lesson>"   # append a dated bullet to <memory root>/draft.md
+/memory on | off             # toggle injection of <memory root>/memory.md
+/memory status               # gate state + entry counts
+```
+
+Promotion draft → `memory.md` is a manual edit for now (keep the dated-bullet
+form; delete stale entries). While `projectMemory` is on and the file is
+non-empty, its content is appended to the system prompt under
+`[PROJECT MEMORY]` — advisory: AGENTS.md wins on conflict. Over the
+16 000-char cap the file is not injected (pointer block instead) — prune it.
+Default off.
+Design: `docs/plan/project-memory-phase1.md`.
 
 ---
 

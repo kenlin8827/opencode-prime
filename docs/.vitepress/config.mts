@@ -8,7 +8,17 @@ export default withMermaid(
     base: "/",
     cleanUrls: true,
     lastUpdated: true,
-    srcExclude: ['SUMMARY.md'],
+    // Site = curated public docs only. The dirs/files below are product
+    // convention paths (runtime artifacts of OCP's own plugins/prompts in this
+    // repo — dogfood), not public pages; they stay in the repo (GitHub is the
+    // source of truth) but are never built:
+    //   adr/     — ADR records (adr-guard default dir)
+    //   plan/    — phase plans (plan-orchestrator artifact path)
+    //   reviews/ — review reports (prompts/plan.md + skills/review-report path)
+    //   git-commits.md — commit-discipline convention file (file-as-switch)
+    // OCP development records (e.g. spec review records) live in the
+    // top-level dev-docs/ dir, outside the site root by construction.
+    srcExclude: ['SUMMARY.md', 'adr/**', 'plan/**', 'reviews/**', 'git-commits.md'],
     head: [
       [
         'script',
