@@ -18,6 +18,7 @@
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
+import { refreshLocale, tr } from "../tui/i18n"
 import { getAdrDir, getState, type GuardState } from "./adr-guard-config"
 import { makeLogger } from "./adr-guard-runtime"
 
@@ -25,25 +26,16 @@ type Client = PluginInput["client"]
 
 /** One user-visible line per state. ON MUST name the enforcement surface. */
 export function announceMessage(state: GuardState): string {
-  if (state === "on") {
-    return (
-      `[adr-guard] ON — every feat/refactor commit requires a new/updated ADR ` +
-      `(${getAdrDir()}/). /adr-guard off to disable.`
-    )
-  }
-  return (
-    "[adr-guard] OFF — no ADR enforcement. /adr-guard on to enable the iron law for this project."
-  )
+  refreshLocale()
+  return state === "on"
+    ? tr("guard.adr.announceOn", { dir: getAdrDir() })
+    : tr("guard.adr.announceOff")
 }
 
 /** Read-only status report for `/adr-guard` without a state argument. */
 export function statusMessage(): string {
-  const state = getState()
-  const adrDir = getAdrDir()
-  return (
-    `[adr-guard] Status: ${state.toUpperCase()} | ADR dir: ${adrDir}/ | ` +
-    `switch: /adr-guard on|off (project-level, stored in opencode.jsonc)`
-  )
+  refreshLocale()
+  return tr("guard.adr.statusMsg", { state: getState().toUpperCase(), dir: getAdrDir() })
 }
 
 /**

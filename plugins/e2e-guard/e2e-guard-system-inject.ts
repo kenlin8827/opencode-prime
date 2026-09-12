@@ -1,24 +1,24 @@
 /**
  * Hook: experimental.chat.system.transform — inject the E2E guard protocol
  * (loaded from e2e-guard-protocol.md) into the system prompt when the
- * switch is on; strip any stale marker when it is off or when running on a subagent.
+ * switch is on AND the agent is primary; strip any stale marker otherwise.
  *
  * Scoped to Primary Delivery Agents only (code, build, architect, or root orchestrator session):
  *   - Subagents (with parentID or specialized non-delivery agents) do not have
  *     interactive `ask` tool permissions and do not perform git commit/handoff,
  *     so injecting E2E protocol into them would cause noise and context pollution.
  *
- * Cache-friendly strategy:
- *   - on + primary agent + exact marker present → no-op, prompt-cache warm.
- *   - on + primary agent + marker absent/stale → strip stale, append fresh.
- *   - off (or non-primary agent) + marker present → strip marker.
- *   - off (or non-primary agent) + marker absent → no-op.
+ * Opencode runtime note (verified 2026-09-11, see ADR 0002): the
+ * runtime rebuilds `output.system` per chat request. See adr-guard
+ * for the full Scenario A / B rationale — same fragment-cache +
+ * defensive-strip pattern applies here.
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
 import { scoped } from "../shared/plugin-scope"
+import { appendBlock } from "../shared/system-block"
 import { isEnabled } from "./e2e-guard-config"
-import { getGuardPrompt, MARKER, MARKER_ON } from "./e2e-guard-instructions"
+import { getGuardPrompt, MARKER } from "./e2e-guard-instructions"
 
 // Known primary delivery agents with interaction & commit capabilities
 const PRIMARY_AGENTS = new Set(["code", "build", "architect", "general", ""])
@@ -29,10 +29,6 @@ export function isPrimaryAgent(input?: { agent?: string; parentID?: string }): b
   if (input.parentID) return false
   const agent = (input.agent ?? "").toLowerCase()
   return PRIMARY_AGENTS.has(agent)
-}
-
-function hasExactMarker(system: string[], exact: string): boolean {
-  return system.some((s) => typeof s === "string" && s.includes(exact))
 }
 
 function hasAnyMarker(system: string[]): boolean {
@@ -54,16 +50,10 @@ function stripMarker(system: string[]): boolean {
   return changed
 }
 
-/** Append the fragment to the LAST string entry only. */
-function appendPrompt(system: string[], fragment: string): boolean {
-  for (let i = system.length - 1; i >= 0; i--) {
-    const s = system[i]
-    if (typeof s !== "string") continue
-    system[i] = s + fragment
-    return true
-  }
-  return false
-}
+/** Cached rendered fragment. Same rationale as adr-guard's
+ * `cachedPrompt` — the protocol body is constant across turns;
+ * module-level cache avoids re-concat every chat. */
+let cachedPrompt: string | undefined
 
 export function makeSystemHook(client: PluginInput["client"]) {
   const log = (level: "info" | "warn", message: string) =>
@@ -71,27 +61,18 @@ export function makeSystemHook(client: PluginInput["client"]) {
 
   return async (input: { agent?: string; parentID?: string; sessionID?: string } | undefined, output: { system: string[] }) => {
     // Lite mode: bare-prompt contract — no e2e protocol for @lite.
-    // (A lite session can never carry a stale block: all injectors skip it.)
     if (!await scoped(input, output.system, "e2e-guard", client)) return
 
-    const shouldInject = isEnabled() && isPrimaryAgent(input)
+    // Defensive strip — see adr-guard rationale (Scenario A/B).
+    const stripped = hasAnyMarker(output.system) ? stripMarker(output.system) : false
 
-    if (!shouldInject) {
-      // Switch off or not a primary agent — make sure no stale protocol lingers.
-      if (hasAnyMarker(output.system)) {
-        stripMarker(output.system)
-        await log("info", "system prompt: stale e2e-guard block stripped")
-      }
+    if (!isEnabled() || !isPrimaryAgent(input)) {
+      if (stripped) await log("info", "system prompt: stale e2e-guard block stripped")
       return
     }
 
-    // Fast path: already injected for the active state → don't touch anything.
-    // Keeps the prompt-cache warm.
-    if (hasExactMarker(output.system, MARKER_ON)) return
-
-    // Slow path: first injection (or stale block from another state).
-    if (hasAnyMarker(output.system)) stripMarker(output.system)
-    const changed = appendPrompt(output.system, getGuardPrompt())
+    if (!cachedPrompt) cachedPrompt = getGuardPrompt()
+    const changed = appendBlock(output.system, cachedPrompt)
     if (changed) await log("info", "system prompt: e2e-guard protocol injected (primary agent)")
   }
 }

@@ -1,24 +1,23 @@
 /**
  * Shared env-guard config — project opencode.jsonc switch field.
- * Single source of truth for reading, writing, and normalizing the switch.
  *
- * State is PROJECT-LEVEL and lives in the `envGuard` field of the project's
- * opencode.json/opencode.jsonc — there is NO separate state file.
+ * State is PROJECT-LEVEL and lives in the `envGuard` field of the
+ * project's opencode.json/opencode.jsonc — there is NO separate state
+ * file.
  *   - absent or "off" → off (default — no enforcement)
  *   - "on"            → on (secret-bearing .env* access is hard-blocked)
  *
- * Resolution: project config `envGuard` field → "off". Scanned in order:
- *   <project>/.opencode/opencode.jsonc, <project>/opencode.jsonc, then the
- *   .json variants. Setting the switch writes the field into the
- * project-level config only (targeted upsert; comments preserved).
+ * Resolution: project config `envGuard` field → "off". Scanned in
+ * order via `readProjectConfig()` which iterates the candidate paths
+ * (`.opencode/opencode.jsonc`, `opencode.jsonc`, `.json` variants).
  *
- * The project directory is injected by the plugin entry via setProjectDir()
- * (PluginInput.directory); until then we fall back to process.cwd().
+ * Setting the switch writes the field into the project-level config
+ * only (targeted upsert; comments preserved). `/env-guard on|off`
+ * flows through `setState`; `/env-guard reset` flows through `clear`.
  *
- * Config-file plumbing (project dir resolution, JSONC parsing, field
- * upsert/remove, never-throw write) is shared with adr-guard and auto-advisor
- * via ../shared/opencode-prime; this file keeps only the env-guard-specific
- * switch semantics.
+ * The switch itself is delegated to `plugins/shared/plugin-switch.ts`
+ * — this file keeps only env-guard-specific concerns (the type
+ * alias and re-exports of plumbing).
  */
 
 import {
@@ -27,69 +26,52 @@ import {
   setConfigField,
   setProjectDir,
 } from "../shared/opencode-prime"
+import { createPluginSwitch, normalizeSwitchState } from "../shared/plugin-switch"
 
 // Re-export the shared plumbing so the plugin entry keeps its import path.
 export { setProjectDir }
 
-const VALID_STATES = ["on", "off"] as const
-export type GuardState = (typeof VALID_STATES)[number]
-
-const DEFAULT_STATE: GuardState = "off"
-
-const STATE_ALIASES: Record<string, GuardState> = {
-  on: "on",
-  enabled: "on",
-  true: "on",
-  off: "off",
-  disabled: "off",
-  false: "off",
-}
-
-export function normalizeState(state: unknown): GuardState | null {
-  if (typeof state === "boolean") return state ? "on" : "off"
-  if (typeof state !== "string") return null
-  const s = state.trim().toLowerCase()
-  return STATE_ALIASES[s] ?? null
-}
-
-// ─── Switch resolution ───────────────────────────────────────────────
-// The switch is the `envGuard` field of the project-level opencode.jsonc.
-
-const GUARD_FIELD = "envGuard"
-
+export type GuardState = "on" | "off"
 export type GuardStateSource = "config" | "default"
 
-function resolveState(): { state: GuardState; source: GuardStateSource } {
-  // Project config — the single source of truth for the switch.
-  const cfg = readProjectConfig()
-  const fromCfg = normalizeState(cfg?.envGuard)
-  if (fromCfg) return { state: fromCfg, source: "config" }
-  return { state: DEFAULT_STATE, source: "default" }
+const envSwitch = createPluginSwitch<GuardState>({
+  field: "envGuard",
+  aliases: {
+    on: "on", enabled: "on", true: "on",
+    off: "off", disabled: "off", false: "off",
+  },
+  defaultState: "off",
+  onStates: ["on"],
+})
+
+/** Normalize a raw config value (boolean or string) to a canonical
+ * GuardState. Pure — exported for unit tests. */
+export function normalizeState(raw: unknown): GuardState | null {
+  return normalizeSwitchState(raw, envSwitch.spec.aliases)
 }
 
+/** Current canonical state. Falls back to defaultState when the field
+ * is absent or unrecognized. */
 export function getState(): GuardState {
-  return resolveState().state
+  return envSwitch.getState()
 }
 
-/** Where the current state came from (useful in diagnostics/tests). */
+/** Whether the current state came from project config or the default. */
 export function getStateSource(): GuardStateSource {
-  return resolveState().source
+  return envSwitch.getStateSource()
 }
 
-/**
- * Write the switch into the project-level opencode.jsonc. Project-scoped and
- * never throws: a read-only project dir degrades to a false return instead
- * of crashing a plugin hook.
- */
+/** Persist `state` to project config. Returns false on read-only fs. */
 export function setState(state: GuardState): boolean {
-  return setConfigField(GUARD_FIELD, state)
+  return envSwitch.setState(state)
 }
 
-/** Remove the `envGuard` field so the state reverts to the default off. */
+/** Remove the field so state reverts to default. */
 export function clearState(): boolean {
-  return clearConfigField(GUARD_FIELD)
+  return envSwitch.clear()
 }
 
+/** Whether the switch is currently on. */
 export function isEnabled(): boolean {
-  return getState() === "on"
+  return envSwitch.isOn()
 }
