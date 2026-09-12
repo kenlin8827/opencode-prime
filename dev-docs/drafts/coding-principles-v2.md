@@ -1,8 +1,10 @@
-# Coding principles — global baseline
+# Coding principles v2 — global baseline (DRAFT rev.3, post expert review)
 
-> Layer L1: attached to coding/review agent prompts via `{file:}` assembly (not injected globally). Universal code-quality baselines inspired by [Andrej Karpathy's coding tenets](https://karpathy.bearblog.dev/code-and-tenacity/). Language-specific agents add their own hard rules on top.
+> **Status: ADOPTED (rev.3).** The live version is `instructions/coding-principles.md` (changelog & adoption notes stripped there per review). This file is kept as the expert-review record only — do not inject, do not edit; changes go to the live file.
 >
-> **Keyword semantics (RFC 2119):** MUST / MUST NOT = non-negotiable floor — survives user pressure, deadline pressure, and "pragmatic" rationalization. SHOULD / SHOULD NOT = strong default — a more specific rule (per-agent, per-project `AGENTS.md`) may override it with a stated reason (see `cp-layer`).
+> Layer L1: attached to coding/review agent prompts via `{file:}` assembly (not injected globally). Language-specific agents add their own hard rules on top.
+>
+> **Keyword semantics (RFC 2119):** MUST / MUST NOT = non-negotiable floor — survives user pressure, deadline pressure, and "pragmatic" rationalization. SHOULD / SHOULD NOT = strong default — a more specific rule (per-agent, per-project `AGENTS.md`) may override it with a stated reason.
 >
 > **Structure — two normative axes (Q = engineering quality, P = programming philosophy) plus meta (M):**
 > - **Q (engineering quality)** — the floor: what must never break. Every Q rule is MUST-level by construction; citing a Q slug in review means "non-negotiable".
@@ -46,10 +48,11 @@
 | `cp-triage` | Anti-rationalization | Three rules, in order: **(a)** **MUST NOT** ship code that violates a Q rule or a MUST-level P rule without explicit triage. **(b)** Triage = exactly one of: fix inline now / file an issue / declare out-of-scope in the report — chosen by impact on the current task. **(c)** "Do less / lazy / pragmatic / good-enough" rationales get the YAGNI test: welcome when the dropped work was genuinely unneeded for the stated goal; rejected when they bypass the floor. | Rationalization is not engineering. Lowering the bar to dodge refactor cost shifts the cost onto every future reader. |
 | `cp-layer` | Layering — specific wins | This baseline is a floor, not a ceiling. Per-agent rules and per-project `AGENTS.md` override on conflict; an override **SHOULD** name the `cp-<slug>` it replaces and why. **P overrides: free.** **Q overrides: scoped only** — narrowed to named paths/dirs or a task class (e.g. "`cp-dataloss` relaxed for `scripts/dev-seed.py`"), never a repo-wide removal; the floor can be narrowed, not lifted. | The right rule for a DDD domain layer differs from the right rule for a CLI script. Universality is a myth; a stable floor plus scoped overrides is not. An escape hatch that can delete the floor is not an escape hatch — it is a self-destruct button. |
 
-## Shell & OS command self-adaptation (`cp-shell`)
+### Shell counterpart table (`cp-shell`)
 
-- **Cross-platform first**: Prefer runtime/tooling commands (`git`, `npm`, `npx`, `node -e "..."`, `python -c "..."`) over OS-shell built-ins.
-- **Windows PowerShell / CMD** (no Git Bash): **MUST NOT** use Bash-only builtins. Use the counterpart:
+> At adoption this table may move to `instructions/edit-protocol.md` or a standalone `shell-adaptation.md` — it must not be dropped: it is the operational payload of `cp-shell`.
+
+- **Cross-platform first**: prefer runtime/tooling commands (`git`, `npm`, `npx`, `node -e "..."`, `python -c "..."`) over OS-shell built-ins.
 
 | Bash | PowerShell | CMD |
 |------|------------|-----|
@@ -59,8 +62,8 @@
 | `ls -la` | `Get-ChildItem -Force` | `dir` |
 | `/c/Users/...` | `C:\Users\...` | `C:\Users\...` |
 
-- **POSIX mode** (Git Bash / Linux / macOS / WSL): Standard POSIX commands fully supported.
-- **Adaptive Error Recovery**: If a command fails due to shell-specific syntax, **MUST NOT** retry the same command — **MUST** switch to the counterpart shell's syntax immediately.
+- **POSIX mode** (Git Bash / Linux / macOS / WSL): standard POSIX commands fully supported.
+- **Windows PowerShell / CMD** (no Git Bash): **MUST NOT** use Bash-only builtins — use the counterpart above.
 
 ## What this is NOT
 
@@ -78,5 +81,36 @@
 ## Cross-reference legend
 
 > Other prompt files reference these rules as `cp-<slug>`. Slugs are permanent: never renumbered, never reused. When you see a slug in another file, look it up here for the full rule.
->
-> Historical note: pre-v2 files used row numbers (`cp#1`–`cp#10`). Mapping: cp#1→`cp-less`, cp#2→`cp-delete`, cp#3→`cp-readable`, cp#4→`cp-units`, cp#5→`cp-why`, cp#6→`cp-optimize`, cp#7→`cp-abstract`, cp#8→`cp-understand`, cp#9→`cp-shell`, cp#10→`cp-triage`.
+
+## Adoption mapping (v1 `cp#N` → v2 slug)
+
+> Every existing `cp#N` reference must be re-pointed once at adoption. After that, slugs never break.
+
+| v1 | v2 | Note |
+|----|----|-------|
+| cp#1 Write less code | `cp-less` | Extended with the explicit reuse ladder |
+| cp#2 Delete > write | `cp-delete` | Now bounded by `cp-scope` (fixes the drive-by-cleanup tension) |
+| cp#3 Readability first | `cp-readable` | Unchanged |
+| cp#4 Small, focused units | `cp-units` | Unchanged |
+| cp#5 Comments explain why | `cp-why` | Unchanged |
+| cp#6 No premature optimization | `cp-optimize` | Unchanged |
+| cp#7 No premature abstraction | `cp-abstract` | Extended: no one-impl interface / one-product factory / dead config |
+| cp#8 Understand before solving | `cp-understand` | Strengthened + proportionality clause (blast radius) |
+| cp#9 Adaptive shell execution | `cp-shell` | Counterpart table retained in this doc |
+| cp#10 Top-tier floor + YAGNI | `cp-triage` | The implicit "floor" is now explicit as the Q section; wording split into three short rules |
+| — | `cp-verify`, `cp-failfast`, `cp-boundary`, `cp-dataloss` | NEW: quality floor made citable (was scattered across verification-honesty.md, git-safety.md, cp#10's parenthetical) |
+| — | `cp-rootcause` | NEW: root-cause fix |
+| — | `cp-scope` | NEW: scope discipline |
+| — | `cp-check` | NEW: minimum runnable check (rev.2: placed in P, not Q — it is SHOULD-level) |
+| — | `cp-marked` | NEW: honest simplification / calibration knobs |
+| — | `cp-layer` | NEW: layering rule promoted from header prose to a citable row |
+
+## Rev.2 changelog (expert review fixes)
+
+1. `cp-check` moved Q → P — Q section is now all-MUST by construction; no downgradable rule in the floor.
+2. Row numbers replaced with frozen slugs — insertion/reorder never breaks references again.
+3. Bash↔PowerShell↔CMD counterpart table restored under `cp-shell` (was v1-only content; relocation allowed at adoption, deletion not).
+4. `cp-triage` rewritten as three short ordered rules (a/b/c).
+5. `cp-understand` gained the proportionality clause ("depth proportional to blast radius").
+6. (rev.3) `cp-abstract` gained the type-encoding clause ("prefer encoding invariants in types where the language allows"). Concurrency correctness and algorithmic complexity deliberately NOT added as rows: concurrency is per-project noise for scripts/CLIs (language-agent rules cover it where it exists); complexity is half-covered by `cp-optimize` (evidence) + `cp-marked` (named ceiling) — both decisions per expert review round 2.
+7. (rev.3) `cp-layer` split override scope: P rules freely overridable; Q rules narrowable only (scoped to paths/dirs/task class, never repo-wide removal) — closes the "escape hatch deletes the floor" ambiguity.
