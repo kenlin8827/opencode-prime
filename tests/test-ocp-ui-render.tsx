@@ -18,8 +18,8 @@ writeFileSync(path.join(cfgDir, 'opencode.jsonc'), JSON.stringify({
 writeFileSync(path.join(cfgDir, 'profiles', 'acme-tiers.json'), JSON.stringify({
   description: 'sandbox profile', tiers: { flash: 'acme/acme-1', standard: 'acme/acme-1', pro: 'acme/acme-1', max: 'acme/acme-1', vision: 'acme/acme-1' },
 }), 'utf8')
-writeFileSync(path.join(home, 'ocp.jsonc'), JSON.stringify({ language: 'en' }), 'utf8')
-process.env.OCP_CONFIG_PATH = path.join(home, 'ocp.jsonc')
+writeFileSync(path.join(home, 'ocp.json'), JSON.stringify({ language: 'en' }), 'utf8')
+process.env.OCP_CONFIG_PATH = path.join(home, 'ocp.json')
 process.env.HOME = home
 process.env.USERPROFILE = home
 
@@ -42,7 +42,11 @@ const settle = async (ui: { flush: () => Promise<unknown> }) => {
 }
 
 const repoDir = process.cwd()
-const dashboard = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 72, height: 28 })
+// The wizard renders write project state through context.root (wizard save/init paths);
+// point it at a throwaway dir so headless key-press simulation never mutates
+// the real repo's .ocp/ config (pre-ADR this leak hid inside ignored .opencode/).
+const projectSandbox = mkdtempSync(path.join(tmpdir(), 'ocp-ui-proj-'))
+const dashboard = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: projectSandbox }} />, { width: 72, height: 28 })
 await dashboard.flush()
 let frame = dashboard.captureCharFrame()
 assert.match(frame, /OpenCode Prime — Dashboard|OpenCode Prime — 全景控制台/, 'dashboard presents the localized OpenTUI header')
@@ -56,13 +60,13 @@ assert.ok(tabRows.length >= 1, 'dashboard renders tab titles in a dedicated row'
 assert.equal((frame.match(/OpenCode Prime.*(?:Dashboard|全景控制台)/g) ?? []).length, 1, 'dashboard title is rendered only once')
 dashboard.renderer.destroy()
 
-const narrowDashboard = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 56, height: 18 })
+const narrowDashboard = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: projectSandbox }} />, { width: 56, height: 18 })
 await narrowDashboard.flush()
 frame = narrowDashboard.captureCharFrame()
 assert.match(frame, /保存|SAVE CONFIGURATION/, 'Apply actions remain visible when configuration content scrolls on a short terminal')
 narrowDashboard.renderer.destroy()
 
-const wizard = await testRender(() => <OcpApp initialRoute="wizard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+const wizard = await testRender(() => <OcpApp initialRoute="wizard" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
 await wizard.flush()
 frame = wizard.captureCharFrame()
 assert.match(frame, /Quick Install|快速安装/, 'wizard main menu renders through OpenTUI')
@@ -87,7 +91,7 @@ wizard.renderer.keyInput.emit('keypress', { name: 'escape' })
 await settle(wizard)
 wizard.renderer.destroy()
 
-const dashboardFull = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+const dashboardFull = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
 await dashboardFull.flush()
 frame = dashboardFull.captureCharFrame()
 assert.match(frame, /Basic|基础/, 'dashboard renders Basic in the tab rail')
@@ -95,7 +99,7 @@ assert.match(frame, /Tools|工具/, 'dashboard renders Tools in the tab rail')
   dashboardFull.renderer.destroy()
 
   for (const key of ['return', 'space']) {
-  const booleanDashboard = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+  const booleanDashboard = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
   await settle(booleanDashboard)
   booleanDashboard.renderer.keyInput.emit('keypress', { name: 'return' })
   await booleanDashboard.flush()
@@ -117,7 +121,7 @@ assert.match(frame, /Tools|工具/, 'dashboard renders Tools in the tab rail')
     booleanDashboard.renderer.destroy()
   }
 
-const dashboardNavigation = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+const dashboardNavigation = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
 await dashboardNavigation.flush()
 dashboardNavigation.renderer.keyInput.emit('keypress', { name: 'right' })
 await dashboardNavigation.flush()
@@ -136,7 +140,7 @@ dashboardNavigation.renderer.destroy()
 // Review tab: Enter on the rail focuses the panel, a second Enter on the
 // static review panel opens the save-and-install confirmation (the summary
 // has no select of its own, so Enter maps to the install action).
-const reviewEnter = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+const reviewEnter = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
 await reviewEnter.flush()
 for (let index = 0; index < 4; index++) {
   reviewEnter.renderer.keyInput.emit('keypress', { name: 'right' })
@@ -152,7 +156,7 @@ reviewEnter.renderer.keyInput.emit('keypress', { name: 'escape' })
 await settle(reviewEnter)
 reviewEnter.renderer.destroy()
 
-const dashboardShortcuts = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+const dashboardShortcuts = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
 await dashboardShortcuts.flush()
 dashboardShortcuts.renderer.keyInput.emit('keypress', { name: 't', ctrl: true, meta: false, shift: false, option: false, sequence: '\u0014', raw: '\u0014', eventType: 'press', source: 'raw', number: false })
 await settle(dashboardShortcuts)
@@ -173,7 +177,7 @@ dashboardShortcuts.renderer.destroy()
 // The dashboard persists options.jsonc, then exits with UI_INSTALL_EXIT (20)
 // so the parent `ocp dashboard` process falls through to executeInstall.
 // Regression guard for "confirmation opens but installation never starts".
-const dashboardInstall = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+const dashboardInstall = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
 await dashboardInstall.flush()
 dashboardInstall.renderer.keyInput.emit('keypress', { name: 't', ctrl: true, meta: false, shift: false, option: false, sequence: '\u0014', raw: '\u0014', eventType: 'press', source: 'raw', number: false })
 await settle(dashboardInstall)
@@ -191,7 +195,7 @@ dashboardInstall.renderer.destroy()
 writeFileSync(path.join(cfgDir, 'options.jsonc'), JSON.stringify({ global_commands: false }), 'utf8')
 const sidecar = path.join(home, 'wizard-install-request.json')
 process.env.OCP_UI_RESULT_FILE = sidecar
-const wizardInstall = await testRender(() => <OcpApp initialRoute="wizard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+const wizardInstall = await testRender(() => <OcpApp initialRoute="wizard" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
 await wizardInstall.flush()
 wizardInstall.renderer.keyInput.emit('keypress', { name: 'return' }) // Quick Install (first row while not installed)
 await settle(wizardInstall)
@@ -214,7 +218,7 @@ wizardInstall.renderer.destroy()
 // The provider wizard root is a host select dialog without renderFilter —
 // the type-down filter must narrow it as the user types, keep the kernel
 // select's native arrow/return behavior, and collapse category headers.
-const providerUi = await testRender(() => <OcpApp initialRoute="provider" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+const providerUi = await testRender(() => <OcpApp initialRoute="provider" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
 await settle(providerUi)
 const providerRootFrame = providerUi.captureCharFrame()
 assert.match(providerRootFrame, /Add custom provider|添加自定义服务商/, 'provider wizard root renders through the host select dialog')
@@ -250,7 +254,7 @@ providerUi.renderer.destroy()
 writeFileSync(path.join(cfgDir, 'options.jsonc'), JSON.stringify({ global_commands: false }), 'utf8')
 const registerSidecar = path.join(home, 'register-filter-request.json')
 process.env.OCP_UI_RESULT_FILE = registerSidecar
-const registerUi = await testRender(() => <OcpApp initialRoute="wizard" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+const registerUi = await testRender(() => <OcpApp initialRoute="wizard" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
 await registerUi.flush()
 registerUi.renderer.keyInput.emit('keypress', { name: 'return' }) // Quick Install
 await settle(registerUi)
@@ -266,14 +270,14 @@ writeFileSync(path.join(cfgDir, 'options.jsonc'), JSON.stringify({ global_comman
 
 
 for (const route of ['dashboard', 'setup', 'project', 'home'] as const) {
-  const ui = await testRender(() => <OcpApp initialRoute={route} context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+  const ui = await testRender(() => <OcpApp initialRoute={route} context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
   await ui.flush()
   assert.match(ui.captureCharFrame(), route === 'project' ? /Project Setup|项目设置/ : /OpenCode Prime/)
   ui.renderer.destroy()
 }
 
 // ─── /project wizard accepts both navigation and type-to-filter input ──
-const project = await testRender(() => <OcpApp initialRoute="project" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+const project = await testRender(() => <OcpApp initialRoute="project" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
 await settle(project)
 frame = project.captureCharFrame()
 assert.match(frame, /Project Setup Wizard|项目设置向导/, 'project action menu renders')
@@ -290,7 +294,7 @@ assert.match(project.captureCharFrame(), /Project Setup Wizard|项目设置向�
 project.renderer.destroy()
 
 // ─── /provider wizard is loaded verbatim into the standalone host ───
-const provider = await testRender(() => <OcpApp initialRoute="provider" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+const provider = await testRender(() => <OcpApp initialRoute="provider" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
 await settle(provider)
   frame = provider.captureCharFrame()
 assert.match(frame, /Provider wizard/, 'provider root dialog renders')
@@ -314,7 +318,7 @@ assert.match(provider.captureCharFrame(), /Wizard closed/)
 provider.renderer.destroy()
 
 // ─── /profile wizard is loaded verbatim into the standalone host ───
-const profile = await testRender(() => <OcpApp initialRoute="profile" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+const profile = await testRender(() => <OcpApp initialRoute="profile" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
 await settle(profile)
 frame = profile.captureCharFrame()
 assert.match(frame, /Profile wizard/, 'profile root dialog renders')
@@ -388,7 +392,7 @@ delete process.env.OPENCODE_SERVER_URL
 // monkey-patched here to capture the payload — platform tools are opted out
 // so the test never touches a real OS clipboard).
 process.env.OCP_TUI_NO_PLATFORM_CLIPBOARD = '1'
-const copyUi = await testRender(() => <OcpApp initialRoute="home" context={{ repoDir, root: repoDir }} />, { width: 110, height: 46 })
+const copyUi = await testRender(() => <OcpApp initialRoute="home" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
 await copyUi.flush()
 type MouseRenderer = {
   processSingleMouseEvent: (event: { type: string; button: number; x: number; y: number; modifiers: { shift: boolean; alt: boolean; ctrl: boolean } }) => boolean

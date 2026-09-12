@@ -100,28 +100,28 @@ const mkScaffold = (relPath: string, status: "created" | "updated" | "invalid" |
 
 check(
   "scaffoldLine created",
-  scaffoldLine(mkScaffold(".opencode/opencode.jsonc", "created")) ===
-    "  ✅ created .opencode/opencode.jsonc",
+  scaffoldLine(mkScaffold(".ocp/ocp.json", "created")) ===
+    "  ✅ created .ocp/ocp.json",
 )
 check(
   "scaffoldLine updated",
-  scaffoldLine(mkScaffold(".opencode/opencode.jsonc", "updated")) ===
-    "  ♻️ updated .opencode/opencode.jsonc",
+  scaffoldLine(mkScaffold(".ocp/ocp.json", "updated")) ===
+    "  ♻️ updated .ocp/ocp.json",
 )
 check(
   "scaffoldLine invalid",
-  scaffoldLine(mkScaffold(".opencode/opencode.jsonc", "invalid")) ===
-    "  ⚠️ malformed .opencode/opencode.jsonc",
+  scaffoldLine(mkScaffold(".ocp/ocp.json", "invalid")) ===
+    "  ⚠️ malformed .ocp/ocp.json",
 )
 check(
   "scaffoldLine skipped",
-  scaffoldLine(mkScaffold(".opencode/opencode.jsonc", "skipped")) ===
-    "  ⏭️ kept .opencode/opencode.jsonc",
+  scaffoldLine(mkScaffold(".ocp/ocp.json", "skipped")) ===
+    "  ⏭️ kept .ocp/ocp.json",
 )
 
 // initReport — composes sections
 const report = initReport(
-  [mkScaffold(".opencode/opencode.jsonc", "created")],
+  [mkScaffold(".ocp/ocp.json", "created")],
   [{ backend: "codegraph", status: "ran", detail: "ok" }],
   [{ hook: "post-commit", status: "registered", detail: "added" }],
   "/tmp/project",
@@ -133,7 +133,7 @@ check(
 check("initReport contains files section", report.includes("Files:"))
 check("initReport contains backends section", report.includes("Backends:"))
 check("initReport contains hooks section", report.includes("Hooks:"))
-check("initReport shows scaffold line", report.includes("created .opencode/opencode.jsonc"))
+check("initReport shows scaffold line", report.includes("created .ocp/ocp.json"))
 check("initReport shows backend line", report.includes("codegraph: ok"))
 check("initReport shows hook line", report.includes("post-commit: added"))
 

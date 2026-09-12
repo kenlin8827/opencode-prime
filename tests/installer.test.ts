@@ -30,6 +30,7 @@ import {
   getTargetInstalledManifestPath,
   loadEffectiveOptions,
   mcpProvisionPlan,
+  migrateGlobalOcpConfig,
   readTargetInstalledManifest,
 } from '../install/src/installer';
 import { registerShim, unregisterShim } from '../install/src/shim';
@@ -677,6 +678,98 @@ console.log('\nTest 6: Status Check');
 const st = executeStatus(repoDir, testTargetDir);
 if (!st.isUpToDate || st.installedVersion !== version) throw new Error('Status check mismatch');
 console.log(`✓ Status check passed (Version: ${st.installedVersion}, Up-to-date: ${st.isUpToDate})`);
+
+// 6.5 Global ocp.jsonc → ocp.json one-shot migration (ADR 0004 §3)
+console.log('\nTest 6.5: Global OCP config migration (rename / collision / move / idempotency)');
+{
+  const migBase = fs.mkdtempSync(path.join(os.tmpdir(), 'ocp-mig-test-'));
+  const mkDir = (n: string) => {
+    const d = path.join(migBase, n);
+    fs.mkdirSync(d, { recursive: true });
+    return d;
+  }
+  const origXdg = process.env.XDG_CONFIG_HOME;
+  try {
+    // Pin XDG to the sandbox for (a)/(b) so no branch can ever touch the
+    // real ~/.config/opencode on the test machine.
+    process.env.XDG_CONFIG_HOME = migBase;
+    const d1 = mkDir('opencode'); // pluginDir === targetDir (common case)
+    fs.writeFileSync(path.join(d1, 'ocp.jsonc'), '{ "language": "zh-CN" }');
+    const r1 = migrateGlobalOcpConfig(d1);
+    if (r1.action !== 'renamed') throw new Error(`mig a: expected renamed, got ${r1.action}`);
+    if (fs.readFileSync(path.join(d1, 'ocp.json'), 'utf8') !== '{ "language": "zh-CN" }') throw new Error('mig a: content lost');
+    if (fs.existsSync(path.join(d1, 'ocp.jsonc'))) throw new Error('mig a: legacy source remains');
+    const r1b = migrateGlobalOcpConfig(d1);
+    if (r1b.action !== 'skipped') throw new Error('mig a: re-run must be skipped (idempotent)');
+    console.log('✓ rename + idempotent re-run');
+
+    // (b) collision: both exist → keep both, warn, never delete
+    fs.writeFileSync(path.join(d1, 'ocp.jsonc'), '{ "language": "en" }');
+    const r2 = migrateGlobalOcpConfig(d1);
+    if (r2.action !== 'collision') throw new Error('mig b: expected collision');
+    if (!fs.existsSync(path.join(d1, 'ocp.jsonc')) || !fs.existsSync(path.join(d1, 'ocp.json'))) throw new Error('mig b: files must both survive');
+    console.log('✓ collision keeps both');
+
+    // (c) XDG-aware: runtime dir ≠ target — wrong-base legacy is MOVED
+    const xdg = mkDir('xdg');
+    const pluginDir = path.join(xdg, 'opencode');
+    fs.mkdirSync(pluginDir, { recursive: true });
+    const wrongBase = mkDir('wrongbase');
+    fs.writeFileSync(path.join(wrongBase, 'ocp.jsonc'), '{ "language": "ja" }');
+    process.env.XDG_CONFIG_HOME = xdg;
+    const r3 = migrateGlobalOcpConfig(wrongBase);
+    if (r3.action !== 'renamed' || !r3.message.includes('Moved')) throw new Error('mig c: expected move reported as renamed');
+    if (JSON.parse(fs.readFileSync(path.join(pluginDir, 'ocp.json'), 'utf8')).language !== 'ja') throw new Error('mig c: not at runtime path');
+    if (fs.existsSync(path.join(wrongBase, 'ocp.jsonc'))) throw new Error('mig c: source remains');
+    // collision at the runtime dir while current exists there → skipped, no warning
+    fs.writeFileSync(path.join(wrongBase, 'ocp.jsonc'), '{}');
+    const r3b = migrateGlobalOcpConfig(wrongBase);
+    if (r3b.action !== 'skipped' || fs.readFileSync(path.join(pluginDir, 'ocp.json'), 'utf8').includes('ja') === false) throw new Error('mig c: runtime current must win untouched');
+    console.log('✓ XDG move + wrong-base leftover skipped when runtime dir has ocp.json');
+
+    // (d) default base (no XDG): homedir/.config/opencode
+    delete process.env.XDG_CONFIG_HOME;
+    const fakeHome = mkDir('home');
+    const homePlugin = path.join(fakeHome, '.config', 'opencode');
+    fs.mkdirSync(homePlugin, { recursive: true });
+    fs.writeFileSync(path.join(homePlugin, 'ocp.jsonc'), '{}');
+    const realHomedir = os.homedir;
+    (os as { homedir: () => string }).homedir = () => fakeHome;
+    try {
+      const r4 = migrateGlobalOcpConfig(homePlugin);
+      if (r4.action !== 'renamed' || !fs.existsSync(path.join(homePlugin, 'ocp.json'))) throw new Error('mig d: default-base rename failed');
+    } finally {
+      (os as { homedir: () => string }).homedir = realHomedir;
+    }
+    console.log('✓ default (homedir) base renames in place');
+
+    // (e) rename failure degrades to an error action, never throws
+    const d5 = mkDir('blocked');
+    process.env.XDG_CONFIG_HOME = d5;
+    fs.mkdirSync(path.join(d5, 'opencode'), { recursive: true });
+    fs.writeFileSync(path.join(d5, 'opencode', 'ocp.jsonc'), '{}');
+    const realRename = fs.renameSync;
+    (fs as { renameSync: typeof fs.renameSync }).renameSync = (() => {
+      throw Object.assign(new Error('EPERM simulated'), { code: 'EPERM' });
+    }) as typeof fs.renameSync;
+    let r5;
+    try {
+      r5 = migrateGlobalOcpConfig(d5);
+    } finally {
+      (fs as { renameSync: typeof fs.renameSync }).renameSync = realRename;
+    }
+    if (r5.action !== 'error' || !r5.message.includes('EPERM')) throw new Error(`mig e: expected error action, got ${r5.action}`);
+    if (!fs.existsSync(path.join(d5, 'opencode', 'ocp.jsonc'))) throw new Error('mig e: legacy must survive a failed rename');
+    const r5b = migrateGlobalOcpConfig(d5);
+    if (r5b.action !== 'renamed') throw new Error('mig e: transient failure must recover on re-run');
+    console.log('✓ rename failure → error action, never throws, recovers on re-run');
+  } finally {
+    if (origXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = origXdg;
+    fs.rmSync(migBase, { recursive: true, force: true });
+  }
+}
+console.log('✓ Global OCP config migration passed');
 
 // 7. Shims & Global Command Registration
 console.log('\nTest 7: Shim Registration & Unregistration');

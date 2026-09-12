@@ -329,7 +329,7 @@ $allFiles = @(
     "plugins/project-manager/project-manager-hooks.ts",
     "plugins/project-manager/project-manager-system-inject.ts",
     "plugins/project-manager/project-manager-tool-guard.ts",
-    "plugins/project-manager/templates/opencode.jsonc",
+    "plugins/project-manager/templates/ocp.json",
     "plugins/project-manager/templates/git-commits.md",
     "plugins/project-manager/templates/AGENTS.md",
     "plugins/project-manager/templates/dbhub.toml",
@@ -614,7 +614,16 @@ $sharedConfig = Get-Content "$PSScriptRoot\..\plugins\shared\opencode-prime.ts" 
 Check "shared/opencode-prime.ts: exports never-throw field writer" ($sharedConfig -match 'export function setConfigField')
 Check "shared/opencode-prime.ts: exports field remover" ($sharedConfig -match 'export function clearConfigField')
 Check "shared/opencode-prime.ts: exports quote-aware stripJsonc" ($sharedConfig -match 'export function stripJsonc')
-Check "shared/opencode-prime.ts: exports project config file resolution" ($sharedConfig -match 'export function projectConfigFiles')
+Check "shared/opencode-prime.ts: exports the .ocp path contract + one-shot migration" ($sharedConfig -match "OCP_CONFIG_REL" -and $sharedConfig -match "export function migrateLegacyProjectArtifacts")
+
+# Project wizard open order (B1 / ADR 0004 §3): the migration must run
+# BEFORE switch detection, else a legacy project detects defaults that the
+# first save then writes back over the migrated values. Existence-guard AND
+# index-order so any reorder (or removal) fails this check.
+$wizardSrc = Get-Content "$PSScriptRoot\..\plugins\tui\project-wizard.ts" -Raw
+Check "project-wizard.ts: open-time migration runs BEFORE detect (B1 / ADR 0004 §3)" `
+  (($wizardSrc -match "migrateLegacyProjectArtifacts\(rootDir\)") -and `
+   ($wizardSrc.IndexOf("migrateLegacyProjectArtifacts(rootDir)") -lt $wizardSrc.IndexOf("detectCurrentSwitches(rootDir)")))
 
 # ADR iron-law plugin checks (plugins/adr-guard/ — project-level switch, hard commit gate)
 $adrPlugin = Get-Content "$PSScriptRoot\..\plugins\adr-guard\adr-guard.ts" -Raw
@@ -627,7 +636,7 @@ Check "adr-guard.ts: has command.execute.before hook" ($adrPlugin -match '"comma
 Check "adr-guard.ts: has system.transform hook" ($adrPlugin -match "experimental.chat.system.transform")
 Check "adr-guard.ts: has tool.execute.before hook" ($adrPlugin -match '"tool\.execute\.before"')
 Check "adr-guard.ts: injects project directory" ($adrPlugin -match "setProjectDir\(directory\)")
-Check "adr-guard-config.ts: switch stored in project opencode.jsonc (no state file)" ($adrConfig -match 'shared/opencode-prime' -and $adrConfig -match 'adrGuard')
+Check "adr-guard-config.ts: switch stored in project .ocp/ocp.json (no state file)" ($adrConfig -match 'shared/opencode-prime' -and $adrConfig -match 'adrGuard')
 Check "adr-guard-config.ts: default state is off" ($adrConfig -match 'defaultState: "off"')
 Check "adr-guard-config.ts: default ADR dir docs/adr" ($adrConfig -match 'DEFAULT_ADR_DIR = "docs/adr"')
 Check "adr-guard-tool-guard.ts: gates feat/refactor only" ($adrGuard -match "requiresAdr")
@@ -648,7 +657,7 @@ $egGuard = Get-Content "$PSScriptRoot\..\plugins\env-guard\env-guard-tool-guard.
 Check "env-guard.ts: imports Plugin type" ($egPlugin -match "import type.*Plugin.*from.*@opencode-ai/plugin")
 Check "env-guard.ts: has tool.execute.before hook" ($egPlugin -match '"tool\.execute\.before"')
 Check "env-guard.ts: injects project directory" ($egPlugin -match "setProjectDir\(directory\)")
-Check "env-guard-config.ts: switch stored in project opencode.jsonc (no state file)" ($egConfig -match 'shared/opencode-prime' -and $egConfig -match 'envGuard')
+Check "env-guard-config.ts: switch stored in project .ocp/ocp.json (no state file)" ($egConfig -match 'shared/opencode-prime' -and $egConfig -match 'envGuard')
 Check "env-guard-config.ts: default state is off" ($egConfig -match 'defaultState: "off"')
 Check "env-guard-config.ts: config field envGuard" ($egConfig -match "envGuard")
 Check "env-guard-runtime.ts: exempts .env.example" ($egRuntime -match '\.env\.example')
@@ -671,7 +680,7 @@ Check "e2e-guard.ts: imports Plugin type" ($e2ePlugin -match "import type.*Plugi
 Check "e2e-guard.ts: registers the command via config hook" ($e2ePlugin -match "config:" -and $e2ePlugin -match "COMMAND_NAME" -and $e2ePlugin -match '"command\.execute\.before"')
 Check "e2e-guard.ts: has system.transform hook" ($e2ePlugin -match "experimental\.chat\.system\.transform")
 Check "e2e-guard.ts: injects project directory" ($e2ePlugin -match "setProjectDir\(directory\)")
-Check "e2e-guard-config.ts: switch stored in project opencode.jsonc (no state file)" ($e2eConfig -match 'shared/opencode-prime' -and $e2eConfig -match 'e2eGuard')
+Check "e2e-guard-config.ts: switch stored in project .ocp/ocp.json (no state file)" ($e2eConfig -match 'shared/opencode-prime' -and $e2eConfig -match 'e2eGuard')
 Check "e2e-guard-config.ts: default state is off" ($e2eConfig -match 'defaultState: "off"')
 Check "e2e-guard-protocol.md: specifies feat and fix triggers" ($e2eProtocol -match "feat" -and $e2eProtocol -match "fix")
 Check "e2e-guard-protocol.md: includes test gap / case supplement check" ($e2eProtocol -match "Test Gap" -or $e2eProtocol -match "Supplement")
@@ -704,7 +713,7 @@ Check "project-manager-config.ts: file-as-switch predicate" ($pmConfig -match "h
 Check "project-manager-config.ts: GIT_COMMITS_REL = docs/git-commits.md" ($pmConfig -match 'GIT_COMMITS_REL = "docs/git-commits\.md"')
 Check "project-manager-scaffold.ts: existence check before write" ($pmScaffold -match "existsSync")
 Check "project-manager-scaffold.ts: templates loaded from templates/ dir" ($pmScaffold -match "readTemplate" -and $pmScaffold -match "templates")
-Check "project-manager-scaffold.ts: append-only config sync" ($pmScaffold -match "mergeSwitchLines" -and $pmScaffold -match "runSync")
+Check "project-manager-scaffold.ts: sync delegates to the §3 migration" ($pmScaffold -match "migrateLegacyProjectArtifacts" -and $pmScaffold -match "runSync")
 Check "templates/git-commits.md: documents mechanical enforcement" ($pmGitTemplate -match "mechanically enforced")
 Check "project-manager-system-inject.ts: progressive disclosure (no full-content injection)" ($pmInject -match "progressive" -and $pmInject -notmatch "readFileSync")
 Check "project-manager-system-inject.ts: line-start marker dedup" ($pmInject -match "escapeRegExp")

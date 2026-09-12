@@ -15,7 +15,8 @@
  * Run: bun run tests/test-adr-guard-unit.ts   (or: npx tsx tests/test-adr-guard-unit.ts)
  */
 
-import { existsSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs"
+import { spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -246,12 +247,28 @@ async function test06_SystemHook() {
 // ═════════════════════════════════════════════════════════════════════════
 //  7. Tool guard — block / allow matrix
 // ═════════════════════════════════════════════════════════════════════════
-// The repo root is a git repo with no working-tree changes under docs/adr/,
-// so hasAdrChanges() returns false there — the full block path is testable.
+// Hermetic precondition: a THROWAWAY git repo (one committed file, clean
+// status) so hasAdrChanges() is reliably false — the block path must not
+// depend on the real repo's working-tree state (hasAdrChanges also matches
+// any docs/adr path by design, so an uncommitted ADR edit in REPO_ROOT
+// would silently open the gate and hollow out these assertions).
 
 async function test07_ToolGuard() {
   section("07: Tool guard block/allow matrix")
   const guard = makeToolGuardHook(fakeClient)
+
+  const rootT7 = mkdtempSync(join(tmpdir(), "adr-guard-t7-"))
+  const git = (args: string[]) =>
+    spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+      cwd: rootT7,
+      timeout: 10_000,
+    })
+  assert(git(["init", "-q"]).status === 0, "throwaway git repo init")
+  writeFileSync(join(rootT7, "README.md"), "t\n")
+  assert(git(["add", "README.md"]).status === 0, "throwaway repo seed staged")
+  assert(git(["commit", "-qm", "chore: seed"]).status === 0, "throwaway repo seeded")
+  setProjectDir(rootT7)
+  try {
 
   async function call(command: string): Promise<string | null> {
     try {
@@ -291,6 +308,10 @@ async function test07_ToolGuard() {
 
   setState("off")
   assert((await call(`git commit -m "feat: x"`)) === null, "off → feat commit allowed")
+  } finally {
+    setProjectDir(REPO_ROOT)
+    rmSync(rootT7, { recursive: true, force: true })
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -448,13 +469,13 @@ async function main() {
   console.log("╚══════════════════════════════════════════════════════════╝")
 
   // Pin the project dir to the repo root so config writes + git queries run
-  // against a real git repo. The switch lives in the project's runtime
-  // opencode.jsonc (the repo ships opencode.template.jsonc, so this file is
-  // usually absent here) — snapshot it up front and restore it afterwards;
-  // the tests flip the guard on/off and must not pollute any existing config.
+  // against a real git repo. The switch lives in the project OCP config
+  // `.ocp/ocp.json` (ADR 0004 v2 single source) — snapshot it up front and
+  // restore it afterwards; the tests flip the guard on/off and must not
+  // pollute the repo's real runtime config.
   const origDir = getProjectDir()
   setProjectDir(REPO_ROOT)
-  const cfgFile = join(REPO_ROOT, "opencode.jsonc")
+  const cfgFile = join(REPO_ROOT, ".ocp", "ocp.json")
   const cfgPreexisting = existsSync(cfgFile)
   const origCfg = cfgPreexisting ? readFileSync(cfgFile, "utf-8") : null
 
@@ -471,8 +492,10 @@ async function main() {
     await test09_AdrCommandAutoDraft()
     await test10_AdrSupersede()
   } finally {
-    if (cfgPreexisting && origCfg !== null) writeFileSync(cfgFile, origCfg, "utf-8")
-    else if (existsSync(cfgFile)) rmSync(cfgFile)
+    if (cfgPreexisting && origCfg !== null) {
+      mkdirSync(dirname(cfgFile), { recursive: true })
+      writeFileSync(cfgFile, origCfg, "utf-8")
+    } else if (existsSync(cfgFile)) rmSync(cfgFile)
     setProjectDir(origDir)
   }
 

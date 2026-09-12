@@ -39,9 +39,8 @@ import {
   setProjectDir,
 } from "../plugins/project-manager/project-manager-config"
 import {
-  contentHasKey,
-  extractSwitchLines,
-  mergeSwitchLines,
+  applySwitchesToConfigContent,
+  generateConfigContent,
   runInit,
   runInitWithSwitches,
   runSync,
@@ -49,6 +48,8 @@ import {
   writeDbhubToml,
   ensureTgrepGitignore,
 } from "../plugins/project-manager/project-manager-scaffold"
+import { removeConfigField, migrateLegacyProjectArtifacts } from "../plugins/shared/opencode-prime"
+import { detectProjectSwitches } from "../plugins/project-manager/project-manager-options"
 import {
   mcpEnabledFrom,
   planIndexBackends,
@@ -66,9 +67,10 @@ import { makeToolGuardHook, validateMessage } from "../plugins/project-manager/p
 // ─── Test framework ───────────────────────────────────────────────────────
 
 // Pin language=en via a sandboxed ocp config — guard command reports are
-// localized and this machine's real ~/.config/opencode/ocp.jsonc may say
-// zh-CN, which would break the English-phrase assertions below.
-process.env.OCP_CONFIG_PATH = join(tmpdir(), "pm-unit-ocp.jsonc")
+// localized and this machine's real ~/.config/opencode/ocp.json may say
+// zh-CN, which would break the English-phrase assertions below. ADR 0004 v2:
+// the runtime reads `ocp.json` ONLY, so the fixture must use that name.
+process.env.OCP_CONFIG_PATH = join(tmpdir(), "pm-unit-ocp.json")
 writeFileSync(process.env.OCP_CONFIG_PATH, `{ "language": "en" }`)
 
 let passed = 0
@@ -217,18 +219,22 @@ function test05_Scaffold() {
   writeFileSync(join(projectDir, "AGENTS.md"), "CUSTOM", "utf-8")
 
   const r1 = runInit()
-  assert(r1.every((r) => r.status !== undefined), "every target reported")
+  assert(r1.files.every((r) => r.status !== undefined), "every target reported")
   assert(
-    r1.find((r) => r.relPath === "AGENTS.md")?.status === "skipped",
+    r1.files.find((r) => r.relPath === "AGENTS.md")?.status === "skipped",
     "existing AGENTS.md skipped",
   )
   assert(
-    r1.find((r) => r.relPath === GIT_COMMITS_REL)?.status === "created",
+    r1.files.find((r) => r.relPath === GIT_COMMITS_REL)?.status === "created",
     "missing git-commits.md created",
+  )
+  assert(
+    r1.migration.switchedKeys.length === 0 && r1.migration.warnings.length === 0,
+    "clean project → empty migration report",
   )
 
   const r2 = runInit()
-  assert(r2.every((r) => r.status === "skipped"), "second run skips everything")
+  assert(r2.files.every((r) => r.status === "skipped"), "second run skips everything")
   assert(
     !readFileSync(join(projectDir, "AGENTS.md"), "utf-8").includes("Generated"),
     "custom AGENTS.md content untouched",
@@ -249,11 +255,11 @@ function test05b_UpdateSwitchesOnly() {
   setProjectDir(dirSync)
 
   const switches = { envGuard: "on", projectMemory: "on" } as const
-  const result = updateSwitchesOnly(switches)
+  const result = updateSwitchesOnly(switches).file
   assert(result.relPath === CONFIG_REL, "result targets the config file")
   assert(result.status === "created", "first call creates the config")
 
-  const cfgPath = join(dirSync, ".opencode", "opencode.jsonc")
+  const cfgPath = join(dirSync, ".ocp", "ocp.json")
   assert(existsSync(cfgPath), "config file written")
   assert(
     !existsSync(join(dirSync, "AGENTS.md")),
@@ -265,22 +271,27 @@ function test05b_UpdateSwitchesOnly() {
   )
 
   // (2) Idempotent when values unchanged.
-  const r2 = updateSwitchesOnly(switches)
+  const r2 = updateSwitchesOnly(switches).file
   assert(r2.status === "skipped", "idempotent when values unchanged")
 
   // (3) Different values → updated.
-  const r3 = updateSwitchesOnly({ envGuard: "off", projectMemory: "on" } as const)
+  const r3 = updateSwitchesOnly({ envGuard: "off", projectMemory: "on" } as const).file
   assert(r3.status === "updated", "different switch value triggers an update")
   const after = readFileSync(cfgPath, "utf-8")
   assert(after.includes('"envGuard": "off"'), "updated config carries the new value")
   assert(after.includes('"projectMemory": "on"'), "untouched switches remain in place")
+  // ADR §6 pin: the saved `.ocp/ocp.json` is STRICT JSON (wizard-append +
+  // {} bootstrap + remove-last-key path) — JSON.parse, no comment stripping.
+  try { JSON.parse(after); assert(true, "wizard-saved config is strict-JSON-valid") } catch { assert(false, "wizard-saved config is strict-JSON-valid") }
 
   rmSync(dirSync, { recursive: true, force: true })
 
-  // (4) Legacy fallback: root opencode.jsonc is updated in place rather
-  //     than spawning a second config under .opencode/. Mirrors
-  //     runInitWithSwitches — without this, sub-dialog Save in a legacy
-  //     project silently creates a divergent second file.
+  // (4) INVERTED pin (ADR 0004 §6): a legacy project with only a root
+  //     `opencode.jsonc` does NOT get updated in place anymore — the save
+  //     CREATES `.ocp/ocp.json` (write-new; §3 migration runs first and
+  //     only moves ACTIVE switch keys; a commented line stays put). The
+  //     old "no second config spawned" expectation belonged to the
+  //     pre-migration era.
   const dirLegacy = mkdtempSync(join(tmpdir(), "pm-switches-legacy-"))
   setProjectDir(dirLegacy)
   const rootCfg = join(dirLegacy, "opencode.jsonc")
@@ -289,16 +300,16 @@ function test05b_UpdateSwitchesOnly() {
     '{\n  // "autoAdvisorMode": "lite",\n}\n',
     "utf-8",
   )
-  const rLegacy = updateSwitchesOnly({ envGuard: "off" } as const)
+  const rLegacy = updateSwitchesOnly({ envGuard: "off" } as const).file
   assert(
-    rLegacy.relPath === "opencode.jsonc" && rLegacy.status === "updated",
-    "legacy root-only config is updated in place (no .opencode/ divergence)",
+    rLegacy.relPath === CONFIG_REL && rLegacy.status === "created",
+    "legacy root-only project: save CREATES .ocp/ocp.json (write-new)",
   )
   assert(
-    !existsSync(join(dirLegacy, ".opencode", "opencode.jsonc")),
-    "no second config spawned under .opencode/",
+    readFileSync(rootCfg, "utf-8").includes('// "autoAdvisorMode"'),
+    "legacy root config untouched by the save",
   )
-  assert(readFileSync(rootCfg, "utf-8").includes('"envGuard": "off"'), "root file carries the new switch")
+  assert(existsSync(join(dirLegacy, ".ocp", "ocp.json")), ".ocp/ocp.json is the new canonical location")
   rmSync(dirLegacy, { recursive: true, force: true })
 
   // (5) Contrast: runInitWithSwitches (the skeleton path) still
@@ -308,12 +319,16 @@ function test05b_UpdateSwitchesOnly() {
   setProjectDir(dirInit)
   const ri = runInitWithSwitches({ envGuard: "on" } as const)
   assert(
-    ri.find((r) => r.relPath === "AGENTS.md")?.status === "created",
+    ri.files.find((r) => r.relPath === "AGENTS.md")?.status === "created",
     "runInitWithSwitches (skeleton path) still scaffolds AGENTS.md",
   )
   assert(
     existsSync(join(dirInit, "docs", "git-commits.md")),
     "runInitWithSwitches (skeleton path) still scaffolds git-commits.md",
+  )
+  assert(
+    existsSync(join(dirInit, ".ocp", ".gitignore")),
+    "skeleton init bootstraps .ocp/.gitignore",
   )
   rmSync(dirInit, { recursive: true, force: true })
 
@@ -527,10 +542,10 @@ async function test09_Announce() {
   const dir3 = mkdtempSync(join(tmpdir(), "pm-init-"))
   setProjectDir(dir3)
   mkdirSync(join(dir3, "docs"), { recursive: true })
-  mkdirSync(join(dir3, ".opencode"), { recursive: true })
+  mkdirSync(join(dir3, ".ocp"), { recursive: true })
   writeFileSync(join(dir3, "AGENTS.md"), "x", "utf-8")
   writeFileSync(join(dir3, "docs", "git-commits.md"), "x", "utf-8")
-  writeFileSync(join(dir3, ".opencode", "opencode.jsonc"), "{}", "utf-8")
+  writeFileSync(join(dir3, ".ocp", "ocp.json"), "{}", "utf-8")
   const hook2 = makeAnnounceHook(hookClient)
   await hook2({ event: { type: "session.created", properties: { info: { id: "s3" } } } })
   assert(prompts === 1, "initialized project → no suggestion")
@@ -541,76 +556,76 @@ async function test09_Announce() {
 }
 
 // ═════════════════════════════════════════════════════════════════════
-// 10. Sync — append-only template top-up for an existing project config
+// 10. Sync — on-demand §3 legacy migration (ADR 0004 v2)
 // ═════════════════════════════════════════════════════════════════════
 
-const TEMPLATE_SNIPPET = [
-  "// \"adrGuard\": \"on\",",
-  "// \"adrDir\": \"docs/adr\",",
-  "// \"e2eGuard\": \"on\",",
-].join("\n")
-
 function test10_Sync() {
-  section("10: sync — append-only config top-up")
+  section("10: sync — on-demand legacy migration, durable-gated deactivation")
 
-  // Pure: switch-line extraction and key presence.
-  const switches = extractSwitchLines(TEMPLATE_SNIPPET)
-  assert(switches.length === 3, "extracts every commented switch line")
-  assert(switches.some((s) => s.key === "e2eGuard"), "extracts the e2eGuard key")
-  assert(contentHasKey('{"e2eGuard": "on"}', "e2eGuard"), "active key counts as present")
-  assert(contentHasKey('// "e2eGuard": "on",', "e2eGuard"), "commented key counts as present")
-  assert(!contentHasKey('{"e2eGuardDir": "x"}', "e2eGuard"), "prefix collision not matched")
-  assert(!contentHasKey('{"adrDir": "x"}', "adrGuard"), "adrGuard vs adrDir distinguished")
-
-  // Pure: merge semantics.
-  const upToDate = mergeSwitchLines('{"e2eGuard": "on",\n"adrGuard": "off",\n"adrDir": "d"\n}', TEMPLATE_SNIPPET)
-  assert(upToDate !== null && upToDate.added.length === 0, "all keys present → nothing added")
-  assert(upToDate !== null && upToDate.content.includes("e2eGuard"), "content untouched when up to date")
-  const merged = mergeSwitchLines('{\n  "custom": 1\n}\n', TEMPLATE_SNIPPET)
-  assert(merged !== null && merged.added.length === 3, "missing keys all appended")
-  assert(merged !== null && merged.content.includes('"custom": 1'), "existing content preserved")
-  assert(merged !== null && merged.content.lastIndexOf('"e2eGuard"') < merged.content.lastIndexOf("}"), "appended before the closing brace")
-  const partial = mergeSwitchLines('{\n  // "adrGuard": "off"\n}\n', TEMPLATE_SNIPPET)
-  assert(partial !== null && partial.added.length === 2 && !partial.added.includes("adrGuard"), "commented key not duplicated")
-  assert(mergeSwitchLines('{ "broken"', TEMPLATE_SNIPPET) === null, "no closing brace → refuse to touch")
-    assert(mergeSwitchLines('{\n  "a": 1\n}\n// stray note', TEMPLATE_SNIPPET) === null, "trailing content after closing brace → refuse to touch")
-    assert(mergeSwitchLines('{\n  "a": 1\n}\n// stray } in comment', TEMPLATE_SNIPPET) === null, "brace inside trailing comment → refuse to touch")
-
-  // Stateful: runSync status machine.
   const dirSync = mkdtempSync(join(tmpdir(), "pm-sync-"))
   setProjectDir(dirSync)
-  assert(runSync().status === "missing", "no config → missing (init's job)")
+  assert(runSync().status === "missing", "no legacy state and no config → missing (init's job)")
 
+  // Legacy project: switch keys + platform keys + comments in .opencode jsonc.
   mkdirSync(join(dirSync, ".opencode"), { recursive: true })
-  const cfgPath = join(dirSync, ".opencode", "opencode.jsonc")
-  writeFileSync(cfgPath, '{\n  "custom": 1\n}\n', "utf-8")
+  const legacyPath = join(dirSync, ".opencode", "opencode.jsonc")
+  writeFileSync(
+    legacyPath,
+    '{\n  "$schema": "https://opencode.ai/config.json", // team note\n  "e2eGuard": "on",\n  "agent": { "build": { "model": "x/y" } }\n}\n',
+    "utf-8",
+  )
   const s1 = runSync()
-  assert(s1.status === "added", "outdated config → switches appended")
-  assert(s1.added.includes("e2eGuard"), "e2eGuard among the appended keys")
-  const after = readFileSync(cfgPath, "utf-8")
-  assert(after.includes('"custom": 1'), "custom content untouched by sync")
-  assert(after.includes("e2eGuard"), "e2eGuard line landed in the file")
-  assert(runSync().status === "up-to-date", "second sync is a no-op")
+  assert(s1.status === "added", "legacy switch keys → migrated")
+  assert(s1.added.includes("e2eGuard"), "e2eGuard among migrated items")
+  const ocpPath = join(dirSync, ".ocp", "ocp.json")
+  assert(existsSync(ocpPath), "migration created .ocp/ocp.json")
+  let ocpParsed: Record<string, unknown>
+  try {
+    ocpParsed = JSON.parse(readFileSync(ocpPath, "utf-8")) as Record<string, unknown>
+    assert(ocpParsed.e2eGuard === "on", "PIN (a): migrated .ocp/ocp.json is STRICT JSON with the value")
+  } catch {
+    assert(false, "PIN (a): migrated .ocp/ocp.json is STRICT JSON with the value")
+    ocpParsed = {}
+  }
+  const legacyAfter = readFileSync(legacyPath, "utf-8")
+  assert(/\/\/\s*"e2eGuard"/.test(legacyAfter), "legacy switch re-commented after durable copy")
+  assert(legacyAfter.includes('"$schema": "https://opencode.ai/config.json"') && legacyAfter.includes('"agent"'), "platform keys untouched")
 
-  writeFileSync(cfgPath, '{ "broken"', "utf-8")
-  assert(runSync().status === "invalid", "brace-less config → invalid")
-  assert(readFileSync(cfgPath, "utf-8") === '{ "broken"', "invalid file left byte-identical")
-  const riBroken = runInit()
-  assert(riBroken.find((r) => r.relPath === CONFIG_REL)?.status === "invalid", "init surfaces the invalid config instead of swallowing it")
-  assert(readFileSync(cfgPath, "utf-8") === '{ "broken"', "init leaves an invalid config byte-identical")
+  // PIN (d): idempotent — second run reports nothing.
+  const s2 = runSync()
+  assert(s2.status === "up-to-date", "second migration is a no-op")
+  assert(s2.migration.switchedKeys.length === 0 && s2.migration.movedFiles.length === 0 && s2.migration.skipped.length === 0 && s2.migration.warnings.length === 0, "PIN (d): empty report on re-run")
 
-  // runInit tops up an existing config ("updated"), then stays quiet.
-  writeFileSync(cfgPath, '{\n  "custom": 1\n}\n', "utf-8")
-  writeFileSync(join(dirSync, "AGENTS.md"), "x", "utf-8")
-  mkdirSync(join(dirSync, "docs"), { recursive: true })
-  writeFileSync(join(dirSync, "docs", "git-commits.md"), "x", "utf-8")
-  const ri1 = runInit()
-  assert(ri1.find((r) => r.relPath === CONFIG_REL)?.status === "updated", "init reports the config top-up as updated")
-  assert(ri1.find((r) => r.relPath === "AGENTS.md")?.status === "skipped", "other baseline files still never touched")
-  const ri2 = runInit()
-  assert(ri2.every((r) => r.status === "skipped"), "repeat init → everything skipped again")
+  // Legacy plain .json: deactivation uses strict LINE DELETE (never //).
+  const rootJson = join(dirSync, "opencode.json")
+  writeFileSync(rootJson, '{\n  "adrGuard": "on",\n  "mcp": { "a": 1 }\n}\n', "utf-8")
+  const s3 = runSync()
+  assert(s3.migration.switchedKeys.includes("adrGuard"), "root .json key migrated")
+  const jsonAfter = readFileSync(rootJson, "utf-8")
+  try {
+    const parsedRoot = JSON.parse(jsonAfter) as Record<string, unknown>
+    assert(!("adrGuard" in parsedRoot) && parsedRoot.mcp !== undefined && !jsonAfter.includes("//"), "PIN (h): legacy .json deactivated by line deletion, strict-valid, no //")
+  } catch {
+    assert(false, "PIN (h): legacy .json deactivated by line deletion, strict-valid, no //")
+  }
 
   rmSync(dirSync, { recursive: true, force: true })
+
+  // PIN (b): unwritable .ocp target (dir sits at the file path) → nothing
+  // switched, legacy NOT deactivated, warning surfaced.
+  const dirBlock = mkdtempSync(join(tmpdir(), "pm-sync-blocked-"))
+  setProjectDir(dirBlock)
+  mkdirSync(join(dirBlock, ".opencode"), { recursive: true })
+  mkdirSync(join(dirBlock, ".ocp"), { recursive: true })
+  mkdirSync(join(dirBlock, ".ocp", "ocp.json"), { recursive: true })
+  const blockedLegacy = join(dirBlock, ".opencode", "opencode.jsonc")
+  writeFileSync(blockedLegacy, '{\n  "envGuard": "on"\n}\n', "utf-8")
+  const sBlocked = runSync()
+  assert(sBlocked.migration.switchedKeys.length === 0, "PIN (b): failed copy reports zero switched keys")
+  assert(sBlocked.migration.warnings.length > 0, "PIN (b): copy failure surfaces a warning")
+  assert(readFileSync(blockedLegacy, "utf-8").includes('"envGuard": "on"'), "PIN (b): legacy key survives — no deactivation without a durable copy")
+  rmSync(dirBlock, { recursive: true, force: true })
+
   setProjectDir(projectDir)
 }
 
@@ -753,8 +768,143 @@ function assertEq<T>(actual: T, expected: T, msg: string): void {
   assert(actual === expected, `${msg} (got ${JSON.stringify(actual)}, want ${JSON.stringify(expected)})`)
 }
 
+// ═════════════════════════════════════════════════════════════════════
+// 14. Strict-JSON text surgery pins (ADR 0004 round-3/4 review)
+// ═════════════════════════════════════════════════════════════════════
+
+function test14_StrictJsonSurgery() {
+  section("14: strict-JSON text surgery — pins a/c/g/h")
+  const parses = (s: string): boolean => { try { JSON.parse(s); return true } catch { return false } }
+
+  // (a) wizard-append into a populated object + {} bootstrap + sole member.
+  const appended = applySwitchesToConfigContent('{\n  "a": "x"\n}', { adrGuard: "on" })
+  assert(parses(appended) && JSON.parse(appended).adrGuard === "on" && JSON.parse(appended).a === "x",
+    "(a) append keeps strict JSON, existing member untouched, NO trailing comma")
+  assert(parses(generateConfigContent({ envGuard: "on", e2eGuard: "off" })), "(a) {}-bootstrap full template is strict JSON")
+
+  // (h) delete-mode span excision on compact single-line JSON.
+  assert(removeConfigField('{"a":"1","k":"v"}', "k", "delete") === '{"a":"1"}', "(h) minus last member consumes preceding comma")
+  assert(removeConfigField('{"a":"1","k":"v"}', "a", "delete") === '{"k":"v"}', "(h) minus first member consumes trailing comma")
+  assert(removeConfigField('{"k":"v"}', "k", "delete") === "{}", "(h) sole member → {} (no annihilation)")
+  assert(!removeConfigField('{"a":"1"}', "a", "delete").includes("//"), "(h) delete mode never emits //")
+
+  // (g) separator before a trailing comment; `//` inside string values ignored.
+  const trailingNote = applySwitchesToConfigContent('{\n  "a": "x" // why\n}', { adrGuard: "on" })
+  assert(trailingNote.includes('"a": "x", // why'), "(g) separator comma lands BEFORE the trailing comment")
+  const urlCase = applySwitchesToConfigContent('{\n  "url": "https://x.com"\n}', { adrGuard: "on" })
+  assert(parses(urlCase) && JSON.parse(urlCase).url === "https://x.com" && JSON.parse(urlCase).adrGuard === "on",
+    "(g) https:// last member not mistaken for a comment; append strict-valid")
+
+  // (c) values with " and \ round-trip through every upsert path.
+  const escInsert = applySwitchesToConfigContent("{\n}\n", { adrDir: 'a"b\\c' })
+  assert(parses(escInsert) && JSON.parse(escInsert).adrDir === 'a"b\\c', "(c) escaped-quote value survives {} bootstrap + reparse")
+  const escReupsert = applySwitchesToConfigContent(escInsert, { adrDir: "second" })
+  assert(parses(escReupsert) && JSON.parse(escReupsert).adrDir === "second", "(c) re-upsert over escaped value leaves no residue")
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// 15. OCP_PROJECT_DIR env override — central ocpDir() resolution (phase 4b)
+// ═════════════════════════════════════════════════════════════════════
+
+function test15_OcpProjectDirEnv() {
+  section("15: OCP_PROJECT_DIR override resolves centrally")
+  const origEnv = process.env.OCP_PROJECT_DIR
+  try {
+    // (a) unset → default .ocp (regression)
+    delete process.env.OCP_PROJECT_DIR
+    const da = mkdtempSync(join(tmpdir(), "pm-env-a-"))
+    setProjectDir(da)
+    updateSwitchesOnly({ envGuard: "on" } as const)
+    assert(existsSync(join(da, ".ocp", "ocp.json")), "(a) unset env → .ocp/ocp.json")
+    rmSync(da, { recursive: true, force: true })
+
+    // (b) RELATIVE override → project-scoped rename, gitignore lands inside
+    const db = mkdtempSync(join(tmpdir(), "pm-env-b-"))
+    setProjectDir(db)
+    process.env.OCP_PROJECT_DIR = ".foo"
+    updateSwitchesOnly({ envGuard: "on" } as const)
+    assert(existsSync(join(db, ".foo", "ocp.json")), "(b) relative → <root>/.foo/ocp.json")
+    assert(existsSync(join(db, ".foo", ".gitignore")), "(b) gitignore bootstrapped inside the override dir")
+    assert(!existsSync(join(db, ".ocp")), "(b) default dir NOT created while overridden")
+    rmSync(db, { recursive: true, force: true })
+
+    // (c) ABSOLUTE override is INVALID (4c contract: project-relative only)
+    //     → silently ignored, resolution falls back to <root>/.ocp and
+    //     nothing is ever written out-of-root.
+    const abs = mkdtempSync(join(tmpdir(), "pm-env-abs-"))
+    const dc = mkdtempSync(join(tmpdir(), "pm-env-c-"))
+    setProjectDir(dc)
+    process.env.OCP_PROJECT_DIR = abs
+    updateSwitchesOnly({ envGuard: "on" } as const)
+    assert(existsSync(join(dc, ".ocp", "ocp.json")), "(c) absolute env ignored → default <root>/.ocp")
+    assert(!existsSync(join(abs, "ocp.json")) && !existsSync(join(abs, ".gitignore")), "(c) zero writes at the absolute location")
+    assert(updateSwitchesOnly({ envGuard: "on" } as const).file.status === "skipped", "(c) read path falls back to the same default")
+    rmSync(dc, { recursive: true, force: true })
+    rmSync(abs, { recursive: true, force: true })
+
+    // (c2) `..`-traversing override is INVALID like absolute → default (m2).
+    // Run-unique escape name so parallel CI runs can't alias each other.
+    const escapeName = `../escape-c2-${process.pid}`
+    process.env.OCP_PROJECT_DIR = escapeName
+    const dc2 = mkdtempSync(join(tmpdir(), "pm-env-c2-"))
+    setProjectDir(dc2)
+    updateSwitchesOnly({ envGuard: "on" } as const)
+    assert(existsSync(join(dc2, ".ocp", "ocp.json")), "(c2) ..-traversing env ignored → default <root>/.ocp")
+    assert(!existsSync(join(dc2, "..", `escape-c2-${process.pid}`, "ocp.json")), "(c2) nothing escaped the project root")
+    rmSync(dc2, { recursive: true, force: true })
+
+    // (d) blank env behaves as unset
+    process.env.OCP_PROJECT_DIR = "   "
+    const dd = mkdtempSync(join(tmpdir(), "pm-env-d-"))
+    setProjectDir(dd)
+    updateSwitchesOnly({ envGuard: "on" } as const)
+    assert(existsSync(join(dd, ".ocp", "ocp.json")), "(d) whitespace-only env = unset")
+    rmSync(dd, { recursive: true, force: true })
+  } finally {
+    if (origEnv === undefined) delete process.env.OCP_PROJECT_DIR
+    else process.env.OCP_PROJECT_DIR = origEnv
+    setProjectDir(projectDir)
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// 16. B1 — wizard-open order: migrate BEFORE detect; saves never clobber
+// ═════════════════════════════════════════════════════════════════════
+
+function test16_OpenMigrateThenDetect() {
+  section("16: B1 open-migration defeats the default-clobber chain")
+  const dir = mkdtempSync(join(tmpdir(), "pm-clobber-"))
+  setProjectDir(dir)
+  mkdirSync(join(dir, ".opencode"), { recursive: true })
+  writeFileSync(
+    join(dir, ".opencode", "opencode.jsonc"),
+    '{\n  "$schema": "https://opencode.ai/config.json",\n  "autoAdvisorMode": "off",\n  "adrDir": "docs/decisions"\n}\n',
+    "utf-8",
+  )
+  // startProjectWizard order: migration → detect → (later) save with detected.
+  const open1 = migrateLegacyProjectArtifacts(dir)
+  assert(open1.switchedKeys.length === 2 && open1.warnings.length === 0, "first open migrates and the report is non-empty (visible)")
+  const detected = detectProjectSwitches(dir)
+  assert(
+    detected.exists && detected.switches.autoAdvisorMode === "off" && detected.switches.adrDir === "docs/decisions",
+    "detect reads migrated truth — defaults no longer mask explicit values",
+  )
+  const ri = runInitWithSwitches(detected.switches)
+  const saved = JSON.parse(readFileSync(join(dir, ".ocp", "ocp.json"), "utf-8")) as Record<string, unknown>
+  assert(saved.autoAdvisorMode === "off" && saved.adrDir === "docs/decisions", "B1: save with detected switches does NOT clobber migrated values")
+  assert(
+    ri.migration.switchedKeys.length === 0 && ri.migration.movedFiles.length === 0 && ri.migration.warnings.length === 0,
+    "second-run (save-time) migration report is empty — idempotent",
+  )
+  rmSync(dir, { recursive: true, force: true })
+  setProjectDir(projectDir)
+}
+
 test12_TgrepGitignore()
 test13_Shellwords()
+test14_StrictJsonSurgery()
+test15_OcpProjectDirEnv()
+test16_OpenMigrateThenDetect()
 
 rmSync(projectDir, { recursive: true, force: true })
 

@@ -33,8 +33,8 @@ rmSync(rootNotInit, { recursive: true, force: true })
 
 // ─── 2. Partially-init project: PARTIAL + warning ───
 const rootPartial = mkdtempSync(join(tmpdir(), "sidebar-badge-partial-"))
-mkdirSync(join(rootPartial, ".opencode"))
-writeFileSync(join(rootPartial, ".opencode", "opencode.jsonc"), "{}")
+mkdirSync(join(rootPartial, ".ocp"))
+writeFileSync(join(rootPartial, ".ocp", "ocp.json"), "{}")
 const badgesPartial = buildProjectBadges(rootPartial, noMcp)
 const projectPartial = badgesPartial.find((b) => b.label === "scaffold")
 assert(projectPartial?.state === "PARTIAL", "partial: scaffold badge = PARTIAL")
@@ -43,8 +43,8 @@ rmSync(rootPartial, { recursive: true, force: true })
 
 // ─── 3. Fully-init project: INIT + success; git-commits rendered; MCP rows hidden ───
 const rootInit = mkdtempSync(join(tmpdir(), "sidebar-badge-init-"))
-mkdirSync(join(rootInit, ".opencode"))
-writeFileSync(join(rootInit, ".opencode", "opencode.jsonc"), "{}")
+mkdirSync(join(rootInit, ".ocp"))
+writeFileSync(join(rootInit, ".ocp", "ocp.json"), "{}")
 mkdirSync(join(rootInit, "docs"))
 writeFileSync(join(rootInit, "docs", "git-commits.md"), "")
 writeFileSync(join(rootInit, "AGENTS.md"), "")

@@ -157,7 +157,8 @@ setProjectDir(tmp)
 assertEq(getState(), "off", "default state is OFF")
 assertEq(getStateSource(), "default", "default source")
 
-// setState writes the envGuard field into the project opencode.jsonc.
+// setState writes the envGuard field into the project OCP config
+// (.ocp/ocp.json — ADR 0004 v2 single source).
 setState("on")
 assertEq(getState(), "on", "setState writes the config field on")
 assertEq(getStateSource(), "config", "config source after setState")
@@ -172,53 +173,53 @@ clearState()
 assertEq(getState(), "off", "clearState reverts to default off")
 assertEq(getStateSource(), "default", "default source after clearState")
 
-// A hand-written JSONC config field is honored (comments tolerated on read).
-// Drop the bootstrapped .opencode copy first so the root file below is
-// the effective one (it has read precedence).
-rmSync(join(tmp, ".opencode"), { recursive: true, force: true })
-writeFileSync(join(tmp, "opencode.jsonc"), `{
+// A hand-written JSONC config field is honored (reads stay JSONC-tolerant
+// even though every OCP write is pure JSON).
+const switchFile = join(tmp, ".ocp", "ocp.json")
+writeFileSync(switchFile, `{
   // project config with JSONC comments
   "envGuard": "on",
 }`)
 assertEq(getState(), "on", "config field envGuard honored")
 assertEq(getStateSource(), "config", "config source")
 clearState()
+// Reset on the .ocp file uses strict-JSON LINE DELETION (no re-commented
+// residue — P1-2). The hand-written comment above is user content and stays
+// (reads are JSONC-tolerant); what must NOT appear is a re-commented key.
+{
+  const cleared = readFileSync(switchFile, "utf-8")
+  assert(!cleared.includes('// "envGuard"'), "clearState deletes the line — no re-commented residue")
+  assertEq(getState(), "off", "deleted key reverts to default")
+}
 
-// A commented-out template line (the /project init shape) gets uncommented
-// in place when the switch is set — the value is not written inside the
-// comment while the line stays inactive.
-writeFileSync(join(tmp, "opencode.jsonc"), `{
-  "$schema": "https://opencode.ai/config.json",
-  // "envGuard": "off",  // on | off — blocks agent access to secret .env* files
-}`)
-assertEq(getState(), "off", "commented template line reads as default off")
-setState("on")
-const uncommented = readFileSync(join(tmp, "opencode.jsonc"), "utf-8")
-assert(uncommented.includes('"envGuard": "on"'), "setState uncomments the template line")
-assert(!uncommented.includes('// "envGuard"'), "no commented envGuard line remains")
-assert(uncommented.includes("blocks agent access"), "trailing explanation comment preserved")
-assertEq(getState(), "on", "uncommented field becomes active")
-
-// Reset re-comments the line (back to the template shape) instead of
-// dropping it, keeping the switch documentation in place.
-clearState()
-const reset = readFileSync(join(tmp, "opencode.jsonc"), "utf-8")
-assert(!reset.includes('\n  "envGuard":'), "clearState deactivates the field")
-assert(reset.includes('// "envGuard": "on"'), "reset re-comments the switch line")
-assert(reset.includes("blocks agent access"), "explanation comment kept on reset")
-assertEq(getState(), "off", "back to default after clearing")
-
-// No config file at all → setState bootstraps from the /project init
-// template at .opencode/opencode.jsonc (the same location /project init
-// scaffolds), then uncomments the requested switch.
+// INVERTED pin (ADR 0004 v2 §2): a legacy root `opencode.jsonc` switch is
+// NOT read at runtime anymore — no fallback chain.
+writeFileSync(join(tmp, "opencode.jsonc"), `{\n  "envGuard": "on",\n}`)
+assertEq(getState(), "off", "PIN: legacy root opencode.jsonc is NOT read (single source)")
 rmSync(join(tmp, "opencode.jsonc"))
+
+// No config file at all → setState creates a BARE pure-JSON .ocp/ocp.json
+// (the old commented-template bootstrap is retired; absent keys = defaults).
+rmSync(join(tmp, ".ocp"), { recursive: true, force: true })
 assert(setState("on"), "setState succeeds without any config file")
-const created = readFileSync(join(tmp, ".opencode", "opencode.jsonc"), "utf-8")
-assert(created.includes("Project-level OpenCode Configuration"), "created from the project template")
-assert(created.includes('\n  "envGuard": "on"'), "template bootstrapped with the switch active")
-assert(created.includes('// "adrGuard":'), "other switches stay commented in the bootstrapped config")
-assertEq(getState(), "on", "created config holds the switch")
+assert(existsSync(switchFile), "setState created .ocp/ocp.json")
+{
+  const created = readFileSync(switchFile, "utf-8")
+  let strictOk = true
+  try { JSON.parse(created) } catch { strictOk = false }
+  assert(strictOk, "bootstrapped .ocp/ocp.json is STRICT JSON (no template, no comments)")
+  assert(created.includes('\n  "envGuard": "on"'), "created config carries the active switch")
+  assert(!created.includes("//"), "no commented template lines in the created config")
+}
+assert(existsSync(join(tmp, ".ocp", ".gitignore")), "first setState bootstraps .ocp/.gitignore")
 clearState()
+{
+  // Pure-OCP file (never hand-commented): the reset result must stay
+  // JSON.parse-valid — the delete-mode comma-repair path.
+  let strictOk = true
+  try { JSON.parse(readFileSync(switchFile, "utf-8")) } catch { strictOk = false }
+  assert(strictOk, "clearState on a pure-JSON .ocp file keeps it strict-JSON-valid")
+}
 
 // ─── Tool guard integration ──────────────────────────────────────────
 
@@ -228,7 +229,7 @@ const call = (tool: string, args: unknown) => guard({ tool }, { args })
 
 // OFF (remove every config file → default off for this block)
 rmSync(join(tmp, "opencode.jsonc"), { force: true })
-rmSync(join(tmp, ".opencode"), { recursive: true, force: true })
+rmSync(join(tmp, ".ocp"), { recursive: true, force: true })
 assertEq(getState(), "off", "back to default off")
 await expectOk(() => call("read", { filePath: ".env" }), "off → read .env allowed")
 await expectOk(() => call("bash", { command: "cat .env" }), "off → cat .env allowed")

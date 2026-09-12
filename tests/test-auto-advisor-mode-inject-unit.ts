@@ -9,10 +9,18 @@
  *   bun tests/test-auto-advisor-mode-inject-unit.ts
  */
 
-import {
-  shouldInjectMode,
-  type AdvisorMode,
-} from "../plugins/auto-advisor/auto-advisor-system-inject"
+// ADR-0004 phase-4 re-anchor: `shouldInjectMode` was inlined when the hook
+// gained its rendered-prompt cache (e1058cb). The pure cache decision is now
+// `isCachedForMode`; `shouldInject` below reproduces the old helper's exact
+// (mode, lastInjected) contract on top of it, so every transition-matrix
+// check in this file stays live coverage.
+import { isCachedForMode } from "../plugins/auto-advisor/auto-advisor-system-inject"
+import type { AdvisorMode } from "../plugins/auto-advisor/auto-advisor-config"
+
+/** (mode, prior) → would the hook re-inject? — isCachedForMode's negation. */
+function shouldInjectMode(mode: AdvisorMode, lastInjected: AdvisorMode | undefined): boolean {
+  return !isCachedForMode(lastInjected === undefined ? undefined : { mode: lastInjected, text: "cached" }, mode)
+}
 
 let failures = 0
 function check(condition: boolean, message: string): void {

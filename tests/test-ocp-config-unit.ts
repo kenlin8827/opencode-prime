@@ -1,7 +1,9 @@
 /**
  * ocp-config — Unit Tests (no host dependency)
  *
- * The shared user config (~/.config/opencode/ocp.jsonc) is one JSONC file
+ * The shared user config (~/.config/opencode/ocp.json) is one file — writes
+ * are pure JSON, reads tolerate JSONC (ADR 0004 v2: single source, no
+ * runtime fallback; the installer renames the legacy ocp.jsonc once).
  * that all ocp plugins use for cross-session user preferences (currently:
  * TUI language). This suite covers the storage layer and the i18n wiring.
  *
@@ -38,7 +40,7 @@ function assertEq(actual: unknown, expected: unknown, label: string) {
 // ─── Isolated config path for the whole run ─────────────────────────────────
 
 const sandbox = mkdtempSync(join(tmpdir(), "ocp-config-test-"))
-const configPath = join(sandbox, "nested", "ocp.jsonc")
+const configPath = join(sandbox, "nested", "ocp.json")
 process.env.OCP_CONFIG_PATH = configPath
 
 const { ocpConfigPath, parseJsonc, readOcpConfig, readOcpField, writeOcpField } = await import("../plugins/shared/ocp-config")
@@ -71,7 +73,10 @@ assert(writeOcpField("queue.toastDurationMs", 15000), "second write succeeds")
 assertEq(readOcpField("language"), "zh-CN", "first key preserved across second write")
 assertEq(readOcpField("queue.toastDurationMs"), 15000, "second key stored")
 const raw = readFileSync(configPath, "utf8")
-assert(raw.trimStart().startsWith("//"), "generated header comment present")
+// ADR 0004 v2 §2c: writes are PURE JSON — the old generated `//` header is
+// gone so the `.json` file stays editor-valid.
+assert(!raw.includes("//"), "writes emit pure JSON (no header comment)")
+assertEq((JSON.parse(raw) as Record<string, unknown>)["queue.toastDurationMs"], 15000, "written file is strict-JSON-parseable")
 
 // corrupt file → {} instead of a crash
 writeFileSync(configPath, "{ broken !!!")
@@ -81,6 +86,12 @@ assertEq(readOcpField("language"), undefined, "corrupt file fails open as undefi
 rmSync(configPath)
 assert(!existsSync(configPath), "cleanup: file removed")
 assertEq(readOcpField("language"), undefined, "missing file → undefined field")
+
+// ADR 0004 v2: NO runtime fallback — a legacy `ocp.jsonc` sibling is NOT
+// read anymore (the installer owns the one-shot rename; phase 3).
+writeFileSync(join(sandbox, "nested", "ocp.jsonc"), `{ "language": "zh-CN" }`)
+assertEq(Object.keys(readOcpConfig()).length, 0, "legacy ocp.jsonc sibling is ignored (single source)")
+rmSync(join(sandbox, "nested", "ocp.jsonc"))
 
 // ─── i18n wiring ────────────────────────────────────────────────────────────
 
@@ -99,12 +110,12 @@ assertEq(getLocale(), "en", "file value wins over legacy kv and env detection")
 mkdirSync(join(sandbox, "nested"), { recursive: true })
 setLocale(fakeApi, "zh-CN")
 assertEq(getLocale(), "zh-CN", "setLocale updates in-memory locale")
-assertEq(readOcpField("language"), "zh-CN", "setLocale persists to ocp.jsonc")
+assertEq(readOcpField("language"), "zh-CN", "setLocale persists to ocp.json")
 
 // The installer UI and shell output share the same persisted preference.
 assertEq(getPreferredLocaleCode(), "zh-CN", "installer locale reads the shared language preference")
 setPreferredLocaleCode("en")
-assertEq(readOcpField("language"), "en", "installer language switch persists to ocp.jsonc")
+assertEq(readOcpField("language"), "en", "installer language switch persists to ocp.json")
 assertEq(formatI18n("Installed {count} files to {target}", { count: 2, target: "/tmp/ocp" }), "Installed 2 files to /tmp/ocp", "installer message placeholders are interpolated")
 
 // ─── cleanup ────────────────────────────────────────────────────────────────

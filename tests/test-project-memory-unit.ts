@@ -48,7 +48,11 @@ import {
 } from "../plugins/project-memory/project-memory-system-inject"
 import { TOOL_NAME, makeCaptureTool } from "../plugins/project-memory/project-memory-tool"
 import { applySwitchesToConfigContent } from "../plugins/project-manager/project-manager-scaffold"
-import { ensureOpencodeGitignore } from "../plugins/shared/opencode-prime"
+import {
+  ensureOcpGitignore,
+  migrateLegacyProjectArtifacts,
+  setProjectDir as setSharedProjectDir,
+} from "../plugins/shared/opencode-prime"
 
 let passed = 0
 let failed = 0
@@ -105,29 +109,34 @@ console.log("\n== project switch ==")
 const tmp = mkdtempSync(join(tmpdir(), "project-memory-test-"))
 // Sandbox the ocp user-level config (drives i18n / language only here;
 // memory files all live inside `<tmp>` since the plugin is project-scoped).
-process.env.OCP_CONFIG_PATH = join(tmp, "ocp.jsonc")
-writeFileSync(join(tmp, "ocp.jsonc"), `{ "language": "en" }`)
+// ADR 0004 v2: runtime reads `ocp.json` only — the fixture uses that name.
+process.env.OCP_CONFIG_PATH = join(tmp, "ocp.json")
+writeFileSync(join(tmp, "ocp.json"), `{ "language": "en" }`)
 setProjectDir(tmp)
+setSharedProjectDir(tmp)
 mkdirSync(memoryBaseDir(), { recursive: true })
 
 assertEq(getState(), "on", "default state is ON (opt-out switch)")
 assert(isEnabled(), "isEnabled true by default")
 
-writeFileSync(join(tmp, "opencode.jsonc"), `{
+// Switch fixtures live at the runtime single source `.ocp/ocp.json`
+// (ADR 0004 v2: root/`.opencode` config files are NOT read anymore).
+const switchFile = join(tmp, ".ocp", "ocp.json")
+writeFileSync(switchFile, `{
   // comment
   "projectMemory": "on",
 }`)
 assertEq(getState(), "on", "config field projectMemory honored (comments tolerated)")
 assert(isEnabled(), "isEnabled when on")
 
-writeFileSync(join(tmp, "opencode.jsonc"), `{ "projectMemory": false }`)
+writeFileSync(switchFile, `{ "projectMemory": false }`)
 assertEq(getState(), "off", "boolean false honored")
 
 // ─── Path resolution ─────────────────────────────────────────────────
 
 console.log("\n== paths ==")
-assertEq(publicPath(), join(tmp, ".opencode", "memory", "public.md"), "publicPath = .opencode/memory/public.md")
-assertEq(privatePath(), join(tmp, ".opencode", "memory", "private.md"), "privatePath = .opencode/memory/private.md")
+assertEq(publicPath(), join(tmp, ".ocp", "memory", "public.md"), "publicPath = .ocp/memory/public.md")
+assertEq(privatePath(), join(tmp, ".ocp", "memory", "private.md"), "privatePath = .ocp/memory/private.md")
 
 // ─── Lesson append (2 scopes) ────────────────────────────────────────
 
@@ -166,16 +175,20 @@ assert(pubContent.includes("public lessons"), "public header signals public visi
 assert(pubContent.includes("committed"), "public header signals committed")
 assertEq(countEntries(pubContent), 2, "two public entries appended")
 
-// Private scope — first capture auto-creates .opencode/.gitignore.
-const gitignorePath = join(tmp, ".opencode", ".gitignore")
+// Private scope — first capture auto-creates .ocp/.gitignore.
+const gitignorePath = join(tmp, ".ocp", ".gitignore")
 rmSync(gitignorePath, { force: true })
 const privReturned = appendLesson("private", "VPN slow, set API timeout to 60s")
-assertEq(privReturned, privatePath(), "private scope → .opencode/memory/private.md")
+assertEq(privReturned, privatePath(), "private scope → .ocp/memory/private.md")
 assert(existsSync(privatePath()), "private.md created")
-assert(existsSync(gitignorePath), ".opencode/.gitignore auto-created on first private capture")
+assert(existsSync(gitignorePath), ".ocp/.gitignore auto-created on first private capture")
 const giContent = readFileSync(gitignorePath, "utf-8")
+// Pin (f): ADR §5 bootstrap content — exactly the six lines; dev-ultra-state.md
+// added, node_modules/lockfile guards dropped, committed files NOT ignored.
+assertEq(giContent, ".gitignore\nlogs/\n*.log\nhandoffs/\nmemory/private.md\ndev-ultra-state.md\n", "gitignore bootstrap content per ADR §5")
 assert(giContent.includes("memory/private.md"), "gitignore contains memory/private.md")
-assert(!giContent.includes("memory/public.md\n") && !giContent.endsWith("memory/public.md"), "gitignore does NOT contain memory/public.md (public stays committed)")
+assert(!giContent.includes("node_modules"), "gitignore drops the old .opencode node_modules guard")
+assert(!/\nocp\.json/.test(giContent) && !giContent.includes("memory/public.md\n") && !giContent.endsWith("memory/public.md"), "ocp.json + memory/public.md stay committed (not ignored)")
 
 appendLesson("private", "prefers no semicolons")
 const privContent = readFileSync(privatePath(), "utf-8")
@@ -183,7 +196,7 @@ assert(privContent.startsWith("#"), "private has header")
 assert(privContent.includes("gitignored"), "private header signals gitignored")
 assertEq(countEntries(privContent), 2, "two private entries appended")
 
-// Regression: HEAL path — a pre-existing guard-less .opencode/.gitignore
+// Regression: HEAL path — a pre-existing guard-less .ocp/.gitignore
 // (user-maintained) must gain `memory/private.md` without clobbering the
 // user's lines. The create path is pinned above; this pins the append branch.
 writeFileSync(gitignorePath, "user-keep-me\nnotes/\n", "utf-8")
@@ -191,12 +204,13 @@ appendLesson("private", "heal path check")
 const healed = readFileSync(gitignorePath, "utf-8")
 assert(healed.includes("memory/private.md"), "heal: guard appended to existing gitignore (appendLesson)")
 assert(healed.includes("user-keep-me"), "heal: user lines survive (appendLesson)")
-// Same contract in the shared ensureOpencodeGitignore: guard missing while
+// Same contract in the shared ensureOcpGitignore: guard missing while
 // logs/handoffs present → only the guard line is appended, nothing duplicated.
 writeFileSync(gitignorePath, "user-keep-me\nlogs/\nhandoffs/\n", "utf-8")
-ensureOpencodeGitignore(tmp)
+ensureOcpGitignore(tmp)
 const healedShared = readFileSync(gitignorePath, "utf-8")
 assert(healedShared.includes("memory/private.md"), "heal(shared): guard appended")
+assert(healedShared.includes("dev-ultra-state.md"), "heal(shared): dev-ultra-state.md appended")
 assert(healedShared.includes("user-keep-me") && (healedShared.match(/logs\//g) ?? []).length === 1, "heal(shared): user lines kept, logs block not duplicated")
 
 // Concurrency guard (wx/EEXIST) on the public file.
@@ -256,7 +270,7 @@ assert(privOver.includes("over the") && privOver.includes("- public L"), "privat
 // ─── System hook injection & strip ───────────────────────────────────
 
 console.log("\n== system hook ==")
-writeFileSync(join(tmp, "opencode.jsonc"), `{ "projectMemory": "on" }`)
+writeFileSync(switchFile, `{ "projectMemory": "on" }`)
 writeFileSync(publicPath(), "- public L\n", "utf-8")
 rmSync(privatePath(), { force: true })
 const systemHook = makeSystemHook(fakeClient)
@@ -295,7 +309,7 @@ await systemHook({ sessionID: undefined }, stClean)
 assert(!stClean.system[0].includes(MARKER), "both missing → no inject")
 
 // Switch OFF → strips stale block, no inject
-writeFileSync(join(tmp, "opencode.jsonc"), `{ "projectMemory": "off" }`)
+writeFileSync(switchFile, `{ "projectMemory": "off" }`)
 writeFileSync(publicPath(), "- lesson A\n", "utf-8")
 const stOff = { system: ["Base." + buildFragment("- lesson A", publicPath(), null, privatePath())] }
 await systemHook({ sessionID: undefined }, stOff)
@@ -404,7 +418,7 @@ assert(showBoth.includes("last edited"), "show includes last-edited timestamp")
 assertEq(formatMtime(null), "?", "formatMtime(null) → '?'")
 assertEq(fileMtimeMs(join(tmp, "does-not-exist")), null, "fileMtimeMs on missing path → null")
 
-writeFileSync(join(tmp, "opencode.jsonc"), `{ "projectMemory": "on" }`)
+writeFileSync(switchFile, `{ "projectMemory": "on" }`)
 rmSync(publicPath(), { force: true })
 rmSync(privatePath(), { force: true })
 assert(
@@ -418,13 +432,13 @@ assert(statusOut.includes("ACTIVE"), "statusText reports ACTIVE")
 assert(statusOut.includes("1 entries") || statusOut.includes("1 条"), "statusText counts public entries")
 
 // zh-CN locale smoke
-writeFileSync(join(tmp, "ocp.jsonc"), `{ "language": "zh-CN" }`)
+writeFileSync(join(tmp, "ocp.json"), `{ "language": "zh-CN" }`)
 const zhStatus = statusText()
 assert(zhStatus.includes("gate: on") && zhStatus.includes("ACTIVE"), "zh status keeps locale-invariant tokens")
 assert(zhStatus.includes("公开") && zhStatus.includes("私人"), "zh status prose shows public/private in Chinese")
 await runHandled(() => cmdHook2({ command: COMMAND_NAME, arguments: 'note --private "中文笔记"', sessionID: "s1" }))
 assert(replied.includes("已记入"), "zh private note confirms in Chinese")
-writeFileSync(join(tmp, "ocp.jsonc"), `{ "language": "en" }`)
+writeFileSync(join(tmp, "ocp.json"), `{ "language": "en" }`)
 
 // ─── Switch upsert in project config ─────────────────────────────────
 
@@ -528,6 +542,27 @@ assert(readFileSync(publicPath(), "utf-8").includes("primary build agent allowed
 rmSync(publicPath(), { force: true })
 const rNoCtx = await captureTool.execute({ lesson: "no-ctx allowed" }, { metadata: () => {} } as any)
 assert(typeof rNoCtx === "object" && rNoCtx.title.includes("public"), "no ctx.agent → fail-open allowed")
+
+// ─── §3 migration: memory rename + merge-append (pin e) ──────────────
+
+console.log("\n== migration memory move ==")
+const mtmp = mkdtempSync(join(tmpdir(), "memory-mig-"))
+setSharedProjectDir(mtmp)
+mkdirSync(join(mtmp, ".opencode", "memory"), { recursive: true })
+writeFileSync(join(mtmp, ".opencode", "memory", "public.md"), "# legacy\n\n- [2025-01-01] old\n", "utf-8")
+const mig1 = migrateLegacyProjectArtifacts(mtmp)
+assert(mig1.movedFiles.includes("memory/public.md"), "migration moves .opencode/memory/public.md")
+assert(!existsSync(join(mtmp, ".opencode", "memory", "public.md")), "legacy source removed after rename")
+assert(readFileSync(join(mtmp, ".ocp", "memory", "public.md"), "utf-8").includes("old"), "renamed content readable at new path")
+// Target already exists → merge-append, source deleted, both lessons survive.
+writeFileSync(join(mtmp, ".opencode", "memory", "public.md"), "- [2025-02-02] newer legacy\n", "utf-8")
+const mig2 = migrateLegacyProjectArtifacts(mtmp)
+assert(mig2.movedFiles.includes("memory/public.md"), "merge-append reported as moved")
+const mergedPub = readFileSync(join(mtmp, ".ocp", "memory", "public.md"), "utf-8")
+assert(mergedPub.includes("old") && mergedPub.includes("newer legacy"), "merge-append kept both lessons")
+assert(!existsSync(join(mtmp, ".opencode", "memory", "public.md")), "source deleted after merge-append")
+setSharedProjectDir(tmp)
+rmSync(mtmp, { recursive: true, force: true })
 
 // ─── Summary ─────────────────────────────────────────────────────────
 

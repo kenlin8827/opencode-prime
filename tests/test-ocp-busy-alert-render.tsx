@@ -22,8 +22,8 @@ writeFileSync(path.join(cfgDir, 'opencode.jsonc'), JSON.stringify({
 writeFileSync(path.join(cfgDir, 'profiles', 'acme-tiers.json'), JSON.stringify({
   description: 'sandbox profile', tiers: { flash: 'acme/acme-1', standard: 'acme/acme-1', pro: 'acme/acme-1', max: 'acme/acme-1', vision: 'acme/acme-1' },
 }), 'utf8')
-writeFileSync(path.join(home, 'ocp.jsonc'), JSON.stringify({ language: 'en' }), 'utf8')
-process.env.OCP_CONFIG_PATH = path.join(home, 'ocp.jsonc')
+writeFileSync(path.join(home, 'ocp.json'), JSON.stringify({ language: 'en' }), 'utf8')
+process.env.OCP_CONFIG_PATH = path.join(home, 'ocp.json')
 process.env.HOME = home
 process.env.USERPROFILE = home
 

@@ -12,16 +12,18 @@
  * Run: bun run tests/test-e2e-guard-unit.ts   (or: npx tsx tests/test-e2e-guard-unit.ts)
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 // Sandbox the ocp shared config and pin language=en — guard command
 // replies are localized (zh-CN on this machine's real config would break
-// the English-phrase assertions below).
+// the English-phrase assertions below). ADR 0004 v2: runtime reads
+// `ocp.json` only, so the fixture uses that name.
 const tmp = mkdtempSync(join(tmpdir(), "e2e-guard-test-"))
-process.env.OCP_CONFIG_PATH = join(tmp, "ocp.jsonc")
-writeFileSync(join(tmp, "ocp.jsonc"), `{ "language": "en" }`)
+mkdirSync(join(tmp, ".ocp"), { recursive: true })
+process.env.OCP_CONFIG_PATH = join(tmp, "ocp.json")
+writeFileSync(join(tmp, "ocp.json"), `{ "language": "en" }`)
 
 import {
   normalizeState,
@@ -81,14 +83,14 @@ assert(!isEnabled(), "isEnabled false by default")
 
 // A hand-written JSONC config field is honored (comments tolerated on read).
 rmSync(join(tmp, ".opencode"), { recursive: true, force: true })
-writeFileSync(join(tmp, "opencode.jsonc"), `{
+writeFileSync(join(tmp, ".ocp", "ocp.json"), `{
   // project config with JSONC comments
   "e2eGuard": "on",
 }`)
 assertEq(getState(), "on", "config field e2eGuard honored")
 assert(isEnabled(), "isEnabled when on")
 
-writeFileSync(join(tmp, "opencode.jsonc"), `{ "e2eGuard": true }`)
+writeFileSync(join(tmp, ".ocp", "ocp.json"), `{ "e2eGuard": true }`)
 assertEq(getState(), "on", "boolean true config field honored")
 
 // ─── Protocol & Instructions ─────────────────────────────────────────
@@ -118,7 +120,7 @@ assert(!isPrimaryAgent({ agent: "code", parentID: "parent-123" }), "subagent wit
 const systemHook = makeSystemHook(fakeClient)
 
 // 1. When switch is ON + primary agent: injects protocol
-writeFileSync(join(tmp, "opencode.jsonc"), `{ "e2eGuard": "on" }`)
+writeFileSync(join(tmp, ".ocp", "ocp.json"), `{ "e2eGuard": "on" }`)
 const sysState1 = { system: ["You are an assistant."] }
 await systemHook({ agent: "code" }, sysState1)
 assert(sysState1.system[0].includes(MARKER_ON), "system hook injects MARKER_ON when guard is ON and agent is primary")
@@ -142,7 +144,7 @@ await systemHook({ agent: "explore", parentID: "p1" }, subagentSys)
 assert(!subagentSys.system[0].includes(MARKER), "subagent session strips e2e guard marker")
 
 // 4. When switch is flipped OFF: strips marker and protocol
-writeFileSync(join(tmp, "opencode.jsonc"), `{ "e2eGuard": "off" }`)
+writeFileSync(join(tmp, ".ocp", "ocp.json"), `{ "e2eGuard": "off" }`)
 await systemHook({ agent: "code" }, sysState1)
 assert(!sysState1.system[0].includes(MARKER), "system hook strips marker and protocol when guard is OFF")
 assert(sysState1.system[0] === "You are an assistant.", "prompt restored cleanly")

@@ -144,12 +144,12 @@ console.log(u)
   section("5. Error Handling & Project-level Logging Tests")
 
   const projectLogs = getProjectLogDir(tempDir)
-  assert(projectLogs.includes(join(tempDir, ".opencode", "logs")), "Project logs dir resolves to .opencode/logs")
-  assert(existsSync(projectLogs), ".opencode/logs directory created automatically")
+  assert(projectLogs.includes(join(tempDir, ".ocp", "logs")), "Project logs dir resolves to .ocp/logs")
+  assert(existsSync(projectLogs), ".ocp/logs directory created automatically")
 
   const loggedFile = writeErrorLog("test-action", new Error("Sample failure"), "extra details", tempDir)
   assert(existsSync(loggedFile), "Log file written to disk")
-  assert(loggedFile.startsWith(projectLogs), "Log file located inside project's .opencode/logs")
+  assert(loggedFile.startsWith(projectLogs), "Log file located inside project's .ocp/logs")
 
   const friendlyMsg = formatFriendlyErrorMessage("doc.md", "Executable doesn't exist", loggedFile, tempDir)
   assert(friendlyMsg.includes("How to install Playwright browser"), "Friendly message includes installation instructions")

@@ -25,9 +25,9 @@ import { writeFileSync, rmSync } from "node:fs"
 type SessionInfo = { id: string; parentID?: string; agent?: string }
 type FakeMessage = { info: any; parts?: any[] }
 
-// Isolate the shared ocp.jsonc user config for this run — set BEFORE the
+// Isolate the shared ocp.json user config for this run — set BEFORE the
 // dynamic plugin import below (i18n now persists language there).
-process.env.OCP_CONFIG_PATH = join(tmpdir(), `ocp-usage-test-${process.pid}.jsonc`)
+process.env.OCP_CONFIG_PATH = join(tmpdir(), `ocp-usage-test-${process.pid}.json`)
 
 const sessions: Record<string, SessionInfo> = {}
 const messages: Record<string, FakeMessage[]> = {}
@@ -300,7 +300,7 @@ assert(!view.includes("1/2/3 or"), "hint line removed (numbers are self-document
 
 // --- OCP points fallback: cost 0 + plan provider → credits column (积分) ---
 // Point the loader at an isolated fixture file so tests don't touch real config.
-const pointsPath = join(tmpdir(), `ocp-points-test-${process.pid}.jsonc`)
+const pointsPath = join(tmpdir(), `ocp-points-test-${process.pid}.json`)
 writeFileSync(pointsPath, `{
   "providers": {
     "zhipuai-coding-plan": {
