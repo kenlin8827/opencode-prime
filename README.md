@@ -4,7 +4,7 @@
 
 **Production-ready multi-agent engineering for [OpenCode](https://opencode.ai).**
 
-[![Version](https://img.shields.io/badge/version-0.32.0-blue.svg)](https://github.com/kenlin8827/opencode-prime/releases)
+[![Version](https://img.shields.io/badge/version-0.33.0-blue.svg)](https://github.com/kenlin8827/opencode-prime/releases)
 ![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-lightgrey.svg)
 
@@ -23,7 +23,7 @@
 - **Layered intelligence:** Configure CodeGraph, GitNexus, Serena LSP, DBHub, and other MCP services from one dashboard.
 - **Model governance:** Map agents to `flash`, `standard`, `pro`, `max`, and `vision` tiers, then switch profiles in one action.
 - **Guided setup:** Use the TUI wizard to configure providers, profiles, project knowledge, and guardrails without hand-editing files.
-- **One configuration, three surfaces:** Work from the OpenCode terminal, OpenChamber web UI, or native desktop app.
+- **One configuration, five client modes:** The terminal TUI offers three selectable modes — Direct (`ocp`), Herdr (`ocp tui`), and Luvus (`ocp tui`) — alongside the OpenChamber VS Code extension (`ocp code`), web UI (`ocp web`), and native desktop app (`ocp desktop`).
 - **Safe lifecycle commands:** Install, upgrade, update, inspect, and uninstall the suite while preserving local configuration.
 
 ## Install
@@ -43,7 +43,8 @@ Re-run the installer to upgrade while retaining API keys, custom models, and tie
 ## Quick start
 
 ```bash
-ocp                 # launch the OpenCode terminal UI
+ocp                 # launch the OpenCode terminal UI directly
+ocp tui             # launch the OpenCode terminal UI through the selected workspace wrapper
 ocp wizard          # configure OCP interactively
 ocp dashboard       # manage MCPs, plugins, and model tiers
 ocp provider        # configure model providers
@@ -52,6 +53,7 @@ ocp project         # configure and initialize the current project
 ocp usage           # inspect token and cost usage across projects
 ocp web             # launch the OpenChamber web UI
 ocp desktop         # launch the native desktop app
+ocp code            # open VS Code with the OpenChamber extension ensured
 ocp update          # check and apply available updates
 ```
 

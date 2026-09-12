@@ -46,7 +46,7 @@ SDD guarantees software quality and maintainability through a rigorous specifica
 
 ### Phase 2: `/adr [title]` — Architecture Decision Record
 - **Agent**: `@architect` / `@build`
-- **Engine**: Powered by standalone `plugins/adr-guard` (supports flat & hierarchical ADR modes, DAG superseding, integrity checks, and commit gates).
+- **Engine**: Powered by standalone `plugins/adr-guard` (supports flat & hierarchical ADR layouts, DAG superseding, integrity checks, and commit gates).
 - **Objective**: Document architectural decisions, schema/API contracts, technology tradeoffs, and integration points.
 - **Deliverables**:
   - Scaffolds & writes `docs/adr/<NNNN>-<title>.md` (or hierarchical layer ADRs per project configuration).

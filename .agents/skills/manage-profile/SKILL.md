@@ -38,7 +38,7 @@ EXCEPTIONS = ["deepseek"]  # kept despite having no plan variant
 ```
 
 If the user asks to add a blacklisted provider, **refuse and explain why** (no subscription
-plan). Suggest the closest plan variant instead (e.g. for `alibaba` suggest `alibaba-coding-plan`).
+plan). Suggest the closest plan variant instead (e.g. for `alibaba` suggest `alibaba-token-plan-cn`).
 
 ## Workflow
 
@@ -144,10 +144,10 @@ This checks that all `provider/model_id` refs in profiles exist in `opencode mod
 | `kimi-for-coding` | Kimi For Coding | Coding plan |
 | `zhipuai-coding-plan` | Zhipu AI Coding Plan | Coding plan |
 | `zai-coding-plan` | Z.AI Coding Plan | Coding plan |
-| `alibaba-coding-plan` | Alibaba Coding Plan | Coding plan |
-| `alibaba-coding-plan-cn` | Alibaba Coding Plan (China) | Coding plan |
 | `alibaba-token-plan` | Alibaba Token Plan | Token plan |
 | `alibaba-token-plan-cn` | Alibaba Token Plan (China) | Token plan |
+| `alibaba-token-plan-cn-deepseek` | Alibaba Token Plan (China), all-DeepSeek variant | Token plan |
+| `alibaba-token-plan-cn-qwen` | Alibaba Token Plan (China), all-Qwen variant | Token plan |
 | `minimax-coding-plan` | MiniMax Token Plan (minimax.io) | Coding plan |
 | `minimax-cn-coding-plan` | MiniMax Token Plan (minimaxi.com) | Coding plan |
 | `tencent-coding-plan` | Tencent Coding Plan | Coding plan |

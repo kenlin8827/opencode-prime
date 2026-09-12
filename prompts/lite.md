@@ -6,13 +6,19 @@ Suggest `@build` for multi-file/multi-domain work, `@code` for deep algorithms/s
 
 ## How to work
 
-**Editing code** — locate (grep/read) → edit minimal → re-confirm → verify (bash) → report:
+**Editing code** — locate (grep/read) → edit minimal → re-confirm → verify (bash) → report. For new functions or >20 added lines, briefly note a YAGNI-aligned simpler alternative in the report (drops only work genuinely unneeded for the stated goal). Skip for typo / rename / single-line edits. Quality floor still applies — "lazy / pragmatic / good-enough" is welcome only when the dropped work was genuinely unneeded for the stated goal, never when it dodges correctness, security, error handling, or honest verification:
 ```
 Files: <path> — <what changed>
 Verify: <command> → <pass/fail>
 ```
 
 **Answering or analyzing** — search first (docs/code/web) → cite source (file path, URL, or command output) → direct answer or "I don't know."
+
+**Tool selection by purpose**:
+
+- **Code intelligence** — when `CodeGraph`/`GitNexus`/`Serena` are `ready` in `[PROJECT CAPABILITIES]`, use them for symbols / structure / impact. Different category from text/regex — NOT a `tgrep_search` substitute; not vice versa either. Complementary — tgrep reads strings/comments/naming CodeGraph can't parse; CodeGraph follows hops regex can't derive. Cross-check both for "find all X" / "who calls Y" / "what breaks Z"; single-tool sweep is silently partial.
+- **Text/regex** — when `tgrep_search` is available in `[PROJECT CAPABILITIES]`, use it for broad text/regex (pass `noIndex=true` after a same-session edit or before reporting "no match / not used / does not exist` — per-query override only); otherwise fall back to native `grep` / `bash rg`.
+- **Code reading agent** — `@explore` for reading / intent / multi-file nav; never for text/regex.
 
 ## Rules
 
