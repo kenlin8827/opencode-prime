@@ -20,7 +20,7 @@
   "dashboardTabPlugins": "插件",
   "dashboardTabReview": "确认",
   "dashboardTabsLabel": "标签",
-  "dashboardTabsHint": "标签 · ↑/↓",
+  "dashboardTabsHint": "标签 · ←/→",
   "dashboardTargetLabel": "安装目标",
   "dashboardChangeSummaryLabel": "变更摘要",
   "dashboardEnabledSummary": "将保存 {count} 个已启用集成。",
@@ -58,9 +58,11 @@
   "rtkLabel": "RTK 令牌优化器",
   "rtkHint": "Rust Token Killer 代理与代码压缩插件",
   "tuiModeLabel": "TUI 启动模式",
-  "tuiModeHint": "`ocp tui` 启动方式：direct（当前 shell 起 opencode）或 herdr（工作区）。选 herdr 会自动启用 tools.herdr",
+  "tuiModeHint": "`ocp tui` 启动方式：direct（当前 shell）、Herdr 工作区或 Luvus 工作区。选择工作区模式会自动配置对应集成。",
   "toolLabels": {
     "rtk": { "label": "RTK 令牌优化器", "hint": "Rust Token Killer 代理与代码压缩插件" },
+    "ripgrep": { "label": "ripgrep (rg)", "hint": "快速 .gitignore 感知的 grep 工具（BurntSushi/ripgrep），是代理内搜索工具的优先后端。" },
+    "tgrep": { "label": "tgrep 检索索引", "hint": "基于三元组的高性能全文检索工具（microsoft/tgrep），在大仓库中大幅加速搜索。" },
     "openchamber_web": { "label": "OpenChamber 网页版", "hint": "安装 OpenChamber 网页版 CLI，提供 `ocp web` 命令（需要 Node.js 22+）" },
     "openchamber_desktop": { "label": "OpenChamber 桌面版", "hint": "驱动 `ocp desktop` / `ocp ui` 的原生桌面应用——需另行下载（https://openchamber.dev/download）；安装时仅检测是否已安装" },
     "openchamber_vscode": { "label": "OpenChamber VS Code 扩展", "hint": "驱动 `ocp code` 的编辑器扩展——缺失时通过编辑器 CLI 自动安装 fedaykindev.openchamber" },
@@ -76,7 +78,6 @@
     "idea": { "label": "JetBrains IDEA", "hint": "JetBrains IDE MCP 集成；请先在 IDE 内启用对应服务器。" }
   },
   "pluginLabels": {
-    "@dietrichgebert/ponytail": { "label": "Ponytail", "hint": "内置的 OpenCode 界面增强插件。" },
     "opencode-qoder-bridge": { "label": "Qoder Bridge", "hint": "Qoder 集成；需要受支持的 Node.js 版本并执行 `qoder login`。" },
     "opencode-mem@2.24.3": { "label": "OpenCode Memory", "hint": "持久化记忆捕获；空闲会话后可能产生 LLM 调用成本。" }
   },
@@ -103,7 +104,7 @@
   "exitBtnHint": "不保存直接关闭控制面板",
   "backBtn": "↩ 返回上一级",
   "backBtnHint": "回到安装向导主菜单",
-  "footerHelp": "[ ↑/↓/j/k: 移动 ]  [ 空格: 切换 ]  [ L: 语言 ]  [ 回车: 应用 ]  [ ^S: 保存 ]  [ ^Z: 撤销 ]  [ ^A: 安装 ]  [ ^Q: 退出 ]  [ Esc: 返回 ]",
+  "footerHelp": "[ ↑/↓/j/k: 移动 ]  [ 空格: 切换 ]  [ L: 语言 ]  [ 回车: 应用 ]  [ ^S: 保存 ]  [ ^Z: 撤销 ]  [ ^T: 安装 ]  [ ^Q: 退出 ]  [ Esc: 返回 ]",
   "switchLangHint": "界面语言已切换为简体中文",
   "enabled": "【已启用】",
   "disabled": "【已禁用】",
@@ -135,5 +136,21 @@
   "summaryTarget": "目标路径",
   "summaryInstalled": "安装文件数",
   "summaryBackup": "备份保存于",
-  "unsavedChangesPrompt": "检测到未保存的变更。离开前是否保存？（s = 保存，d = 不保存，c = 取消）："
+  "unsavedChangesPrompt": "检测到未保存的变更。离开前是否保存？（s = 保存，d = 不保存，c = 取消）：",
+  "statusRepoVersion": "仓库版本",
+  "statusInstalledVersion": "已安装版本",
+  "statusTargetDirectory": "目标目录",
+  "statusState": "状态",
+  "statusUpToDate": "已是最新版本",
+  "statusUpdateAvailable": "有可用更新",
+  "statusShippedFiles": "受管理文件数",
+  "resetComplete": "已重置配置目标目录：{target}",
+  "uninstallComplete": "已从 {target} 卸载 {count} 个受管理文件",
+  "installComplete": "已将 v{version} 安装到 {target}（已应用 {count} 个文件）",
+  "backupSaved": "备份已保存至 {path}",
+  "registerGlobalYes": "注册全局命令",
+  "registerGlobalNo": "跳过全局命令注册",
+  "installFailed": "安装失败：{error}",
+  "resetResult": "已清空 {target}。备份：{backup}。",
+  "uninstallResult": "已从 {target} 移除 {count} 个文件。"
 }

@@ -20,7 +20,7 @@
   "dashboardTabPlugins": "Plugins",
   "dashboardTabReview": "Review",
   "dashboardTabsLabel": "Tabs",
-  "dashboardTabsHint": "Tabs · ↑/↓",
+  "dashboardTabsHint": "Tabs · ←/→",
   "dashboardTargetLabel": "Installation target",
   "dashboardChangeSummaryLabel": "Change summary",
   "dashboardEnabledSummary": "{count} enabled integrations will be saved.",
@@ -58,9 +58,11 @@
   "rtkLabel": "RTK Tokenizer",
   "rtkHint": "Rust Token Killer proxy & plugin",
   "tuiModeLabel": "TUI Mode",
-  "tuiModeHint": "How `ocp tui` starts: direct (opencode in current shell) or herdr (workspace). Selecting herdr auto-enables tools.herdr",
+  "tuiModeHint": "How `ocp tui` starts: direct (current shell), Herdr workspace, or Luvus workspace. Selecting a workspace mode provisions its integration.",
   "toolLabels": {
     "rtk": { "label": "RTK Tokenizer", "hint": "Rust Token Killer proxy & plugin" },
+    "ripgrep": { "label": "ripgrep (rg)", "hint": "Fast .gitignore-aware grep (BurntSushi/ripgrep); preferred backend for the in-agent search tool." },
+    "tgrep": { "label": "tgrep search index", "hint": "Trigram-indexed full-text search (microsoft/tgrep); accelerates regex search in large repositories." },
     "openchamber_web": { "label": "OpenChamber Web", "hint": "Install the OpenChamber web UI CLI powering `ocp web` (needs Node.js 22+)" },
     "openchamber_desktop": { "label": "OpenChamber Desktop", "hint": "Native desktop app powering `ocp desktop` / `ocp ui` — separate download (https://openchamber.dev/download); install only checks presence" },
     "openchamber_vscode": { "label": "OpenChamber VS Code", "hint": "Editor extension powering `ocp code` — auto-installs fedaykindev.openchamber via the editor CLI" },
@@ -76,7 +78,6 @@
     "idea": { "label": "JetBrains IDEA", "hint": "JetBrains IDE MCP integration; enable the server in the IDE first." }
   },
   "pluginLabels": {
-    "@dietrichgebert/ponytail": { "label": "Ponytail", "hint": "Bundled OpenCode interface enhancements." },
     "opencode-qoder-bridge": { "label": "Qoder Bridge", "hint": "Qoder integration; requires a supported Node.js version and `qoder login`." },
     "opencode-mem@2.24.3": { "label": "OpenCode Memory", "hint": "Captures persistent memory and may incur an LLM cost after idle sessions." }
   },
@@ -103,7 +104,7 @@
   "exitBtnHint": "Close control center without saving",
   "backBtn": "↩ BACK TO MAIN MENU",
   "backBtnHint": "Return to the wizard main menu",
-  "footerHelp": "[ ↑/↓/j/k: Move ]  [ Space: Toggle ]  [ L: Lang ]  [ Enter: Apply ]  [ ^S: Save ]  [ ^Z: Reset ]  [ ^A: Install ]  [ ^Q: Quit ]  [ Esc: Back ]",
+  "footerHelp": "[ ↑/↓/j/k: Move ]  [ Space: Toggle ]  [ L: Lang ]  [ Enter: Apply ]  [ ^S: Save ]  [ ^Z: Reset ]  [ ^T: Install ]  [ ^Q: Quit ]  [ Esc: Back ]",
   "switchLangHint": "Language switched to English",
   "enabled": "ENABLED",
   "disabled": "DISABLED",
@@ -135,5 +136,21 @@
   "summaryTarget": "Target Directory",
   "summaryInstalled": "Files Installed",
   "summaryBackup": "Backup Saved",
-  "unsavedChangesPrompt": "You have unsaved changes. Save before leaving? (s = Save, d = Discard, c = Cancel): "
+  "unsavedChangesPrompt": "You have unsaved changes. Save before leaving? (s = Save, d = Discard, c = Cancel): ",
+  "statusRepoVersion": "Repository Version",
+  "statusInstalledVersion": "Installed Version",
+  "statusTargetDirectory": "Target Directory",
+  "statusState": "Status",
+  "statusUpToDate": "Up to date",
+  "statusUpdateAvailable": "Update available",
+  "statusShippedFiles": "Shipped Files",
+  "resetComplete": "Reset configuration target: {target}",
+  "uninstallComplete": "Uninstalled {count} managed files from {target}",
+  "installComplete": "Installed v{version} to {target} ({count} files applied)",
+  "backupSaved": "Backup saved to {path}",
+  "registerGlobalYes": "Register global commands",
+  "registerGlobalNo": "Skip global commands",
+  "installFailed": "Installation failed: {error}",
+  "resetResult": "Cleared {target}. Backup: {backup}.",
+  "uninstallResult": "Removed {count} files from {target}."
 }

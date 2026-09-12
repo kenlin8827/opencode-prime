@@ -9,9 +9,9 @@ export interface InstallOptions {
   global_commands?: boolean;
   // How `ocp tui` starts:
   //   "direct"           — launch opencode directly in the current terminal
-  //   "herdr" (default)  — launch a herdr workspace rooted at cwd (equivalent
-  //                        to `ocp herdr`); auto-enables tools.herdr
-  tui_mode?: "direct" | "herdr";
+  //   "herdr"            — launch the configured Herdr workspace integration
+  //   "luvus"            — launch the configured Luvus workspace integration
+  tui_mode?: "direct" | "herdr" | "luvus";
   // Generic opt-in map for tools declared in install/tools.jsonc.
   //   tools.<name>: true  → provision when missing (default if omitted)
   //   tools.<name>: false → user opted out, installer leaves it alone

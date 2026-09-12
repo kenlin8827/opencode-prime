@@ -22,8 +22,14 @@ import {
 // (= `ocp ui`) / `ocp web` (OpenChamber web mode) / `ocp code` (VS Code with
 // the OpenChamber editor extension) subcommands. They exec the underlying
 // binary directly — no config files are touched.
+//
+// The workspace-manager modes of `ocp tui` (`tui_mode: herdr` / `luvus`) do
+// NOT live here anymore: their launch sequence is declared in
+// install/tools.jsonc (`tools.<id>.tui`) and executed by the generic runner
+// in tui-engine.ts, with the tool-specific steps as Node scripts under
+// install/scripts/engines/<id>/.
 
-function launchBinary(
+export function launchBinary(
   binName: string,
   installHint: string,
   extraArgs: string[],
@@ -64,124 +70,9 @@ export function launchTui(extraArgs: string[]): number {
   );
 }
 
-/**
- * `ocp herdr` — launch Herdr (terminal workspace manager for AI coding agents)
- * rooted at the current working directory. Passthrough args (e.g. `--session`,
- * `--no-session`) are forwarded verbatim.
- *
- * Sequence (each step best-effort; failures are logged, never thrown):
- *   1. `herdr workspace create --cwd <cwd> --label <basename> --focus`
- *      → registers cwd as a workspace + focuses it. Also emits `pane.created`
- *      for the new root pane, which our `ocp.auto-opencode` plugin listens
- *      to and auto-starts opencode in the root pane. So we don't have to
- *      do that here — the plugin handles it.
- *   2. `herdr` → attaches the interactive TUI to the running server.
- *
- * If the herdr server isn't running yet (cold start), step 1 fails and the
- * user is told how to bootstrap (`run herdr once`); step 2 then starts the
- * server when the user runs `ocp herdr` again, and the next run creates
- * the workspace.
- */
-export function launchHerdr(extraArgs: string[]): number {
-  extraArgs = stripOcpTuiControlArgs(extraArgs);
-  const cwd = process.cwd();
-  const label = path.basename(cwd) || 'workspace';
-
-  // 1. Register cwd as a Herdr workspace + focus it. The emitted
-  //    `pane.created` event triggers the auto-opencode plugin (linked at
-  //    install time) to start opencode in the new root pane.
-  //
-  //    herdr's `workspace create` does NOT dedupe — calling it twice with
-  //    the same label creates two workspaces. To avoid that, we first ask
-  //    herdr for the existing workspace list; if one already has this label
-  //    AND its root pane's cwd matches our target, we just focus it.
-  const existing = findWorkspaceByLabel(label);
-  if (existing) {
-    console.log(`[ocp] Reusing existing workspace "${label}" (${existing}) at ${cwd}`);
-    const focusRes = spawnSync('herdr', ['workspace', 'focus', existing], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      shell: process.platform === 'win32',
-    });
-    if (focusRes.status !== 0) {
-      // Fall back to create — better than nothing.
-      console.log(`[ocp] workspace focus failed (exit ${focusRes.status}); falling back to create`);
-    } else {
-      console.log(`[ocp] opencode will start automatically in the focused pane`);
-    }
-  } else {
-    const createRes = spawnSync(
-      'herdr',
-      ['workspace', 'create', '--cwd', cwd, '--label', label, '--focus'],
-      {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        // Windows resolves .cmd / .bat shims (npm globals) only through the shell.
-        shell: process.platform === 'win32',
-      }
-    );
-
-    if (createRes.status === 0 && createRes.stdout) {
-      try {
-        const json = JSON.parse(createRes.stdout.toString());
-        const workspaceId = json?.result?.workspace?.workspace_id ?? null;
-        console.log(`[ocp] Workspace "${label}" opened at ${cwd} (${workspaceId ?? '?'}); opencode will start automatically in the root pane`);
-      } catch {
-        // herdr returned non-JSON; treat as success-without-metadata.
-        console.log(`[ocp] Workspace "${label}" opened at ${cwd}`);
-      }
-    } else {
-      // Most common cause: herdr server isn't running yet. The next `herdr`
-      // call below will start it; the user just needs to run `ocp herdr`
-      // once more after the TUI exits.
-      const stderr = createRes.stderr?.toString().trim() ?? '';
-      const hint = /server_not_running/i.test(stderr)
-        ? `herdr server not running — it'll start on this launch; run \`ocp herdr\` again afterwards to register the workspace.`
-        : `workspace registration skipped (exit ${createRes.status ?? '?'}${stderr ? `: ${stderr}` : ''})`;
-      console.log(`[ocp] ${hint}`);
-    }
-  }
-
-  // 2. Launch herdr TUI (attaches to the server, showing the focused workspace).
-  return launchBinary(
-    'herdr',
-    '  Install Herdr first: https://herdr.dev (or re-run `ocp install`).',
-    extraArgs,
-    { cwd }
-  );
-}
-
 /** Drop OCP-only TUI controls that opencode/herdr CLIs do not understand. */
-function stripOcpTuiControlArgs(args: string[]): string[] {
+export function stripOcpTuiControlArgs(args: string[]): string[] {
   return args.filter((a) => a !== '--init' && a !== '.');
-}
-
-/**
- * Look up an existing herdr workspace with the given label. Returns the
- * workspace id on hit, null otherwise. Used by launchHerdr() to avoid
- * creating a duplicate workspace on every `ocp herdr` invocation.
- *
- * Dedupe by label alone is sufficient in practice: each `ocp herdr` from
- * a directory produces one workspace with `label = basename(cwd)`, and
- * the same directory will keep using the same label. (If the user has
- * two different directories with the same basename, they end up sharing
- * a workspace — a known trade-off; cleaner dedup would require a cwd
- * round-trip via tab get + pane get, which is fragile because herdr
- * surfaces stale entries in `workspace list` for closed workspaces.)
- *
- * Cost: 1 herdr CLI call. On any error (server not running, parse
- * failure, etc.) we return null — caller falls back to creating a fresh
- * workspace.
- */
-function findWorkspaceByLabel(targetLabel: string): string | null {
-  const shellOpt = process.platform === 'win32';
-  const listRes = spawnSync('herdr', ['workspace', 'list'], {
-    encoding: 'utf8', timeout: 10000, shell: shellOpt,
-  });
-  if (listRes.status !== 0 || !listRes.stdout) return null;
-  let listJson: any;
-  try { listJson = JSON.parse(listRes.stdout); } catch { return null; }
-  const workspaces: any[] = listJson?.result?.workspaces ?? [];
-  const match = workspaces.find((w) => w.label === targetLabel);
-  return match?.workspace_id ?? null;
 }
 
 /**
@@ -711,17 +602,14 @@ function seedOpenChamberProject(dir: string): boolean {
  * its own probe (install dirs on Windows, `open -a` on macOS, PATH +
  * common locations on Linux).
  *
- * With `--init` (or when the caller passes `.` which the shell normalizes to
- * `--init`), this also scaffolds an OCP project in the current directory and
- * registers that directory as an OpenChamber project. Plain `ocp desktop` /
- * `ocp ui` still just launches the app.
+ * ONLY an explicit `--init` scaffolds an OCP project in the current
+ * directory and registers that directory as an OpenChamber project (a bare
+ * `.` no longer aliases it — it is stripped as a no-op). Plain `ocp desktop`
+ * / `ocp ui` still just launches the app.
  */
 export async function launchDesktop(extraArgs: string[]): Promise<number> {
-  // `.` (current directory) means the same as --init wherever it appears as
-  // the first argument — bin dispatchers normalize it too, this covers direct
-  // `bun install/src/index.ts desktop .` invocations.
-  const hasInit = extraArgs.includes('--init') || extraArgs[0] === '.';
-  const launchArgs = extraArgs.filter((a, i) => a !== '--init' && !(i === 0 && a === '.'));
+  const hasInit = extraArgs.includes('--init');
+  const launchArgs = extraArgs.filter((a) => a !== '--init' && a !== '.');
 
   if (hasInit) {
     const initCode = await runOcpProjectInit();

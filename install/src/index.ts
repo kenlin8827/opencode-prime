@@ -15,13 +15,15 @@ import {
   loadEffectiveOptions,
 } from './installer';
 import { unregisterShim, runGlobalRegistration } from './shim';
+import { formatI18n, getPreferredLocaleCode, loadLocale } from './i18n';
 import { runInteractiveWizard } from './wizard';
 import { runProjectWizard } from './project-wizard';
 import { runProviderCli } from './provider-wizard';
 import { runProfileCli } from './profile-wizard';
 import { runUsageCli } from './usage';
 import { runTuiDashboard } from './dashboard';
-import { launchTui, launchServe, launchWeb, launchCode, launchDesktop, launchHerdr } from './launcher';
+import { launchTui, launchServe, launchWeb, launchCode, launchDesktop } from './launcher';
+import { runTuiEngine } from './tui-engine';
 import { deployHerdrConfig, herdrUserConfigPath, HERDR_CONFIG_TEMPLATE } from './herdr-config';
 import {
   checkOpenChamberDesktop,
@@ -390,9 +392,9 @@ Actions:
   (default)    Interactive setup wizard (in TTY) or install (in non-interactive)
   wizard       Launch the interactive TUI setup wizard
   tui          Launch the OpenCode terminal UI (exec opencode). With
-                 tui_mode=herdr in options.jsonc, launches a herdr workspace
-                 rooted at cwd instead (equivalent to 'ocp herdr'). Default
-                 tui_mode is 'herdr'. Pass --herdr / --direct to override
+                  tui_mode=herdr or tui_mode=luvus in options.jsonc launches a
+                  managed workspace rooted at cwd. Default tui_mode is herdr.
+                  Pass --herdr / --luvus / --direct to override
                  the config for this invocation
   serve        Launch the headless opencode server (opencode serve; all args pass through)
    web          Launch the OpenChamber web UI (auto-picks a free port unless --port is given)
@@ -596,23 +598,27 @@ function resolveRepoDir(): string {
 async function main() {
   // Find repo root at runtime (see resolveRepoDir for fallback logic)
   const repoDir = resolveRepoDir();
+  const text = loadLocale(repoDir, getPreferredLocaleCode());
+  const copy = (key: keyof typeof text, fallback: string) => String(text[key] ?? fallback);
   const rawArgs = process.argv.slice(2);
   const args = parseCliArgs(rawArgs);
 
   if (args.action === 'tui') {
-    // Mode resolution: tui_mode config is the default; --herdr / --direct
+    // Mode resolution: tui_mode config is the default; explicit mode flags
     // on the command line override it for this invocation. The flags are
     // stripped from passthrough before forwarding to the launcher so
-    // opencode / herdr don't see unknown args.
+    // opencode and workspace providers don't see unknown mode args.
     const effectiveOptions = loadEffectiveOptions(repoDir, getDefaultTargetDir());
     const rawPassthrough = args.passthrough ?? [];
-    const cliMode = rawPassthrough.includes('--herdr')
-      ? 'herdr'
-      : rawPassthrough.includes('--direct')
-        ? 'direct'
-        : null;
+    const cliMode = rawPassthrough.includes('--luvus')
+      ? 'luvus'
+      : rawPassthrough.includes('--herdr')
+        ? 'herdr'
+        : rawPassthrough.includes('--direct')
+          ? 'direct'
+          : null;
     const withoutModeFlags = rawPassthrough.filter(
-      (a) => a !== '--herdr' && a !== '--direct'
+      (a) => a !== '--herdr' && a !== '--luvus' && a !== '--direct'
     );
     const { initRequested, passthrough } = normalizeTuiPassthrough(withoutModeFlags);
     if (initRequested) {
@@ -621,7 +627,10 @@ async function main() {
     }
     const mode = cliMode ?? effectiveOptions.tui_mode ?? 'direct';
     if (mode === 'herdr') {
-      process.exit(launchHerdr(passthrough));
+      process.exit(runTuiEngine(repoDir, 'herdr', passthrough));
+    }
+    if (mode === 'luvus') {
+      process.exit(runTuiEngine(repoDir, 'luvus', passthrough));
     }
     process.exit(launchTui(passthrough));
   }
@@ -731,7 +740,7 @@ async function main() {
   }
 
   if (args.action === 'herdr') {
-    process.exit(launchHerdr(args.passthrough ?? []));
+    process.exit(runTuiEngine(repoDir, 'herdr', args.passthrough ?? []));
   }
 
   if (args.action === 'herdr-config-install') {
@@ -757,22 +766,22 @@ async function main() {
   switch (args.action) {
     case 'status': {
       const st = executeStatus(repoDir, args.target);
-      console.log(`Repository Version : ${st.repoVersion}`);
-      console.log(`Installed Version  : ${st.installedVersion || 'None'}`);
-      console.log(`Target Directory   : ${st.targetDir}`);
-      console.log(`Status             : ${st.isUpToDate ? 'Up to date' : 'Update available'}`);
-      console.log(`Shipped Files      : ${st.shippedFilesCount}`);
+      console.log(`${copy('statusRepoVersion', 'Repository Version')} : ${st.repoVersion}`);
+      console.log(`${copy('statusInstalledVersion', 'Installed Version')}  : ${st.installedVersion || 'None'}`);
+      console.log(`${copy('statusTargetDirectory', 'Target Directory')}   : ${st.targetDir}`);
+      console.log(`${copy('statusState', 'Status')}             : ${st.isUpToDate ? copy('statusUpToDate', 'Up to date') : copy('statusUpdateAvailable', 'Update available')}`);
+      console.log(`${copy('statusShippedFiles', 'Shipped Files')}      : ${st.shippedFilesCount}`);
       break;
     }
     case 'init': {
       const res = executeInit(repoDir, args);
-      console.log(`Reset configuration target: ${res.targetDir}`);
-      if (res.backupPath) console.log(`Backup created: ${res.backupPath}`);
+      console.log(formatI18n(copy('resetComplete', 'Reset configuration target: {target}'), { target: res.targetDir }));
+      if (res.backupPath) console.log(formatI18n(copy('backupSaved', 'Backup saved to {path}'), { path: res.backupPath }));
       break;
     }
     case 'uninstall': {
       const res = executeUninstall(repoDir, args);
-      console.log(`Uninstalled ${res.removedCount} managed files from ${res.targetDir}`);
+      console.log(formatI18n(copy('uninstallComplete', 'Uninstalled {count} managed files from {target}'), { count: res.removedCount, target: res.targetDir }));
       break;
     }
     case 'register': {
@@ -792,8 +801,8 @@ async function main() {
       const wantGlobal = effectiveOptions.global_commands !== false;
 
       const res = executeInstall(repoDir, args);
-      console.log(`Installed v${res.version} to ${res.targetDir} (${res.filesInstalled} files applied)`);
-      if (res.backupPath) console.log(`Backup saved to ${res.backupPath}`);
+      console.log(formatI18n(copy('installComplete', 'Installed v{version} to {target} ({count} files applied)'), { version: res.version, target: res.targetDir, count: res.filesInstalled }));
+      if (res.backupPath) console.log(formatI18n(copy('backupSaved', 'Backup saved to {path}'), { path: res.backupPath }));
 
       if (wantGlobal) {
         const reg = runGlobalRegistration(repoDir, args.binDir);

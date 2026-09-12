@@ -281,7 +281,12 @@ function upgradeToolFromRegistry(repoDir: string, toolName: string): number {
     return 1;
   }
   console.log(`Running: ${cmd}`);
-  return runInstallCommand(cmd).status ?? 1;
+  const res = runInstallCommand(cmd);
+  if (res.error) {
+    console.error(`Failed to run upgrade for "${toolName}": ${res.error.message}`);
+    return 1;
+  }
+  return res.status ?? 1;
 }
 
 /**
@@ -610,7 +615,13 @@ export async function executeUpgrade(repoDir: string, passthrough: string[]): Pr
   // and loads the freshly overlaid engine, which may have replaced the code
   // currently running this upgrade. The bootstrap defaults to `install`, so
   // leave the action implicit across this self-upgrade boundary.
-  const rest = force ? passthrough : ['--force', ...passthrough];
+  //
+  // Honor user intent: do NOT inject `--force` automatically. A bare
+  // `ocp upgrade` should run the installer's normal version-aware flow
+  // (re-apply the new repo version over an older installed copy — that's
+  // why we are here). `--force` is reserved for the explicit `-f / --force`
+  // flag, matching `bin/opencode-prime`'s "no -f = wizard" mental model.
+  const rest = passthrough;
   // Make the reason explicit when the version probe reported no newer
   // release: the repo copy can still be ahead of what was last applied
   // to the target directory, so we still re-apply the installer.

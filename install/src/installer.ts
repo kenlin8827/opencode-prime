@@ -6,7 +6,7 @@ import { CliArgs, InstallOptions } from './types';
 import { deployHerdrConfig } from './herdr-config';
 import { deployModelsCost } from './models-cost';
 import { colorize } from './color';
-import { runShellCommand, type ShellCommandOptions } from './shared/shell-command';
+import { runShellCommand } from './shared/shell-command';
 import {
   collectHistoricalShippedFiles,
   collectShippedFiles,
@@ -518,13 +518,7 @@ export function runInstallCommand(cmd: string) {
   const mirrorSet = !!process.env.OCP_RAW_MIRROR || !!process.env.OCP_RELEASE_MIRROR;
   const { primary, fallback } = installCommandSequence(rewritten, cmd, mirrorSet);
 
-  const shellOptions: ShellCommandOptions = {
-    output: 'inherit',
-    timeoutMs: 600000,
-    windowsShell: 'powershell',
-    powershellExecutable: isBinaryOnPath('pwsh') ? 'pwsh' : 'powershell',
-  };
-  const res = runShellCommand(primary, shellOptions);
+  const res = runShellCommand(primary);
   if (res.status === 0 || !fallback) return res;
 
   // At least one mirror URL failed. Try the original command (with all
@@ -534,7 +528,7 @@ export function runInstallCommand(cmd: string) {
     `[OCP_*_MIRROR] mirror URL failed (exit ${res.status ?? 'n/a'}), ` +
       `falling back to the official source URL`,
   );
-  return runShellCommand(fallback, shellOptions);
+  return runShellCommand(fallback);
 }
 
 /**
@@ -620,6 +614,13 @@ export interface ToolRegistry {
       url?: string;
       install?: unknown; // string | Record<string, string>; resolved via resolveInstallCommand
       post_install?: Array<string | PostInstallStep>;
+      /**
+       * TUI launch manifest consumed by src/tui-engine.ts (shape:
+       * TuiEngineSpec there). Typed loosely on purpose: the installer must
+       * not import the engine module (it imports installer.ts) — the engine
+       * validates the shape at launch time.
+       */
+      tui?: unknown;
     }
   >;
 }
@@ -740,7 +741,6 @@ function runPostInstall(repoDir: string, name: string, def: ToolRegistry['tools'
       env: { ...process.env, OCP_REPO_DIR: repoDir },
       output: 'capture',
       timeoutMs: 300000,
-      windowsShell: 'native',
     });
     if (res.error || res.status !== 0) {
       const stderr = res.stderr.trim();
@@ -776,6 +776,13 @@ function extractJsonSummary(stdout: string): string | null {
   // herdr cli envelope: { id, result: { plugin: { name } } }
   const name = json?.result?.plugin?.name ?? json?.result?.name ?? json?.name;
   if (typeof name === 'string' && name.trim()) return name;
+  // luvus cli: `module link` prints a flat { "id": "ocp.auto-opencode" }
+  // (possibly wrapped in a result/module envelope). Only accept the flat id
+  // when there is no result envelope — herdr's top-level id is a request id.
+  const moduleId =
+    json?.result?.module?.id ??
+    (json?.result === undefined && typeof json?.id === 'string' ? json.id : null);
+  if (typeof moduleId === 'string' && moduleId.trim()) return moduleId;
   return null;
 }
 
@@ -804,6 +811,34 @@ export function executeInstall(
   ) {
     console.log('[ocp] tui_mode=herdr requires herdr — auto-enabling tools.herdr (overrides your tools.herdr=false).');
     effectiveOptions.tools = { ...effectiveOptions.tools, herdr: true };
+  }
+  if (
+    effectiveOptions.tui_mode === 'luvus' &&
+    effectiveOptions.tools?.luvus === false
+  ) {
+    console.log('[ocp] tui_mode=luvus requires luvus — auto-enabling tools.luvus (overrides your tools.luvus=false).');
+    effectiveOptions.tools = { ...effectiveOptions.tools, luvus: true };
+  }
+
+  // Symmetric auto-disable for the OFF-mode tool — when the user picks one
+  // TUI driver, the other should not silently run its post-install steps.
+  // We only flip `undefined` → `false`: an explicit `true` means the user
+  // really wants both (rare but valid, e.g. testing). The earlier shallow-
+  // replace merge of `tools` means "undefined" here = the user simply didn't
+  // list that key — exactly the silent-drift case we want to close.
+  if (
+    effectiveOptions.tui_mode === 'herdr' &&
+    effectiveOptions.tools?.luvus === undefined
+  ) {
+    console.log('[ocp] tui_mode=herdr — auto-disabling tools.luvus (set tools.luvus=true explicitly to opt back in).');
+    effectiveOptions.tools = { ...effectiveOptions.tools, luvus: false };
+  }
+  if (
+    effectiveOptions.tui_mode === 'luvus' &&
+    effectiveOptions.tools?.herdr === undefined
+  ) {
+    console.log('[ocp] tui_mode=luvus — auto-disabling tools.herdr (set tools.herdr=true explicitly to opt back in).');
+    effectiveOptions.tools = { ...effectiveOptions.tools, herdr: false };
   }
 
   // 1. Ensure Manifest for current version exists
