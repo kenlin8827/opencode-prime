@@ -100,8 +100,8 @@ Continuing the SDD flow within the **same session** delivers maximum precision:
 ### 4. Cross-Session Handoff (`/sdd handoff`)
 When you need to pause work, switch tasks, or combat context window token bloat, run `/sdd handoff`:
 - **Locks Active Stage**: Records current completion state (e.g. PRD/ADR done, awaiting `/plan`) and artifact links.
-- **Extracts Unwritten Context**: Captures subtle constraints and rejected alternatives into a git-safe handoff document (`.opencode/handoffs/`).
-- **One-Click Fresh Resume**: Generates a paste-ready opener (`Read .opencode/handoffs/latest.md...`) to restart seamlessly in a fresh session with minimum token overhead.
+- **Extracts Unwritten Context**: Captures subtle constraints and rejected alternatives into a git-safe handoff document (`.ocp/handoffs/`).
+- **One-Click Fresh Resume**: Generates a paste-ready opener (`Read .ocp/handoffs/latest.md...`) to restart seamlessly in a fresh session with minimum token overhead.
 
 ---
 
@@ -114,7 +114,7 @@ When you need to pause work, switch tasks, or combat context window token bloat,
 | `/plan [topic]` | Create phased Implementation Plan | `docs/plan/<topic>.md` |
 | `/impl [task]` | Execute code implementation & test verification | Source files & test suites |
 | `/sdd status` | Inspect all SDD artifacts (PRDs, ADRs, Plans) in project | Main chat / TUI |
-| `/sdd handoff [msg]` | Compact active SDD state for a fresh session takeover | `.opencode/handoffs/` |
+| `/sdd handoff [msg]` | Compact active SDD state for a fresh session takeover | `.ocp/handoffs/` |
 | `/sdd help` | Display SDD lifecycle guide and command syntax | Main chat / TUI |
 
 ---

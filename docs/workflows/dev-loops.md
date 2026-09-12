@@ -78,7 +78,7 @@ User → Objective → @build decomposes → Phase 0: @explore → Loop[Phase 1.
 - **Autonomy**: High — user gives objective, orchestrator drives all phases
 - **Phases**: Default 6 (3–6 recommended; compaction extends to 8–10)
 - **Stop**: Consecutive phase fuses ≥ 3, files > 100, external dependency unavailable
-- **Resume**: `--resume` from `.opencode/dev-ultra-state.md`
+- **Resume**: `--resume` from `.ocp/dev-ultra-state.md`
 
 ---
 

@@ -132,6 +132,6 @@ Artifact generated: `docs/...`
 When `/sdd handoff [focus]` is invoked:
 1. **Identify active SDD phase** (`prd`, `adr`, `plan`, or `impl`) and scan generated artifacts (`docs/prd/`, `docs/adr/`, `docs/plan/`).
 2. **Extract unwritten context**: Capture implicit assumptions, edge cases, and rejected alternatives discussed in the session.
-3. **Save to Git-Safe Directory**: Write to `.opencode/handoffs/handoff-<project>-<timestamp>.md` (and update `.opencode/handoffs/latest.md`). If workspace is unavailable or not writable, fallback to OS Temp directory (`$env:TEMP` / `$TMPDIR`). Never pollute tracked repo files.
+3. **Save to Git-Safe Directory**: Write to `.ocp/handoffs/handoff-<project>-<timestamp>.md` (and update `.ocp/handoffs/latest.md`). If workspace is unavailable or not writable, fallback to OS Temp directory (`$env:TEMP` / `$TMPDIR`). Never pollute tracked repo files.
 4. **Output Paste-Ready Opener**: Provide relative/absolute path and a single-line command for the next session to resume effortlessly:
-   `"Read .opencode/handoffs/latest.md and resume SDD workflow at /<next-phase>"`
+   `"Read .ocp/handoffs/latest.md and resume SDD workflow at /<next-phase>"`

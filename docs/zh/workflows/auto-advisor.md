@@ -28,9 +28,9 @@
 
 ## 状态持久化
 
-- **存储位置**：`opencode.jsonc` 中的 `autoAdvisorMode` 字段——无隐藏状态文件、无环境变量。取值：`off` / `lite` / `full`。
-- **解析顺序**：项目配置（`opencode.jsonc` 或 `.opencode/opencode.jsonc`）→ `off`（默认）。纯项目级 —— 没有全局回退。
-- **写入仅限项目级**：`/auto-advisor <mode>` 在项目 `opencode.jsonc` 中更新该字段（保留注释与其他字段）；永远不修改全局配置。
+- **存储位置**：`.ocp/ocp.json` 中的 `autoAdvisorMode` 字段——无隐藏状态文件、无环境变量。取值：`off` / `lite` / `full`。
+- **解析顺序**：项目配置（`.ocp/ocp.json`）→ `off`（默认）。纯项目级 —— 没有全局回退。
+- **写入仅限项目级**：`/auto-advisor <mode>` 在项目 `.ocp/ocp.json` 中更新该字段（保留注释与其他字段）；永远不修改全局配置。
 - 取值跨会话和跨进程持久化，作用域为单个项目。
 
 ---

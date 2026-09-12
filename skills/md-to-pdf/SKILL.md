@@ -20,7 +20,7 @@ You have access to the `md_to_pdf` tool (registered by the `md-to-pdf` plugin). 
    - The PDF is attached as a download
 5. **On failure** — output the error message in dialogue, then **list the manual dependency commands** (Pandoc, Chromium / Playwright browsers), and **point at the detailed log**:
    ```
-   .opencode/logs/<session-id>/md-to-pdf.log
+   .ocp/logs/<session-id>/md-to-pdf.log
    ```
    The log is the single source of truth for diagnosing conversion failures; do not invent error text beyond what the tool / log returned.
 

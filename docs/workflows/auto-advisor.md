@@ -28,9 +28,9 @@ The `auto-advisor-mode` plugin writes the config before the LLM sees the command
 
 ## State persistence
 
-- **Storage**: `autoAdvisorMode` field in `opencode.jsonc` — no hidden state files, no environment variables. Values: `off` / `lite` / `full`.
-- **Resolution**: Project config (`opencode.jsonc` or `.opencode/opencode.jsonc`) → `off` (default). Purely project-scoped — no global fallback.
-- **Project-only writes**: `/auto-advisor <mode>` updates the field in the project's `opencode.jsonc` (preserving comments and other fields); never modifies global config.
+- **Storage**: `autoAdvisorMode` field in `.ocp/ocp.json` — no hidden state files, no environment variables. Values: `off` / `lite` / `full`.
+- **Resolution**: Project config (`.ocp/ocp.json`) → `off` (default). Purely project-scoped — no global fallback.
+- **Project-only writes**: `/auto-advisor <mode>` updates the field in the project's `.ocp/ocp.json` (preserving comments and other fields); never modifies global config.
 - Persists across sessions and processes, scoped to the individual project.
 
 ---

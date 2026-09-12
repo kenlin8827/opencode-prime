@@ -19,7 +19,7 @@
 | `env-guard.ts` | 按项目的密钥文件门控 |
 | `e2e-guard.ts` | `/e2e-guard` 命令 —— 按项目门控：E2E 运行需用户确认 |
 | `project-manager.ts` | `/project` 命令 + 提交纪律 |
-| `project-memory.ts` | `/memory` 命令 —— 项目级记忆：在 `.opencode/memory/public.md`（团队）或 `private.md`（gitignored）里记录经验教训，并在每次聊天请求时以 `[PROJECT MEMORY]` 注入。LLM 可通过 `memory_note` 工具主动记录；`/memory-summarize` skill 用于 session 总结 |
+| `project-memory.ts` | `/memory` 命令 —— 项目级记忆：在 `.ocp/memory/public.md`（团队）或 `private.md`（gitignored）里记录经验教训，并在每次聊天请求时以 `[PROJECT MEMORY]` 注入。LLM 可通过 `memory_note` 工具主动记录；`/memory-summarize` skill 用于 session 总结 |
 | `queue-manager.ts` | `/queued` 命令 —— 管理会话忙碌时排队的提示 |
 | `profile-wizard.ts`、`provider-wizard.ts`、`project-wizard.ts` | `/profile`、`/provider` 与 `/project` TUI 弹窗向导；未配置现有 formatter 的新 Node 项目可明确选择配置项目本地 dprint |
 | `md-to-pdf.ts` | `/md-to-pdf` 命令与 `md_to_pdf` 工具 —— 将 Markdown 一键导出为高质量 A4 PDF（基于 Pandoc + Playwright） |
@@ -38,7 +38,7 @@
 
 ### 开关与治理布局
 
-提交门禁开关为**项目级**（存储于 `opencode.jsonc`）：
+提交门禁开关为**项目级**（存储于 `.ocp/ocp.json`）：
 
 ```text
 /adr-guard on       # 对本项目启用提交门禁拦截
@@ -128,9 +128,9 @@ ADR 治理系统支持 **Slash 命令（确定性脚手架 + AI 接力）** 与 
 按项目可选的门控机制，防止含敏感信息的 env 文件进入 LLM 上下文。开关为**项目级**，默认关闭：
 
 ```text
-# 对本项目启用（任选一种）
-echo on > <project>/.opencode/.env-guard
-# 或在项目的 opencode.jsonc 中添加 "envGuard": "on"
+/env-guard on       # 对本项目启用（<project>/.ocp/ocp.json 中 "envGuard": "on"）
+/env-guard off      # 关闭
+/env-guard          # 状态报告
 ```
 
 启用后，在执行前阻断针对 `.env`、`.env.local`、`.env.production` 等敏感文件的文件读取工具及读取到输出的 shell 命令。
@@ -142,7 +142,7 @@ echo on > <project>/.opencode/.env-guard
 按项目可选的门控机制，在运行任何 E2E 测试套件前要求用户明确确认：
 
 ```text
-/e2e-guard on       # 对本项目启用（项目 opencode.jsonc 中 "e2eGuard": "on"）
+/e2e-guard on       # 对本项目启用（项目 .ocp/ocp.json 中 "e2eGuard": "on"）
 /e2e-guard off      # 关闭
 /e2e-guard          # 状态报告
 ```
@@ -155,7 +155,7 @@ echo on > <project>/.opencode/.env-guard
 
 ## 项目记忆（`project-memory`）
 
-轻量、按项目的"经验教训"记忆 —— 与 `AGENTS.md`（人工整理的项目事实，权威）和 `opencode-mem`（自动捕获的会话历史，更重、粒度不同）互补。存储在项目内 `<projectDir>/.opencode/memory/` 下，跟 `.opencode/handoffs/`、`.opencode/logs/`、`.opencode/recovery/` 同惯例。两个 scope，一个开关：
+轻量、按项目的"经验教训"记忆 —— 与 `AGENTS.md`（人工整理的项目事实，权威）和 `opencode-mem`（自动捕获的会话历史，更重、粒度不同）互补。存储在项目内 `<projectDir>/.ocp/memory/` 下，跟 `.ocp/handoffs/`、`.ocp/logs/`、`.ocp/recovery/` 同惯例。两个 scope，一个开关：
 
 ```text
 /memory note "<经验>"             # 追加一条带日期条目到 public.md（默认，进 git）
@@ -170,7 +170,7 @@ echo on > <project>/.opencode/.env-guard
 文件名直接体现可见性：
 
 - `public.md` —— 进 git，通过常规 PR 流程由团队把关（同 AGENTS.md 权威等级）。
-- `private.md` —— gitignored，仅当前用户可见。首次捕获时自动写入 `.opencode/.gitignore`。
+- `private.md` —— gitignored，仅当前用户可见。首次捕获时自动写入 `.ocp/.gitignore`。
 
 无草稿 / 策展分层 —— 每条记录直接落地在 gate 注入的那个文件里。LLM 还有 `memory_note` 工具可以主动调用（发现 reusable rule 时），session 总结用 `/memory-summarize` skill（让模型挑选）。`projectMemory` 开启且任一文件非空时，其内容以 `[PROJECT MEMORY]` 块追加进系统提示（分 `=== Public ===` 和 `=== Private ===` 两段）—— 仅建议性质：冲突时以 AGENTS.md 为准。每段超过 16000 字符上限时，该段改为指针块、不注入正文，请及时精简。**默认开启**（文件为空时是 no-op，侧栏显示 `ON · empty` 提示去 `/memory note`）。设计文档：`docs/plan/project-memory.md`。
 
@@ -181,11 +181,11 @@ echo on > <project>/.opencode/.env-guard
 ```text
 # 1. 团队可见的规则 —— 发现一条，记下来
 $ /memory note "this repo uses pnpm not npm — package.json has pnpm-lock.yaml"
-[project-memory] Noted to /…/.opencode/memory/public.md — entry is live in memory (团队 scope)。
+[project-memory] Noted to /…/.ocp/memory/public.md — entry is live in memory (团队 scope)。
 
 # 2. 个人笔记 —— 仅你需要
 $ /memory note --private "VPN 慢，API 调用 timeout 设 60s"
-[project-memory] Noted to /…/.opencode/memory/private.md — entry is live in memory (个人 scope)。
+[project-memory] Noted to /…/.ocp/memory/private.md — entry is live in memory (个人 scope)。
 
 # 3. 调试其他提示词时临时关闭注入
 $ /memory off
@@ -203,7 +203,7 @@ LLM 主动调用（`memory_note` 工具）—— 看到 reusable rule 时：
 memory_note({ lesson: "use bun not node", scope: "public", confidence: "high" })
 → {
     title: "Memory noted (public, high)",
-    path: "<projectDir>/.opencode/memory/public.md",
+    path: "<projectDir>/.ocp/memory/public.md",
     metadata: { path, scope: "public", confidence: "high", confidenceRank: 3, lesson }
   }
 ```
@@ -284,9 +284,9 @@ memory_note({ lesson: "auth middleware swallows JWT errors" }, ctx: { agent: "ad
 按项目的提交规范强制机制，采用**文件即开关**：无状态文件、无 on/off 命令 —— `docs/git-commits.md` 存在即生效。
 
 ```text
-/project init       # 脚手架生成基线文件（.opencode/opencode.jsonc、docs/git-commits.md、AGENTS.md）
+/project init       # 迁移旧状态后生成基线文件（.ocp/ocp.json、docs/git-commits.md、AGENTS.md）
 /project index      # 手动刷新已有索引：codegraph sync、gitnexus analyze
-/project sync       # 只做配置补齐（只追加）
+/project sync       # 按需重跑一次性旧状态迁移（幂等）
 ```
 
 `docs/git-commits.md` 存在期间：
@@ -342,7 +342,7 @@ memory_note({ lesson: "auth middleware swallows JWT errors" }, ctx: { agent: "ad
 - **纯 TypeScript 架构**：彻底告别 Python 环境与脚本依赖，采用纯 TS / Node.js 实现 100% OpenXML 深度排版与美化。
 - **100% 样式表驱动（CSS）**：
   - 支持通过 CSS 样式表（`:root` 变量与标准选择器）控制全部排版参数（版心几何、色彩体系、字号、行高、边框、斑马纹等）。
-  - **项目级专属配置**：优先自动加载 `.opencode/md-to-docx.css` 与 `.opencode/md-to-docx.docx` 模板。
+  - **项目级专属配置**：优先自动加载 `.ocp/md-to-docx.css` 与 `.ocp/md-to-docx.docx` 模板。
 - **Mermaid 出版级图表系统**：
   - **离线秒级渲染**：内嵌本地离线 Mermaid 引擎，零网络延迟与零外网依赖。
   - **300+ DPI 视网膜高清**：大视口 + 3x 设备像素比超高清生成，图片自动等比扩展为 100% 满版心宽度居中展示。

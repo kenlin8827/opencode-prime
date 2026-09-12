@@ -26,11 +26,11 @@ Follow `output-protocol.md` §Session language. Preserve frontmatter keys, paths
 2. **Check git state** — `git status` summary: current branch, uncommitted/unstaged changes, unpushed commits. A fresh session cannot see this conversation; the document must carry it.
 3. **Collect artifacts** — specs, plans, ADRs, issues, tickets, commits, diffs, handoff-relevant docs. Reference them by path or URL — NEVER duplicate their content into the document.
 4. **Resolve the Handoff storage directory**:
-   - **Primary (Recommended)**: `.opencode/handoffs/` in the workspace root (ensure `.opencode/` is git-ignored so it never pollutes repository commits, while remaining visible and browsable in IDE file tree).
+   - **Primary (Recommended)**: `.ocp/handoffs/` in the workspace root (ensure `.ocp/` is git-ignored so it never pollutes repository commits, while remaining visible and browsable in IDE file tree).
    - **Fallback**: OS temp directory when workspace is unavailable or read-only (Windows → `$env:TEMP`, fallback `$env:TMP`; macOS/Linux → `$TMPDIR`, fallback `/tmp`).
 5. **Write the document**:
    - Save timestamped snapshot to `<handoff_dir>/handoff-<project>-<YYYYMMDD-HHMMSS>.md`.
-   - If written into `.opencode/handoffs/`, also copy or overwrite `.opencode/handoffs/latest.md` as an always-current resume pointer.
+   - If written into `.ocp/handoffs/`, also copy or overwrite `.ocp/handoffs/latest.md` as an always-current resume pointer.
 6. **Reply** with the absolute path plus a paste-ready opener for the next session.
 
 ## Document structure
@@ -77,14 +77,14 @@ suggested_command: "<command to run in next session>"
 
 ## Hard rules
 
-1. **Git-safe directory only.** Store exclusively in git-ignored `.opencode/handoffs/` or OS temp directory. Never write untracked handoff files into tracked source trees.
+1. **Git-safe directory only.** Store exclusively in git-ignored `.ocp/handoffs/` or OS temp directory. Never write untracked handoff files into tracked source trees.
 2. **Reference, don't duplicate.** Anything already captured in an artifact (spec, plan, ADR, issue, commit, diff) is cited by path or URL, never copied.
 3. **Redact sensitive information.** API keys, passwords, tokens, credentials, PII → replace with `<REDACTED: what it is>` and tell the user where the real value lives (e.g., env var name).
 4. **Stay compact.** A fresh agent must be able to read the whole document — well under 200 lines. Compression is the point; if the conversation was long, be ruthless.
 5. **Be concrete.** Every "next step" cites a file, command, or artifact. No vague "continue working on X".
-6. **Rolling retention.** `.opencode/handoffs/` maintains chronological snapshots. If historical handoffs exceed ~30 files, older snapshots can be pruned while preserving `latest.md`.
+6. **Rolling retention.** `.ocp/handoffs/` maintains chronological snapshots. If historical handoffs exceed ~30 files, older snapshots can be pruned while preserving `latest.md`.
 7. **End the reply with a paste-ready opener** for the next session:
 
 ```
-Read <absolute path to handoff doc or .opencode/handoffs/latest.md> and continue from there.
+Read <absolute path to handoff doc or .ocp/handoffs/latest.md> and continue from there.
 ```

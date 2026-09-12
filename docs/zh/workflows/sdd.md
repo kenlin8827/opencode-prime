@@ -100,8 +100,8 @@ ADR 在工程化体系中具备双重身份：
 ### 4. 跨会话暂存与状态交接 (`/sdd handoff`)
 当需要暂停开发、切换任务或会话 Context 过大时，可随时执行 `/sdd handoff`：
 - **自动锁定当前阶段**：准确记录当前完成的阶段（如 PRD/ADR 已完成，待执行 Plan）与制品链接。
-- **萃取隐式讨论认知**：将未写入 Markdown 的被否决方案与约束打包存入 Git 忽略的项目目录（`.opencode/handoffs/`）。
-- **一键在新会话中无缝恢复**：生成一条可直接复制粘贴的开场白（`Read .opencode/handoffs/latest.md...`），在新会话中以极简 Token 消耗满血继续流转。
+- **萃取隐式讨论认知**：将未写入 Markdown 的被否决方案与约束打包存入 Git 忽略的项目目录（`.ocp/handoffs/`）。
+- **一键在新会话中无缝恢复**：生成一条可直接复制粘贴的开场白（`Read .ocp/handoffs/latest.md...`），在新会话中以极简 Token 消耗满血继续流转。
 
 ---
 
@@ -114,5 +114,5 @@ ADR 在工程化体系中具备双重身份：
 | `/plan [topic]` | 创建分阶段实施任务计划 | `docs/plan/<topic>.md` |
 | `/impl [task]` | 执行编码实现与自动化测试验证 | 源码文件与测试套件 |
 | `/sdd status` | 检查项目内所有 SDD 规范制品清单 | 主对话界面 / TUI |
-| `/sdd handoff [msg]` | 暂存当前 SDD 状态与隐式上下文，供新会话接手 | `.opencode/handoffs/` |
+| `/sdd handoff [msg]` | 暂存当前 SDD 状态与隐式上下文，供新会话接手 | `.ocp/handoffs/` |
 | `/sdd help` | 显示 SDD 指南与帮助文档 | 主对话界面 / TUI |

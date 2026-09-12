@@ -28,7 +28,7 @@ OpenCode 多智能体配置自带一系列生产级工作流斜杠命令。
 | **`/git-push [--rebase\|--merge] [--dry-run] [--no-verify] [--force-with-lease] [--abort]`** | Git 工程流 | **当前分支的安全推送**：先 fetch 配置的上游并尝试普通 `git push`；确认是 `non-fast-forward` → 建 guard，按 merge 或 rebase 调和、验证后重试。认证、策略、hook、网络和语义冲突会停下；裸 `--force` 永远禁止 |
 | **`/grill-improve-loop [subject] [--max-rounds=N] [--target=N]`** | 评分驱动闭环 | 评分驱动改进闭环：评分→分析改进路径→修复/重构→验证→重新评分，直到结构性天花板、停滞或最大轮次。每轮触发 verification-honesty 评分机制（规则 5–7） |
 | **`/goal [text]`** | 自动化协议 | 结构化目标执行协议，包含审计友好的验收清单和可机械检测的停止条件 |
-| **`/handoff [focus]`** | 状态交接 | 将当前会话状态压缩为轻量交接包（存至 Git 忽略的 `.opencode/handoffs/`），生成新会话一键恢复开场白 |
+| **`/handoff [focus]`** | 状态交接 | 将当前会话状态压缩为轻量交接包（存至 Git 忽略的 `.ocp/handoffs/`），生成新会话一键恢复开场白 |
 | **`/adr-guard [on\|off\|status]`** | 质量硬门禁 | 项目级 ADR 提交铁律门禁：拦截缺少架构决策记录的 `feat:` 与 `refactor:` 提交 |
 | **`/e2e-guard [on\|off\|status]`** | 质量硬门禁 | 项目级 E2E 测试硬门禁：在功能变更和 Bug 修复时强制进行端到端测试覆盖检查 |
 | **`/env-guard [on\|off\|status]`** | 安全护栏 | 项目级敏感信息防泄漏护栏：拦截读取或向 Bash 暴露 `.env` 等凭据的行为 |
@@ -36,8 +36,8 @@ OpenCode 多智能体配置自带一系列生产级工作流斜杠命令。
 | **`/auto-advisor [off\|lite\|full]`** | 智能决策 | 切换 Advisor 智能决策模式（`off` 关闭 / `lite` 决策建议 / `full` 事实类自动代答） |
 | **`/md-to-pdf <file.md> [output.pdf]`** | 出版级导出 | Markdown 一键转高清 A4 PDF，支持 300 DPI Mermaid 图表、CSS 样式定制与 `--doctor` 自检修复 |
 | **`/md-to-docx <file.md> [output.docx]`** | 出版级导出 | Markdown 导出为行政级 Word (.docx)，支持纯 TS 引擎、中西双字排版、Mermaid 渲染与样式定制 |
-| **`/project`（或 `init`/`index`/`sync` 子命令）** | 项目管理 | `init\|index\|sync` 子命令用于脚手架生成项目基线文件（`.opencode/opencode.jsonc` 等），并自动触发 CodeGraph 与 GitNexus 索引；裸的 `/project` 打开交互式项目配置向导（通过终端可视化菜单一键开启或关闭各项 MCP 服务与功能插件） |
-| **`/memory [capture\|on\|off\|status]`** | 项目记忆 | 可选项目记忆：捕获经验、查看或切换门控、查询注入状态（记忆文件存于项目之外的 ocp 记忆根目录） |
+| **`/project`（或 `init`/`index`/`sync` 子命令）** | 项目管理 | `init\|index\|sync` 子命令用于脚手架生成项目基线文件（`.ocp/ocp.json` 等），并自动触发 CodeGraph 与 GitNexus 索引；裸的 `/project` 打开交互式项目配置向导（通过终端可视化菜单一键开启或关闭各项 MCP 服务与功能插件） |
+| **`/memory [note\|status\|on\|off]`** (+ `/memory-summarize [focus]`) | 项目记忆 | 项目级记忆双 scope：`/memory note "<经验>"` 写入 `.ocp/memory/public.md`（进 git，PR 审阅）；`--private` 写入 `private.md`（gitignored，仅当前用户）。LLM 发现可复用规则时也可调用 `memory_note` 工具。`/memory-summarize [focus]` 回顾当前会话并沉淀持久经验。两个文件均以 `[PROJECT MEMORY]` 注入（冲突时 AGENTS.md 权威）。每段超 16k 字符上限改为指针块。 |
 | **`/profile`** | 交互向导 (TUI) | 打开模型预设弹窗选择器：一键切换或精细配置 Auto / Ultimate / Performance / Economy / Lightweight 各层级模型 |
 | **`/provider`** | 交互向导 (TUI) | 打开服务商向导：为已激活或仓库自带的服务商配置凭证（baseURL / apiKey），管理模型清单 |
 | **`/disconnect [id\|--all]`** | 交互向导 (TUI) | 断开服务商密钥：裸打开连接向导；`<id>` 直达确认；`--all` 一次确认所有连接 |

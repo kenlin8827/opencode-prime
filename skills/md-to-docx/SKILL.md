@@ -29,7 +29,7 @@ You have access to the `md_to_docx` tool and the `/md-to-docx` slash command (re
    - The DOCX is attached as a download
 5. **On failure** — output the error message in dialogue, then point at the detailed log:
    ```
-   .opencode/logs/<session-id>/md-to-docx.log
+   .ocp/logs/<session-id>/md-to-docx.log
    ```
 
 ## Why DOCX over PDF

@@ -8,7 +8,7 @@ package-lock.json
 .metrics/
 
 # Advisor plugin state (legacy runtime file from old installs; current mode
-# lives in opencode.jsonc's autoAdvisorMode field instead)
+# lives in .ocp/ocp.json's autoAdvisorMode field instead)
 .advisor-mode
 
 # ADR iron-law plugin state (project-level switch written by /adr-guard)
@@ -53,6 +53,7 @@ dist/
 .gitnexus/
 .codegraph/
 .opencode/
+.ocp/
 
 # VitePress documentation build output & cache
 docs/.vitepress/dist/

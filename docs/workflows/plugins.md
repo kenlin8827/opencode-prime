@@ -19,7 +19,7 @@ Plugins provide runtime enforcement and workflows that prompts alone cannot achi
 | `env-guard.ts` | Per-project secret-file gate |
 | `e2e-guard.ts` | `/e2e-guard` command — per-project gate: E2E runs need user confirmation |
 | `project-manager.ts` | `/project` command + commit discipline |
-| `project-memory.ts` | `/memory` command — project-level memory: note lessons to `.opencode/memory/public.md` (team) or `private.md` (gitignored), inject under `[PROJECT MEMORY]` on each chat request. `memory_note` tool for LLM-initiated capture; `/memory-summarize` skill for session summaries. |
+| `project-memory.ts` | `/memory` command — project-level memory: note lessons to `.ocp/memory/public.md` (team) or `private.md` (gitignored), inject under `[PROJECT MEMORY]` on each chat request. `memory_note` tool for LLM-initiated capture; `/memory-summarize` skill for session summaries. |
 | `queue-manager.ts` | `/queued` command — manage prompts queued while the session is busy |
 | `profile-wizard.ts`, `provider-wizard.ts`, `project-wizard.ts` | `/profile`, `/provider`, and `/project` TUI dialog wizards; new Node projects without an existing formatter may explicitly set up project-local dprint |
 | `md-to-pdf.ts` | `/md-to-pdf` command & `md_to_pdf` tool — export Markdown files as publication-quality A4 PDFs (via Pandoc + Playwright) |
@@ -38,7 +38,7 @@ Enterprise-grade Architecture Decision Record governance. Operates in two comple
 
 ### Switch & Configuration
 
-The commit guard switch is **project-level** (stored in `opencode.jsonc`):
+The commit guard switch is **project-level** (stored in `.ocp/ocp.json`):
 
 ```text
 /adr-guard on       # enable commit gate for this project
@@ -124,9 +124,9 @@ The ADR governance system supports **Slash Commands (deterministic numbering + a
 Optional per-project gate keeping secret-bearing env files out of the LLM context. The switch is **project-level** and defaults to off:
 
 ```text
-# enable for this project (either one)
-echo on > <project>/.opencode/.env-guard
-# or add "envGuard": "on" to the project's opencode.jsonc
+/env-guard on       # enable for this project ("envGuard": "on" in <project>/.ocp/ocp.json)
+/env-guard off      # disable
+/env-guard          # status report
 ```
 
 When on, agent access is blocked before execution for file tools targeting `.env`, `.env.local`, `.env.production`, etc., and shell commands reading `.env` into stdout.
@@ -138,7 +138,7 @@ When on, agent access is blocked before execution for file tools targeting `.env
 Optional per-project gate requiring explicit user confirmation before any E2E suite runs:
 
 ```text
-/e2e-guard on       # enable for this project ("e2eGuard": "on" in project opencode.jsonc)
+/e2e-guard on       # enable for this project ("e2eGuard": "on" in project .ocp/ocp.json)
 /e2e-guard off      # disable
 /e2e-guard          # status report
 ```
@@ -154,8 +154,8 @@ Gating is graded by risk:
 Lightweight project-level "lessons learned" memory — complementary to
 `AGENTS.md` (manual facts, authoritative) and `opencode-mem` (automatic
 session history, heavier, different grain). Lives INSIDE the project at
-`<projectDir>/.opencode/memory/`, same convention as `.opencode/handoffs/`,
-`.opencode/logs/`, `.opencode/recovery/`. Two scopes, one gate:
+`<projectDir>/.ocp/memory/`, same convention as `.ocp/handoffs/`,
+`.ocp/logs/`, `.ocp/recovery/`. Two scopes, one gate:
 
 ```text
 /memory note "<lesson>"              # append a dated bullet to public.md (default, committed)
@@ -169,7 +169,7 @@ session history, heavier, different grain). Lives INSIDE the project at
 
 File names self-describe visibility:
 - `public.md` — committed to git, reviewed by your team through the normal PR flow (same authority tier as AGENTS.md).
-- `private.md` — gitignored, only the current user sees it. Auto-gitignored on first capture via `.opencode/.gitignore`.
+- `private.md` — gitignored, only the current user sees it. Auto-gitignored on first capture via `.ocp/.gitignore`.
 
 No draft/curated split — every entry lands directly in the file that the gate injects. The agent also has a `memory_note` tool it can call proactively when it discovers a reusable rule; a session-level `/memory-summarize` skill summarizes durable lessons for users who'd rather have the model pick. While `projectMemory` is on and either file is non-empty, content is appended to the system prompt under `[PROJECT MEMORY]` (with `=== Public ===` and `=== Private ===` sections) — advisory: AGENTS.md wins on conflict. Over the 16 000-char cap per section, that section falls back to a pointer block instead of injecting the content. Default on (an empty file is a no-op; the sidebar shows `ON · empty` to nudge a first capture).
 Design: `docs/plan/project-memory.md`.
@@ -181,11 +181,11 @@ User command (`/memory note`):
 ```text
 # 1. Team-visible rule — discover it, file it
 $ /memory note "this repo uses pnpm not npm — package.json has pnpm-lock.yaml"
-[project-memory] Noted to /…/.opencode/memory/public.md — entry is live in memory (team scope).
+[project-memory] Noted to /…/.ocp/memory/public.md — entry is live in memory (team scope).
 
 # 2. Personal note — only you need it
 $ /memory note --private "VPN slow, set API timeout to 60s for API calls"
-[project-memory] Noted to /…/.opencode/memory/private.md — entry is live in memory (personal scope).
+[project-memory] Noted to /…/.ocp/memory/private.md — entry is live in memory (personal scope).
 
 # 3. Toggle injection off when debugging other prompts
 $ /memory off
@@ -203,7 +203,7 @@ LLM-initiated (`memory_note` tool) — called by the agent when it spots a reusa
 memory_note({ lesson: "use bun not node", scope: "public", confidence: "high" })
 → {
     title: "Memory noted (public, high)",
-    path: "<projectDir>/.opencode/memory/public.md",
+    path: "<projectDir>/.ocp/memory/public.md",
     metadata: { path, scope: "public", confidence: "high", confidenceRank: 3, lesson }
   }
 ```
@@ -285,9 +285,9 @@ Over-cap behavior (16 000-char per section):
 Per-project commit-convention enforcement with a **file-as-switch**: no state file, no on/off command — the discipline is active exactly while `docs/git-commits.md` exists.
 
 ```text
-/project init       # scaffold baseline files (.opencode/opencode.jsonc, docs/git-commits.md, AGENTS.md)
+/project init       # migrate legacy state, then scaffold baseline files (.ocp/ocp.json, docs/git-commits.md, AGENTS.md)
 /project index      # manually refresh existing indexes (codegraph sync, gitnexus analyze)
-/project sync       # config top-up only (append-only)
+/project sync       # re-run the one-shot legacy migration on demand (idempotent)
 ```
 
 While `docs/git-commits.md` exists:
@@ -343,7 +343,7 @@ Export project Markdown documents (technical designs, requirements, ADRs, meetin
 - **Pure TypeScript Architecture**: 100% pure TS/Node.js implementation with zero Python dependencies, utilizing OpenXML manipulation via `@xmldom/xmldom` & `adm-zip`.
 - **100% Parameterized CSS Styling**:
   - Full control over page geometry, typography, palette, table zebra striping, and code cards via CSS variables and selector rules.
-  - Project-level exclusive styling via `.opencode/md-to-docx.css` and template via `.opencode/md-to-docx.docx`.
+  - Project-level exclusive styling via `.ocp/md-to-docx.css` and template via `.ocp/md-to-docx.docx`.
 - **Mermaid Publication Diagram System**:
   - **Zero-latency Offline Rendering**: Built-in bundled offline Mermaid engine, eliminating network delays and CDN outages.
   - **Retina 300+ DPI & 100% Width Expansion**: Generates crystal-clear high-res PNGs scaled proportionally to fill full content width.
