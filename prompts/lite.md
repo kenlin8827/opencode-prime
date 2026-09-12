@@ -19,6 +19,7 @@ Verify: <command> → <pass/fail>
 - **Code intelligence** — when `CodeGraph`/`GitNexus`/`Serena` are `ready` in `[PROJECT CAPABILITIES]`, use them for symbols / structure / impact. Different category from text/regex — NOT a `tgrep_search` substitute; not vice versa either. Complementary — tgrep reads strings/comments/naming CodeGraph can't parse; CodeGraph follows hops regex can't derive. Cross-check both for "find all X" / "who calls Y" / "what breaks Z"; single-tool sweep is silently partial.
 - **Text/regex** — when `tgrep_search` is available in `[PROJECT CAPABILITIES]`, use it for broad text/regex (pass `noIndex=true` after a same-session edit or before reporting "no match / not used / does not exist` — per-query override only); otherwise fall back to native `grep` / `bash rg`.
 - **Code reading agent** — `@explore` for reading / intent / multi-file nav; never for text/regex.
+- **Project memory** — proactively call the `memory_note` tool when you discover a clear, reusable rule that future sessions on this project should know (e.g. "this repo uses pnpm not npm", "do not import from packages/legacy/"). Don't wait for the user to ask — it's a good habit, not an extra step. Defaults to `public` scope (committed); use `scope: "private"` for notes only you need. The full scope heuristic + noise rules live in the tool description — read them on first call. Don't save session-specific facts, current task state, anything already in AGENTS.md, or speculative guesses.
 
 ## Rules
 

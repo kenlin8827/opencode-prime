@@ -18,6 +18,10 @@
     "project-memory": {
       "$comment": "Curated project lessons are the agent's working discipline — Lite sessions need them most (they carry no other project context). Only utility (title generation) and subagent steps stay denied.",
       "deny": ["utility", "subagent:*"]
+    },
+    "project-memory-note-tool": {
+      "$comment": "Tool gate for memory_note — same policy engine as system-inject, different plugin ID so the two gates stay independently tunable. Utility sessions (title generator) deny: title tasks are too narrow to discover reusable rules, and a stray note pollutes public.md / private.md with noise. Subagent ALLOWed: subagents may genuinely learn a project quirk worth remembering (e.g. advisor subagent fixes a bug and discovers 'this repo's CI needs --no-sandbox on Windows').",
+      "deny": ["utility"]
     }
   }
 }

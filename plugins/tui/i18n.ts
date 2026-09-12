@@ -615,7 +615,7 @@ const STRINGS = {
   "project.switchAdrLayout": { en: "ADR structure (auto/flat/hierarchy)", "zh-CN": "ADR 结构 (auto / flat / hierarchy)" },
   "project.switchEnvGuard": { en: "Protect secret .env file reads", "zh-CN": "保护 .env 密钥文件读取" },
   "project.switchE2eGuard": { en: "Assess E2E before test execution", "zh-CN": "测试执行前评估 E2E 影响" },
-  "project.switchProjectMemory": { en: "Inject curated project memory into context (outside the project, per ocp memory root)", "zh-CN": "将整理后的项目记忆注入上下文(存于 ocp 记忆根目录,独立于项目)" },
+  "project.switchProjectMemory": { en: "Inject curated project memory into context (.opencode/memory/public.md inside the project, committed)", "zh-CN": "将整理后的项目记忆注入上下文(项目内 .opencode/memory/public.md,进 git)" },
   "project.nameEnvGuard": { en: "envGuard", "zh-CN": "环境护栏" },
   "project.nameE2eGuard": { en: "e2eGuard", "zh-CN": "E2E 护栏" },
   "project.nameAdrGuard": { en: "adrGuard", "zh-CN": "ADR 护栏" },
@@ -753,18 +753,41 @@ const STRINGS = {
 
   // ── project-memory (/memory) ──
   "guard.memory.help": {
-    en: "[project-memory] Project-level lessons memory — capture + inject (phase 1; review tool is phase 2).\nUsage:\n/memory capture <lesson>  → append a dated lesson to {draft} (awaiting review)\n/memory on | off          → toggle injection of {memory} into the system prompt\n/memory status            → gate state + entry counts\nPromotion draft → memory is a manual edit for now: move stable entries, delete stale ones.\n{memory} is advisory — AGENTS.md stays authoritative on conflict.",
-    "zh-CN": "[project-memory] 项目级经验记忆 —— 捕获 + 注入（阶段 1；review 工具在阶段 2）。\n用法：\n/memory capture <lesson>  → 将一条带日期的经验追加到 {draft}（待整理）\n/memory on | off          → 切换是否把 {memory} 注入系统提示\n/memory status            → 开关状态 + 条目计数\n草稿 → 记忆文件目前为手工晋升：保留稳定的条目，删除过期的条目。\n记忆文件仅为建议 —— 冲突时以 AGENTS.md 为准。",
+    en: "[project-memory] Project-level lessons memory — two scopes, one gate.\n" +
+      "  Public file:  {public} (committed to git, reviewed via PR flow)\n" +
+      "  Private file: {private} (project-scoped, gitignored — escape hatch for notes the team should not see)\n\n" +
+      "Usage:\n" +
+      "/memory note <lesson>           → append a dated entry to public.md (default)\n" +
+      "/memory note --private <lesson> → append to gitignored private.md (escape hatch)\n" +
+      "/memory on | off                → toggle injection of both into the system prompt\n" +
+      "/memory status                  → gate state + public/private entry counts\n\n" +
+      "Both scopes are advisory — AGENTS.md stays authoritative on conflict.",
+    "zh-CN": "[project-memory] 项目级经验记忆 —— 两个 scope，一个开关。\n" +
+      "  公开文件：{public}（进 git，通过常规 PR 流程由团队把关）。\n" +
+      "  私人文件：{private}（项目作用域，gitignored —— 仅当前用户可见，团队不应该看到的笔记的逃生口）。\n\n" +
+      "用法：\n" +
+      "/memory note <lesson>           → 将一条带日期条目追加到 public.md（默认）\n" +
+      "/memory note --private <lesson> → 追加到 gitignored 的 private.md（个人逃生口）\n" +
+      "/memory on | off                → 切换是否把两个文件注入系统提示\n" +
+      "/memory status                  → 开关状态 + 公开/私人条目计数\n\n" +
+      "两个 scope 都只是建议 —— 冲突时以 AGENTS.md 为准。",
   },
-  "guard.memory.captured": { en: "[project-memory] Captured to {draft} — promote to {memory} (manual edit) for it to be injected.", "zh-CN": "[project-memory] 已捕获到 {draft} —— 需手工晋升到 {memory} 才会被注入。" },
-  "guard.memory.nothing": { en: "[project-memory] Nothing to capture — usage: /memory capture <lesson>", "zh-CN": "[project-memory] 没有可捕获的内容 —— 用法：/memory capture <经验>" },
+  "guard.memory.noted": { en: "[project-memory] Noted to {path} — entry is live in {memory} ({scope} scope).", "zh-CN": "[project-memory] 已记入 {path} — 条目已在 {memory} 中生效（{scope} scope）。" },
+  "guard.memory.scopePublic": { en: "public", "zh-CN": "公开" },
+  "guard.memory.scopePrivate": { en: "private", "zh-CN": "私人" },
+  "guard.memory.nothing": { en: "[project-memory] Nothing to note — usage: /memory note <lesson> (or /memory note --private <lesson>)", "zh-CN": "[project-memory] 没有可记的内容 —— 用法：/memory note <经验>（或 /memory note --private <经验>）" },
   "guard.memory.unknown": { en: "[project-memory] Unknown subcommand \"{sub}\".", "zh-CN": "[project-memory] 未知子命令 \"{sub}\"。" },
   "guard.memory.set": { en: "[project-memory] Injection {STATE} — wrote \"projectMemory\": \"{state}\" to {path}.", "zh-CN": "[project-memory] 注入已{zhState} —— 已把 \"projectMemory\": \"{state}\" 写入 {path}。" },
   "guard.memory.setFail": { en: "[project-memory] Failed to write the project config — edit the \"{field}\" field of opencode.jsonc by hand.", "zh-CN": "[project-memory] 写入项目配置失败 —— 请手工编辑 opencode.jsonc 的 \"{field}\" 字段。" },
-  "guard.memory.status": { en: "[project-memory] gate: {gate} — memory: {memory}, draft: {draft} pending. Injection {flag}.", "zh-CN": "[project-memory] gate: {gate} —— 记忆：{memory}，草稿 {draft} 条待整理。注入 {flag}。" },
+  "guard.memory.status": { en: "[project-memory] gate: {gate} — public: {public}, private: {private}. Injection {flag}.", "zh-CN": "[project-memory] gate: {gate} —— 公开：{public}，私人：{private}。注入 {flag}。" },
   "guard.memory.entries": { en: "{count} entries", "zh-CN": "{count} 条" },
   "guard.memory.missing": { en: "missing/empty", "zh-CN": "缺失或为空" },
-  "guard.memory.noCurated": { en: "[project-memory] NOTE: gate is ON but no curated memory yet — nothing is injected. Capture with /memory capture \"<lesson>\", then promote {draft} → {memory} (manual edit) to activate.", "zh-CN": "[project-memory] 注意：开关已开但还没有整理后的记忆，当前无任何注入。先用 /memory capture \"<经验>\" 捕获，再手工把 {draft} 晋升到 {memory} 后生效。" },
+  "guard.memory.noCurated": { en: "[project-memory] NOTE: gate is ON but both files are missing/empty — nothing is injected. Note with /memory note \"<lesson>\" (public) or /memory note --private \"<note>\" (private) to populate.", "zh-CN": "[project-memory] 注意：开关已开但两个文件都缺失或为空，当前无任何注入。用 /memory note \"<经验>\"（公开）或 /memory note --private \"<笔记>\"（私人）写入第一条。" },
+  "guard.memory.showHeader": { en: "[project-memory] Active memory preview (what the LLM sees on each chat request):", "zh-CN": "[project-memory] 当前活跃记忆预览（LLM 每次聊天请求看到的内容）：" },
+  "guard.memory.showScope": { en: "=== {label} ({count} entries, last edited {mtime}){stale} ===", "zh-CN": "=== {label}（{count} 条，最后修改 {mtime}）{stale} ===" },
+  "guard.memory.showStale": { en: " — STALE (>30 days), consider review", "zh-CN": " —— 已过期（>30 天），建议 review" },
+  "guard.memory.showPaths": { en: "Files:\n  public:  {public}\n  private: {private}", "zh-CN": "文件路径：\n  公开：  {public}\n  私人：{private}" },
+  "guard.memory.showEmpty": { en: "[project-memory] No memory captured yet — nothing injected.\nNote with /memory note \"<lesson>\" (public) or /memory note --private \"<note>\" (private).\nFiles:\n  public:  {public}\n  private: {private}", "zh-CN": "[project-memory] 暂无任何记录——当前无注入内容。\n用 /memory note \"<经验>\"（公开）或 /memory note --private \"<笔记>\"（私人）写入第一条。\n文件路径：\n  公开：  {public}\n  私人：{private}" },
 
   // ── e2e-guard (/e2e-guard) ──
   "guard.e2e.help": {

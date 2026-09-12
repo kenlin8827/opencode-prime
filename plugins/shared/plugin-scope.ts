@@ -3,33 +3,50 @@
  * installed to the config root, hence the ../../ relative import).
  *
  * opencode has no native plugin-to-agent scoping: every
- * `experimental.chat.system.transform` hook fires for every session, and the
- * hook carries NO agent identifier. Two detection channels:
+ * `experimental.chat.system.transform` hook fires for every session, AND
+ * every tool registered by a plugin is exposed to every session. Two
+ * detection channels for the agent / session state:
  *
  *   1. detectAgent(system) — synchronous text identification: matches the
  *      system text against the `identifiers` rules (pure data, no match text
- *      hardcoded here):
- *        { "contains": "<str>" }   — ANY system entry contains <str>
- *        { "startsWith": "<str>" } — the FIRST system entry starts with it
- *      Yields a scope name (identity or state: lite, utility) or null.
+ *      hardcoded here). Works for system-transform hooks because they carry
+ *      `output.system: string[]` — we can scan for marker text like the
+ *      `<!-- lite-mode -->` HTML probe or the "You are a title generator"
+ *      sentinel. Yields a scope name (identity or state: lite, utility) or null.
  *   2. parentID ground truth — a session with a parent session IS a subagent
  *      step (state "subagent"); resolved via the opencode client, cached per
  *      sessionID. Checked only when text identification finds nothing.
  *
+ * Two entry points, same policy engine:
+ *
+ *   `scoped(input, system, pluginId, client?)`
+ *     — for system-transform hooks. Detects agent via `system` text.
+ *     Call: `if (!await scoped(input, output.system, "<plugin-id>", client)) return`.
+ *
+ *   `scopedForTool(input, pluginId, client?)`
+ *     — for tool execute handlers. Detects agent via `input.agent` string
+ *     (OpenCode passes the agent name through ToolContext but NOT the
+ *     system text — there is no system to scan inside a tool call).
+ *     Subagent still falls through to parentID when agent-name detection
+ *     is null. Call:
+ *       if (!await scopedForTool({ sessionID: ctx.sessionID, agent: ctx.agent }, "<plugin-id>", client)) {
+ *         return { title: "...", output: "tool not available in this context" }
+ *       }
+ *
  * Policy lookup: plugins[<pluginId>] ?? plugins["*"], each { deny?, allow? }.
  * Scope entry grammar: "x" matches identity or state x; "x:*" matches state
- * x; "x:y" matches state x with identity y. deny = blacklist; allow =
- * whitelist (presence means only listed entries pass); deny wins. Protocol
- * injectors call:
- *   `if (!await scoped(input, output.system, "<plugin-id>", client)) return`.
+ * x; "x:y" matches state x with identity y (reserved — identity-in-state
+ * detection is not wired yet). deny = blacklist; allow = whitelist
+ * (presence means only listed entries pass); deny wins.
  *
  * Fail-open on any error: broken policy degrades to pre-gate behavior, never
  * to lost functionality.
  *
- * Public surface is exactly the gate API (detectAgent, scoped); identifier
- * match texts stay encapsulated in plugin-scope.json. This file lives in
- * plugins/shared/ and is NOT loaded as a plugin itself (only root-level .ts
- * files are), so it may export non-functions.
+ * Public surface is exactly the gate API (detectAgent, detectAgentByName,
+ * scoped, scopedForTool); identifier match texts stay encapsulated in
+ * plugin-scope.json. This file lives in plugins/shared/ and is NOT loaded
+ * as a plugin itself (only root-level .ts files are), so it may export
+ * non-functions.
  */
 
 import scopeFile from "../../plugin-scope.json"
@@ -44,7 +61,7 @@ type Context = { identity: string | null; state: string | null }
 
 const config: ScopeFile = (scopeFile && typeof scopeFile === "object" ? scopeFile : {}) as ScopeFile
 
-/* ---- text identification (sync) ---- */
+/* ---- text identification (sync) — for system-transform hooks ---- */
 
 function matchesRule(system: Array<unknown> | undefined | null, rule: IdentifierRule): boolean {
   if (!Array.isArray(system)) return false
@@ -71,9 +88,36 @@ export function detectAgent(system: Array<unknown> | undefined | null): string |
   return null
 }
 
+/* ---- agent-name identification (sync) — for tool execute handlers ---- */
+
+/**
+ * Identify the context from the agent name string OpenCode provides via
+ * ToolContext.agent. System text is NOT available inside tool calls, so
+ * we map the agent name directly to a scope identifier:
+ *
+ *   "title-generator" / "title" / "utility" → "utility" (OpenCode's title agent)
+ *   "lite" / contains "lite-mode"            → "lite" (this project's default agent)
+ *   anything else                            → null (falls through to subagent detection)
+ *
+ * Conservative substring match for utility so future OpenCode renames
+ * (e.g. "title-generator-v2") still match without a plugin-scope bump.
+ * Lite requires a tighter match to avoid false positives on names like
+ * "satellite".
+ */
+export function detectAgentByName(agent: string | undefined | null): string | null {
+  if (!agent) return null
+  const lower = agent.toLowerCase()
+  if (lower.includes("title") || lower === "utility") return "utility"
+  if (lower === "lite" || lower.includes("lite-mode")) return "lite"
+  return null
+}
+
 /* ---- subagent state via session parentID (ground truth, cached) ---- */
 
 type SessionClient = { session?: { get?: (args: any) => Promise<any> } }
+// Re-export for plugins that need to pass their plugin-level client to
+// `scopedForTool` (OpenCode's ToolContext doesn't carry the client).
+export type { SessionClient }
 
 const subagentBySession = new Map<string, boolean>()
 
@@ -107,10 +151,23 @@ function entryMatches(entry: unknown, ctx: Context): boolean {
 
 /** True when the policy blocks this context (deny wins over allow). */
 function policyBlocks(policy: Policy, ctx: Context): boolean {
+  if (!policy || typeof policy !== "object") return false
   const deny = Array.isArray(policy.deny) ? policy.deny : []
   if (deny.some((e) => entryMatches(e, ctx))) return true
   if (Array.isArray(policy.allow)) return !policy.allow.some((e) => entryMatches(e, ctx))
   return false
+}
+
+/** Core gate logic shared by both entry points. Pure of detection source. */
+async function evaluate(
+  identity: string | null,
+  state: string | null,
+  pluginId: string,
+): Promise<boolean> {
+  if (identity === null && state === null) return true
+  const policy = config.plugins?.[pluginId] ?? config.plugins?.["*"]
+  if (!policy || typeof policy !== "object") return true
+  return !policyBlocks(policy, { identity, state })
 }
 
 /**
@@ -121,7 +178,7 @@ export async function scoped(
   input: { sessionID?: unknown } | undefined | null,
   system: Array<unknown> | undefined | null,
   pluginId: string,
-  client?: SessionClient
+  client?: SessionClient,
 ): Promise<boolean> {
   try {
     const identity = detectAgent(system)
@@ -130,10 +187,38 @@ export async function scoped(
       const sessionID = typeof input?.sessionID === "string" ? input.sessionID : undefined
       if (await isSubagentSession(sessionID, client)) state = "subagent"
     }
-    if (identity === null && state === null) return true
-    const policy = config.plugins?.[pluginId] ?? config.plugins?.["*"]
-    if (!policy || typeof policy !== "object") return true
-    return !policyBlocks(policy, { identity, state })
+    return await evaluate(identity, state, pluginId)
+  } catch {
+    return true
+  }
+}
+
+/**
+ * True when `pluginId` may run its tool execute handler for this call.
+ * Tool context differs from system-transform in two ways:
+ *   1. No `output.system: string[]` is available — agent identification
+ *      uses `input.agent` (ToolContext.agent) via `detectAgentByName`.
+ *   2. Subagent detection still works via parentID when no agent name hits.
+ *
+ * Plugin IDs for tool gates use a distinct namespace (e.g. `project-memory-tool`)
+ * so system-inject and tool-call policies can differ — same plugin, two
+ * separate gates, each tunable in `plugin-scope.json`.
+ *
+ * Same fail-open contract as `scoped()`.
+ */
+export async function scopedForTool(
+  input: { sessionID?: unknown; agent?: string } | undefined | null,
+  pluginId: string,
+  client?: SessionClient,
+): Promise<boolean> {
+  try {
+    const identity = detectAgentByName(input?.agent)
+    let state: string | null = null
+    if (identity === null && client?.session?.get) {
+      const sessionID = typeof input?.sessionID === "string" ? input.sessionID : undefined
+      if (await isSubagentSession(sessionID, client)) state = "subagent"
+    }
+    return await evaluate(identity, state, pluginId)
   } catch {
     return true
   }

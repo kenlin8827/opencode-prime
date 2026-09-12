@@ -19,7 +19,7 @@
 | `env-guard.ts` | 按项目的密钥文件门控 |
 | `e2e-guard.ts` | `/e2e-guard` 命令 —— 按项目门控：E2E 运行需用户确认 |
 | `project-manager.ts` | `/project` 命令 + 提交纪律 |
-| `project-memory.ts` | `/memory` 命令 —— 可选的项目记忆：捕获经验教训，注入整理后的记忆文件（存于项目之外的 ocp 记忆根目录） |
+| `project-memory.ts` | `/memory` 命令 —— 项目级记忆：在 `.opencode/memory/public.md`（团队）或 `private.md`（gitignored）里记录经验教训，并在每次聊天请求时以 `[PROJECT MEMORY]` 注入。LLM 可通过 `memory_note` 工具主动记录；`/memory-summarize` skill 用于 session 总结 |
 | `queue-manager.ts` | `/queued` 命令 —— 管理会话忙碌时排队的提示 |
 | `profile-wizard.ts`、`provider-wizard.ts`、`project-wizard.ts` | `/profile`、`/provider` 与 `/project` TUI 弹窗向导；未配置现有 formatter 的新 Node 项目可明确选择配置项目本地 dprint |
 | `md-to-pdf.ts` | `/md-to-pdf` 命令与 `md_to_pdf` 工具 —— 将 Markdown 一键导出为高质量 A4 PDF（基于 Pandoc + Playwright） |
@@ -155,15 +155,127 @@ echo on > <project>/.opencode/.env-guard
 
 ## 项目记忆（`project-memory`）
 
-轻量、可选、按项目的"经验教训"记忆 —— 与 `AGENTS.md`（人工整理的项目事实，权威）和 `opencode-mem`（自动捕获的会话历史，更重、粒度不同）互补。存储位置在项目之外：ocp 用户级记忆根目录（`~/.config/opencode/memory/<projectKey>/`，路径哈希 key —— 支持 `OCP_CONFIG_PATH`/`XDG_CONFIG_HOME` 覆盖）。三阶段、每阶段都需显式启用；阶段 1 = 捕获 + 注入：
+轻量、按项目的"经验教训"记忆 —— 与 `AGENTS.md`（人工整理的项目事实，权威）和 `opencode-mem`（自动捕获的会话历史，更重、粒度不同）互补。存储在项目内 `<projectDir>/.opencode/memory/` 下，跟 `.opencode/handoffs/`、`.opencode/logs/`、`.opencode/recovery/` 同惯例。两个 scope，一个开关：
 
 ```text
-/memory capture "<lesson>"   # 追加一条带日期的条目到 <记忆根目录>/draft.md
-/memory on | off             # 切换是否注入 <记忆根目录>/memory.md
-/memory status               # 开关状态 + 条目计数
+/memory note "<经验>"             # 追加一条带日期条目到 public.md（默认，进 git）
+/memory note --private "<笔记>"   # 追加到 private.md（gitignored，仅当前用户可见）
+/memory on | off                  # 切换是否把两个文件注入系统提示
+/memory status                    # 开关状态 + public/private 条目计数
+/memory show                       # 预览当前注入内容（条目 + 最后修改时间 + 过期提示）
+
+/memory-summarize                  # LLM 扫描会话并提取值得记录的经验
 ```
 
-草稿 → `memory.md` 的晋升目前为手工编辑（保留带日期条目格式；删除过期条目）。`projectMemory` 开启且文件非空时，其内容以 `[PROJECT MEMORY]` 块追加进系统提示 —— 仅建议性质：冲突时以 AGENTS.md 为准。超过 16000 字符上限时不注入正文（改为指针块），请及时精简。**默认开启**（memory.md 缺失或为空时是 no-op，侧栏显示 `ON · empty` 提示去 `/memory capture`）。设计文档：`docs/plan/project-memory-phase1.md`。
+文件名直接体现可见性：
+
+- `public.md` —— 进 git，通过常规 PR 流程由团队把关（同 AGENTS.md 权威等级）。
+- `private.md` —— gitignored，仅当前用户可见。首次捕获时自动写入 `.opencode/.gitignore`。
+
+无草稿 / 策展分层 —— 每条记录直接落地在 gate 注入的那个文件里。LLM 还有 `memory_note` 工具可以主动调用（发现 reusable rule 时），session 总结用 `/memory-summarize` skill（让模型挑选）。`projectMemory` 开启且任一文件非空时，其内容以 `[PROJECT MEMORY]` 块追加进系统提示（分 `=== Public ===` 和 `=== Private ===` 两段）—— 仅建议性质：冲突时以 AGENTS.md 为准。每段超过 16000 字符上限时，该段改为指针块、不注入正文，请及时精简。**默认开启**（文件为空时是 no-op，侧栏显示 `ON · empty` 提示去 `/memory note`）。设计文档：`docs/plan/project-memory.md`。
+
+### 使用示例
+
+用户命令（`/memory note`）：
+
+```text
+# 1. 团队可见的规则 —— 发现一条，记下来
+$ /memory note "this repo uses pnpm not npm — package.json has pnpm-lock.yaml"
+[project-memory] Noted to /…/.opencode/memory/public.md — entry is live in memory (团队 scope)。
+
+# 2. 个人笔记 —— 仅你需要
+$ /memory note --private "VPN 慢，API 调用 timeout 设 60s"
+[project-memory] Noted to /…/.opencode/memory/private.md — entry is live in memory (个人 scope)。
+
+# 3. 调试其他提示词时临时关闭注入
+$ /memory off
+$ /memory on
+
+# 4. 状态 —— 开关 + 两个 scope 的计数
+$ /memory status
+[project-memory] gate: on — team: 3 条, personal: 1 条. 注入 ACTIVE.
+```
+
+LLM 主动调用（`memory_note` 工具）—— 看到 reusable rule 时：
+
+```text
+# 代码 session 进行中，LLM 调：
+memory_note({ lesson: "use bun not node", scope: "public", confidence: "high" })
+→ {
+    title: "Memory noted (public, high)",
+    path: "<projectDir>/.opencode/memory/public.md",
+    metadata: { path, scope: "public", confidence: "high", confidenceRank: 3, lesson }
+  }
+```
+
+Session 总结（`/memory-summarize` skill）—— session 收尾时，可选带 focus：
+
+```text
+# 整段 session 总结（两个 scope，所有主题）
+$ /memory-summarize
+## Memory summary
+**Captured 3 lesson(s)**.
+- public (2): this repo's CI needs --no-sandbox on Windows;
+                OpenCode plugin API requires client at registration time
+- private (1): user prefers dark-mode editor
+**Skipped** (counts only — no list):
+- session-specific: 4
+- already in AGENTS.md: 1
+- speculative: 1
+
+# 聚焦提取 —— 只挑 API 相关的，且只 team memory
+$ /memory-summarize "API quirks" --public
+## Memory summary
+**Captured 2 lesson(s) [filter: public] [focus: "API quirks"]**.
+- public (2): OpenCode plugin API requires client at registration time;
+                scopedForTool needs both sessionID and agent for subagent detection
+**Skipped**:
+- session-specific: 4
+- off-topic for "API quirks": 3
+- already in public.md: 1
+
+# focus 没匹配上 —— 显式报告无匹配（不悄悄扩大范围）
+$ /memory-summarize "error handling patterns"
+## Memory summary
+**No lessons matched focus "error handling patterns". Drop the focus to capture the full session.**
+```
+
+与 scope flag 组合 —— focus 与 `--public`/`--private` 正交：
+```text
+$ /memory-summarize "workflow lessons" --private   # workflow 相关经验，只记个人笔记
+$ /memory-summarize "gotchas we hit"               # 匹配 focus 的所有主题，两个 scope 都可
+```
+
+工具 gate 行为：
+
+```text
+# title-generator utility session 尝试调用：
+memory_note({ lesson: "x" }, ctx: { agent: "title-generator" })
+→ {
+    title: "Memory note denied",
+    output: "memory_note is not available in this agent context (title-generator). …",
+    metadata: { denied: true, agent: "title-generator", … }
+  }
+# （工具 gate 和 system-inject 都 deny。title 任务发现不了 reusable rule —— 拒绝以防污染。）
+
+# advisor subagent 记下真实项目怪癖：
+memory_note({ lesson: "auth middleware swallows JWT errors" }, ctx: { agent: "advisor", sessionID: "sub-1" })
+→ 成功（subagent 确实学到了值得记的东西）
+```
+
+超出上限（每段 16 000 字符）：
+
+```text
+# public.md 超过 cap → 该段改为指针块：
+# [PROJECT MEMORY]
+# === Public ===
+# /…/public.md is 18500 chars — over the 16000-char injection cap, so it is NOT in
+# your context. Read /…/public.md when making decisions it could affect, and ask
+# the user to prune/summarize stale entries.
+# === Private ===
+# (正常注入 —— private.md 较小)
+# 逐段独立：private.md 涨爆不会让 public 沉默，反之亦然。
+```
 
 ---
 

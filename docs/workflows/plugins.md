@@ -19,7 +19,7 @@ Plugins provide runtime enforcement and workflows that prompts alone cannot achi
 | `env-guard.ts` | Per-project secret-file gate |
 | `e2e-guard.ts` | `/e2e-guard` command — per-project gate: E2E runs need user confirmation |
 | `project-manager.ts` | `/project` command + commit discipline |
-| `project-memory.ts` | `/memory` command — opt-in project memory: capture lessons, inject curated memory (stored outside the project under the ocp memory root) |
+| `project-memory.ts` | `/memory` command — project-level memory: note lessons to `.opencode/memory/public.md` (team) or `private.md` (gitignored), inject under `[PROJECT MEMORY]` on each chat request. `memory_note` tool for LLM-initiated capture; `/memory-summarize` skill for session summaries. |
 | `queue-manager.ts` | `/queued` command — manage prompts queued while the session is busy |
 | `profile-wizard.ts`, `provider-wizard.ts`, `project-wizard.ts` | `/profile`, `/provider`, and `/project` TUI dialog wizards; new Node projects without an existing formatter may explicitly set up project-local dprint |
 | `md-to-pdf.ts` | `/md-to-pdf` command & `md_to_pdf` tool — export Markdown files as publication-quality A4 PDFs (via Pandoc + Playwright) |
@@ -151,26 +151,132 @@ Gating is graded by risk:
 
 ## Project memory (`project-memory`)
 
-Lightweight, opt-in project-level "lessons learned" memory — complementary
-to `AGENTS.md` (manual facts, authoritative) and `opencode-mem` (automatic
-session history). Stored OUTSIDE the project, under the ocp user-level
-memory root (`~/.config/opencode/memory/<projectKey>/`, path-hashed key —
-honors `OCP_CONFIG_PATH`/`XDG_CONFIG_HOME`). Three stages, opt-in at every
-one; phase 1 = capture + inject:
+Lightweight project-level "lessons learned" memory — complementary to
+`AGENTS.md` (manual facts, authoritative) and `opencode-mem` (automatic
+session history, heavier, different grain). Lives INSIDE the project at
+`<projectDir>/.opencode/memory/`, same convention as `.opencode/handoffs/`,
+`.opencode/logs/`, `.opencode/recovery/`. Two scopes, one gate:
 
 ```text
-/memory capture "<lesson>"   # append a dated bullet to <memory root>/draft.md
-/memory on | off             # toggle injection of <memory root>/memory.md
-/memory status               # gate state + entry counts
+/memory note "<lesson>"              # append a dated bullet to public.md (default, committed)
+/memory note --private "<note>"      # append to private.md (gitignored, only you see it)
+/memory on | off                     # toggle injection of both into the system prompt
+/memory status                       # gate state + public/private entry counts
+/memory show                         # preview what's currently injected (entries + last-edited + stale flag)
+
+/memory-summarize                     # LLM reviews the session and captures durable lessons
 ```
 
-Promotion draft → `memory.md` is a manual edit for now (keep the dated-bullet
-form; delete stale entries). While `projectMemory` is on and the file is
-non-empty, its content is appended to the system prompt under
-`[PROJECT MEMORY]` — advisory: AGENTS.md wins on conflict. Over the
-16 000-char cap the file is not injected (pointer block instead) — prune it.
-Default off.
-Design: `docs/plan/project-memory-phase1.md`.
+File names self-describe visibility:
+- `public.md` — committed to git, reviewed by your team through the normal PR flow (same authority tier as AGENTS.md).
+- `private.md` — gitignored, only the current user sees it. Auto-gitignored on first capture via `.opencode/.gitignore`.
+
+No draft/curated split — every entry lands directly in the file that the gate injects. The agent also has a `memory_note` tool it can call proactively when it discovers a reusable rule; a session-level `/memory-summarize` skill summarizes durable lessons for users who'd rather have the model pick. While `projectMemory` is on and either file is non-empty, content is appended to the system prompt under `[PROJECT MEMORY]` (with `=== Public ===` and `=== Private ===` sections) — advisory: AGENTS.md wins on conflict. Over the 16 000-char cap per section, that section falls back to a pointer block instead of injecting the content. Default on (an empty file is a no-op; the sidebar shows `ON · empty` to nudge a first capture).
+Design: `docs/plan/project-memory.md`.
+
+### Usage examples
+
+User command (`/memory note`):
+
+```text
+# 1. Team-visible rule — discover it, file it
+$ /memory note "this repo uses pnpm not npm — package.json has pnpm-lock.yaml"
+[project-memory] Noted to /…/.opencode/memory/public.md — entry is live in memory (team scope).
+
+# 2. Personal note — only you need it
+$ /memory note --private "VPN slow, set API timeout to 60s for API calls"
+[project-memory] Noted to /…/.opencode/memory/private.md — entry is live in memory (personal scope).
+
+# 3. Toggle injection off when debugging other prompts
+$ /memory off
+$ /memory on
+
+# 4. Status — gate + both scope counts
+$ /memory status
+[project-memory] gate: on — team: 3 entries, personal: 1 entries. Injection ACTIVE.
+```
+
+LLM-initiated (`memory_note` tool) — called by the agent when it spots a reusable rule:
+
+```text
+# In the middle of a code session, the LLM calls:
+memory_note({ lesson: "use bun not node", scope: "public", confidence: "high" })
+→ {
+    title: "Memory noted (public, high)",
+    path: "<projectDir>/.opencode/memory/public.md",
+    metadata: { path, scope: "public", confidence: "high", confidenceRank: 3, lesson }
+  }
+```
+
+Session summary (`/memory-summarize` skill) — at session end, optionally with a focus:
+
+```text
+# Whole-session summary (both scopes, all topics)
+$ /memory-summarize
+## Memory summary
+**Captured 3 lesson(s)**.
+- public (2): this repo's CI needs --no-sandbox on Windows;
+                OpenCode plugin API requires client at registration time
+- private (1): user prefers dark-mode editor
+**Skipped** (counts only — no list):
+- session-specific: 4
+- already in AGENTS.md: 1
+- speculative: 1
+
+# Focused extraction — only API-related lessons, team memory only
+$ /memory-summarize "API quirks" --public
+## Memory summary
+**Captured 2 lesson(s) [filter: public] [focus: "API quirks"]**.
+- public (2): OpenCode plugin API requires client at registration time;
+                scopedForTool needs both sessionID and agent for subagent detection
+**Skipped**:
+- session-specific: 4
+- off-topic for "API quirks": 3
+- already in public.md: 1
+
+# Focus matches nothing — explicitly reports no match (does NOT broaden)
+$ /memory-summarize "error handling patterns"
+## Memory summary
+**No lessons matched focus "error handling patterns". Drop the focus to capture the full session.**
+```
+
+Combine with the scope filter — focus and `--public`/`--private` are orthogonal:
+```text
+$ /memory-summarize "workflow lessons" --private    # workflow lessons, personal notes only
+$ /memory-summarize "gotchas we hit"                # all topics matching the focus, both scopes
+```
+
+Tool gate behavior:
+
+```text
+# Title-generator utility session trying to note:
+memory_note({ lesson: "x" }, ctx: { agent: "title-generator" })
+→ {
+    title: "Memory note denied",
+    output: "memory_note is not available in this agent context (title-generator). …",
+    metadata: { denied: true, agent: "title-generator", … }
+  }
+# (Tool gate is gated; system-inject also denies it. Title tasks can't
+#  discover reusable rules — denying prevents noise.)
+
+# Subagent (advisor) noting a real project quirk:
+memory_note({ lesson: "auth middleware swallows JWT errors" }, ctx: { agent: "advisor", sessionID: "sub-1" })
+→ succeeds (subagent genuinely learned something worth remembering)
+```
+
+Over-cap behavior (16 000-char per section):
+
+```text
+# public.md crosses the cap → that section falls back to a pointer block:
+# [PROJECT MEMORY]
+# === Public ===
+# /…/public.md is 18500 chars — over the 16000-char injection cap, so it is NOT in
+# your context. Read /…/public.md when making decisions it could affect, and ask
+# the user to prune/summarize stale entries.
+# === Private ===
+# (normal injection — private.md is small)
+# Per-section: a bloated private.md does NOT silence public, and vice versa.
+```
 
 ---
 

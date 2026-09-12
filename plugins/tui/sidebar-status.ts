@@ -28,7 +28,7 @@
  *   - e2eGuard        → project opencode.jsonc field (on | off, default off)
  *   - projectMemory   → project opencode.jsonc field (on | off, default on —
  *                       advisory; nothing is injected unless a curated
- *                       memory.md actually exists)
+ *                       public.md actually exists)
  *   - autoAdvisorMode → project opencode.jsonc field (off | lite | full, default off)
  *   - deepSeekAnchor  → ~/.config/opencode/.deepseek-anchor-enabled (on | off, default on)
  *   - activeProfile   → ~/.config/opencode/.active-profile (name | none)
@@ -56,7 +56,7 @@
  *     snapshot. `profile` row only appears when one is active. The
  *     `deepseek-anchor` row is gated on the current model being V4 Pro.
  *   - "OCP project" group: `scaffold` and `memory` rows always render
- *     (memory is lifecycle-independent — /memory capture works pre-init
+ *     (memory is lifecycle-independent — /memory note works pre-init
  *     and the row nudges users toward capture with `ON · empty`).
  *     The rest (git-commits, capabilities, formatter) are gated
  *     on `scaffold === "INIT"`. OFF / NONE / NO PKG rows are filtered out.
@@ -81,7 +81,7 @@ import { join } from "node:path"
 import { homedir } from "node:os"
 import { loadTgrepOptions } from "../tgrep/tgrep-config"
 import { resolveTgrepCapability, type TgrepCapabilityState } from "../tgrep/tgrep-service"
-import { countEntries, readMemory } from "../project-memory/project-memory-config"
+import { countEntries, readPublic } from "../project-memory/project-memory-config"
 
 // ─── Theme shape ───────────────────────────────────────────────────
 
@@ -220,7 +220,7 @@ function resolveE2eGuard(projectDir: string): "on" | "off" {
 
 function resolveProjectMemory(projectDir: string): "on" | "off" {
   // Default flipped to "on" — memory is advisory (AGENTS.md wins on conflict),
-  // empty memory.md is a no-op anyway, so the friction of an extra opt-in
+  // empty public.md is a no-op anyway, so the friction of an extra opt-in
   // switch costs more than it saves. Users who want it off can set
   // "projectMemory": "off" explicitly. See sidebar "memory" row.
   return normalizeOnOff(readProjectConfig(projectDir)?.projectMemory) ?? "on"
@@ -596,7 +596,7 @@ export async function fetchLatestVersion(lifecycleSignal?: AbortSignal): Promise
 //                   project), git-commits, codegraph/gitnexus/serena/
 //                   tgrep indexes, dprint formatter. All keyed off the
 //                   current project (config lives in project opencode.jsonc;
-//                   memory data lives under OCP config root, per projectKey).
+//                   memory data lives at .opencode/memory/ inside the project).
 
 /** Guard/mode badges — group "OCP" (exported for tests/smoke checks).
  * `currentModelId` gates `deepseek-anchor`: only rendered when the active
@@ -640,9 +640,13 @@ export function buildGuardBadges(projectDir: string, currentModelId?: string): B
  *
  * Gating strategy:
  *   - `scaffold` and `memory` rows always render. memory's data lives
- *     under the OCP config root (per-projectKey), independent of project
- *     lifecycle, so /memory capture works even pre-init. Surfacing the
- *     memory row always also nudges pre-init users toward /memory capture.
+ *     at `.opencode/memory/public.md` inside the project (committed to
+ *     git — same lifecycle as the checkout, so `git clone` gives a new
+ *     contributor the team's lessons immediately). The `private.md`
+ *     sibling is gitignored and intentionally NOT surfaced in the sidebar
+ *     (it's a per-developer scratchpad, not a project status signal).
+ *     Surfacing the memory row always also nudges pre-init users toward
+ *     /memory note.
  *   - `git-commits` + code-intelligence capabilities (codegraph /
  *     gitnexus / serena) + formatter only render when the project is fully
  *     initialized (all three scaffold targets present). PARTIAL is treated
@@ -677,18 +681,20 @@ export function buildProjectBadges(
   })
 
   // Project memory — always rendered (independent of init state). 3-state:
-  //   ON + entry count → real injection activity
-  //   ON + empty       → switch is on but no curated memory.md yet;
-  //                      nudges the user to /memory capture
+  //   ON + entry count → real injection activity (public.md entries)
+  //   ON + empty       → switch is on but no curated public.md yet;
+  //                      nudges the user to /memory note
   //   OFF              → explicit opt-out
-  // Sidebar reads memory.md directly — same file the system-inject hook
+  // Sidebar reads public.md directly — same file the system-inject hook
   // reads, so the count matches what's actually injected (modulo the 16k
   // char cap, which collapses to a pointer block, not a count change).
+  // The private.md count is intentionally not surfaced here — it's a
+  // per-developer scratchpad, not a project status signal.
   const memory = resolveProjectMemory(projectDir)
   const memoryState =
     memory === "on"
       ? (() => {
-          const content = readMemory()
+          const content = readPublic()
           const n = content === null ? 0 : countEntries(content)
           return n > 0 ? `ON · ${n}` : "ON · empty"
         })()

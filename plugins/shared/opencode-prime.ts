@@ -347,7 +347,7 @@ type ErrnoException = NodeJS.ErrnoException
 
 /**
  * Automatically ensures `<project>/.opencode/.gitignore` exists to ignore logs, handoffs, and runtime artifacts.
- * If `.gitignore` already exists, ensures `logs/`, `*.log`, and `handoffs/` are present.
+ * If `.gitignore` already exists, ensures `logs/`, `*.log`, `handoffs/`, and `memory/private.md` are present.
  */
 export function ensureOpencodeGitignore(root: string = getProjectDir()): void {
   const opencodeDir = join(root, ".opencode")
@@ -356,7 +356,7 @@ export function ensureOpencodeGitignore(root: string = getProjectDir()): void {
       mkdirSync(opencodeDir, { recursive: true })
     }
     const gitignorePath = join(opencodeDir, ".gitignore")
-    const defaultIgnore = "node_modules\npackage.json\npackage-lock.json\nbun.lock\n.gitignore\nlogs/\n*.log\nhandoffs/\n"
+    const defaultIgnore = "node_modules\npackage.json\npackage-lock.json\nbun.lock\n.gitignore\nlogs/\n*.log\nhandoffs/\nmemory/private.md\n"
     if (!existsSync(gitignorePath)) {
       writeFileSync(gitignorePath, defaultIgnore, "utf-8")
     } else {
@@ -369,6 +369,10 @@ export function ensureOpencodeGitignore(root: string = getProjectDir()): void {
       }
       if (!content.includes("handoffs")) {
         nextContent = nextContent.trimEnd() + "\nhandoffs/\n"
+        needsUpdate = true
+      }
+      if (!content.includes("memory/private.md")) {
+        nextContent = nextContent.trimEnd() + "\nmemory/private.md\n"
         needsUpdate = true
       }
       if (needsUpdate) {

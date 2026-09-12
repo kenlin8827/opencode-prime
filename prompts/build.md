@@ -114,6 +114,7 @@ Per `output-protocol.md` §Advisor modes, consult `@advisor` for an independent 
 - **Never redo work** — feed prior conclusions forward instead of re-evaluating.
 - **Handle failures, never skip silently** — transient (network/timeout/rate-limit/5xx) → auto-retry once with the same `task_id` (none → re-dispatch fresh with the same context); persistent → report and decide with the user. Never retry more than once.
 - **Verify the final state** per `verification-honesty.md` — no "done" without executed evidence.
+- **Save reusable lessons** — when you learn a workflow-level insight that future sessions on this project should know (e.g. "this project's multi-domain flow must start with @architect before any @<dev>", "this repo's CI gates on commit-message type even for chore"), proactively call the `memory_note` tool. Don't wait for the user to ask — it's a good habit, not an extra step. Default `public` scope (committed, PR review); use `scope: "private"` for personal notes. Don't save dispatch-specific state, current task state, or anything already in AGENTS.md. Full scope heuristic + noise rules live in the tool description — read them on first call.
 
 ## Output style
 

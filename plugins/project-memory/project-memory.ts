@@ -1,24 +1,37 @@
 /**
- * Project Memory (project-memory) — lightweight opt-in project-level memory.
+ * Project Memory (project-memory) — lightweight project-level memory.
  *
- * Captures user-flagged "lessons learned" and injects the curated set into
- * LLM context. Three stages, opt-in at every one. Files live OUTSIDE the
- * project, under the ocp user-level config root
- * (<config root>/memory/<projectKey>/ — heavy memory must not live or die
- * with the checkout; survives project deletion, honors OCP_CONFIG_PATH):
- *   1. capture  — /memory capture "<lesson>"  → draft.md (pending review)
- *   2. review   — manual edit (phase 2 will tool this) draft.md → memory.md
- *   3. inject   — while `projectMemory: "on"` in the project opencode.jsonc,
- *                 memory.md is appended to the system prompt.
+ * Two scopes, one gate. File names self-describe visibility (no
+ * ambiguity when scanning `.opencode/memory/`):
+ *   public.md   → committed to git, reviewed by your team through the
+ *                  normal PR flow. Same authority tier as AGENTS.md.
+ *   private.md  → gitignored, only the current user sees it
+ *                  (auto-gitignored on first capture).
+ *
+ * Files live INSIDE the project at `<projectDir>/.opencode/memory/` —
+ * same convention as `.opencode/handoffs/`, `.opencode/logs/`,
+ * `.opencode/recovery/`.
+ *
+ * Entry points:
+ *   • /memory note "<lesson>"             (user command, public default)
+ *   • /memory note --private "<lesson>"   (user command, explicit private)
+ *   • memory_note tool                    (agent judges + notes)
+ *
+ * Top-tier reference designs (Cursor Rules, Claude Projects memory, Copilot
+ * Custom Instructions, Aider conventions, Continue.dev) all edit a single
+ * file directly; we mirror that for the public file and ADD a private
+ * scope rather than splitting — the public file stays diff/PR-reviewable,
+ * the private file stays scratchpad-ish.
  *
  * Distinct from AGENTS.md (manually curated project facts, authoritative —
  * memory is advisory) and from opencode-mem (auto-captured session history,
  * heavier, different grain). Complementary, not duplicative.
  *
- * File layout (same pattern as e2e-guard):
- *   project-memory-config.ts        — switch + file paths + draft append
- *   project-memory-command.ts       — command hook (/memory capture|on|off|status)
- *   project-memory-system-inject.ts — system-transform hook: inject memory.md
+ * File layout:
+ *   project-memory-config.ts        — switch + paths + lesson append (scoped)
+ *   project-memory-command.ts       — command hook (/memory note|on|off|status)
+ *   project-memory-tool.ts          — memory_note tool (agent-driven, scoped)
+ *   project-memory-system-inject.ts — system-transform hook: inject both files
  */
 
 import type { Plugin } from "@opencode-ai/plugin"
@@ -26,6 +39,7 @@ import { HttpServerResponse } from "effect/unstable/http"
 import { setProjectDir } from "./project-memory-config"
 import { COMMAND_NAME, makeCommandHook } from "./project-memory-command"
 import { makeSystemHook } from "./project-memory-system-inject"
+import { TOOL_NAME, makeCaptureTool } from "./project-memory-tool"
 
 // OpenCode's command hook has no cancel/noReply output. Throwing a raw
 // Effect response is handled by OpenCode's HTTP layer as an empty
@@ -44,10 +58,13 @@ export const ProjectMemoryPlugin: Plugin = async ({ client, directory }) => {
       cfg.command[COMMAND_NAME] = {
         template: "",
         description:
-          "Project memory — /memory capture \"<lesson>\" files a lesson into the project's draft.md under the ocp memory root; /memory on|off toggles injection of the curated memory.md into context; /memory status reports gate + counts",
+          "Project memory — two scopes, one gate. /memory note \"<lesson>\" appends a dated entry to .opencode/memory/public.md (committed to git, reviewed via the normal PR flow); /memory note --private \"<note>\" appends to .opencode/memory/private.md (gitignored escape hatch for notes the team should not see); /memory on|off toggles injection of both into the system prompt; /memory status reports gate + public/private entry counts. The agent may also call the `memory_note` tool itself (with scope='public' or 'private').",
       }
     },
     "command.execute.before": makeCommandHook(client, handled),
     "experimental.chat.system.transform": makeSystemHook(client) as any,
+    tool: {
+      [TOOL_NAME]: makeCaptureTool(client),
+    },
   }
 }
