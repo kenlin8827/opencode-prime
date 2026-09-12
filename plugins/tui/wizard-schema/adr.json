@@ -1,0 +1,39 @@
+{
+  "$schema": "../../docs/design/wizard-schema.schema.json",
+  "id": "adr",
+  "i18nKey": "project.adr.title",
+  "description": "ADR structure settings (layout first, then directory). The adrGuard on/off switch lives in the Project guards group (project-guards.json). Schema-driven; new entries only require a JSON row, no wizard code change.",
+  "fields": [
+    {
+      "key": "adrLayout",
+      "type": "enum",
+      "labelKey": "project.switchAdrLayout",
+      "descriptionKey": "project.switchAdrLayout",
+      "badgeKind": "adrLayout",
+      "icon": "🏛️",
+      "values": [
+        { "value": "auto", "labelKey": "project.valueAdrLayoutAuto" },
+        { "value": "flat", "labelKey": "project.valueAdrLayoutFlat" },
+        { "value": "hierarchical", "labelKey": "project.valueAdrLayoutHierarchy" }
+      ],
+      "default": "auto"
+    },
+    {
+      "key": "adrDir",
+      "type": "enum-with-custom",
+      "labelKey": "project.switchAdrDir",
+      "descriptionKey": "project.switchAdrDir",
+      "badgeKind": "string",
+      "icon": "📁",
+      "values": [
+        { "value": "docs/adr", "labelKey": "project.valueAdrDirDocsAdr" },
+        { "value": "docs/decisions", "labelKey": "project.valueAdrDirDocsDecisions" },
+        { "value": "architecture/decisions", "labelKey": "project.valueAdrDirArchitecture" }
+      ],
+      "allowCustom": true,
+      "customPromptKey": "project.promptAdrDirTitle",
+      "customPlaceholderKey": "project.promptAdrDirPlaceholder",
+      "default": "docs/adr"
+    }
+  ]
+}

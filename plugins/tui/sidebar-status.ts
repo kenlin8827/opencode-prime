@@ -2,14 +2,14 @@
 /**
  * Sidebar Status — TUI slot plugin that renders two vertical status groups
  * inside the OpenCode right sidebar:
- *   "OCP"         — active state of guard/mode plugins (adr-guard, e2e-guard,
- *                   auto-advisor) + the active profile; `deepseek-anchor`
- *                   is only shown when the current model is DeepSeek V4 Pro
- *                   (the plugin is a no-op for other models, so showing it
- *                   unconditionally would be noise)
- *   "OCP project" — current-directory OCP project state (/project init
- *                   scaffolding, commit discipline) and code-intelligence
- *                   capabilities (codegraph/gitnexus indexes, serena)
+ *   "OCP"         — agent behavior/policy switches (independent of project):
+ *                   adr-guard, e2e-guard, auto-advisor, deepseek-anchor,
+ *                   plus the active profile.
+ *   "OCP project" — current-directory OCP project state and capabilities:
+ *                   scaffold (init state), memory (curated lessons for this
+ *                   project), git-commits, code-intelligence backends
+ *                   (codegraph/gitnexus indexes, serena LSP), and the
+ *                   project formatter (dprint).
  *
  * This replaces the per-plugin session.created announce (toast/inject) with
  * a single always-visible "OCP" section. When a user toggles a guard via
@@ -26,12 +26,15 @@
  * State sources (all read-only, same logic as each plugin's config module):
  *   - adrGuard        → project opencode.jsonc field (on | off, default off)
  *   - e2eGuard        → project opencode.jsonc field (on | off, default off)
+ *   - projectMemory   → project opencode.jsonc field (on | off, default on —
+ *                       advisory; nothing is injected unless a curated
+ *                       memory.md actually exists)
  *   - autoAdvisorMode → project opencode.jsonc field (off | lite | full, default off)
  *   - deepSeekAnchor  → ~/.config/opencode/.deepseek-anchor-enabled (on | off, default on)
  *   - activeProfile   → ~/.config/opencode/.active-profile (name | none)
  *   - projectScaffold → /project init targets exist? (.opencode/opencode.jsonc +
  *                        docs/git-commits.md + AGENTS.md → init | partial | none)
- *   - commitDiscipline→ docs/git-commits.md exists (file-as-switch, same rule
+ *   - gitCommits      → docs/git-commits.md exists (file-as-switch, same rule
  *                        as project-manager hasConventionFile())
  *   - capabilities     → codegraph/gitnexus: index dir exists AND MCP enabled
  *                        (global config); serena: MCP enabled. Same rules as
@@ -52,9 +55,11 @@
  *   - "OCP" group: every guard row renders (ON/OFF) — at-a-glance config
  *     snapshot. `profile` row only appears when one is active. The
  *     `deepseek-anchor` row is gated on the current model being V4 Pro.
- *   - "OCP project" group: `project` row always (INIT/PARTIAL/NOT INIT).
- *     The rest (commit-discipline, capabilities, formatter) are gated
- *     on `project === "init"`. OFF / NONE / NO PKG rows are filtered out.
+ *   - "OCP project" group: `scaffold` and `memory` rows always render
+ *     (memory is lifecycle-independent — /memory capture works pre-init
+ *     and the row nudges users toward capture with `ON · empty`).
+ *     The rest (git-commits, capabilities, formatter) are gated
+ *     on `scaffold === "INIT"`. OFF / NONE / NO PKG rows are filtered out.
  *     NOT INIT and NO INDEX are kept as actionable signals.
  *   - Header: `─ OCP v<version> ─`; grows a `↑ vX.Y.Z` warning-colour
  *     suffix when an async GitHub probe finds a newer release.
@@ -74,10 +79,22 @@ import { jsx } from "@opentui/solid/jsx-runtime"
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
+import { loadTgrepOptions } from "../tgrep/tgrep-config"
+import { resolveTgrepCapability, type TgrepCapabilityState } from "../tgrep/tgrep-service"
+import { countEntries, readMemory } from "../project-memory/project-memory-config"
 
 // ─── Theme shape ───────────────────────────────────────────────────
 
 interface ThemeColors {
+  // Semantic colour keys mirror OpenCode's built-in theme palette (see
+  // install/src/ui/builtin-themes.ts — every theme defines `error` as a
+  // red tone distinct from `warning`'s orange/yellow). Aligned with the
+  // right-sidebar MCP/LSP convention:
+  //   error   = broken / unhealthy (most severe — red)
+  //   warning = actionable but not broken (orange/yellow)
+  //   success = running / available / healthy (green)
+  //   info    = neutral observation (blue/cyan)
+  error: unknown
   warning: unknown
   info: unknown
   success: unknown
@@ -93,7 +110,11 @@ interface ThemeColors {
 interface Badge {
   label: string
   state: string
-  variant: "warning" | "info" | "success"
+  // "error" was added alongside MCP's right-sidebar convention — a more
+  // severe tier than "warning" for states where OCP features won't work
+  // (e.g. project never initialised). Rendered in `theme.error` (red),
+  // separate from `warning` (orange/yellow).
+  variant: "error" | "warning" | "info" | "success"
 }
 
 // ─── Config readers (mirror each plugin's config module) ────────────
@@ -197,6 +218,14 @@ function resolveE2eGuard(projectDir: string): "on" | "off" {
   return normalizeOnOff(readProjectConfig(projectDir)?.e2eGuard) ?? "off"
 }
 
+function resolveProjectMemory(projectDir: string): "on" | "off" {
+  // Default flipped to "on" — memory is advisory (AGENTS.md wins on conflict),
+  // empty memory.md is a no-op anyway, so the friction of an extra opt-in
+  // switch costs more than it saves. Users who want it off can set
+  // "projectMemory": "off" explicitly. See sidebar "memory" row.
+  return normalizeOnOff(readProjectConfig(projectDir)?.projectMemory) ?? "on"
+}
+
 function resolveAutoAdvisor(projectDir: string): "off" | "lite" | "full" {
   const raw = readProjectConfig(projectDir)?.autoAdvisorMode
   if (typeof raw !== "string") return "off"
@@ -255,7 +284,7 @@ function resolveProjectScaffold(projectDir: string): "init" | "partial" | "none"
  * active (system-prompt injection + commit gate) exactly while
  * docs/git-commits.md exists.
  */
-function resolveCommitDiscipline(projectDir: string): "on" | "off" {
+function resolveGitCommits(projectDir: string): "on" | "off" {
   return existsSync(join(projectDir, "docs", "git-commits.md")) ? "on" : "off"
 }
 
@@ -283,7 +312,29 @@ function mcpEnabledIn(cfg: Record<string, unknown> | null, name: string): boolea
   return mcp?.[name]?.enabled === true
 }
 
-type CapabilityState = "ready" | "off" | "no-index"
+/**
+ * Sidebar capability states. The shared subset (`ready | off | no-index`)
+ * is what the indexed-MCP resolvers (codegraph/gitnexus) and serena
+ * return. Tgrep widens the union with four extra values — `no-cli`,
+ * `no-watcher`, `stale`, `building` — because the optional external CLI
+ * has more failure surfaces than an in-process MCP server. The
+ * non-`off` tgrep values share names with `TgrepCapabilityState` in
+ * plugins/tgrep/tgrep-service.ts so the sidebar text and the
+ * [PROJECT CAPABILITIES] block the model reads stay aligned.
+ *
+ * Cross-platform note: state names are kebab-case ASCII — no path or
+ * platform-specific text — so the same set renders identically on
+ * Windows, macOS, and Linux (both in the sidebar and in the system
+ * prompt block).
+ */
+type CapabilityState =
+  | "ready"       // green  — fully operational
+  | "off"         // hidden — feature disabled by config (user's choice)
+  | "no-index"    // yellow — backend on, no index built yet
+  | "no-cli"      // yellow — backend switch on, CLI binary missing
+  | "no-watcher"  // yellow — index on disk but no live watcher running
+  | "stale"       // yellow — index exists but policy fingerprint mismatches
+  | "building"    // blue   — index build in progress
 
 /** Indexed backend capability: off (MCP disabled) | no-index (MCP on, no index dir) | ready. */
 function resolveIndexedCapability(
@@ -299,6 +350,35 @@ function resolveIndexedCapability(
 /** Serena capability — live LSP, no index step. */
 function resolveSerena(globalCfg: Record<string, unknown> | null): CapabilityState {
   return mcpEnabledIn(globalCfg, "serena") ? "ready" : "off"
+}
+
+/** Tgrep capability resolver — folds the switch-off short-circuit in
+ * front of resolveTgrepCapability so the project manager / sidebar share
+ * the exact same state names as the [PROJECT CAPABILITIES] block the
+ * model reads. The shared helper (resolveTgrepCapability in
+ * plugins/tgrep/tgrep-service.ts) is the single source of truth for
+ * the state → label mapping; do not duplicate it here. */
+function resolveTgrep(projectDir: string): CapabilityState {
+  try {
+    const options = loadTgrepOptions(projectDir)
+    if (!options.enabled) return "off"
+    return resolveTgrepCapability(projectDir, options) as CapabilityState
+  } catch {
+    return "off"
+  }
+}
+
+/** Render a TgrepCapabilityState to its sidebar label text. Kept as a
+ * pure function (separate from resolveTgrepCapability) so the same
+ * state-to-label table can be reused by other UI surfaces (e.g. a
+ * hypothetical CLI status command) without re-running the probes. */
+const TGREP_STATE_LABEL: Record<TgrepCapabilityState, string> = {
+  "ready": "READY",
+  "no-watcher": "NO WATCHER",
+  "stale": "STALE",
+  "building": "BUILDING",
+  "no-index": "NO INDEX",
+  "no-cli": "NO CLI",
 }
 
 // ─── Model detection (for deepseek-anchor gating) ──────────────────
@@ -507,8 +587,16 @@ export async function fetchLatestVersion(lifecycleSignal?: AbortSignal): Promise
 
 // ─── Badge builders ─────────────────────────────────────────────────
 // Two semantic groups, rendered as two sidebar sections:
-//   "OCP"         — agent behavior/policy switches (profile + guards)
-//   "OCP project" — current-directory OCP project state + code intelligence
+//   "OCP"         — agent behavior/policy switches (profile + guards):
+//                   profile, adr-guard, e2e-guard, auto-advisor,
+//                   deepseek-anchor. These change how the agent behaves
+//                   regardless of which project is open.
+//   "OCP project" — current-directory OCP project state + capabilities:
+//                   scaffold (init state), memory (curated lessons for this
+//                   project), git-commits, codegraph/gitnexus/serena/
+//                   tgrep indexes, dprint formatter. All keyed off the
+//                   current project (config lives in project opencode.jsonc;
+//                   memory data lives under OCP config root, per projectKey).
 
 /** Guard/mode badges — group "OCP" (exported for tests/smoke checks).
  * `currentModelId` gates `deepseek-anchor`: only rendered when the active
@@ -525,11 +613,13 @@ export function buildGuardBadges(projectDir: string, currentModelId?: string): B
 
   // Always show all plugin states — ON or OFF — so the user
   // can see the full configuration at a glance.
+  // Bare ON → success (green). OFF → info. State with a qualifier (e.g.
+  // memory `ON · N`, `ON · empty`) → info — the qualifier IS the signal.
   const adr = resolveAdrGuard(projectDir)
-  badges.push({ label: "adr-guard", state: adr.toUpperCase(), variant: adr === "on" ? "warning" : "info" })
+  badges.push({ label: "adr-guard", state: adr.toUpperCase(), variant: adr === "on" ? "success" : "info" })
 
   const e2e = resolveE2eGuard(projectDir)
-  badges.push({ label: "e2e-guard", state: e2e.toUpperCase(), variant: e2e === "on" ? "warning" : "info" })
+  badges.push({ label: "e2e-guard", state: e2e.toUpperCase(), variant: e2e === "on" ? "success" : "info" })
 
   const advisor = resolveAutoAdvisor(projectDir)
   badges.push({ label: "auto-advisor", state: advisor.toUpperCase(), variant: advisor === "full" ? "warning" : advisor === "lite" ? "info" : "info" })
@@ -538,7 +628,7 @@ export function buildGuardBadges(projectDir: string, currentModelId?: string): B
   // not V4 Pro, the row is omitted (the plugin itself would be a no-op).
   if (currentModelId && DEEPSEEK_V4_PRO_PATTERN.test(currentModelId)) {
     const ds = resolveDeepSeekAnchor()
-    badges.push({ label: "deepseek-anchor", state: ds.toUpperCase(), variant: ds === "on" ? "info" : "warning" })
+    badges.push({ label: "deepseek-anchor", state: ds.toUpperCase(), variant: ds === "on" ? "success" : "warning" })
   }
 
   return badges
@@ -549,13 +639,14 @@ export function buildGuardBadges(projectDir: string, currentModelId?: string): B
  * touching the real user config.
  *
  * Gating strategy:
- *   - `project` row always renders (the only row shown when NOT INIT /
- *     PARTIAL — those badges mean nothing on a directory that isn't an
- *     OCP project yet).
- *   - `commits` + code-intelligence capabilities (codegraph/gitnexus/
- *     serena) only render when the project is fully initialized
- *     (all three scaffold targets present). PARTIAL is treated as
- *     "init in progress" — finish it via /project sync before the
+ *   - `scaffold` and `memory` rows always render. memory's data lives
+ *     under the OCP config root (per-projectKey), independent of project
+ *     lifecycle, so /memory capture works even pre-init. Surfacing the
+ *     memory row always also nudges pre-init users toward /memory capture.
+ *   - `git-commits` + code-intelligence capabilities (codegraph /
+ *     gitnexus / serena) + formatter only render when the project is fully
+ *     initialized (all three scaffold targets present). PARTIAL is treated
+ *     as "init in progress" — finish it via /project sync before the
  *     project-level details become meaningful.
  *   - OFF rows are still filtered at the end as a final tidy. */
 export function buildProjectBadges(
@@ -567,35 +658,88 @@ export function buildProjectBadges(
 
   // OCP project state — is this directory managed by /project init?
   // Always rendered so the group never appears empty.
+  // Label "scaffold" (not "project") — the state is INIT/PARTIAL/NOT INIT,
+  // i.e. the result of /project init's scaffolding pass.
   badges.push({
-    label: "project",
+    label: "scaffold",
     state: proj === "init" ? "INIT" : proj === "partial" ? "PARTIAL" : "NOT INIT",
-    variant: proj === "init" ? "success" : proj === "partial" ? "warning" : "info",
+    // Variant tier mirrors the MCP right-sidebar convention:
+    //   NOT INIT → error   (red)    — directory isn't an OCP project at
+    //                                  all; commit discipline, indexes,
+    //                                  and capability gating are all off
+    //                                  the table. Needs /project init.
+    //   PARTIAL  → warning (yellow) — init in progress; finish with
+    //                                  /project sync.
+    //   INIT     → success (green)  — healthy.
+    // The previous design lumped NOT INIT and PARTIAL into warning, which
+    // hid the severity difference — NOT INIT is worse than PARTIAL.
+    variant: proj === "init" ? "success" : proj === "partial" ? "warning" : "error",
   })
+
+  // Project memory — always rendered (independent of init state). 3-state:
+  //   ON + entry count → real injection activity
+  //   ON + empty       → switch is on but no curated memory.md yet;
+  //                      nudges the user to /memory capture
+  //   OFF              → explicit opt-out
+  // Sidebar reads memory.md directly — same file the system-inject hook
+  // reads, so the count matches what's actually injected (modulo the 16k
+  // char cap, which collapses to a pointer block, not a count change).
+  const memory = resolveProjectMemory(projectDir)
+  const memoryState =
+    memory === "on"
+      ? (() => {
+          const content = readMemory()
+          const n = content === null ? 0 : countEntries(content)
+          return n > 0 ? `ON · ${n}` : "ON · empty"
+        })()
+      : "OFF"
+  // Qualifier-bearing ON (`ON · N` / `ON · empty`) → info: the qualifier
+  // is the signal; bare ON is reserved for single-state switches (green).
+  badges.push({ label: "memory", state: memoryState, variant: "info" })
 
   // Project-level details only render once init has fully completed.
   if (proj === "init") {
-    // Commit discipline — system-prompt injection + mechanical commit
-    // gate are active exactly while docs/git-commits.md exists
-    // (file-as-switch; same rule as project-manager hasConventionFile()).
-    // Label chosen for clarity over the previous terse "commits" which
-    // was ambiguous. With init=true this is always ON, but we resolve it
-    // via the file check for consistency.
-    const commits = resolveCommitDiscipline(projectDir)
-    badges.push({ label: "commit-discipline", state: commits.toUpperCase(), variant: commits === "on" ? "warning" : "info" })
+    // git-commits — system-prompt injection + mechanical commit gate are
+    // active exactly while docs/git-commits.md exists (file-as-switch;
+    // same rule as project-manager hasConventionFile()). Row label mirrors
+    // the file path so users can map the badge to the convention file at
+    // a glance. With init=true this is always ON, but we resolve it via
+    // the file check for consistency.
+    const commits = resolveGitCommits(projectDir)
+    badges.push({ label: "git-commits", state: commits.toUpperCase(), variant: commits === "on" ? "success" : "info" })
 
     // Code-intelligence capabilities (same rules as project-profiler).
     const caps: Array<{ label: string; cap: CapabilityState }> = [
       { label: "codegraph", cap: resolveIndexedCapability(projectDir, ".codegraph", "codegraph", globalCfg) },
       { label: "gitnexus", cap: resolveIndexedCapability(projectDir, ".gitnexus", "gitnexus", globalCfg) },
       { label: "serena", cap: resolveSerena(globalCfg) },
+      // tgrep — optional external CLI; mirrors project-profiler's text-index
+      // probe so the sidebar exposes the same signal the model sees via the
+      // [PROJECT CAPABILITIES] system-prompt block. "off" rows fall through
+      // the OFF filter below, so the row only renders when there's an
+      // actionable signal (ready / no-index).
+      { label: "tgrep", cap: resolveTgrep(projectDir) },
     ]
     for (const { label, cap } of caps) {
-      badges.push({
-        label,
-        state: cap === "ready" ? "READY" : cap === "no-index" ? "NO INDEX" : "OFF",
-        variant: cap === "ready" ? "success" : cap === "no-index" ? "warning" : "info",
-      })
+      // Label and variant picked from per-capability tables. Tgrep uses
+      // the TGREP_STATE_LABEL map so the sidebar text matches the
+      // [PROJECT CAPABILITIES] block the model reads (see
+      // resolveTgrepCapability / TgrepCapabilityState in
+      // plugins/tgrep/tgrep-service.ts). Other backends share a
+      // 3-state contract (ready / no-index / off).
+      if (label === "tgrep" && cap !== "off") {
+        badges.push({
+          label,
+          state: TGREP_STATE_LABEL[cap as TgrepCapabilityState],
+          variant: cap === "ready" ? "success" : cap === "building" ? "info" : "warning",
+        })
+      } else {
+        badges.push({
+          label,
+          state: cap === "ready" ? "READY" : cap === "no-index" ? "NO INDEX" : "OFF",
+          variant: cap === "ready" ? "success" : cap === "no-index" ? "warning" : "info",
+        })
+      }
     }
 
     // Formatter (dprint) — mirrors project-manager-dprint planDprintSetup().
@@ -613,13 +757,19 @@ export function buildProjectBadges(
   }
 
   // Final tidy — drop default-empty rows. Hidden:
-//   - OFF    → MCP server disabled in global config (user's choice)
-//   - NONE   → no formatter configured (default state for fresh projects)
-//   - NO PKG → dprint can't be installed (no package.json — degenerate)
-// Kept (actionable):
-//   - NOT INIT    → /project init not run on this directory
-//   - NO INDEX    → MCP enabled but index not built — /project index
-// `project` is never OFF/NONE/NO PKG so the group always renders ≥1 row.
+  //   - OFF    → MCP server / external tool disabled in global config
+  //              (user's choice — explicit opt-out, never actionable)
+  //   - NONE   → no formatter configured (default state for fresh projects)
+  //   - NO PKG → dprint can't be installed (no package.json — degenerate)
+  // Kept (actionable):
+  //   - NOT INIT    → /project init not run on this directory
+  //   - NO INDEX    → MCP/CLI enabled but index not built — /project index
+  //   - NO CLI      → tgrep enabled in config but binary missing — install
+  //   - NO WATCHER  → tgrep index on disk but no live serve — start serve
+  //   - STALE       → tgrep index built under different policy — rebuild
+  //   - BUILDING    → tgrep index build in progress — wait
+  // `scaffold` is never OFF/NONE/NO PKG, so the group always renders ≥1 row;
+  // `memory` drops its row only on an explicit "off".
   return badges.filter((b) => b.state !== "OFF" && b.state !== "NONE" && b.state !== "NO PKG")
 }
 
@@ -627,6 +777,10 @@ export function buildProjectBadges(
 
 /**
  * Build the two-group status panel JSX tree.
+ * Exported so tests can render the panel in isolation via @opentui/solid's
+ * testRender harness and inspect the rendered colors / dot glyphs
+ * (the slot is mounted by OpenCode's TUI server and has no standalone
+ * harness of its own).
  * Layout:
  *   ─ OCP v0.30.0 ─────────────┐
  *   │ ● profile  zhipuai-coding │
@@ -636,7 +790,7 @@ export function buildProjectBadges(
  *   │ ● deepseek-anchor  ON     │
  *   │ ─ OCP project ────────────│
  *   │ ● project  INIT           │
- *   │ ● commit-discipline  ON   │
+ *   │ ● git-commits  ON        │
  *   │ ● codegraph  READY        │
  *   │ ● dprint  READY/OTHER/NONE│
  *   └───────────────────────────┘
@@ -646,7 +800,7 @@ export function buildProjectBadges(
  *
  * Mirrors the sidebar section style used by MCP/LSP groups.
  */
-function renderStatusPanel(
+export function renderStatusPanel(
   guards: Badge[],
   project: Badge[],
   theme: ThemeColors,
@@ -659,14 +813,22 @@ function renderStatusPanel(
   // and a <text> with label + state.
   const renderRows = (badges: Badge[]): unknown[] => badges.map((b) => {
 // Dot fill mirrors the value: filled (●) for any active state,
-// hollow (○) for inactive ones (OFF / NOT INIT) — regardless of color.
+// hollow (○) for OFF rows only. NOT INIT is intentionally NOT in this
+// list — it is an active warning that needs user action (run /project
+// init), so it renders as a filled ● in warning colour, matching PARTIAL.
 // OFF rows are pre-filtered; the check stays for defensive rendering.
-    const isActive = b.state !== "OFF" && b.state !== "NOT INIT"
+    const isActive = b.state !== "OFF"
+    // Variant priority: error > warning > success > info (default).
+    // The text state falls back to textMuted for the neutral `info`
+    // variant — same fallback as before; only the dot gets theme.info
+    // so a blue dot still reads as "informational" rather than muted.
     const dotColor =
+      b.variant === "error" ? theme.error :
       b.variant === "warning" ? theme.warning :
       b.variant === "success" ? theme.success :
       theme.info
     const stateColor =
+      b.variant === "error" ? theme.error :
       b.variant === "warning" ? theme.warning :
       b.variant === "success" ? theme.success :
       theme.textMuted
@@ -676,19 +838,25 @@ function renderStatusPanel(
       children: [
         // Status dot
         jsx("text", {
-          style: { color: dotColor },
+          // OpenTUI's <text> reconciler reads `fg` (and `bg`) out of the
+          // style object — `color` is silently ignored. The original code
+          // used `style: { color: ... }` which never applied, so the
+          // sidebar has been rendering in default white this whole time.
+          // Renaming to `fg` finally surfaces the warning/success/info
+          // colour palette that the variant values already select.
+          style: { fg: dotColor },
           children: jsx("span", { children: isActive ? "● " : "○ " }),
         }),
         // Label (muted) — fixed 2-space gap before the value; column
         // alignment is intentionally skipped so long values (profile
         // names) never wrap in the narrow sidebar.
         jsx("text", {
-          style: { color: theme.textMuted },
+          style: { fg: theme.textMuted },
           children: jsx("span", { children: b.label + "  " }),
         }),
         // State value — wraps to next line when too long
         jsx("text", {
-          style: { color: stateColor },
+          style: { fg: stateColor },
           children: jsx("span", { children: b.state }),
         }),
       ],
@@ -703,8 +871,10 @@ function renderStatusPanel(
   // `suffix` is rendered inline after the title in warning colour —
   // used for "↑ vX.Y.Z" when a newer release is available.
   const renderHeader = (text: string, gapAbove = 0, suffix = "") => {
-    const borderStyle = { color: theme.borderSubtle }
-    const warningStyle = { color: theme.warning }
+    // Same `fg` rename as the badge rows above — `color` is ignored by
+    // OpenTUI's <text> reconciler.
+    const borderStyle = { fg: theme.borderSubtle }
+    const warningStyle = { fg: theme.warning }
     const headerChildren: unknown[] = [
       jsx("text", {
         style: borderStyle,
@@ -852,6 +1022,7 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
   // section inside the right sidebar, just like the MCP/LSP groups.
   const renderFn = (ctx: Readonly<TuiSlotContext>) => {
     return renderStatusPanel(guards(), project(), {
+      error: ctx.theme.current.error,
       warning: ctx.theme.current.warning,
       info: ctx.theme.current.info,
       success: ctx.theme.current.success,

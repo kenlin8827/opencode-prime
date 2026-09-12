@@ -801,29 +801,36 @@ function startWizard(api: TuiPluginApi): void {
   // presets are reachable only through the 📦 import picker
   const ids = Object.keys(config.provider ?? {}).sort(naturalCmp)
 
-  const providersCat = tr("provider.configuredHeader")
+  const setupCat = tr("provider.setupHeader")
+  const connectionsCat = tr("provider.connectionsHeader")
+  const configuredCat = tr("provider.configuredHeader")
   const interfaceCat = tr("common.interfaceHeader")
 
   const selectProps: FormSelectProps = {
     title: tr("provider.setupTitle"),
     placeholder: tr("provider.setupPlaceholder"),
-    // ➕ has no category — the host renders it headerless on top
     options: [
+      // ── Setup group: add a new provider (custom or preset)
       {
         title: tr("provider.addProvider"),
         value: ADD_PROVIDER,
         description: tr("provider.addProviderDesc"),
+        category: setupCat,
       },
       {
         title: tr("provider.addPresetProvider"),
         value: ADD_PRESET,
         description: tr("provider.addPresetProviderDesc"),
+        category: setupCat,
       },
+      // ── Connections group: manage which providers are wired up
       {
         title: tr("provider.manageConnections"),
         value: MANAGE_CONNECTIONS,
         description: tr("provider.manageConnectionsDesc", { count: listConnections(config).length }),
+        category: connectionsCat,
       },
+      // ── Configured group: edit an existing provider
       ...ids.map((id) => {
         const provider = config.provider?.[id]
         const baseURL = provider?.options?.baseURL
@@ -831,9 +838,10 @@ function startWizard(api: TuiPluginApi): void {
           title: id,
           value: id,
           description: `${baseURL ? String(baseURL) : tr("common.unset")} · ${tr("common.modelCount", { count: Object.keys(provider?.models ?? {}).length })}`,
-          category: providersCat,
+          category: configuredCat,
         }
       }),
+      // ── Interface group: language switcher
       { ...languageOption(api), category: interfaceCat },
     ],
     // keep the main path (pick a provider) under the cursor
@@ -2024,7 +2032,7 @@ const tui: TuiPlugin = async (api) => {
     commands: [
       {
         name: "provider.wizard",
-        title: tr("provider.wizardTitle"),
+        title: tr("provider.cmdTitle"),
         desc: tr("provider.cmdDesc"),
         category: "Provider",
         namespace: "palette",

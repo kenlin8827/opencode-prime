@@ -1,0 +1,22 @@
+{
+  "$schema": "../../docs/design/wizard-schema.schema.json",
+  "id": "auto_advisor",
+  "i18nKey": "project.autoAdvisor.title",
+  "description": "Auto-advisor mode switch — schema-driven; new entries only require a JSON row, no wizard code change.",
+  "fields": [
+    {
+      "key": "autoAdvisorMode",
+      "type": "enum",
+      "labelKey": "project.switchAdvisor",
+      "descriptionKey": "project.switchAdvisor",
+      "badgeKind": "advisor",
+      "icon": "🤖",
+      "values": [
+        { "value": "lite", "labelKey": "project.valueAdvisorLite" },
+        { "value": "full", "labelKey": "project.valueAdvisorFull" },
+        { "value": "off", "labelKey": "project.valueAdvisorOff" }
+      ],
+      "default": "lite"
+    }
+  ]
+}
