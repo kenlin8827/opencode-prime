@@ -6,7 +6,8 @@ import { Modal } from '../components/modal'
 
 export function HomeScreen(props: { router: OcpRouter }): JSX.Element {
   useKeyboard((key) => {
-    if (key.name === 'escape' || (key.ctrl && key.name === 'c')) props.router.exit()
+    // Plain Esc only: kitty alternate-key encodings report modified keys as name 'escape'.
+    if ((key.name === 'escape' && !key.ctrl && !key.meta) || (key.ctrl && key.name === 'c')) props.router.exit()
   })
   return <Modal title="OpenCode Prime — OpenTUI migration">
     <text fg={ocpTheme.text}>The shared OCP UI runtime is ready.</text>

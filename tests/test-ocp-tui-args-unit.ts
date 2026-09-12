@@ -25,20 +25,32 @@ function assertEq(actual: unknown, expected: unknown, label: string) {
 
 assertEq(
   normalizeTuiPassthrough(['.']),
-  { initRequested: true, passthrough: [] },
-  '`ocp tui .` requests init and strips dot',
+  { initRequested: false, passthrough: [] },
+  'bare `.` is a stripped no-op — init requires explicit --init',
 )
 
 assertEq(
   normalizeTuiPassthrough(['--herdr', '.']),
-  { initRequested: true, passthrough: ['--herdr'] },
-  '`ocp tui --herdr .` strips dot before herdr launch',
+  { initRequested: false, passthrough: ['--herdr'] },
+  '`ocp tui --herdr .` strips dot before herdr launch (no init)',
+)
+
+assertEq(
+  normalizeTuiPassthrough(['--luvus', '.']),
+  { initRequested: false, passthrough: ['--luvus'] },
+  '`ocp tui --luvus .` strips dot before Luvus launch (no init)',
 )
 
 assertEq(
   normalizeTuiPassthrough(['--init', '--direct', '--session', 'abc']),
   { initRequested: true, passthrough: ['--direct', '--session', 'abc'] },
-  '`--init` requests init and is not forwarded',
+  'explicit `--init` requests init and is not forwarded',
+)
+
+assertEq(
+  normalizeTuiPassthrough(['--init', '.']),
+  { initRequested: true, passthrough: [] },
+  'explicit `--init` wins; stray `.` is still stripped',
 )
 
 assertEq(

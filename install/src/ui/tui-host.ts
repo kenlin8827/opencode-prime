@@ -5,7 +5,7 @@ export type Dialog =
   | { kind: 'select'; title: string; placeholder?: string; options: DialogOption[]; current?: string; renderFilter?: boolean; itemSpacing?: number; onSelect: (option: DialogOption) => void }
   | { kind: 'prompt'; title: string; placeholder?: string; value?: string; busy?: boolean; busyText?: string; onConfirm: (value: string) => void; onCancel?: () => void }
   | { kind: 'confirm'; title: string; message: string; confirmLabel?: string; cancelLabel?: string; footer?: string; onConfirm: () => void; onCancel?: () => void }
-  | { kind: 'alert'; title: string; message: string; onClose?: () => void }
+  | { kind: 'alert'; title: string; message: string; busy?: boolean; busyText?: string; onClose?: () => void }
 
 /** Dialog width tiers mirroring opencode's DialogAlert sizes (60/88/116). */
 export type DialogSize = 'medium' | 'large' | 'xlarge'

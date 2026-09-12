@@ -1,12 +1,13 @@
 /**
- * Normalize `ocp tui .` / `ocp tui --init` before forwarding args to the
- * underlying launcher. `.` is OCP syntax for "activate this directory" and is
- * not a valid passthrough argument for either opencode or herdr.
+ * Normalize `ocp tui` passthrough args before forwarding to the underlying
+ * launcher. ONLY an explicit `--init` requests project initialization
+ * (an earlier design aliased a bare `.` to it — dropped; see the ADR 0001
+ * amendment). A bare `.` is not a valid passthrough argument for
+ * opencode/herdr/luvus, so it is stripped as a no-op.
  */
 export function normalizeTuiPassthrough(raw: string[]): { initRequested: boolean; passthrough: string[] } {
-  const initRequested = raw.includes('--init') || raw.includes('.');
   return {
-    initRequested,
-    passthrough: raw.filter((a) => a !== '--init' && !(initRequested && a === '.')),
+    initRequested: raw.includes('--init'),
+    passthrough: raw.filter((a) => a !== '--init' && a !== '.'),
   };
 }

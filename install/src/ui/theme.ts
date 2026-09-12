@@ -1,6 +1,9 @@
 export interface OcpPalette {
   background: string
   surface: string
+  /** Recessed panel behind list strips (select rows, confirm/menu panels) —
+   *  darker than `surface` so the list reads as an inset against the modal. */
+  panel: string
   border: string
   text: string
   muted: string
@@ -11,6 +14,7 @@ export interface OcpPalette {
 export const darkBase: OcpPalette = {
   background: '#0b1020',
   surface: '#141b2d',
+  panel: '#1a1a1a',
   border: '#526179',
   text: '#e6edf7',
   muted: '#9aa8bc',
@@ -21,6 +25,7 @@ export const darkBase: OcpPalette = {
 export const lightBase: OcpPalette = {
   background: '#eef1f6',
   surface: '#ffffff',
+  panel: '#e2e7ef',
   border: '#9aa7b8',
   text: '#1c2430',
   muted: '#5a6b81',
