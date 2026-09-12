@@ -1,63 +1,80 @@
 /**
  * Hook: experimental.chat.system.transform — inject the active-mode marker
- * and the advisor protocol (loaded from auto-advisor-protocol.md) into the
- * system prompt.
+ * and the advisor protocol (loaded from auto-advisor-protocol.md) into
+ * the system prompt.
  *
- * Cache-friendly strategy:
- *   - Build the expected marker for the active mode (e.g. "[AUTO-ADVISOR MODE: LITE]").
- *   - If the system prompt already contains that exact marker → do nothing.
- *     The prior injection is still valid; touching the string would break
- *     the LLM provider's prompt-cache (the system prompt is byte-identical,
- *     so the cache stays warm — no extra tokens, no extra cost).
- *   - Only when the mode has changed (or on first-ever injection) do we
- *     strip the old marker block and append the new fragment.
+ * Opencode runtime note (verified 2026-09-11, see ADR 0002): the
+ * runtime rebuilds `output.system` per chat request — output.system
+ * never contains fragments injected on a previous step. That means:
  *
- * In the common case (mode unchanged across turns) this hook is a pure
- * no-op — it doesn't even assign to output.system[i].
+ *   - The marker-presence fast-path from earlier revisions never fires
+ *     in production — the prompt is always fresh, so we always inject.
+ *   - Provider-side prompt-cache stays warm because the injected
+ *     content is byte-identical across turns (mode unchanged → same
+ *     fragment → same final system prompt → provider cache hit).
+ *   - Per-turn cost is dominated by string concat + append. Cache the
+ *     rendered fragment per mode so we don't re-concat ~8.7 KB on
+ *     every chat. Mode rarely changes, so the cache hits almost
+ *     every call.
+ *
+ * Same pattern as adr-guard / e2e-guard / project-manager (fragment
+ * cache + always-inject when state says inject). The fragment-cache
+ * pattern is mirrored after project-profiler's `injectedCwds` cache.
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
+import type { AdvisorMode } from "./auto-advisor-config"
 import { scoped } from "../shared/plugin-scope"
+import { appendBlock } from "../shared/system-block"
 import { getMode } from "./auto-advisor-config"
-import { getAdvisorPrompt, MODE_MARKER } from "./auto-advisor-instructions"
+import { getAdvisorPrompt } from "./auto-advisor-instructions"
 import { makeLogger } from "./auto-advisor-runtime"
-
-const MARKER = "[AUTO-ADVISOR MODE:"
 
 type Log = ReturnType<typeof makeLogger>
 
-function hasExactMarker(system: string[], exact: string): boolean {
-  return system.some((s) => typeof s === "string" && s.includes(exact))
-}
+/** Shared marker prefix across all three modes. MODE_MARKER entries
+ * (`[AUTO-ADVISOR MODE: OFF]`, `[AUTO-ADVISOR MODE: LITE]`,
+ * `[AUTO-ADVISOR MODE: FULL — ACTIVE NOW]`) all start with this
+ * substring. Used for the defensive strip path. */
+const MARKER_PREFIX = "[AUTO-ADVISOR MODE:"
 
 function hasAnyMarker(system: string[]): boolean {
-  return system.some((s) => typeof s === "string" && s.includes(MARKER))
+  return system.some((s) => typeof s === "string" && s.includes(MARKER_PREFIX))
 }
 
+/** Cut every `[AUTO-ADVISOR MODE: …]` block off `system`. Substring
+ * match (not line-start regex) is sufficient because the marker
+ * always appears at the start of an injected fragment; a substring
+ * match preserves the historical behavior and matches the other
+ * three plugins in this round (adr-guard / e2e-guard). */
 function stripMarker(system: string[]): boolean {
   let changed = false
   for (let i = 0; i < system.length; i++) {
     const s = system[i]
     if (typeof s !== "string") continue
-    const idx = s.indexOf(MARKER)
+    const idx = s.indexOf(MARKER_PREFIX)
     if (idx === -1) continue
-    system[i] = s.substring(0, idx)
+    system[i] = s.substring(0, idx).replace(/\s+$/, "")
     changed = true
   }
   return changed
 }
 
-/** Append the fragment to the LAST string entry only — appending to every
- * entry would duplicate it across multi-entry system prompts (same fix as
- * project-profiler / project-manager). */
-function appendPrompt(system: string[], fragment: string): boolean {
-  for (let i = system.length - 1; i >= 0; i--) {
-    const s = system[i]
-    if (typeof s !== "string") continue
-    system[i] = s + fragment
-    return true
-  }
-  return false
+/** Cached rendered fragment per mode. Module-level on purpose: the mode
+ * is a project-level preference, not a per-cwd detection. Same pattern
+ * as project-profiler's `injectedCwds` cache (different cache value:
+ * full rendered text vs. profile key — both avoid per-turn work). */
+let cachedPrompt: { mode: AdvisorMode; text: string } | undefined
+
+/** Pure: is the cache entry for this mode? Returns a type predicate so
+ * the call site narrows `cachedPrompt` to the non-undefined branch.
+ * Exported for unit tests — the cache decision is just object
+ * identity, kept pure for direct verification without the hook's I/O. */
+export function isCachedForMode(
+  cache: { mode: AdvisorMode; text: string } | undefined,
+  mode: AdvisorMode,
+): cache is { mode: AdvisorMode; text: string } {
+  return cache?.mode === mode
 }
 
 export function makeSystemHook(client: PluginInput["client"]) {
@@ -68,16 +85,20 @@ export function makeSystemHook(client: PluginInput["client"]) {
     if (!await scoped(input, output.system, "auto-advisor", client)) return
 
     const mode = getMode()
-    const exactMarker = MODE_MARKER[mode]
+    if (!isCachedForMode(cachedPrompt, mode)) {
+      cachedPrompt = { mode, text: getAdvisorPrompt(mode) }
+    }
 
-    // Fast path: the system prompt already has the correct marker for the
-    // active mode → don't touch anything. Keeps the prompt-cache warm.
-    if (hasExactMarker(output.system, exactMarker)) return
-
-    // Slow path: either first injection, or the mode changed since last turn.
-    // Strip any stale [AUTO-ADVISOR MODE: ...] block, then append the new one.
+    // Defensive strip — correct under Scenario B (hypothetical
+    // prompt-persistence), no-op under Scenario A (verified current
+    // runtime, see ADR 0002). Mirrors adr-guard / e2e-guard /
+    // project-manager / project-profiler.
     if (hasAnyMarker(output.system)) stripMarker(output.system)
-    const changed = appendPrompt(output.system, getAdvisorPrompt(mode))
+
+    // Always inject — under Scenario A the prompt is rebuilt fresh
+    // each turn. Skipping would leave the LLM without the protocol
+    // after the first turn.
+    const changed = appendBlock(output.system, cachedPrompt.text)
     if (changed) await log("info", `system prompt: mode=${mode} injected`)
   }
 }
