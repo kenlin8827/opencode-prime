@@ -10,8 +10,8 @@
 
 | 命令 | 别名 | 说明 |
 | :--- | :--- | :--- |
-| `ocp` *（无参数）* | | 启动 **OpenCode 终端界面**（等同 `ocp tui`） |
-| `ocp tui` | | 启动 OpenCode 终端 TUI（`exec opencode`）；额外参数原样透传给 `opencode` |
+| `ocp` *（无参数）* | | 在当前 shell **直接启动 OpenCode 终端界面** |
+| `ocp tui` | | 默认通过所选的**工作区包装器**（Herdr 或 Luvus）启动 OpenCode 终端 TUI。加 `--init` 可在启动前创建/激活当前目录的 OCP 项目；加 `--direct`、`--herdr` 或 `--luvus` 可单次覆盖启动模式。 |
 | `ocp serve` | | 启动无头 OpenCode 服务（`opencode serve`）；额外参数透传（如 `ocp serve --port 4096`） |
 | `ocp web` | | 启动 **OpenChamber Web 界面**（`openchamber serve`）；自动生成 `--ui-password`，未指定端口时自动从 3000 起挑选空闲端口（详见[端口与密码策略](#web-端口与密码策略)） |
 | `ocp code` | | 在 **VS Code** 中打开当前项目（同时探测 `code-insiders` / `codium` / `cursor` / `windsurf`），并保证 OpenChamber 编辑器扩展就绪：缺失时自动通过编辑器 CLI 安装 `fedaykindev.openchamber`。加 `--init` 可在启动前创建/激活 OCP 项目；裸 `.` 会原样透传，让 VS Code 打开当前目录 |
@@ -54,16 +54,17 @@ ocp tui                     # 直接进入终端界面
 ocp tui --version           # opencode 自身的 --version
 ```
 
-默认情况下，`ocp tui` 会通过 Herdr 工作区启动（等同 `ocp herdr`）。若要在当前 shell 直接启动 `opencode`，在 `install/options.jsonc` 中设 `"tui_mode": "direct"`。Herdr 模式会自动启用 `tools.herdr`。
+`ocp tui` 是经工作区包装的终端客户端：可在安装向导中选择 **Herdr** 或 **Luvus**，选中的集成会在其受管工作区中启动 OpenCode；希望直接使用终端客户端时，请运行裸 `ocp`。
 
-命令行覆盖（一次性，优先于 `tui_mode` 配置）：
+单次直接启动终端界面：
 
 ```bash
 ocp tui --direct            # 强制 direct（当前 shell 启动 opencode）
-ocp tui --herdr             # 强制本次走 herdr 工作区
+ocp tui --herdr             # 单次强制使用 Herdr 工作区包装器
+ocp tui --luvus             # 单次强制使用 Luvus 工作区包装器
 ```
 
-裸调用 `ocp`（不带任何参数）始终直接打开 `opencode`——绕过 `tui_mode` 与 `--herdr` / `--direct`。
+裸调用 `ocp`（不带任何参数）始终直接打开 `opencode`。
 
 ### `ocp serve` — 无头服务
 
@@ -241,6 +242,8 @@ ocp profile                  # 交互式选择并应用配置方案
 ```
 
 不带子命令时，`ocp provider` 与 `ocp profile` 直接运行与 `/provider`、`/profile` 相同的 standalone 对话框向导，包含嵌套菜单、确认步骤和 Esc 逐级返回。模型目录走统一的 OpenCode bridge：内置 TUI 使用 OpenCode SDK bridge，standalone 使用 `opencode` CLI bridge（`models --verbose`）；不可用时自动落到 `models.dev` / 本地配置文件。交互与斜杠命令一致。`provider list`、`profile list`、`profile apply <名称>`、`profile reset --yes` 可非交互运行；非 TTY 下交互模式返回退出码 1 并提示替代命令。
+
+**复制文本：** 所有 standalone TUI 界面与对话框都支持鼠标拖选后**右键复制**。写入优先走 OSC 52（Windows Terminal ≥1.18、WezTerm、kitty、Alacritty、开启剪贴板权限的 iTerm2、开启 `set-clipboard on` 的 tmux），终端不支持时自动回退到系统剪贴板工具（`Set-Clipboard` / `pbcopy` / `wl-copy` / `xclip` / `xsel`）。若终端自身占用了右键（如 QuickEdit 右键粘贴），可按住 **Shift** 再右键，或直接用终端原生的 Shift 拖选复制。
 
 ## 相关页面
 

@@ -44,9 +44,9 @@ A profile is a named preset that maps all model tiers to a specific provider's m
 | `openai` | Official API Direct | Official OpenAI API (GPT-5, o3-mini, o4-preview) |
 | `google` | Official API Direct | Official Google Gemini API (Gemini 2.5 Flash, 2.5 Pro) |
 | `kimi-for-coding` | Official Coding Plan | Moonshot Kimi For Coding official coding plan (K1.5 / K2 series) |
-| `alibaba/coding-plan` / `-cn` | Official Coding Plan | Alibaba Bailian Tongyi Qwen coding plan (Qwen3-Coder, Qwen3.7-Plus) |
 | `alibaba/token-plan` / `-cn` | Official Coding Plan | Alibaba Bailian Token plan (DeepSeek V4 Flash / Qwen 3.8 Max) |
 | `alibaba/token-plan-cn-deepseek` | Official Coding Plan | Alibaba Bailian Token plan, all-DeepSeek variant (V4 Flash / V4 Pro) |
+| `alibaba/token-plan-cn-qwen` | Official Coding Plan | Alibaba Bailian Token plan, all-Qwen variant (Qwen3.8-Flash / Qwen3.8-Max) |
 | `minimax/coding-plan` / `minimax/cn-coding-plan` | Official Coding Plan | MiniMax official coding plan (M2.7, M3) |
 | `zhipuai-coding-plan` | Official Coding Plan | Zhipu AI official coding plan (GLM-5.1, GLM-5.2, GLM-5v) |
 | `zai-coding-plan` | Official Coding Plan | Z.AI official coding plan (GLM series) |

@@ -8,20 +8,27 @@ OpenCode 拥有开放的前端生态。无论你习惯纯键盘流的终端环�
 
 | 客户端形态 | 推荐人群 | 核心优势 | 启动 / 使用方式 |
 |---|---|---|---|
-| **终端 TUI（默认）** | 命令行极客、SSH 远程开发 | 极轻量、毫秒级响应、原生键盘流交互 | 终端直接执行 `opencode` |
+| **终端 TUI — 直接模式** | 命令行极客、SSH 远程开发 | 极轻量、毫秒级响应、原生键盘流交互 | 运行 `ocp`（或 `ocp tui --direct`） |
+| **终端 TUI — 工作区包装模式** | 希望使用受管工作区的终端用户 | 连同直接模式，终端 TUI 目前可选三种模式：直接、Herdr 和 Luvus | 通过所选 Herdr 或 Luvus 包装器运行 `ocp tui` |
 | **OpenChamber 桌面端** | 偏好图形界面、精细 Code Review 用户 | **双栏可视化 Diff**、多模型并行对比与熔合（Fusion）、会话时间线管理 | 下载 [OpenChamber](https://openchamber.dev/download) 桌面应用后运行 `ocp desktop` |
 | **OpenChamber VS Code 扩展** | 不想离开编辑器的 Review 用户 | 在 VS Code 内提供同一套 OpenChamber 审查界面（兼容 VSCodium / Cursor / Windsurf） | 运行 `ocp code` —— 缺失时自动安装扩展 |
-| **内置 Web 端** | 局域网访问、轻量浏览器体验 | 浏览器内即开即用，无需安装桌面额外程序 | 终端执行 `opencode serve` 并在浏览器打开 |
+| **OpenChamber Web 端** | 局域网访问、轻量浏览器体验 | 密码保护的浏览器访问、可视化并列审查 | 运行 `ocp web` |
 
 ---
 
 ## 各端界面预览
 
-### 终端 TUI
+### 终端 TUI — 直接模式
 
-在任意项目目录下运行 `opencode`（或 `ocp tui`）即可启动终端界面 —— 默认日常主力界面，支持 21 位专家智能体、四种工作模式与工作流斜杠命令：
+在任意项目目录下运行 `ocp`（或 `ocp tui --direct`）即可在当前 shell 直接启动 OpenCode —— 默认日常主力界面，支持 21 位专家智能体、四种工作模式与工作流斜杠命令：
 
 ![OpenCode 终端界面](/images/opencode-zh.webp)
+
+---
+
+### 终端 TUI — 工作区包装模式
+
+终端 TUI 目前可选三种模式：**直接模式**、**Herdr** 和 **Luvus**。运行 `ocp tui` 可通过安装时选择的工作区包装器启动同一套 OpenCode 终端界面（Herdr 或 Luvus）；单次覆盖选择可使用 `ocp tui --herdr` 或 `ocp tui --luvus`。
 
 ---
 

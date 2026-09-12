@@ -60,13 +60,15 @@ Running the install command (or `ocp wizard` / `ocp dashboard` anytime later) op
 After installation, the global shortcuts are automatically registered. You can run any of them from **any terminal directory**:
 
 ```bash
-ocp              # no arguments = launch the OpenCode terminal UI (same as ocp tui)
+ocp              # launch the OpenCode terminal UI directly
 ocp dashboard    # open the TUI control center (aliases: ocp cc / ocp matrix)
 ocp provider     # configure model providers (same wizard as /provider)
 ocp profile      # select or apply a model-tier profile (same wizard as /profile)
 ocp project      # initialize or configure the OCP project in the current directory
 ocp usage        # inspect token and cost usage across projects
+ocp tui          # launch the OpenCode terminal UI through the selected workspace wrapper
 ocp web          # OpenChamber web UI (auto-generated password)
+ocp desktop      # launch the native OpenChamber desktop app (alias: ocp ui)
 ocp code         # open VS Code with the OpenChamber extension ensured (auto-installs when missing)
 ocp update       # check suite + opencode + openchamber, interactively apply the selected updates
 ocp upgrade      # pull the latest release and reinstall (one-click upgrade)
@@ -79,13 +81,17 @@ No more memorizing install paths — launch the TUI, reconfigure, or perform one
 
 ## Client Surfaces
 
-OCP supports three interfaces — all sharing the same `~/.config/opencode` config, zero re-setup:
+OCP supports five client modes — all sharing the same `~/.config/opencode` config, zero re-setup. The terminal TUI currently offers three selectable modes: **Direct**, **Herdr**, and **Luvus**.
 
-### Terminal TUI (Default)
+### Terminal TUI — Direct
 
-Launch with `ocp` or `ocp tui` — the daily driver with 21 specialist agents, four working modes, and workflow slash commands:
+Launch with bare `ocp` (or `ocp tui --direct`) to run OpenCode directly in the current shell — the daily driver with 21 specialist agents, four working modes, and workflow slash commands:
 
 ![OpenCode Terminal UI](/images/opencode-en.webp)
+
+### Terminal TUI — Workspace Wrapper
+
+Launch with `ocp tui` to open the same terminal UI through the workspace wrapper selected in the setup wizard: **Herdr** or **Luvus**. Together with **Direct**, the terminal TUI currently supports three selectable modes. Use `ocp tui --direct` for a one-off direct launch; `--herdr` and `--luvus` select a wrapper for one invocation.
 
 ### OpenChamber Web UI
 
@@ -98,6 +104,10 @@ Launch with `ocp web` — browser-based side-by-side diff and multi-model compar
 Launch with `ocp desktop` (alias `ocp ui`) — native Tauri app with full keyboard navigation:
 
 ![OpenChamber Desktop App](/images/openchamber-desktop-en.png)
+
+### OpenChamber VS Code Extension
+
+Launch with `ocp code` to open the current project in VS Code (also VSCodium, Cursor, and Windsurf) with the OpenChamber extension ensured. See **[Clients & UI Options](/getting-started/clients)** for `--init` and editor-argument behavior.
 
 > 📖 See **[Clients & UI Options](/getting-started/clients)** for the full comparison.
 

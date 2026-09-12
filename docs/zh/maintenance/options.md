@@ -40,7 +40,10 @@
      // 可选外部二进制，声明于 install/tools.jsonc
      "tools": {
        // 是否启用 rtk 输出压缩（60-90% token 节省）
-       "rtk": true,
+        "rtk": true,
+        // 可选外部全文检索缓存（microsoft/tgrep），缺失时由安装器自动拉取预编译包。
+        // 它不是 MCP、LSP 或代码图谱；.tgrep/ 不可提交。
+        "tgrep": true,
        // OpenChamber 拆分为三个独立面，各自一个开关：
         // 网页版 CLI（缺失时自动安装 @openchamber/web；提供 `ocp web`，需 Node.js 22+）
         // 默认关闭：启用后会安装全局包。
@@ -51,8 +54,9 @@
        // `ocp code` 的 VS Code 扩展（缺失时通过编辑器 CLI 自动安装
         // fedaykindev.openchamber）。默认关闭：启用后会修改编辑器。
         "openchamber_vscode": false,
-       // 终端工作空间管理器（tui_mode 为 "herdr" 时自动视为 true）
-       "herdr": false
+        // 终端工作区管理器；所选 tui_mode 对应的工具会自动视为 true。
+        "herdr": false,
+        "luvus": false
      },
      // 默认主控智能体（lite: 默认精益日常驱动 / code: 直接开发 / build: 编排派发 / plan: 只读分析）
      "default_agent": "lite",
@@ -73,15 +77,13 @@
        // JetBrains IDE 桥接（需先在 IDE 中启用 MCP 服务器：Settings → Tools → MCP Server）
        "idea": true
      },
-     // 外部 npm 插件开关（true: 启用; false: 关闭）
-     "plugin": {
-       // 偷懒编码协议：实现目标并指出更轻量的替代方案
-       "@dietrichgebert/ponytail": true,
-       // Qoder 订阅桥接（通过官方 SDK 注入 qoder 服务商及模型，需 qoder login）
-       "opencode-qoder-bridge": false,
-       // 持久化项目记忆库（向量存储，空闲时产生额外 LLM 捕获调用）
-       "opencode-mem@2.24.3": false
-     }
+      // 外部 npm 插件开关（true: 启用; false: 关闭）
+      "plugin": {
+        // Qoder 订阅桥接（通过官方 SDK 注入 qoder 服务商及模型，需 qoder login）
+        "opencode-qoder-bridge": false,
+        // 持久化项目记忆库（向量存储，空闲时产生额外 LLM 提炼调用）
+        "opencode-mem@2.24.3": false
+      }
    }
    ```
 3. **执行安装命令**：
@@ -107,6 +109,33 @@
 
 ---
 
+## 可选 tgrep 全文检索索引
+
+`tools.tgrep` **默认启用**。启用时若系统尚未安装外部 [`tgrep`](https://github.com/microsoft/tgrep)
+CLI，OCP 安装器会自动拉取官方发布的预编译包（同 `rtk` 机制）；若已自行安装在 PATH 上则直接复用。CLI 就位后,`/project init` 创建首次本地
+`.tgrep/` 索引;`/project index` 只重建已有但不健康的索引。健康的 `tgrep serve .`
+watcher 负责日常增量更新。将 `tools.tgrep` 设为 `false` 可完全退出。
+
+索引检索适合重复、宽泛的文本或正则查询。刚保存后、验证修改时，或要断言没有匹配时，
+须使用 current/full scan（`tgrep --no-index` 或 `rg`），因为 watcher 更新是异步的。
+保持默认 64 MiB 文件大小策略以及 index/serve/search 参数一致。tgrep 不替代 Serena
+符号导航或 CodeGraph/GitNexus 关系查询。
+
+若磁盘上的索引是在不同策略（`indexPath`、`maxFileSize`、`exclude`、`noRequireGit`）
+或不同 tgrep 版本下构建的，OCP 会将其报告为 `stale`：索引检索回退到 full scan，直到
+`/project index` 重建完成，结果因此不会违反已配置的策略。`tgrep_search` 工具除
+`-i`/`-F` 标志外还接受 gitignore 风格的 `glob` 过滤器。
+
+### 验证与基准测试（显式启用）
+
+常规 OCP 测试不会下载二进制。自行安装固定版本 tgrep 后，可运行
+`OCP_TGREP_BIN=tgrep bun run tests/test-tgrep-integration.ts`（PowerShell：
+`$env:OCP_TGREP_BIN = "tgrep"`）验证真实 CLI 契约。通过
+`bun run scripts/benchmark-tgrep.ts <repo> <literal>` 在本地测量仓库；在
+宣传性能收益前，应保留 JSON 输出、tgrep 版本与仓库 revision。
+
+---
+
 ## 插件自动预热（Ensure-Plugins）
 
 为了避免首次启动 OpenCode 时因在线下载 npm 插件而出现卡顿，安装器会在安装的最后阶段自动探测本地包管理器（`bun` > `npm` > `pnpm`），并将已启用的外部插件自动预装至 OpenCode 原生缓存目录（`~/.cache/opencode`）。
@@ -126,20 +155,24 @@
 
 ---
 
-## Herdr（`ocp herdr`）—— 可选终端工作区管理器
+## 工作区包装 TUI（`ocp tui`）
 
-[Herdr](https://herdr.dev) 是为 AI 编码代理量身打造的终端工作区管理器。每个 herdr 工作区都以某个目录为根，并在新 pane 里自动启动 opencode（通过 OCP 的 `auto-opencode` 插件）。开启 `"herdr": true` 后，安装器会在本地缺 `herdr` 命令时自动拉取，并把内置配置链接到 `~/.config/herdr/config.toml`。
+安装向导可选择 `ocp tui` 背后的工作区集成：**Herdr** 或 **Luvus**。裸 `ocp` 始终在当前 shell 中直接启动 OpenCode。
 
-由于 `tui_mode` 默认值为 `"herdr"`，Herdr 默认启用。若不需要，可在向导或此配置中关闭。
+| 模式 | 集成 | OCP 的配置行为 |
+|---|---|---|
+| `"herdr"` *（默认）* | [Herdr](https://herdr.dev) | 建立以当前目录为根的工作区；OCP 会配置 Herdr、其 OpenCode 集成与内置自动启动插件。 |
+| `"luvus"` | [Luvus](https://luvus.dev) | 建立以当前目录为根的工作区；OCP 运行 Luvus 官方安装器，配置其 OpenCode 会话集成，并链接内置自动启动模块（新标签页/窗格自动开启 opencode）；启动时若模块未生效则回退为显式启动一个 OpenCode agent。 |
+| `"direct"` | 无 | 在当前 shell 中直接运行 OpenCode。 |
 
-要让 `ocp tui` 走 herdr 而非直接启动 `opencode`，请设：
+可在向导中选择默认值，也可手动设置：
 
 ```jsonc
 // install/options.jsonc
-"tui_mode": "herdr"   // "direct" | "herdr"（默认）
+"tui_mode": "luvus"   // "direct" | "herdr"（默认） | "luvus"
 ```
 
-选 `"herdr"` 会自动启用 `tools.herdr`（覆盖显式设为 `false` 的情况），并打印一行提示，无需再手动开启第二个开关。
+选择工作区模式会自动启用匹配的 `tools` 项，即使它显式设为 `false`。单次覆盖可使用 `ocp tui --direct`、`ocp tui --herdr` 或 `ocp tui --luvus`。
 
 ---
 

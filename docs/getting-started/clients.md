@@ -8,19 +8,26 @@ OpenCode features an open, modular frontend ecosystem. Whether you prefer a ligh
 
 | Interface | Best for | Key Advantages | How to Launch |
 |---|---|---|---|
-| **Terminal TUI (Default)** | Command-line power users, SSH remote development | Ultra-lightweight, sub-millisecond response, native keyboard flow | Run `opencode` directly in terminal |
+| **Terminal TUI — Direct** | Command-line power users, SSH remote development | Ultra-lightweight, sub-millisecond response, native keyboard flow | Run `ocp` (or `ocp tui --direct`) |
+| **Terminal TUI — Workspace wrapper** | Terminal users who want a managed workspace | Together with Direct, the terminal TUI currently supports three selectable modes: Direct, Herdr, and Luvus | Run `ocp tui` for the selected Herdr or Luvus wrapper |
 | **OpenChamber Desktop** | Visual review, side-by-side comparison | **Visual Side-by-Side Diff**, multi-model parallel Fusion & comparison, session timeline | Download the [OpenChamber](https://openchamber.dev/download) desktop app, then run `ocp desktop` |
 | **OpenChamber VS Code Extension** | Reviewing without leaving the editor | The same OpenChamber review UI inside VS Code (also VSCodium / Cursor / Windsurf) | Run `ocp code` — auto-installs the extension when missing |
-| **Built-in Web UI** | LAN access, lightweight browser experience | Zero local desktop installation, instant web access | Run `opencode serve` in terminal and open browser |
+| **OpenChamber Web UI** | LAN access, lightweight browser experience | Password-protected browser access, visual side-by-side review | Run `ocp web` |
 
 ---
 
 ## Interface Preview
 
-### Terminal TUI
+### Terminal TUI — Direct
 
-Run `opencode` (or `ocp tui`) in any project directory to launch the terminal UI — the default daily-driver interface with 21 specialist agents, four working modes, and workflow slash commands:\n
+Run `ocp` (or `ocp tui --direct`) in any project directory to launch OpenCode directly in the current shell — the default daily-driver interface with 21 specialist agents, four working modes, and workflow slash commands:
 ![OpenCode Terminal UI](/images/opencode-en.webp)
+
+---
+
+### Terminal TUI — Workspace Wrapper
+
+The terminal TUI currently supports three selectable modes: **Direct**, **Herdr**, and **Luvus**. Run `ocp tui` to launch through the workspace wrapper selected during setup (Herdr or Luvus); use `ocp tui --herdr` or `ocp tui --luvus` to override the selection for one launch.
 
 ---
 

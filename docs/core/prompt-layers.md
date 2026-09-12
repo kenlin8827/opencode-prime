@@ -87,8 +87,8 @@ the step.
 - `routing-index.md` (L0) keeps pointers to every on-demand rule, so demoting
   a rule never loses the iron obligation behind it (e.g. SQL migrations must
   still route to `@dba`; SDD flows must still load the skill first).
-- L1 files may cross-reference each other with shorthand (`cp#N`) **only
-  within the same disclosure unit** — every agent that cites `cp#N` carries
+- L1 files may cross-reference each other with shorthand (`cp-<slug>`) **only
+  within the same disclosure unit** — every agent that cites `cp-<slug>` carries
   `coding-principles.md`.
 - Upgrades always propagate: the installer takes the template's
   `instructions` array and factory agents as authoritative; only agents you

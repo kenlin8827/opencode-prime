@@ -60,13 +60,15 @@ curl -fsSL https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/inst
 安装完成后，系统已自动注册全局快捷命令。你可以在**任意终端路径下**直接输入：
 
 ```bash
-ocp              # 不带参数 = 启动 OpenCode 终端 TUI（等同 ocp tui）
+ocp              # 直接启动 OpenCode 终端 TUI
 ocp dashboard    # 打开 TUI 全景控制台（别名：ocp cc / ocp matrix）
 ocp provider     # 配置模型服务商（与 /provider 同一向导）
 ocp profile      # 选择或应用模型层级预设（与 /profile 同一向导）
 ocp project      # 在当前目录初始化或配置 OCP 项目
 ocp usage        # 查看跨项目 Token 与费用用量
+ocp tui          # 通过所选工作区包装器启动 OpenCode 终端 TUI
 ocp web          # OpenChamber Web 界面（自动生成密码）
+ocp desktop      # 启动 OpenChamber 原生桌面应用（别名：ocp ui）
 ocp code         # 打开 VS Code 并保证 OpenChamber 扩展就绪（缺失时自动安装）
 ocp update       # 检查套件 + opencode + openchamber，交互式升级勾选项
 ocp upgrade      # 拉取最新发布包并重装（一键升级）
@@ -79,13 +81,17 @@ opencode-prime   # 完整品牌命令（同一分发器）
 
 ## 客户端界面
 
-OCP 支持三种界面 —— 均共享同一套 `~/.config/opencode` 配置，零重复配置：
+OCP 支持五种客户端形态 —— 均共享同一套 `~/.config/opencode` 配置，零重复配置。其中终端 TUI 目前可选三种模式：**直接模式**、**Herdr** 和 **Luvus**。
 
-### 终端 TUI（默认）
+### 终端 TUI — 直接模式
 
-运行 `ocp` 或 `ocp tui` 启动 —— 日常主力界面，支持 21 位专家智能体、四种工作模式与工作流斜杠命令：
+运行裸 `ocp`（或 `ocp tui --direct`）即可在当前 shell 直接启动 OpenCode —— 日常主力界面，支持 21 位专家智能体、四种工作模式与工作流斜杠命令：
 
 ![OpenCode 终端界面](/images/opencode-zh.webp)
+
+### 终端 TUI — 工作区包装模式
+
+运行 `ocp tui` 可通过安装向导中选择的工作区包装器启动同一终端界面：**Herdr** 或 **Luvus**；连同**直接模式**，终端 TUI 目前共支持三种可选模式。单次直接启动可使用 `ocp tui --direct`；单次选择包装器可使用 `--herdr` 或 `--luvus`。
 
 ### OpenChamber Web 端
 
@@ -98,6 +104,10 @@ OCP 支持三种界面 —— 均共享同一套 `~/.config/opencode` 配置，�
 运行 `ocp desktop`（别名 `ocp ui`）启动原生桌面应用，支持全键盘导航：
 
 ![OpenChamber 桌面应用](/images/openchamber-desktop-zh.png)
+
+### OpenChamber VS Code 扩展
+
+运行 `ocp code` 可在 VS Code（也支持 VSCodium、Cursor 和 Windsurf）中打开当前项目，并确保 OpenChamber 扩展就绪。`--init` 与编辑器参数传递方式请参阅 **[客户端与交互界面](/zh/getting-started/clients)**。
 
 > 📖 完整对比见 **[客户端与交互界面](/zh/getting-started/clients)**。
 

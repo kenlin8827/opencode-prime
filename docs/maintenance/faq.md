@@ -76,7 +76,7 @@ OpenCode's built-in tool is natively named `bash`, so LLMs frequently output POS
    [System.Environment]::SetEnvironmentVariable('SHELL', 'C:\Program Files\Git\bin\bash.exe', [System.EnvironmentVariableTarget]::User)
    ```
 2. **Global Agent Instruction Adaptation**:
-   In `instructions/coding-principles.md`, Principle 9 mandates adaptive command execution. Even in pure PowerShell/CMD environments without Git Bash, agents adapt to native PowerShell syntax (e.g. `$env:VAR = "val"`, `Get-ChildItem`, `Remove-Item`) or cross-platform commands (`git`, `npm`, `node`), and auto-recover if a syntax mismatch occurs.
+   In `instructions/coding-principles.md`, `cp-shell` mandates adaptive command execution. Even in pure PowerShell/CMD environments without Git Bash, agents adapt to native PowerShell syntax (e.g. `$env:VAR = "val"`, `Get-ChildItem`, `Remove-Item`) or cross-platform commands (`git`, `npm`, `node`), and auto-recover if a syntax mismatch occurs.
 
 ### Serena `replace_content` fails with "No matches of search expression"
 

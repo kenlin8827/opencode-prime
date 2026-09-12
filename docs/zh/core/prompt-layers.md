@@ -68,8 +68,8 @@ L0 是最贵的层（× 步数 × Agent 数），因此发布门禁用
 
 - `routing-index.md`（L0）保留所有按需规则的指针，规则降级不会丢失其背后的
   铁律义务（例如 SQL 迁移仍必须路由给 `@dba`；SDD 流程仍必须先加载技能）。
-- L1 文件之间的简写交叉引用（`cp#N`）**只允许在同一披露单元内**——所有引用
-  `cp#N` 的 Agent 都携带 `coding-principles.md`。
+- L1 文件之间的简写交叉引用（`cp-<slug>`）**只允许在同一披露单元内**——所有引用
+  `cp-<slug>` 的 Agent 都携带 `coding-principles.md`。
 - 升级永远可传播：安装器以模板的 `instructions` 数组与出厂 Agent 为准；
   只有你自己新增的 Agent 会原样保留。
 

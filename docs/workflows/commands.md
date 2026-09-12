@@ -36,11 +36,13 @@ OpenCode Multi-Agent ships with a suite of high-leverage workflow slash commands
 | **`/auto-advisor [off\|lite\|full]`** | Intelligence | Toggle auto-advisor mode (`off`, `lite` recommendations, `full` factual auto-answers) |
 | **`/md-to-pdf <file.md> [output.pdf]`** | Publishing | Export Markdown to high-res A4 PDFs with 300 DPI Mermaid diagrams, CSS themes & `--doctor` diagnostics |
 | **`/md-to-docx <file.md> [output.docx]`** | Publishing | Export Markdown to publication-grade Word (.docx) with pure TS engine, dual fonts & Mermaid rendering |
-| **`/project [init\|index\|sync]`** | Project Setup | Scaffold project baseline files (`.opencode/opencode.jsonc` etc.) and trigger CodeGraph / GitNexus indexing |
-| **`/project-wizard`** | TUI Wizard | Interactive project configuration wizard: toggle MCP services and plugins via visual terminal UI |
+| **`/project` (or `init`/`index`/`sync` subcommand)** | Project Setup | `init\|index\|sync` subcommands scaffold project baseline files (`.opencode/opencode.jsonc` etc.) and trigger CodeGraph / GitNexus indexing. Bare `/project` opens the interactive wizard menu (toggles MCP services & plugins via visual terminal UI) |
+| **`/memory [capture\|on\|off\|status]`** | Project Memory | Opt-in project memory: capture lessons, view or toggle the gate, check injection status (memory stored outside the project under the ocp memory root) |
 | **`/profile`** | TUI Wizard | Open model profile picker: easily switch or customize Auto / Ultimate / Performance / Economy / Lightweight tiers |
 | **`/provider`** | TUI Wizard | Open provider wizard: configure credentials (`baseURL` / `apiKey`) and manage model catalogs |
+| **`/disconnect [id\|--all]`** | TUI Wizard | Disconnect a provider credential — bare opens the connections wizard; `<id>` jumps straight to confirm; `--all` asks once for every connection |
 | **`/queued`** | TUI Wizard | Interactive TUI dialog to inspect, edit, or cancel queued messages submitted while the agent was busy |
+| **`/usage [session\|agent\|model\|all]`** | Observability | Token/cost usage with tabbed dimensions (session / agent / model) — 1/2/3 or ←→ to switch, ↑/↓ to scroll |
 
 > The five `/git-*` commands share one doctrine: preflight halts instead of cleaning up after you, `--ff-only` target sync where applicable, `guard/` backups, baseline-first conflict resolution, a per-hunk confidence self-check that escalates to `@advisor` and hands uncertain hunks to you rather than guessing, verify-once honesty, and a redacted hash-chained audit trail in `.git/ocp-*-reports/` on **every** invocation. Full doctrine, flag matrix and failure catalog: **[Git Workflows](git.md)**.
 
