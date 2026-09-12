@@ -85,6 +85,7 @@ assertEq(readOcpField("language"), undefined, "missing file → undefined field"
 // ─── i18n wiring ────────────────────────────────────────────────────────────
 
 const { setLocale, getLocale, initI18n } = await import("../plugins/tui/i18n")
+const { formatI18n, getPreferredLocaleCode, setPreferredLocaleCode } = await import("../install/src/i18n")
 
 // initI18n is a per-process singleton, so seed the file BEFORE first init:
 // the file value must win over both kv and env detection.
@@ -99,6 +100,12 @@ mkdirSync(join(sandbox, "nested"), { recursive: true })
 setLocale(fakeApi, "zh-CN")
 assertEq(getLocale(), "zh-CN", "setLocale updates in-memory locale")
 assertEq(readOcpField("language"), "zh-CN", "setLocale persists to ocp.jsonc")
+
+// The installer UI and shell output share the same persisted preference.
+assertEq(getPreferredLocaleCode(), "zh-CN", "installer locale reads the shared language preference")
+setPreferredLocaleCode("en")
+assertEq(readOcpField("language"), "en", "installer language switch persists to ocp.jsonc")
+assertEq(formatI18n("Installed {count} files to {target}", { count: 2, target: "/tmp/ocp" }), "Installed 2 files to /tmp/ocp", "installer message placeholders are interpolated")
 
 // ─── cleanup ────────────────────────────────────────────────────────────────
 

@@ -30,7 +30,9 @@ check("identifiers.utility is a startsWith rule", typeof scope.identifiers.utili
 const star = scope.plugins["*"]
 check("default policy denies lite, utility and all subagent steps", Array.isArray(star?.deny) && ["lite", "utility", "subagent:*"].every((e) => star.deny.includes(e)))
 const profiler = scope.plugins["project-profiler"]
-check("project-profiler overrides the default: subagent steps allowed, lite/utility still denied", Array.isArray(profiler?.deny) && !profiler.deny.includes("subagent:*") && ["lite", "utility"].every((e) => profiler.deny.includes(e)))
+check("project-profiler overrides the default: subagent steps AND lite allowed, utility still denied", Array.isArray(profiler?.deny) && !profiler.deny.includes("subagent:*") && !profiler.deny.includes("lite") && profiler.deny.includes("utility"))
+const memoryPolicy = scope.plugins["project-memory"]
+check("project-memory overrides the default: lite allowed, utility and subagent steps still denied", Array.isArray(memoryPolicy?.deny) && !memoryPolicy.deny.includes("lite") && memoryPolicy.deny.includes("utility") && memoryPolicy.deny.includes("subagent:*"))
 
 // --- Public surface ------------------------------------------------------------
 const gateApi = (await import("../plugins/shared/plugin-scope")) as Record<string, unknown>
@@ -61,8 +63,20 @@ let callCount = 0
 const countingClient = { session: { get: async () => { callCount++; return { data: { parentID: "parent-session" } } } } }
 
 check("scoped blocks subagent steps (parentID ground truth)", (await scoped({ sessionID: "sub-1" }, normalSystem, "sdd", subagentClient)) === false)
+// Why project-profiler now ALSO allows "lite" (was denied up to 2026-09-10):
+//   prompts/lite.md promotes tgrep_search to "the default" for codebase-wide
+//   text/regex search (replacing earlier @explore delegation). Without the
+//   [PROJECT CAPABILITIES] block, Lite is forced to either probe `tgrep status`
+//   or default blind to `noIndex=true` — the block is the cheaper,
+//   single-source-of-truth path shared with subagents. Utility (title-generator,
+//   ~30k tok saved per session) stays denied — it never touches code search,
+//   so the block would be pure overhead there. If you revert this, also revert
+//   the Lite prompt's anti-pattern bullet or the two will silently fight each
+//   other.
 check("project-profiler injects into subagent steps via its override", (await scoped({ sessionID: "sub-profiler" }, normalSystem, "project-profiler", subagentClient)) === true)
-check("project-profiler still blocks lite sessions", (await scoped(undefined, liteSystem, "project-profiler")) === false)
+check("project-profiler now allows lite sessions (Lite needs backend state for tgrep_search routing)", (await scoped(undefined, liteSystem, "project-profiler")) === true)
+check("project-memory now allows lite sessions (curated lessons are Lite's project context)", (await scoped(undefined, liteSystem, "project-memory")) === true)
+check("project-memory still denies subagent steps", (await scoped({ sessionID: "sub-memory" }, normalSystem, "project-memory", subagentClient)) === false)
 check("scoped allows primary sessions with a client present", (await scoped({ sessionID: "pri-1" }, normalSystem, "sdd", primaryClient)) === true)
 check("scoped falls open without sessionID/client", (await scoped(undefined, normalSystem, "sdd")) === true)
 await scoped({ sessionID: "sub-cache" }, normalSystem, "sdd", countingClient)
