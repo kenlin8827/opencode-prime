@@ -184,7 +184,7 @@ function createWizardApi(host: ReturnType<typeof createTuiHost>, context: OcpUiC
     },
     kv: {
       get<T>(key: string, fallback?: T) { return host.kvGet<T>(key) ?? fallback },
-      set() { /* wizard locales persist via ocp.jsonc, not host kv */ },
+      set() { /* wizard locales persist via ocp.json, not host kv */ },
     },
     // Provider/profile run without a server and fall back to file/public data.
     // Usage talks to the local OpenCode server through the same SDK client that

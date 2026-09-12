@@ -786,6 +786,79 @@ function extractJsonSummary(stdout: string): string | null {
   return null;
 }
 
+/**
+ * ADR 0004 §3 one-shot global rename: `ocp.jsonc` → `ocp.json`. The
+ * plugins stopped reading the legacy name at runtime (v2 hard cutover);
+ * the installer owns making the old content survive. The destination is
+ * always the runtime-resolved plugin dir — NOT necessarily the install
+ * `targetDir`: with XDG_CONFIG_HOME set (and no OPENCODE_CONFIG_DIR) the
+ * runtime reads `$XDG_CONFIG_HOME/opencode/ocp.json` while the installer
+ * installs into `~/.config/opencode`. A legacy file found in the wrong
+ * base is MOVED to the runtime path so its content survives. Collision
+ * (both exist in the plugin dir) → warn and keep BOTH — `ocp.json` wins
+ * at runtime, nothing is ever deleted. Idempotent (after a run the
+ * legacy source is gone) and non-fatal: failures degrade to a warning
+ * line and the install continues.
+ *
+ * The move-from-wrong-base case reports under `action: 'renamed'` (with its
+ * own message) rather than a new action, so the caller's ✓/⚠ classification
+ * (renamed=✓) stays correct and unchanged.
+ *
+ * Keep-in-sync: `pluginDir` mirrors `ocpConfigPath()` in
+ * plugins/shared/ocp-config.ts (the runtime resolver) — that file owns
+ * the path contract; this is the documented installer-side mirror. The
+ * runtime `OCP_CONFIG_PATH` override is deliberately NOT consulted here:
+ * it is a test/sandbox pin, and the migration must move the REAL runtime
+ * file the plugins read after install.
+ */
+export function migrateGlobalOcpConfig(targetDir: string): {
+  action: 'renamed' | 'collision' | 'skipped' | 'error';
+  message: string;
+} {
+  // Mirror of the runtime resolver — see keep-in-sync note above.
+  const pluginDir = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'opencode');
+  const current = path.join(pluginDir, 'ocp.json');
+  const legacyHere = path.join(pluginDir, 'ocp.jsonc');
+  const fail = (err: unknown) => ({
+    action: 'error' as const,
+    message: `Could not migrate ocp.jsonc → ocp.json (${err instanceof Error ? err.message : String(err)}) — left in place; preferences stay at defaults.`,
+  });
+
+  if (fs.existsSync(current)) {
+    // The runtime file exists where it is read — nothing to place. Only a
+    // co-resident legacy sibling warns (kept; today's collision semantics).
+    if (fs.existsSync(legacyHere)) {
+      return {
+        action: 'collision',
+        message:
+          'Both ocp.jsonc and ocp.json exist — kept both; ocp.json is the single runtime source. Delete ocp.jsonc once your preferences are confirmed.',
+      };
+    }
+    return { action: 'skipped', message: '' };
+  }
+  if (fs.existsSync(legacyHere)) {
+    try {
+      fs.renameSync(legacyHere, current);
+      return { action: 'renamed', message: 'Migrated global OCP config: ocp.jsonc → ocp.json' };
+    } catch (err) {
+      return fail(err);
+    }
+  }
+  if (pluginDir !== targetDir && fs.existsSync(path.join(targetDir, 'ocp.jsonc'))) {
+    try {
+      fs.mkdirSync(pluginDir, { recursive: true });
+      fs.renameSync(path.join(targetDir, 'ocp.jsonc'), current);
+      return {
+        action: 'renamed',
+        message: `Moved global OCP config into the runtime dir: ${path.join(targetDir, 'ocp.jsonc')} → ${current}`,
+      };
+    } catch (err) {
+      return fail(err);
+    }
+  }
+  return { action: 'skipped', message: '' };
+}
+
 export function executeInstall(
   repoDir: string,
   args: CliArgs,
@@ -922,6 +995,13 @@ export function executeInstall(
   // 5. Merge configuration
   mergeConfig(repoDir, targetDir, effectiveOptions, preserveBag);
   mergeTuiConfig(repoDir, targetDir);
+
+  // 5.5 One-shot global ocp.jsonc → ocp.json rename (ADR 0004 §3) — silent
+  // when there is nothing legacy to move, warn-only on collision/error.
+  const ocpCfg = migrateGlobalOcpConfig(targetDir);
+  if (ocpCfg.action !== 'skipped') {
+    console.log(`${ocpCfg.action === 'renamed' ? '✓' : '⚠'} [ocp-config] ${ocpCfg.message}`);
+  }
 
   // 6. Write installed version
   fs.writeFileSync(path.join(targetDir, 'installed.version'), curVersion + '\n', 'utf8');
