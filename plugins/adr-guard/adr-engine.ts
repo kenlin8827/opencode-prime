@@ -50,6 +50,7 @@ const IGNORED_DIRS = new Set([
   ".cache",
   ".agents",
   ".opencode",
+  ".ocp",
   ".idea",
   ".vscode",
 ])

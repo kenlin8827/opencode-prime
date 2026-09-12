@@ -1,18 +1,17 @@
 /**
- * Shared env-guard config — project opencode.jsonc switch field.
+ * Shared env-guard config — project OCP config switch field.
  *
- * State is PROJECT-LEVEL and lives in the `envGuard` field of the
- * project's opencode.json/opencode.jsonc — there is NO separate state
- * file.
+ * State is PROJECT-LEVEL and lives in the `envGuard` field of
+ * `.ocp/ocp.json` — there is NO separate state file.
  *   - absent or "off" → off (default — no enforcement)
  *   - "on"            → on (secret-bearing .env* access is hard-blocked)
  *
- * Resolution: project config `envGuard` field → "off". Scanned in
- * order via `readProjectConfig()` which iterates the candidate paths
- * (`.opencode/opencode.jsonc`, `opencode.jsonc`, `.json` variants).
+ * Resolution: the `envGuard` field of `.ocp/ocp.json` → "off" (default).
+ * Single runtime source (ADR 0004 v2) — legacy `.opencode/` switch values
+ * are moved by the one-shot init migration; no read fallback.
  *
- * Setting the switch writes the field into the project-level config
- * only (targeted upsert; comments preserved). `/env-guard on|off`
+ * Setting the switch writes the field into `.ocp/ocp.json` only
+ * (targeted upsert; comments preserved). `/env-guard on|off`
  * flows through `setState`; `/env-guard reset` flows through `clear`.
  *
  * The switch itself is delegated to `plugins/shared/plugin-switch.ts`

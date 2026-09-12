@@ -2,15 +2,17 @@
  * Project Memory (project-memory) — lightweight project-level memory.
  *
  * Two scopes, one gate. File names self-describe visibility (no
- * ambiguity when scanning `.opencode/memory/`):
+ * ambiguity when scanning `.ocp/memory/`):
  *   public.md   → committed to git, reviewed by your team through the
  *                  normal PR flow. Same authority tier as AGENTS.md.
  *   private.md  → gitignored, only the current user sees it
  *                  (auto-gitignored on first capture).
  *
- * Files live INSIDE the project at `<projectDir>/.opencode/memory/` —
- * same convention as `.opencode/handoffs/`, `.opencode/logs/`,
- * `.opencode/recovery/`.
+ * Files live INSIDE the project at `<projectDir>/.ocp/memory/` —
+ * same convention as `.ocp/handoffs/`, `.ocp/logs/`,
+ * `.ocp/recovery/`. Legacy `.opencode/memory/` files are moved here once
+ * by the project-init migration (ADR 0004 v2); runtime reads are
+ * single-path.
  *
  * Entry points:
  *   • /memory note "<lesson>"             (user command, public default)
@@ -58,7 +60,7 @@ export const ProjectMemoryPlugin: Plugin = async ({ client, directory }) => {
       cfg.command[COMMAND_NAME] = {
         template: "",
         description:
-          "Project memory — two scopes, one gate. /memory note \"<lesson>\" appends a dated entry to .opencode/memory/public.md (committed to git, reviewed via the normal PR flow); /memory note --private \"<note>\" appends to .opencode/memory/private.md (gitignored escape hatch for notes the team should not see); /memory on|off toggles injection of both into the system prompt; /memory status reports gate + public/private entry counts. The agent may also call the `memory_note` tool itself (with scope='public' or 'private').",
+          "Project memory — two scopes, one gate. /memory note \"<lesson>\" appends a dated entry to .ocp/memory/public.md (committed to git, reviewed via the normal PR flow); /memory note --private \"<note>\" appends to .ocp/memory/private.md (gitignored escape hatch for notes the team should not see); /memory on|off toggles injection of both into the system prompt; /memory status reports gate + public/private entry counts. The agent may also call the `memory_note` tool itself (with scope='public' or 'private').",
       }
     },
     "command.execute.before": makeCommandHook(client, handled),

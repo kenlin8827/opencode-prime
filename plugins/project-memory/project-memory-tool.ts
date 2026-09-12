@@ -6,13 +6,13 @@
  *   /memory note --private "<note>"  — user command, private scope
  *   memory_note (tool)               — agent judges and notes itself
  *
- * Two scopes, both PROJECT-LEVEL inside `<projectDir>/.opencode/memory/`,
+ * Two scopes, both PROJECT-LEVEL inside `<projectDir>/.ocp/memory/`,
  * file names self-describe visibility:
  *   public  → public.md   — committed to git, follows the checkout
  *                            (same tier as AGENTS.md; reviewed via the
  *                             normal PR flow)
  *   private → private.md  — gitignored (auto-gitignored on first capture
- *                            via `.opencode/.gitignore`)
+ *                            via `.ocp/.gitignore`)
  *
  * SCOPE HEURISTIC (the only thing the agent really has to decide):
  *   "Will another developer at this same machine, on this project,
@@ -53,9 +53,9 @@ export function makeCaptureTool(client: SessionClient) {
     description:
       "Note a durable 'lesson learned' to this project's memory. Two scopes — pick the one that fits:\n\n" +
       "SCOPE HEURISTIC: 'Will another developer at this same machine, on this project, tomorrow find this useful?'\n" +
-      "  YES → scope='public' (default). <projectDir>/.opencode/memory/public.md, committed to git, reviewed by your team via the normal PR flow. " +
+      "  YES → scope='public' (default). <projectDir>/.ocp/memory/public.md, committed to git, reviewed by your team via the normal PR flow. " +
       "Examples: 'this repo uses pnpm not npm', 'do not import from packages/legacy/', 'test runner needs --preload for opentui', 'CI fails on Windows without <flag>'.\n" +
-      "  NO  → scope='private'. <projectDir>/.opencode/memory/private.md, gitignored (auto-gitignored on first capture via .opencode/.gitignore) — only you see it. " +
+      "  NO  → scope='private'. <projectDir>/.ocp/memory/private.md, gitignored (auto-gitignored on first capture via .ocp/.gitignore) — only you see it. " +
       "Examples: 'user prefers no semicolons', 'VPN slow, set API timeout to 60s', 'my private TODO list for this codebase'.\n" +
       "  When in doubt → leave scope unset (defaults to public); PR review will route misclassified entries back.\n\n" +
       "USE WHEN you discover a clear, reusable rule worth the next session's attention.\n\n" +

@@ -22,18 +22,18 @@
  *        accumulate multiple field edits before persisting.
  *     3. The main-menu button is now "🏗 Initialize / Update Project
  *        Skeleton" — its responsibility is the FILE skeleton
- *        (AGENTS.md, docs/git-commits.md, opencode.jsonc structure,
- *        template evolution via sync, backends, hooks). It is NOT a
- *        save-switches action.
+ *        (AGENTS.md, docs/git-commits.md, .ocp/ocp.json structure,
+ *        one-shot legacy migration, backends, hooks). It
+ *        is NOT a save-switches action.
  *     4. Both save flows (`saveInlineField`, `runSaveSwitches`) call
  *        `updateSwitches` → scaffold layer's `updateSwitchesOnly`:
- *        writes only the switch values to opencode.jsonc, never
- *        touches the other baseline files.
+ *        runs the §3 legacy migration, then writes only the switch
+ *        values to .ocp/ocp.json, never touches the other baseline files.
  *     Schema files: `plugins/tui/wizard-schema/{project-memory,
  *     auto-advisor,project-guards,adr}.json`.
- *     `.opencode/opencode.jsonc` remains the runtime source of truth
- *     for switch values; the JSON schemas only describe the wizard
- *     picker UI.
+ *     `.ocp/ocp.json` is the ONLY runtime source of truth for switch
+ *     values (ADR 0004 v2 — no fallback chain); the JSON schemas only
+ *     describe the wizard picker UI.
  *
  * Menu selection flow:
  *   - Each group opens a dedicated DialogSelect dialog with clear choices.
@@ -48,6 +48,7 @@
 
 /// <reference types="bun" />
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
+import { migrateLegacyProjectArtifacts, type MigrationReport } from "../shared/opencode-prime"
 import { tr, initI18n, languageOption, switchLanguage, SWITCH_LANG, type DialogOption } from "./i18n"
 import { CONFIG_REL, getProjectDir, setProjectDir } from "../project-manager/project-manager-config"
 import { indexProject, initProject, syncProject, updateSwitches } from "../project-manager/project-manager-operations"
@@ -126,6 +127,16 @@ export function startProjectWizard(
   const rootDir = projectRoot(api)
   setProjectDir(rootDir)
 
+  // B1 (ADR 0004 §3): run the idempotent migration BEFORE detecting switch
+  // values. Detecting first saw all-defaults on a legacy project and every
+  // save then overwrote the freshly migrated explicit values
+  // (autoAdvisorMode:"off" → "lite", custom adrDir lost). Migration-first
+  // guarantees the wizard displays — and saves — the post-migration truth.
+  // §3.5 visibility: the report rides a toast; a no-op open stays silent.
+  const openMigration = migrateLegacyProjectArtifacts(rootDir)
+  const migNote = migrationSuffix(openMigration).trim().replace(/\n+/g, " ")
+  if (migNote) toast(api, migNote, "info")
+
   const detected = detectCurrentSwitches(rootDir)
   const isExisting = stateOverride ? stateOverride.exists : detected.exists
   const configRel = stateOverride ? stateOverride.configRelPath : detected.configRelPath
@@ -146,7 +157,7 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
   const activeSelection = state.currentSelection ?? "__action_init__"
 
   const dialogTitle = isExisting
-    ? tr("project.setupExisting", { config: configRel ?? ".opencode/opencode.jsonc" })
+    ? tr("project.setupExisting", { config: configRel ?? CONFIG_REL })
     : tr("project.newProject")
 
   const skeletonHeader = tr("project.skeletonHeader")
@@ -451,7 +462,7 @@ function showSchemaGroup(
     () =>
       api.ui.DialogSelect<string>({
         title: `${breadcrumbHeader(groupId)} — ${tr(`project.${groupId}.title`, {
-          config: configRel ?? ".opencode/opencode.jsonc",
+          config: configRel ?? CONFIG_REL,
         })}`,
         placeholder: tr(`project.${groupId}.placeholder`),
         current: activeSelection,
@@ -559,13 +570,32 @@ function showToolingGroup(api: TuiPluginApi, state: WizardState): void {
 // ─── Action: init / update (skeleton only — switches live in sub-dialog Save) ──
 //
 // Main-menu "🏗 Initialize / Update Project Skeleton" handles the SKELETON
-// layer: scaffold AGENTS.md / docs/git-commits.md / .opencode/opencode.jsonc
-// (first time) and append missing template switch lines to an existing
-// config (update). It applies the current `state.switches` to the config
+// layer: run the one-shot legacy migration (ADR 0004 §3), then scaffold
+// AGENTS.md / docs/git-commits.md / .ocp/ocp.json (first time). It applies
+// the current `state.switches` to the config
 // it creates/updates, but the user-facing responsibility is the file
 // skeleton, not switch editing — switch editing lives in each sub-dialog's
 // "💾 Save & Apply Changes" button (runSaveSwitches → updateSwitchesOnly,
 // which writes the config WITHOUT touching the other baseline files).
+
+/**
+ * Wizard suffix for the §3 migration report: one "migrated N switch(es),
+ * moved M file(s)" line when the pass did anything, plus one raw line per
+ * warning (paths — not localizable). Empty string on a no-op run so normal
+ * init/save output stays clean.
+ */
+function migrationSuffix(migration: MigrationReport): string {
+  const switched = migration.switchedKeys.length
+  const moved = migration.movedFiles.length
+  const lines: string[] = []
+  if (switched > 0 || moved > 0) {
+    lines.push(tr("project.migratedLine", { switches: switched, files: moved }))
+  }
+  for (const warning of migration.warnings) {
+    lines.push(`⚠️ ${warning}`)
+  }
+  return lines.length > 0 ? `\n\n${lines.join("\n")}` : ""
+}
 
 async function runInitOrUpdate(
   api: TuiPluginApi,
@@ -580,7 +610,7 @@ async function runInitOrUpdate(
   })
   try {
     const result = await initProject({ root: rootDir, switches: state.switches })
-    const report = initReport(result.files, result.backends, result.hooks, rootDir)
+    const report = initReport(result.files, result.backends, result.hooks, rootDir) + migrationSuffix(result.migration)
     toast(
       api,
       isExisting ? tr("project.configUpdated") : tr("project.initSuccess"),
@@ -603,6 +633,15 @@ async function runInitOrUpdate(
 
 // ─── Action: sync ────────────────────────────────────────────────────
 
+/** Raw ⚠️ lines for migration warnings (paths — not localizable), appended
+ * to EVERY `/project sync` outcome: an all-failed run must not read as
+ * "up to date" in silence. Sync reports carry their own counts. */
+function migrationWarnings(migration: MigrationReport): string {
+  return migration.warnings.length > 0
+    ? `\n\n${migration.warnings.map((w) => `⚠️ ${w}`).join("\n")}`
+    : ""
+}
+
 function runSyncAction(api: TuiPluginApi, state: WizardState, rootDir: string): void {
   try {
     const res = syncProject(rootDir)
@@ -611,14 +650,13 @@ function runSyncAction(api: TuiPluginApi, state: WizardState, rootDir: string): 
       syncMsg = tr("project.syncMissing")
     } else if (res.status === "up-to-date") {
       syncMsg = tr("project.syncUpToDate")
-    } else if (res.status === "added") {
+    } else {
       syncMsg = tr("project.syncAdded", {
         count: res.added.length,
         lines: res.added.map((k) => `  + ${k}`).join("\n"),
       })
-    } else {
-      syncMsg = tr("project.syncMalformed")
     }
+    syncMsg += migrationWarnings(res.migration)
     showAlertModal(api, {
       title: tr("project.syncResult"),
       message: syncMsg,
@@ -689,12 +727,13 @@ async function saveInlineField(
   // single-key object is safe.
   const switches = { [fieldKey]: state.switches[fieldKey] } as ProjectSwitches
   try {
-    await updateSwitches({ root: rootDir, switches })
+    const result = await updateSwitches({ root: rootDir, switches })
     // Config-only save is never a full project init; AGENTS.md /
     // git-commits.md are still pending until the user clicks the main-menu
     // skeleton button. Always use the saved-config toast to avoid the
-    // misleading "Project initialized" wording.
-    toast(api, tr("project.configSavedToast"), "success")
+    // misleading "Project initialized" wording. The §3 migration ran with
+    // the save — surface its line whenever it moved anything.
+    toast(api, tr("project.configSavedToast") + migrationSuffix(result.migration).trim().replace(/\n+/g, " "), "success")
     showGroupMenu(api, { ...state, exists: true, currentSelection: returnSelection })
   } catch (err) {
     showAlertModal(api, {
@@ -733,7 +772,7 @@ async function runSaveSwitches(
     )
     showAlertModal(api, {
       title: isExisting ? tr("project.saveResult") : tr("project.initResult"),
-      message: `Target: ${result.root}\n\nFiles:\n  ${fileLine}`,
+      message: `Target: ${result.root}\n\nFiles:\n  ${fileLine}` + migrationSuffix(result.migration),
       onDismiss: () =>
         showSchemaGroup(api, { ...state, exists: true, currentSelection: "__save_switches__" }, groupId, schema),
     })

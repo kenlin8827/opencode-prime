@@ -3,9 +3,9 @@
  * The command is registered programmatically via the `config` hook in
  * project-manager.ts — no commands/project.md file is needed.
  *
- *   /project init   → scaffold missing baseline files (never overwrites;
- *                     an EXISTING project config gets an append-only top-up
- *                     with switch lines the template gained since init),
+ *   /project init   → run the one-shot legacy migration (moves OCP state out
+ *                     of .opencode/ into .ocp/, ADR 0004), then scaffold
+ *                     missing baseline files (never overwrites),
  *                     then run every FIRST-TIME backend init step, each only
  *                     when its CLI is installed + enabled:
  *                     `codegraph init`, `gitnexus analyze` (initial build),
@@ -17,7 +17,9 @@
  *   /project index  → manual rebuild/refresh for existing indexes:
  *                     `codegraph sync` (incremental catch-up) and
  *                     `gitnexus analyze` when the index is stale
- *   /project sync   → the config top-up alone (no scaffolding, no backends)
+ *   /project sync   → the legacy migration alone, on demand (no scaffolding,
+ *                     no backends) — escape hatch for users who skipped the
+ *                     wizard after upgrading
  *   /project        → show help (no subcommand given)
  *
  * Every invocation gets user-visible feedback via
@@ -26,6 +28,7 @@
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
+import type { MigrationReport } from "../shared/opencode-prime"
 import { refreshLocale, tr } from "../tui/i18n"
 import {
   COMMAND_NAME,
@@ -49,7 +52,7 @@ function helpText(): string {
 }
 
 /** One report line per target: ✅ created / ♻️ updated / ⏭️ skipped / ⚠️ invalid. */
-function initReport(results: ScaffoldResult[], backends: BackendResult[], hooks: HookResult[]): string {
+function initReport(results: ScaffoldResult[], backends: BackendResult[], hooks: HookResult[], migration: MigrationReport): string {
   refreshLocale()
   const lines = results.map((r) => {
     if (r.status === "created") return tr("guard.pm.created", { rel: r.relPath })
@@ -60,7 +63,25 @@ function initReport(results: ScaffoldResult[], backends: BackendResult[], hooks:
   const created = results.filter((r) => r.status === "created").length
   const updated = results.filter((r) => r.status === "updated").length
   const invalid = results.filter((r) => r.status === "invalid").length
-  return `${tr("guard.pm.initHead", { dir: getProjectDir(), created, updated, invalid, skipped: results.length - created - updated - invalid })}\n${lines.join("\n")}\n${backends.map(backendLine).join("\n")}\n${hooks.map(hookLine).join("\n")}`
+  return `${tr("guard.pm.initHead", { dir: getProjectDir(), created, updated, invalid, skipped: results.length - created - updated - invalid })}\n${migrationLines(migration)}${lines.join("\n")}\n${backends.map(backendLine).join("\n")}\n${hooks.map(hookLine).join("\n")}`
+}
+
+/**
+ * One "migrated N switch(es), moved M file(s)" line when the §3 pass did
+ * anything, plus one raw line per warning (paths — not localizable). Silent
+ * on a no-op run so normal inits stay clean.
+ */
+export function migrationLines(migration: MigrationReport): string {
+  const moved = migration.movedFiles.length
+  const switched = migration.switchedKeys.length
+  const out: string[] = []
+  if (switched > 0 || moved > 0) {
+    out.push(tr("guard.pm.migratedLine", { switches: switched, files: moved }))
+  }
+  for (const warning of migration.warnings) {
+    out.push(`  ⚠️ ${warning}`)
+  }
+  return out.length > 0 ? `${out.join("\n")}\n` : ""
 }
 
 /** `/project setup` report (CLI / headless inspection). */
@@ -90,14 +111,24 @@ function indexReport(results: BackendResult[]): string {
   return `${tr("guard.pm.indexHead", { dir: getProjectDir() })}\n${results.map(backendLine).join("\n")}`
 }
 
-/** `/project sync` report: which template switches were appended. */
+/** `/project sync` report: what the on-demand migration moved — plus any
+ * per-item failure, on EVERY outcome (a run whose items all failed must not
+ * read "up-to-date" without saying so). */
 function syncReport(r: SyncResult): string {
   refreshLocale()
   const dir = getProjectDir()
-  if (r.status === "missing") return tr("guard.pm.syncMissing", { dir, cfg: CONFIG_REL })
-  if (r.status === "invalid") return tr("guard.pm.syncInvalid", { dir, cfg: CONFIG_REL })
-  if (r.status === "up-to-date") return tr("guard.pm.syncUptodate", { dir, cfg: CONFIG_REL })
-  return `${tr("guard.pm.syncAppended", { dir, count: r.added.length, cfg: CONFIG_REL })}\n${r.added.map((k) => `  + ${k}`).join("\n")}`
+  const warnings = migrationWarningLines(r.migration)
+  if (r.status === "missing") return tr("guard.pm.syncMissing", { dir, cfg: CONFIG_REL }) + warnings
+  if (r.status === "up-to-date") return tr("guard.pm.syncUptodate", { dir, cfg: CONFIG_REL }) + warnings
+  return `${tr("guard.pm.syncAppended", { dir, count: r.added.length, cfg: CONFIG_REL })}\n${r.added.map((k) => `  + ${k}`).join("\n")}${warnings}`
+}
+
+/** Raw ⚠️ lines for migration warnings (paths — not localizable). Sync
+ * reports already carry their own counts, so this is warnings-only. */
+function migrationWarningLines(migration: MigrationReport): string {
+  return migration.warnings.length > 0
+    ? `\n${migration.warnings.map((w) => `  ⚠️ ${w}`).join("\n")}`
+    : ""
 }
 
 async function reply(client: PluginInput["client"], sessionID: string | undefined, text: string): Promise<void> {
@@ -113,7 +144,7 @@ async function reply(client: PluginInput["client"], sessionID: string | undefine
 
 async function executeInit(client: PluginInput["client"], sessionID?: string): Promise<void> {
   const result = await initProject({ root: getProjectDir() })
-  await reply(client, sessionID, initReport(result.files, result.backends, result.hooks))
+  await reply(client, sessionID, initReport(result.files, result.backends, result.hooks, result.migration))
 }
 
 export function makeCommandHook(client: PluginInput["client"], handled: () => never) {

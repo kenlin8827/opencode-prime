@@ -61,7 +61,7 @@ export function makeCommandHook(client: PluginInput["client"], handled: () => ne
           await log(
             written ? "info" : "warn",
             written
-              ? `state=${state.toUpperCase()} — project opencode.jsonc written`
+              ? `state=${state.toUpperCase()} — project .ocp/ocp.json written`
               : `state=${state.toUpperCase()} — project config write failed (not writable)`,
           )
           await announceSwitch(client, state, input.sessionID)

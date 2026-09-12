@@ -1,13 +1,13 @@
 /**
  * Shared project-memory config — switch + file locations.
  *
- * State is PROJECT-LEVEL in the `projectMemory` field of the project's
- * opencode.jsonc (via `plugins/shared/plugin-switch.ts`):
+ * State is PROJECT-LEVEL in the `projectMemory` field of `.ocp/ocp.json`
+ * (via `plugins/shared/plugin-switch.ts`):
  *   - absent or "on"  → on (default — injected when at least one file is non-empty;
  *                       opt out with an explicit "off", see sidebar "memory" row)
  *   - "off"           → never injected (explicit opt-out)
  *
- * Two scopes, both PROJECT-LEVEL inside `<projectDir>/.opencode/memory/`,
+ * Two scopes, both PROJECT-LEVEL inside `<projectDir>/.ocp/memory/`,
  * file names self-describe visibility (no ambiguity when scanning the dir):
  *
  *   public  → public.md   — committed to git, follows the checkout, same
@@ -15,11 +15,16 @@
  *                            gate.
  *   private → private.md  — gitignored, only the current user sees it
  *                            (auto-gitignored on first capture via
- *                            `.opencode/.gitignore`).
+ *                            `.ocp/.gitignore`).
+ *
+ * Migration (ADR 0004 v2): legacy `.opencode/memory/*.md` files are moved
+ * here by the one-shot init migration (`migrateLegacyProjectArtifacts`,
+ * merge-append if the target exists). Runtime reads are single-path only —
+ * no dual-era logic.
  *
  * Naming: `public.md` / `private.md` instead of the more abstract
  * `memory.md` / `personal.md` so the visibility of any file you spot in
- * `.opencode/memory/` is unambiguous without reading docs.
+ * `.ocp/memory/` is unambiguous without reading docs.
  *
  * AGENTS.md wins on conflict against both. The `projectMemory` gate
  * controls injection of both files together under a single `[PROJECT
@@ -32,9 +37,14 @@
  * plugins are NOT project-scoped; the same pattern doesn't apply here.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
-import { getProjectDir, setProjectDir, writableProjectConfigFile } from "../shared/opencode-prime"
+import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
+import {
+  ensureOcpGitignore,
+  getProjectDir,
+  ocpArtifactPath,
+  setProjectDir,
+  writableProjectConfigFile,
+} from "../shared/opencode-prime"
 import { createPluginSwitch, normalizeSwitchState } from "../shared/plugin-switch"
 
 // Re-export the shared plumbing so importers keep one import path.
@@ -73,19 +83,19 @@ export function setState(state: MemoryState): boolean {
 
 // ─── Files ───────────────────────────────────────────────────────────
 
-/** Project-level memory dir: `<projectDir>/.opencode/memory`. */
+/** Project-level memory dir: `<projectDir>/.ocp/memory` (write root). */
 export function memoryBaseDir(): string {
-  return join(getProjectDir(), ".opencode", "memory")
+  return ocpArtifactPath("memory")
 }
 
 /** Public scope: committed, team-visible. */
 export function publicPath(): string {
-  return join(memoryBaseDir(), "public.md")
+  return ocpArtifactPath("memory/public.md")
 }
 
 /** Private scope: gitignored, current-user-only. */
 export function privatePath(): string {
-  return join(memoryBaseDir(), "private.md")
+  return ocpArtifactPath("memory/private.md")
 }
 
 /** Read a memory file (trimmed), or null when missing/empty. */
@@ -171,28 +181,6 @@ export function scopeTargets(scope: LessonScope): { dir: string; path: string; h
   return { dir: memoryBaseDir(), path: privatePath(), header: PRIVATE_HEADER, ensureIgnored: true }
 }
 
-/** Ensure `.opencode/.gitignore` contains `memory/private.md` so private
- * notes never leak into commits. The public file is intentionally NOT
- * ignored. Errors swallowed — a missing gitignore line is recoverable; a
- * failed `.opencode/` write should not block a capture. */
-function ensurePrivateIgnored(): void {
-  const path = join(getProjectDir(), ".opencode", ".gitignore")
-  try {
-    if (!existsSync(path)) {
-      const dir = join(getProjectDir(), ".opencode")
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-      // Mirrors shared defaultIgnore (plugins/shared/opencode-prime.ts) — includes the guard line.
-      writeFileSync(path, "node_modules\npackage.json\npackage-lock.json\nbun.lock\n.gitignore\nlogs/\n*.log\nhandoffs/\nmemory/private.md\n", "utf-8")
-      return
-    }
-    const content = readFileSync(path, "utf-8")
-    if (content.includes("memory/private.md")) return
-    writeFileSync(path, content.trimEnd() + "\nmemory/private.md\n", "utf-8")
-  } catch {
-    /* best-effort */
-  }
-}
-
 /** Append a lesson to the chosen scope's file. Returns the resolved path.
  * Throws only on unrecoverable fs errors.
  *
@@ -202,11 +190,13 @@ function ensurePrivateIgnored(): void {
  * write is atomic from the others' perspective; losers fall through to a
  * plain appendFileSync against the now-existing file.
  *
- * `private` scope additionally calls `ensurePrivateIgnored()` so the first
- * capture in a fresh checkout auto-creates the gitignore line. */
+ * `private` scope additionally calls `ensureOcpGitignore()` (the single
+ * shared bootstrap — closes the drift-watch item of two hand-synced
+ * ignore strings; the public file is intentionally NOT ignored) so the
+ * first capture in a fresh checkout auto-creates the gitignore line. */
 export function appendLesson(scope: LessonScope, lesson: string): string {
   const { dir, path, header, ensureIgnored } = scopeTargets(scope)
-  if (ensureIgnored) ensurePrivateIgnored()
+  if (ensureIgnored) ensureOcpGitignore()
   mkdirSync(dir, { recursive: true })
   try {
     writeFileSync(path, header + formatMemoryEntry(lesson), {

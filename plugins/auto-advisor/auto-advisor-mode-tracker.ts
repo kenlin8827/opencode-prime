@@ -32,7 +32,7 @@ export function makeCommandHook(client: PluginInput["client"], handled: () => ne
     clearAutoAnswerCounts()
     clearAutoAnswerSessions()
     if (written) {
-      await log("info", `mode=${mode.toUpperCase()} — project opencode.jsonc written`)
+      await log("info", `mode=${mode.toUpperCase()} — project .ocp/ocp.json written`)
     } else {
       // Read-only project dir or similar — never crash the command hook.
       await log("warn", `mode=${mode.toUpperCase()} — project config write failed (project dir not writable)`)

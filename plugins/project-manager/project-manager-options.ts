@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import { existsSync } from "node:fs"
+import { OCP_CONFIG_REL, OCP_SWITCH_KEYS, ocpConfigFile, readProjectConfig } from "../shared/opencode-prime"
 import type { ProjectSwitches } from "./project-manager-scaffold"
 
 export const PROJECT_SWITCH_DEFAULTS = {
@@ -69,42 +69,37 @@ export function defaultProjectSwitches(): ProjectSwitches {
   return { ...PROJECT_SWITCH_DEFAULTS }
 }
 
+/**
+ * Detect the project's effective switch state for the wizard. Single
+ * runtime source (ADR 0004 v2): `.ocp/ocp.json` — legacy state must have
+ * been migrated by init / the wizard save path / `/project sync` first.
+ * The key set is shared with the migration (`OCP_SWITCH_KEYS`).
+ */
 export function detectProjectSwitches(rootDir: string): DetectedProjectState {
-  const candidatePaths = [
-    { rel: ".opencode/opencode.jsonc", abs: join(rootDir, ".opencode", "opencode.jsonc") },
-    { rel: "opencode.jsonc", abs: join(rootDir, "opencode.jsonc") },
-  ]
-
-  for (const candidate of candidatePaths) {
-    if (!existsSync(candidate.abs)) continue
-    try {
-      const content = readFileSync(candidate.abs, "utf-8")
-      const advisor = content.match(/^[^/\n\r]*"autoAdvisorMode"\s*:\s*"([^"]+)"/m)?.[1]
-      const adrGuard = content.match(/^[^/\n\r]*"adrGuard"\s*:\s*"([^"]+)"/m)?.[1]
-      const envGuard = content.match(/^[^/\n\r]*"envGuard"\s*:\s*"([^"]+)"/m)?.[1]
-      const e2eGuard = content.match(/^[^/\n\r]*"e2eGuard"\s*:\s*"([^"]+)"/m)?.[1]
-      const projectMemory = content.match(/^[^/\n\r]*"projectMemory"\s*:\s*"([^"]+)"/m)?.[1]
-      const adrLayout = content.match(/^[^/\n\r]*"adrLayout"\s*:\s*"([^"]+)"/m)?.[1]
-      const adrDir = content.match(/^\s*(?:\/\/)?\s*"adrDir"\s*:\s*"([^"]+)"/m)?.[1]
-
-      return {
-        exists: true,
-        configPath: candidate.abs,
-        configRelPath: candidate.rel,
-        switches: {
-          autoAdvisorMode: switchValue(advisor, PROJECT_SWITCH_OPTIONS.autoAdvisorMode, PROJECT_SWITCH_DEFAULTS.autoAdvisorMode),
-          adrGuard: switchValue(adrGuard, PROJECT_SWITCH_OPTIONS.adrGuard, PROJECT_SWITCH_DEFAULTS.adrGuard),
-          adrLayout: switchValue(adrLayout, PROJECT_SWITCH_OPTIONS.adrLayout, PROJECT_SWITCH_DEFAULTS.adrLayout),
-          adrDir: adrDir ?? PROJECT_SWITCH_DEFAULTS.adrDir,
-          envGuard: switchValue(envGuard, PROJECT_SWITCH_OPTIONS.envGuard, PROJECT_SWITCH_DEFAULTS.envGuard),
-          e2eGuard: switchValue(e2eGuard, PROJECT_SWITCH_OPTIONS.e2eGuard, PROJECT_SWITCH_DEFAULTS.e2eGuard),
-          projectMemory: switchValue(projectMemory, PROJECT_SWITCH_OPTIONS.projectMemory, PROJECT_SWITCH_DEFAULTS.projectMemory),
-        },
-      }
-    } catch {
-      continue
-    }
+  const abs = ocpConfigFile(rootDir)
+  if (!existsSync(abs)) {
+    return { exists: false, switches: defaultProjectSwitches() }
   }
 
-  return { exists: false, switches: defaultProjectSwitches() }
+  const cfg = readProjectConfig(rootDir) ?? {}
+  const found: Partial<Record<(typeof OCP_SWITCH_KEYS)[number], string>> = {}
+  for (const key of OCP_SWITCH_KEYS) {
+    const value = cfg[key]
+    if (typeof value === "string") found[key] = value
+  }
+
+  return {
+    exists: true,
+    configPath: abs,
+    configRelPath: OCP_CONFIG_REL,
+    switches: {
+      autoAdvisorMode: switchValue(found.autoAdvisorMode, PROJECT_SWITCH_OPTIONS.autoAdvisorMode, PROJECT_SWITCH_DEFAULTS.autoAdvisorMode),
+      adrGuard: switchValue(found.adrGuard, PROJECT_SWITCH_OPTIONS.adrGuard, PROJECT_SWITCH_DEFAULTS.adrGuard),
+      adrLayout: switchValue(found.adrLayout, PROJECT_SWITCH_OPTIONS.adrLayout, PROJECT_SWITCH_DEFAULTS.adrLayout),
+      adrDir: found.adrDir ?? PROJECT_SWITCH_DEFAULTS.adrDir,
+      envGuard: switchValue(found.envGuard, PROJECT_SWITCH_OPTIONS.envGuard, PROJECT_SWITCH_DEFAULTS.envGuard),
+      e2eGuard: switchValue(found.e2eGuard, PROJECT_SWITCH_OPTIONS.e2eGuard, PROJECT_SWITCH_DEFAULTS.e2eGuard),
+      projectMemory: switchValue(found.projectMemory, PROJECT_SWITCH_OPTIONS.projectMemory, PROJECT_SWITCH_DEFAULTS.projectMemory),
+    },
+  }
 }

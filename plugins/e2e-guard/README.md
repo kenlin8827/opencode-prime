@@ -7,7 +7,7 @@ Instead of a rigid execution-blocking gate, **e2e-guard acts as a project-level 
 ## How It Works
 
 ```
-                     e2eGuard: "on" in opencode.jsonc
+                     e2eGuard: "on" in .ocp/ocp.json
                                    │
                                    ▼
       experimental.chat.system.transform (system prompt injection)
@@ -52,8 +52,8 @@ Instead of a rigid execution-blocking gate, **e2e-guard acts as a project-level 
 
 | Command | Description |
 |---|---|
-| `/e2e-guard on` | Enable the E2E guard (writes `"e2eGuard": "on"` to project `opencode.jsonc`) |
-| `/e2e-guard off` | Disable the E2E guard (writes `"e2eGuard": "off"` to project `opencode.jsonc`) |
+| `/e2e-guard on` | Enable the E2E guard (writes `"e2eGuard": "on"` to project `.ocp/ocp.json`) |
+| `/e2e-guard off` | Disable the E2E guard (writes `"e2eGuard": "off"` to project `.ocp/ocp.json`) |
 | `/e2e-guard status` | View the current guard status |
 
 ## File Layout
@@ -62,5 +62,5 @@ Instead of a rigid execution-blocking gate, **e2e-guard acts as a project-level 
 - `e2e-guard-protocol.md` — The markdown specification of the E2E Red-Line Protocol.
 - `e2e-guard-instructions.ts` — Injects the protocol markdown into prompt fragments with cache markers.
 - `e2e-guard-system-inject.ts` — `experimental.chat.system.transform` hook for dynamic prompt injection / cleanup.
-- `e2e-guard-config.ts` — Reads and updates the `e2eGuard` field in `opencode.jsonc`.
+- `e2e-guard-config.ts` — Reads and updates the `e2eGuard` field in `.ocp/ocp.json`.
 - `e2e-guard-command.ts` — Handles `/e2e-guard` subcommands.

@@ -8,6 +8,7 @@
 
 import { existsSync } from "node:fs"
 import { join } from "node:path"
+import { OCP_CONFIG_REL, ocpConfigFile } from "../shared/opencode-prime"
 
 // ─── Project directory ───────────────────────────────────────────────
 // Injected by the plugin entry (project-manager.ts) from PluginInput.directory.
@@ -53,8 +54,9 @@ export function parseSubcommand(args: unknown): string | null {
 
 export const GIT_COMMITS_REL = "docs/git-commits.md"
 
-/** Project-level OpenCode Prime — scaffolded by init, topped up by sync. */
-export const CONFIG_REL = ".opencode/opencode.jsonc" as const
+/** Project-level OpenCode Prime config — scaffolded by init; `/project sync`
+ *  runs the one-shot legacy migration (ADR 0004 v2 §3) on demand. */
+export const CONFIG_REL = OCP_CONFIG_REL
 
 export const SCAFFOLD_TARGETS = [
   CONFIG_REL,
@@ -64,7 +66,11 @@ export const SCAFFOLD_TARGETS = [
 
 export type ScaffoldTarget = (typeof SCAFFOLD_TARGETS)[number]
 
+/** Absolutize a scaffold target. The config file resolves through the
+ * shared `ocpConfigFile()` choke (honors `OCP_CONFIG_REL`'s env override
+ * via `ocpDir()`); `CONFIG_REL` itself stays the display rel-path. */
 export function resolveTarget(relPath: ScaffoldTarget): string {
+  if (relPath === CONFIG_REL) return ocpConfigFile(projectDir)
   return join(projectDir, ...relPath.split("/"))
 }
 

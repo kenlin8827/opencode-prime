@@ -2,7 +2,7 @@
  * Toast helpers for the ADR iron-law state.
  *
  * The switch is persisted as the `adrGuard` field of the project's
- * opencode.jsonc and silently survives across sessions; without a visible
+ * .ocp/ocp.json and silently survives across sessions; without a visible
  * signal the user can forget the iron law is on — and commits may get
  * blocked unexpectedly.
  *

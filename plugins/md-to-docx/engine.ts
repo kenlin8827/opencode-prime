@@ -20,7 +20,7 @@ export interface DocxConversionResult {
   fileSizeBytes: number
 }
 
-import { getProjectLogDir } from "../shared/opencode-prime"
+import { getProjectLogDir, ocpArtifactPath } from "../shared/opencode-prime"
 
 export { getProjectLogDir }
 
@@ -160,7 +160,7 @@ export function autoInstallPandoc(projectDir: string = process.cwd()): { success
 }
 
 export function getReferenceDocxPath(projectDir: string = process.cwd()): string {
-  const pluginRef = resolve(projectDir, ".opencode", "md-to-docx.docx")
+  const pluginRef = ocpArtifactPath("md-to-docx.docx", projectDir)
   if (existsSync(pluginRef)) return pluginRef
 
   const assetPath = resolve(__dirname, "assets", "reference.docx")
@@ -207,12 +207,13 @@ export async function convertSingleFile(
   let tempImages: string[] = []
 
   try {
-    // 1. 确定样式表路径 (命令行显式指定 > 项目级 .opencode/md-to-docx.css > 插件内置默认)
+    // 1. Resolve the stylesheet path (explicit CLI arg > project .ocp/md-to-docx.css
+    //    > plugin built-in default)
     let themeCssPath = opts.stylePath
     if (!themeCssPath) {
-      const opencodeCss = resolve(projectDir, ".opencode", "md-to-docx.css")
-      if (existsSync(opencodeCss)) {
-        themeCssPath = opencodeCss
+      const projectCss = ocpArtifactPath("md-to-docx.css", projectDir)
+      if (existsSync(projectCss)) {
+        themeCssPath = projectCss
       } else {
         themeCssPath = resolve(__dirname, "style.css")
       }

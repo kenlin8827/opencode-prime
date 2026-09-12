@@ -7,7 +7,7 @@
  * the same wizard plugins through a TuiPluginApi-compatible adapter.
  *
  * The chosen language is persisted as the "language" key of the shared
- * user config (~/.config/opencode/ocp.jsonc, via plugins/shared/ocp-config).
+ * user config (~/.config/opencode/ocp.json, via plugins/shared/ocp-config).
  * A legacy api.kv value is migrated on first init.
  *
  * Usage in plugins:
@@ -79,7 +79,7 @@ function detectLocale(): Locale {
   return FALLBACK_LOCALE
 }
 
-/** "language" key in the shared user config (~/.config/opencode/ocp.jsonc). */
+/** "language" key in the shared user config (~/.config/opencode/ocp.json). */
 const CONFIG_KEY = "language"
 /** Pre-ocp-config storage; read once for migration, no longer written. */
 const LEGACY_KV_KEY = "opencode.locale"
@@ -97,7 +97,7 @@ export function initI18n(api: TuiPluginApi): void {
     currentLocale = fromFile
     return
   }
-  // Legacy migration: an api.kv choice made before ocp.jsonc existed.
+  // Legacy migration: an api.kv choice made before ocp.json existed.
   const legacy = api.kv?.get<Locale>(LEGACY_KV_KEY)
   if (isRegistered(legacy)) {
     currentLocale = legacy
@@ -534,10 +534,10 @@ const STRINGS = {
   "project.operationFailed": { en: "Operation failed: {err}", "zh-CN": "操作失败: {err}" },
   "project.saveFailedMsg": { en: "Save failed: {err}", "zh-CN": "保存失败: {err}" },
   "project.indexFailed": { en: "Index refresh failed: {err}", "zh-CN": "索引刷新失败: {err}" },
-  "project.syncMissing": { en: "⚠️ Project config does not exist.\nPlease run Init first.", "zh-CN": "⚠️ 项目配置文件不存在。\n请先运行初始化。" },
-  "project.syncUpToDate": { en: "ℹ️ Configuration is already up to date.\nAll latest template switch keys are already present.", "zh-CN": "ℹ️ 配置已是最新。\n所有最新模板开关键已存在。" },
-  "project.syncAdded": { en: "✅ Successfully appended {count} new switch line(s) to config:\n\n{lines}\n\nExisting configuration content was preserved.", "zh-CN": "✅ 已追加 {count} 个新开关行到配置:\n\n{lines}\n\n已保留现有配置内容。" },
-  "project.syncMalformed": { en: "❌ Configuration file is malformed (missing proper closing brace).\nPlease fix the file manually.", "zh-CN": "❌ 配置文件格式错误（缺少正确的闭合括号）。\n请手动修复文件。" },
+  "project.syncMissing": { en: "⚠️ No legacy state found and project config does not exist.\nPlease run Init first.", "zh-CN": "⚠️ 未发现旧状态，且项目配置文件不存在。\n请先运行初始化。" },
+  "project.syncUpToDate": { en: "ℹ️ Nothing left to migrate.\n.ocp/ocp.json is the single source of truth.", "zh-CN": "ℹ️ 无旧状态需要迁移。\n.ocp/ocp.json 即唯一配置来源。" },
+  "project.syncAdded": { en: "✅ Successfully migrated {count} item(s) into the project config:\n\n{lines}\n\nExisting configuration content was preserved.", "zh-CN": "✅ 已将 {count} 项迁移到项目配置:\n\n{lines}\n\n已保留现有配置内容。" },
+  "project.migratedLine": { en: "🧭 Migrated {switches} switch(es), moved {files} file(s) into .ocp/", "zh-CN": "🧭 已迁移 {switches} 个开关、移动 {files} 个文件至 .ocp/" },
   "project.syncFailed": { en: "Sync operation failed: {err}", "zh-CN": "同步操作失败: {err}" },
   "project.noBackends": { en: "ℹ️ No backends needed index refresh.", "zh-CN": "ℹ️ 无后端需要索引刷新。" },
 
@@ -615,7 +615,7 @@ const STRINGS = {
   "project.switchAdrLayout": { en: "ADR structure (auto/flat/hierarchy)", "zh-CN": "ADR 结构 (auto / flat / hierarchy)" },
   "project.switchEnvGuard": { en: "Protect secret .env file reads", "zh-CN": "保护 .env 密钥文件读取" },
   "project.switchE2eGuard": { en: "Assess E2E before test execution", "zh-CN": "测试执行前评估 E2E 影响" },
-  "project.switchProjectMemory": { en: "Inject curated project memory into context (.opencode/memory/public.md inside the project, committed)", "zh-CN": "将整理后的项目记忆注入上下文(项目内 .opencode/memory/public.md,进 git)" },
+  "project.switchProjectMemory": { en: "Inject curated project memory into context (.ocp/memory/public.md inside the project, committed)", "zh-CN": "将整理后的项目记忆注入上下文(项目内 .ocp/memory/public.md,进 git)" },
   "project.nameEnvGuard": { en: "envGuard", "zh-CN": "环境护栏" },
   "project.nameE2eGuard": { en: "e2eGuard", "zh-CN": "E2E 护栏" },
   "project.nameAdrGuard": { en: "adrGuard", "zh-CN": "ADR 护栏" },
@@ -778,7 +778,7 @@ const STRINGS = {
   "guard.memory.nothing": { en: "[project-memory] Nothing to note — usage: /memory note <lesson> (or /memory note --private <lesson>)", "zh-CN": "[project-memory] 没有可记的内容 —— 用法：/memory note <经验>（或 /memory note --private <经验>）" },
   "guard.memory.unknown": { en: "[project-memory] Unknown subcommand \"{sub}\".", "zh-CN": "[project-memory] 未知子命令 \"{sub}\"。" },
   "guard.memory.set": { en: "[project-memory] Injection {STATE} — wrote \"projectMemory\": \"{state}\" to {path}.", "zh-CN": "[project-memory] 注入已{zhState} —— 已把 \"projectMemory\": \"{state}\" 写入 {path}。" },
-  "guard.memory.setFail": { en: "[project-memory] Failed to write the project config — edit the \"{field}\" field of opencode.jsonc by hand.", "zh-CN": "[project-memory] 写入项目配置失败 —— 请手工编辑 opencode.jsonc 的 \"{field}\" 字段。" },
+  "guard.memory.setFail": { en: "[project-memory] Failed to write the project config — edit the \"{field}\" field of .ocp/ocp.json by hand.", "zh-CN": "[project-memory] 写入项目配置失败 —— 请手工编辑 .ocp/ocp.json 的 \"{field}\" 字段。" },
   "guard.memory.status": { en: "[project-memory] gate: {gate} — public: {public}, private: {private}. Injection {flag}.", "zh-CN": "[project-memory] gate: {gate} —— 公开：{public}，私人：{private}。注入 {flag}。" },
   "guard.memory.entries": { en: "{count} entries", "zh-CN": "{count} 条" },
   "guard.memory.missing": { en: "missing/empty", "zh-CN": "缺失或为空" },
@@ -791,30 +791,30 @@ const STRINGS = {
 
   // ── e2e-guard (/e2e-guard) ──
   "guard.e2e.help": {
-    en: "[e2e-guard] E2E Red-Line Guard — project switch controls.\nUsage:\n/e2e-guard status   → check current guard status (on / off)\n/e2e-guard on | off → flip the project gate in opencode.jsonc (persisted)",
-    "zh-CN": "[e2e-guard] E2E 红线护栏 —— 项目开关控制。\n用法：\n/e2e-guard status   → 查看当前护栏状态 (on / off)\n/e2e-guard on | off → 翻转 opencode.jsonc 中的项目开关（持久化）",
+    en: "[e2e-guard] E2E Red-Line Guard — project switch controls.\nUsage:\n/e2e-guard status   → check current guard status (on / off)\n/e2e-guard on | off → flip the project gate in .ocp/ocp.json (persisted)",
+    "zh-CN": "[e2e-guard] E2E 红线护栏 —— 项目开关控制。\n用法：\n/e2e-guard status   → 查看当前护栏状态 (on / off)\n/e2e-guard on | off → 翻转 .ocp/ocp.json 中的项目开关（持久化）",
   },
   "guard.e2e.status": { en: "[e2e-guard] gate: {gate}. (Protocol injection is {flag})", "zh-CN": "[e2e-guard] gate: {gate}。（协议注入 {flag}）" },
   "guard.e2e.set": { en: "[e2e-guard] Gate {STATE} — wrote \"e2eGuard\": \"{state}\" to {path}.", "zh-CN": "[e2e-guard] 护栏已{zhState} —— 已把 \"e2eGuard\": \"{state}\" 写入 {path}。" },
-  "guard.e2e.setFail": { en: "[e2e-guard] Failed to write the project config — edit the \"e2eGuard\" field of opencode.jsonc by hand.", "zh-CN": "[e2e-guard] 写入项目配置失败 —— 请手工编辑 opencode.jsonc 的 \"e2eGuard\" 字段。" },
+  "guard.e2e.setFail": { en: "[e2e-guard] Failed to write the project config — edit the \"e2eGuard\" field of .ocp/ocp.json by hand.", "zh-CN": "[e2e-guard] 写入项目配置失败 —— 请手工编辑 .ocp/ocp.json 的 \"e2eGuard\" 字段。" },
   "guard.e2e.unknown": { en: "[e2e-guard] Unknown subcommand \"{sub}\".", "zh-CN": "[e2e-guard] 未知子命令 \"{sub}\"。" },
   "guard.e2e.announceOn": { en: "[e2e-guard] ON — E2E runs are blocked until the user confirms and /e2e-guard allow grants a one-shot pass. /e2e-guard off to disable.", "zh-CN": "[e2e-guard] ON —— E2E 运行会被拦截，直到用户确认并由 /e2e-guard allow 发放一次性放行。用 /e2e-guard off 关闭。" },
   "guard.e2e.announceOff": { en: "[e2e-guard] OFF — no E2E gating. /e2e-guard on to require user confirmation before E2E runs in this project.", "zh-CN": "[e2e-guard] OFF —— 不做 E2E 门控。用 /e2e-guard on 要求本项目 E2E 运行前先经用户确认。" },
-  "guard.e2e.statusMsg": { en: "[e2e-guard] Status: {state} | switch: /e2e-guard on|off (project-level, stored in opencode.jsonc) | allow: /e2e-guard allow (one full-suite pass) | allow targeted: unlock affected-spec re-runs only, full suites stay gated", "zh-CN": "[e2e-guard] Status: {state} | 开关：/e2e-guard on|off（项目级，存于 opencode.jsonc）| 放行：/e2e-guard allow（一次整套运行）| targeted 放行：仅解锁受影响 spec 的重跑，整套运行仍需门控" },
+  "guard.e2e.statusMsg": { en: "[e2e-guard] Status: {state} | switch: /e2e-guard on|off (project-level, stored in .ocp/ocp.json) | allow: /e2e-guard allow (one full-suite pass) | allow targeted: unlock affected-spec re-runs only, full suites stay gated", "zh-CN": "[e2e-guard] Status: {state} | 开关：/e2e-guard on|off（项目级，存于 .ocp/ocp.json）| 放行：/e2e-guard allow（一次整套运行）| targeted 放行：仅解锁受影响 spec 的重跑，整套运行仍需门控" },
   "guard.e2e.allowFull": { en: "[e2e-guard] Approved — the next FULL-suite run passes (one-shot). Targeted single-spec re-runs stay unlocked for the rest of this session; each later FULL-suite run needs a fresh user confirmation.", "zh-CN": "[e2e-guard] Approved —— 下一次整套（FULL）运行放行（一次性）。本会话后续受影响 spec 的定向重跑保持解锁；每次整套运行仍需用户重新确认。" },
   "guard.e2e.allowTargeted": { en: "[e2e-guard] Approved (TARGETED only) — targeted spec re-runs now pass for the rest of this session. Full-suite runs stay gated and still need a fresh confirmation + /e2e-guard allow.", "zh-CN": "[e2e-guard] Approved（仅 TARGETED）—— 本会话内定向 spec 重跑现已放行。整套运行仍然门控，需要新的确认 + /e2e-guard allow。" },
 
   // ── adr-guard (/adr-guard, /adr) ──
   "guard.adr.announceOn": { en: "[adr-guard] ON — every feat/refactor commit requires a new/updated ADR ({dir}/). /adr-guard off to disable.", "zh-CN": "[adr-guard] ON —— 每个 feat/refactor 提交都需要新增/更新 ADR（{dir}/）。用 /adr-guard off 关闭。" },
   "guard.adr.announceOff": { en: "[adr-guard] OFF — no ADR enforcement. /adr-guard on to enable the iron law for this project.", "zh-CN": "[adr-guard] OFF —— 不做 ADR 强制。用 /adr-guard on 为本项目启用铁律。" },
-  "guard.adr.statusMsg": { en: "[adr-guard] Status: {state} | ADR dir: {dir}/ | switch: /adr-guard on|off (project-level, stored in opencode.jsonc)", "zh-CN": "[adr-guard] Status: {state} | ADR 目录：{dir}/ | 开关：/adr-guard on|off（项目级，存于 opencode.jsonc）" },
+  "guard.adr.statusMsg": { en: "[adr-guard] Status: {state} | ADR dir: {dir}/ | switch: /adr-guard on|off (project-level, stored in .ocp/ocp.json)", "zh-CN": "[adr-guard] Status: {state} | ADR 目录：{dir}/ | 开关：/adr-guard on|off（项目级，存于 .ocp/ocp.json）" },
   "guard.adr.help": {
     en: "### 🏛️ Architecture Decision Records (/adr)\n\nCurrent Layout: **`{mode}`**\n\nCommands:\n- `/adr [new] [layer/scope] <title> [--empty]` — Create and auto-draft a new ADR (use --empty for template only)\n- `/adr supersede <old-id> <new-title> [--empty]` — Supersede an old decision & auto-draft replacement\n- `/adr tree` — Visualize hierarchical decision tree & Mermaid DAG\n- `/adr check` — Verify ADR integrity, links, and complexity advice\n- `/adr layout [auto|flat|hierarchical]` — Configure ADR layout\n- `/adr migrate [flat|hierarchical] [--confirm]` — Plan and restructure ADR architecture\n- `/adr-guard on|off|status` — Toggle commit guard enforcement",
     "zh-CN": "### 🏛️ 架构决策记录 (/adr)\n\n当前布局：**`{mode}`**\n\n命令：\n- `/adr [new] [层级/范围] <标题> [--empty]` — 新建并自动起草 ADR（--empty 仅生成模板）\n- `/adr supersede <旧id> <新标题> [--empty]` — 取代旧决策并自动起草替代文档\n- `/adr tree` — 展示层级决策树 & Mermaid DAG\n- `/adr check` — 校验 ADR 完整性、链接并给出复杂度建议\n- `/adr layout [auto|flat|hierarchical]` — 配置 ADR 布局\n- `/adr migrate [flat|hierarchical] [--confirm]` — 规划并重组 ADR 架构\n- `/adr-guard on|off|status` — 切换提交护栏强制检查",
   },
-  "guard.adr.layoutCurrent": { en: "🏛️ ADR Layout is currently set to: **`{mode}`** (in project opencode.jsonc)\nOptions: `/adr layout auto`, `/adr layout flat`, `/adr layout hierarchical`", "zh-CN": "🏛️ ADR 布局当前为：**`{mode}`**（项目 opencode.jsonc）\n可选：`/adr layout auto`、`/adr layout flat`、`/adr layout hierarchical`" },
+  "guard.adr.layoutCurrent": { en: "🏛️ ADR Layout is currently set to: **`{mode}`** (in project .ocp/ocp.json)\nOptions: `/adr layout auto`, `/adr layout flat`, `/adr layout hierarchical`", "zh-CN": "🏛️ ADR 布局当前为：**`{mode}`**（项目 .ocp/ocp.json）\n可选：`/adr layout auto`、`/adr layout flat`、`/adr layout hierarchical`" },
   "guard.adr.layoutInvalid": { en: "❌ Invalid ADR layout `{rest}`. Valid values are: `auto`, `flat`, `hierarchical`.", "zh-CN": "❌ 无效的 ADR 布局 `{rest}`。可选：`auto`、`flat`、`hierarchical`。" },
-  "guard.adr.layoutSet": { en: "✅ ADR Layout updated to: **`{mode}`** (saved in project opencode.jsonc).", "zh-CN": "✅ ADR 布局已更新为 **`{mode}`**（已保存到项目 opencode.jsonc）。" },
+  "guard.adr.layoutSet": { en: "✅ ADR Layout updated to: **`{mode}`** (saved in project .ocp/ocp.json).", "zh-CN": "✅ ADR 布局已更新为 **`{mode}`**（已保存到项目 .ocp/ocp.json）。" },
   "guard.adr.migrateHint": { en: "💡 **Restructuring Available**: {count} file(s) can be automatically reorganized to match the `{mode}` layout.\nRun `/adr migrate {mode}` to preview and apply.", "zh-CN": "💡 **可重组**：{count} 个文件可自动整理为 `{mode}` 布局。\n运行 `/adr migrate {mode}` 预览并执行。" },
   "guard.adr.migrateNone": { en: "ℹ️ **ADR Migration Plan ({cur} $\\to$ {target})**:\nAll ADR files are already in optimal locations. No file moves required.", "zh-CN": "ℹ️ **ADR 迁移计划（{cur} → {target}）**：\n所有 ADR 文件已在最佳位置，无需移动。" },
   "guard.adr.migrateDoneHead": { en: "🎉 **ADR Migration Completed ({cur} $\\to$ {target})**\n\nSuccessfully relocated **{count}** file(s) and synchronized indexes:\n\n", "zh-CN": "🎉 **ADR 迁移完成（{cur} → {target}）**\n\n已成功移动 **{count}** 个文件并同步索引：\n\n" },
@@ -838,12 +838,13 @@ const STRINGS = {
 
   // ── project-manager (/project) ──
   "guard.pm.help": {
-    en: "[project-manager] Project scaffolding & configuration manager.\n\nUsage:\n- `ocp project init --wizard` → open the interactive project setup wizard\n- /project        → show available subcommands & options (CLI mode)\n- /project init   → scaffold baseline files & bootstrap indexes (headless / non-TUI):\n                    create baseline files if missing (never overwrites):\n                    .opencode/opencode.jsonc, docs/git-commits.md, AGENTS.md\n                    An EXISTING project config gets an append-only top-up:\n                    switch lines the template gained since init are added,\n                    existing content is never changed.\n                    Then run every first-time backend init step — each only\n                    when its CLI is installed and enabled:\n                      codegraph init    one-time; watcher keeps it fresh\n                      gitnexus analyze  initial index build (index missing)\n                      dbhub.toml        scaffolded when the dbhub MCP is\n                                        enabled and its CLI is installed\n                      gitnexus hooks    post-commit/post-merge/post-checkout\n                                        auto-refresh the GitNexus index when\n                                        gitnexus is enabled; removed when not\n- /project setup  → inspect current project switches & setup options (CLI mode)\n- /project index  → manual rebuild/refresh for EXISTING indexes\n- /project sync   → top up an EXISTING {cfg} with template switches",
-    "zh-CN": "[project-manager] 项目脚手架与配置管理器。\n\n用法：\n- `ocp project init --wizard` → 打开交互式项目设置向导\n- /project        → 显示子命令与选项（CLI 模式）\n- /project init   → 生成基线文件并引导索引（无头 / 非 TUI）：\n                    缺失时创建基线文件（从不覆盖）：\n                    .opencode/opencode.jsonc、docs/git-commits.md、AGENTS.md\n                    已有项目配置会获得只追加式补齐：\n                    添加 init 之后模板新增的开关行，既有内容永不改动。\n                    随后运行各后端的首次初始化 —— 仅当其 CLI\n                    已安装且已启用：\n                      codegraph init    一次性；watcher 保持新鲜\n                      gitnexus analyze  初次索引构建（索引缺失时）\n                      dbhub.toml        dbhub MCP 已启用且 CLI 已安装时生成\n                      gitnexus hooks    gitnexus 启用时注册 post-commit/\n                                        post-merge/post-checkout 自动刷新\n                                        钩子；未启用时移除\n- /project setup  → 查看当前项目开关与设置选项（CLI 模式）\n- /project index  → 手动重建/刷新已有索引\n- /project sync   → 用模板开关补齐现有的 {cfg}",
+    en: "[project-manager] Project scaffolding & configuration manager.\n\nUsage:\n- `ocp project init --wizard` → open the interactive project setup wizard\n- /project        → show available subcommands & options (CLI mode)\n- /project init   → migrate + scaffold baseline files & bootstrap indexes\n                    (headless / non-TUI):\n                    FIRST a one-shot legacy migration moves OCP state out of\n                    .opencode/ into .ocp/: switch keys into .ocp/ocp.json\n                    (legacy lines re-commented, platform keys kept),\n                    memory/handoffs/styles files relocated. Idempotent.\n                    THEN create baseline files if missing (never overwrites):\n                    .ocp/ocp.json, docs/git-commits.md, AGENTS.md\n                    Then run every first-time backend init step — each only\n                    when its CLI is installed and enabled:\n                      codegraph init    one-time; watcher keeps it fresh\n                      gitnexus analyze  initial index build (index missing)\n                      dbhub.toml        scaffolded when the dbhub MCP is\n                                        enabled and its CLI is installed\n                      gitnexus hooks    post-commit/post-merge/post-checkout\n                                        auto-refresh the GitNexus index when\n                                        gitnexus is enabled; removed when not\n- /project setup  → inspect current project switches & setup options (CLI mode)\n- /project index  → manual rebuild/refresh for EXISTING indexes\n- /project sync   → re-run the one-shot legacy migration on demand (idempotent escape hatch for skipped wizards)",
+    "zh-CN": "[project-manager] 项目脚手架与配置管理器。\n\n用法：\n- `ocp project init --wizard` → 打开交互式项目设置向导\n- /project        → 显示子命令与选项（CLI 模式）\n- /project init   → 迁移 + 生成基线文件并引导索引（无头 / 非 TUI）：\n                    首先执行一次性旧状态迁移，把 OCP 状态从\n                    .opencode/ 移入 .ocp/：开关键写入 .ocp/ocp.json\n                    （旧行重新注释，平台键保留），memory/handoffs/\n                    样式文件一并搬迁。可重复执行（幂等）。\n                    然后缺失时创建基线文件（从不覆盖）：\n                    .ocp/ocp.json、docs/git-commits.md、AGENTS.md\n                    随后运行各后端的首次初始化 —— 仅当其 CLI\n                    已安装且已启用：\n                      codegraph init    一次性；watcher 保持新鲜\n                      gitnexus analyze  初次索引构建（索引缺失时）\n                      dbhub.toml        dbhub MCP 已启用且 CLI 已安装时生成\n                      gitnexus hooks    gitnexus 启用时注册 post-commit/\n                                        post-merge/post-checkout 自动刷新\n                                        钩子；未启用时移除\n- /project setup  → 查看当前项目开关与设置选项（CLI 模式）\n- /project index  → 手动重建/刷新已有索引\n- /project sync   → 按需重跑一次性旧状态迁移（幂等，供跳过向导的用户补救）",
   },
   "guard.pm.initHead": { en: "[project-manager] init done in {dir} — {created} created, {updated} updated, {invalid} invalid, {skipped} skipped", "zh-CN": "[project-manager] init 完成于 {dir} —— 新建 {created}、更新 {updated}、无效 {invalid}、跳过 {skipped}" },
   "guard.pm.created": { en: "  ✅ created {rel}", "zh-CN": "  ✅ 已创建 {rel}" },
-  "guard.pm.updated": { en: "  ♻️ updated {rel} (appended new template switches; existing content untouched)", "zh-CN": "  ♻️ 已更新 {rel}（追加新模板开关；既有内容未动）" },
+  "guard.pm.updated": { en: "  ♻️ updated {rel} (switch values saved; existing content preserved)", "zh-CN": "  ♻️ 已更新 {rel}（已保存开关取值；既有内容保留）" },
+  "guard.pm.migratedLine": { en: "  🧭 migrated {switches} switch(es), moved {files} file(s) into .ocp/", "zh-CN": "  🧭 已迁移 {switches} 个开关、移动 {files} 个文件至 .ocp/" },
   "guard.pm.invalid": { en: "  ⚠️ {rel} is malformed (no proper closing brace) — left untouched, fix it manually", "zh-CN": "  ⚠️ {rel} 格式有误（缺少正确的右花括号）—— 保持原样，请手工修复" },
   "guard.pm.skippedFile": { en: "  ⏭️ skipped {rel} (already exists)", "zh-CN": "  ⏭️ 跳过 {rel}（已存在）" },
   "guard.pm.lineOk": { en: "  ✅ {name}: {detail}", "zh-CN": "  ✅ {name}：{detail}" },
@@ -853,13 +854,12 @@ const STRINGS = {
   "guard.pm.unknown": { en: "[project-manager] Unknown subcommand \"{sub}\".", "zh-CN": "[project-manager] 未知子命令 \"{sub}\"。" },
   "guard.pm.failed": { en: "[project-manager] {sub} failed: {err}", "zh-CN": "[project-manager] {sub} 失败：{err}" },
   "guard.pm.indexHead": { en: "[project-manager] index done in {dir}", "zh-CN": "[project-manager] index 完成于 {dir}" },
-  "guard.pm.syncMissing": { en: "[project-manager] sync in {dir}: {cfg} does not exist — run /project init first", "zh-CN": "[project-manager] sync 于 {dir}：{cfg} 不存在 —— 请先运行 /project init" },
-  "guard.pm.syncInvalid": { en: "[project-manager] sync in {dir}: {cfg} is malformed (no proper closing brace) — left untouched, fix it manually", "zh-CN": "[project-manager] sync 于 {dir}：{cfg} 格式有误（缺少正确的右花括号）—— 保持原样，请手工修复" },
-  "guard.pm.syncUptodate": { en: "[project-manager] sync in {dir}: {cfg} already has every template switch — nothing to add", "zh-CN": "[project-manager] sync 于 {dir}：{cfg} 已包含全部模板开关 —— 无需添加" },
-  "guard.pm.syncAppended": { en: "[project-manager] sync in {dir}: appended {count} new switch line(s) to {cfg} (existing content untouched):", "zh-CN": "[project-manager] sync 于 {dir}：已向 {cfg} 追加 {count} 行新开关（既有内容未动）：" },
+  "guard.pm.syncMissing": { en: "[project-manager] sync in {dir}: no legacy state found and {cfg} does not exist — run /project init first", "zh-CN": "[project-manager] sync 于 {dir}：未发现旧状态，且 {cfg} 不存在 —— 请先运行 /project init" },
+  "guard.pm.syncUptodate": { en: "[project-manager] sync in {dir}: nothing left to migrate — {cfg} is the single source", "zh-CN": "[project-manager] sync 于 {dir}：无旧状态可迁移 —— {cfg} 即唯一来源" },
+  "guard.pm.syncAppended": { en: "[project-manager] sync in {dir}: migrated {count} item(s) into {cfg} (legacy entries removed/moved):", "zh-CN": "[project-manager] sync 于 {dir}：已将 {count} 项迁移进 {cfg}（旧条目已移除/搬迁）：" },
   "guard.pm.setup": {
-    en: "[project-manager] Project setup status in {dir}:\n- Interactive CLI: run `ocp project init --wizard` to open the project setup wizard.\n- Headless / CLI: run /project init to scaffold baseline files and bootstrap indexes.\n- Config sync: run /project sync to append newly added template switches.",
-    "zh-CN": "[project-manager] 项目设置状态（{dir}）：\n- 交互式 CLI：运行 `ocp project init --wizard` 打开项目设置向导。\n- 无头 / CLI：运行 /project init 生成基线文件并引导索引。\n- 配置同步：运行 /project sync 追加新增的模板开关。",
+    en: "[project-manager] Project setup status in {dir}:\n- Interactive CLI: run `ocp project init --wizard` to open the project setup wizard.\n- Headless / CLI: run /project init to scaffold baseline files and bootstrap indexes.\n- Config sync: run /project sync to move pre-.ocp OCP state (switches, memory, handoffs, styles) into .ocp/ — idempotent, safe to re-run.",
+    "zh-CN": "[project-manager] 项目设置状态（{dir}）：\n- 交互式 CLI：运行 `ocp project init --wizard` 打开项目设置向导。\n- 无头 / CLI：运行 /project init 生成基线文件并引导索引。\n- 配置同步：运行 /project sync 将旧版（.ocp 之前）的 OCP 状态（开关、记忆、交接、样式）迁移进 .ocp/ —— 幂等，可安全重跑。",
   },
   "guard.pm.suggestInit": { en: "[project-manager] This project has never been initialized ({files}). Run `/project init` to scaffold them (never overwrites) and run the first-time backend init.{extras}", "zh-CN": "[project-manager] 本项目从未初始化过（{files}）。运行 `/project init` 生成基线文件（从不覆盖）并执行后端首次初始化。{extras}" },
   "guard.pm.suggestMissing": { en: "missing baseline files: {files}", "zh-CN": "缺失基线文件：{files}" },

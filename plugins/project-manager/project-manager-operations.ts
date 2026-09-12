@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs"
-import { join } from "node:path"
+import { ocpConfigFile, type MigrationReport } from "../shared/opencode-prime"
 import {
   getProjectDir,
   setProjectDir,
@@ -33,6 +33,8 @@ export interface ProjectInitResult {
   readonly root: string
   readonly configExisted: boolean
   readonly files: ScaffoldResult[]
+  /** §3 one-shot legacy migration, run by the scaffold layer before targets. */
+  readonly migration: MigrationReport
   readonly backends: BackendResult[]
   readonly hooks: HookResult[]
 }
@@ -45,6 +47,7 @@ export interface UpdateSwitchesOptions {
 export interface UpdateSwitchesResult {
   readonly root: string
   readonly file: ScaffoldResult
+  readonly migration: MigrationReport
 }
 
 async function inProjectDir<T>(root: string, operation: () => T | Promise<T>): Promise<T> {
@@ -57,16 +60,17 @@ async function inProjectDir<T>(root: string, operation: () => T | Promise<T>): P
   }
 }
 
+/** Runtime single source (ADR 0004 v2): the project is "managed" exactly
+ * while `.ocp/ocp.json` exists. */
 function configExists(root: string): boolean {
-  return existsSync(join(root, ".opencode", "opencode.jsonc")) ||
-    existsSync(join(root, "opencode.jsonc"))
+  return existsSync(ocpConfigFile(root))
 }
 
 export async function initProject(options: ProjectInitOptions = {}): Promise<ProjectInitResult> {
   const root = options.root ?? getProjectDir()
   return inProjectDir(root, async () => {
     const existed = configExists(root)
-    const files = options.switches === undefined ? runInit() : runInitWithSwitches(options.switches)
+    const { files, migration } = options.switches === undefined ? runInit() : runInitWithSwitches(options.switches)
     const probe = probeBackends(root)
     let backends = await runBackends(planInitBackends(probe), root)
 
@@ -88,6 +92,7 @@ export async function initProject(options: ProjectInitOptions = {}): Promise<Pro
       root,
       configExisted: existed,
       files,
+      migration,
       backends,
       hooks: registerProjectHooks(root, probe),
     }
@@ -102,18 +107,19 @@ export async function indexProject(root = getProjectDir()): Promise<BackendResul
 }
 
 /**
- * Write only the switch values to .opencode/opencode.jsonc (or the root
- * opencode.jsonc fallback). Does NOT touch AGENTS.md / docs/git-commits.md
- * (that's `initProject`'s skeleton job) and does NOT re-run backends or
- * register hooks (switches don't change that). Pair this with the
- * sub-dialog Save button; use `initProject` for the main-menu skeleton
- * action.
+ * Write only the switch values to `.ocp/ocp.json` (created if absent).
+ * Runs the §3 one-shot legacy migration first — that pass re-comments the
+ * migrated OCP switch keys in legacy configs (the sanctioned move; platform
+ * keys preserved). Does NOT touch AGENTS.md / docs/git-commits.md (that's
+ * `initProject`'s skeleton job) and does NOT re-run backends or register
+ * hooks (switches don't change that). Pair this with the sub-dialog Save
+ * button; use `initProject` for the main-menu skeleton action.
  */
 export async function updateSwitches(options: UpdateSwitchesOptions): Promise<UpdateSwitchesResult> {
   const root = options.root ?? getProjectDir()
   return inProjectDir(root, async () => {
-    const file = updateSwitchesOnly(options.switches)
-    return { root, file }
+    const { file, migration } = updateSwitchesOnly(options.switches)
+    return { root, file, migration }
   })
 }
 

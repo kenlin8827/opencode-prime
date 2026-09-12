@@ -9,7 +9,7 @@
  *          behalf (auto-execute); PREFERENCE or < 8 → lite flow.
  *
  * File layout: one entry + one job per file.
- *   auto-advisor-config.ts            — mode normalize, project opencode.jsonc field IO, cold-start
+ *   auto-advisor-config.ts            — mode normalize, project .ocp/ocp.json field IO, cold-start
  *   auto-advisor-runtime.ts           — log, advisor detection, output shaping,
  *                                  red-team + question-class guards,
  *                                  auto-answer state (session-keyed)
@@ -25,7 +25,7 @@
  *   auto-advisor-announce.ts          — toast feedback for /auto-advisor
  *                                  mode switches (confirmation toast)
  *
- * Mode storage: `autoAdvisorMode` field in the project-level opencode.jsonc —
+ * Mode storage: `autoAdvisorMode` field in the project-level .ocp/ocp.json —
  * project-level only (read + write); default is off.
  */
 

@@ -1,7 +1,7 @@
 /**
  * Toast helpers for the auto-advisor mode.
  *
- * The mode is persisted as `autoAdvisorMode` in the project's opencode.jsonc
+ * The mode is persisted as `autoAdvisorMode` in the project's .ocp/ocp.json
  * and silently survives across sessions; without a visible signal the user
  * can forget full mode is on — and full mode auto-answers on their behalf.
  *

@@ -2,7 +2,7 @@
  * Hook: event — suggest `/project init` when a new top-level session opens
  * in a project that has never been initialized.
  *
- * Trigger: any baseline scaffold target missing (.opencode/opencode.jsonc,
+ * Trigger: any baseline scaffold target missing (.ocp/ocp.json,
  * docs/git-commits.md, AGENTS.md). Backend indexes do NOT trigger the
  * suggestion — a project can legitimately opt out of them; they only refine
  * the message (e.g. "codegraph CLI installed but not indexed").

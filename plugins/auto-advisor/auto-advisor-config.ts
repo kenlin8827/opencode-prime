@@ -1,36 +1,34 @@
 /**
- * Shared auto-advisor config — read/write the mode via opencode.jsonc.
+ * Shared auto-advisor config — read/write the mode via the project OCP config.
  * Single source of truth for reading, writing, and normalizing the mode.
  *
  * No hidden state file and no env var: the mode lives in the
- * `autoAdvisorMode` field of the project-level opencode.jsonc:
+ * `autoAdvisorMode` field of `.ocp/ocp.json`:
  *   - "lite" → both opinions returned to user
  *   - "full" → full (auto-execute when confidence ≥ 8)
  *   - "off"  → off (no auto-dispatch; manual @advisor still works)
  *
- * Resolution: project config autoAdvisorMode field → "off" (default).
- *   (<project>/.opencode/opencode.jsonc or <project>/opencode.jsonc, then
- *   the .json variants). Purely project-level — no global fallback.
+ * Resolution: `.ocp/ocp.json` autoAdvisorMode field → "off" (default).
+ *   Single runtime source (ADR 0004 v2) — legacy `.opencode/` state is
+ *   moved into `.ocp/` once by the project-init migration; there is no
+ *   read fallback. Purely project-level — no global fallback.
  *
  * /auto-advisor <mode> ALWAYS writes to the project-level config only:
- * the first existing project config file, or <project>/.opencode/opencode.jsonc
- * if none exists (the same location /project init scaffolds). Comments
- * and other fields are preserved (targeted field upsert, never a full
- * reserialize).
+ * `.ocp/ocp.json`, created on first write. Comments and other fields
+ * are preserved (targeted field upsert, never a full reserialize).
  *
  * The project directory is injected by the plugin entry via
  * setProjectDir() (PluginInput.directory); until then we fall back to
  * process.cwd().
  *
- * Config-file plumbing (project dir resolution, JSONC parsing, field
- * upsert, never-throw write) is shared with adr-guard, env-guard and
- * e2e-guard via ../shared/opencode-prime; this file delegates the
- * mode semantics to ../shared/plugin-switch.
+ * Config-file plumbing (project dir resolution, single-source config read,
+ * JSONC parsing, field upsert, never-throw write) is shared with adr-guard,
+ * env-guard and e2e-guard via ../shared/opencode-prime; this file delegates
+ * the mode semantics to ../shared/plugin-switch.
  */
 
 import {
   getProjectDir,
-  projectConfigFiles,
   setConfigField,
   setProjectDir,
   stripJsonc,
@@ -44,7 +42,7 @@ export { getProjectDir, setProjectDir, stripJsonc }
 const VALID_MODES = ["off", "lite", "full"] as const
 export type AdvisorMode = (typeof VALID_MODES)[number]
 
-// Default is OFF: no auto-dispatch unless a project opencode.jsonc explicitly
+// Default is OFF: no auto-dispatch unless the project OCP config explicitly
 // opts in. Manual @advisor still works in all modes.
 const DEFAULT_MODE: AdvisorMode = "off"
 

@@ -3,14 +3,14 @@
  *
  * Iron rule: NEVER overwrite. A target file is written only when it does not
  * already exist; anything present is reported as skipped and left untouched.
- * The single, append-only exception: an EXISTING project config gets switch
- * lines the template gained since init appended before its closing `}`
- * (existing content byte-preserved; reported as "updated").
+ * Every init/save entry point first runs the one-shot legacy migration
+ * (`migrateLegacyProjectArtifacts`, ADR 0004 §3) BEFORE scaffolding, so
+ * legacy `.opencode/` OCP state (switch keys, memory, styles, handoffs) is
+ * moved into `.ocp/` exactly once and the report is surfaced in the output.
  *
  * Targets (relative to the project directory):
- *   .opencode/opencode.jsonc — project-level OpenCode Prime stub; when it
- *                               already exists, an append-only top-up adds
- *                               switch lines the template gained since init
+ *   .ocp/ocp.json            — project-level OpenCode Prime config (pure
+ *                              JSON; absent keys = defaults)
  *   docs/git-commits.md      — conventional-commit convention for the repo
  *   AGENTS.md                — repo-level AI agent instructions stub
  *
@@ -22,7 +22,14 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { ensureOpencodeGitignore } from "../shared/opencode-prime"
+import {
+  ensureOcpGitignore,
+  migrateLegacyProjectArtifacts,
+  ocpConfigFile,
+  OCP_SWITCH_KEYS,
+  upsertConfigField,
+  type MigrationReport,
+} from "../shared/opencode-prime"
 import { CONFIG_REL, getProjectDir, resolveTarget, type ScaffoldTarget } from "./project-manager-config"
 
 // ─── Templates ───────────────────────────────────────────────────────
@@ -68,7 +75,7 @@ export function resolveProjectTemplatePath(file: string): string {
 
 /** Baseline target (relative path) → template file under `templates/`. */
 const TEMPLATE_FILES: Record<ScaffoldTarget, string> = {
-  ".opencode/opencode.jsonc": "opencode.jsonc",
+  ".ocp/ocp.json": "ocp.json",
   "docs/git-commits.md": "git-commits.md",
   "AGENTS.md": "AGENTS.md",
 }
@@ -124,8 +131,6 @@ export interface ScaffoldResult {
   status: ScaffoldStatus
 }
 
-export { ensureOpencodeGitignore }
-
 /** Append the local tgrep cache rule once, without modifying non-Git folders. */
 export function ensureTgrepGitignore(root: string): "added" | "present" | "not-git" {
   if (!existsSync(join(root, ".git"))) return "not-git"
@@ -139,27 +144,27 @@ export function ensureTgrepGitignore(root: string): "added" | "present" | "not-g
   return "added"
 }
 
+/** One init pass: the §3 migration report plus per-file scaffold results. */
+export interface InitScaffoldResult {
+  files: ScaffoldResult[]
+  migration: MigrationReport
+}
+
 /**
- * Run `/project init`: create each missing target file. Existing files are
- * never overwritten — EXCEPT the project config, which gets an append-only
- * top-up with template switch lines it does not have yet (template
- * evolution; existing content untouched, reported as "updated"). Parent
- * directories are created on demand. Errors propagate to the caller
- * (command hook reports them to the user).
+ * Run `/project init`: first the one-shot legacy migration (so legacy
+ * `.opencode/` OCP state lands in `.ocp/` before any target is checked),
+ * then create each missing target file. Existing files are never
+ * overwritten — an existing `.ocp/ocp.json` keeps its bytes; the migration
+ * only adds keys it lacks. Parent directories are created on demand.
+ * Errors propagate to the caller (command hook reports them to the user).
  */
-export function runInit(): ScaffoldResult[] {
-  ensureOpencodeGitignore()
+export function runInit(): InitScaffoldResult {
+  const migration = migrateLegacyProjectArtifacts(getProjectDir())
+  ensureOcpGitignore(getProjectDir())
   const results: ScaffoldResult[] = []
   for (const relPath of Object.keys(TEMPLATE_FILES) as ScaffoldTarget[]) {
     const absPath = resolveTarget(relPath)
     if (existsSync(absPath)) {
-      if (relPath === CONFIG_REL) {
-        const sync = runSync()
-        const status: ScaffoldStatus =
-          sync.status === "added" ? "updated" : sync.status === "invalid" ? "invalid" : "skipped"
-        results.push({ relPath, status })
-        continue
-      }
       results.push({ relPath, status: "skipped" })
       continue
     }
@@ -167,21 +172,10 @@ export function runInit(): ScaffoldResult[] {
     writeFileSync(absPath, readTemplate(TEMPLATE_FILES[relPath]), "utf-8")
     results.push({ relPath, status: "created" })
   }
-  return results
+  return { files: results, migration }
 }
 
-// ─── Sync (template evolution) ──────────────────────────────────────
-// init's never-overwrite rule means an existing .opencode/opencode.jsonc
-// never receives switch lines added to the template AFTER init. `/project
-// sync` closes that gap with an APPEND-ONLY merge: template switch lines
-// whose key is entirely absent from the existing file are inserted right
-// before the closing `}`; existing content is never edited, deleted, or
-// reordered.
-
-export interface SwitchLine {
-  key: string
-  line: string
-}
+// ─── Switches & config generation ────────────────────────────────────
 
 export interface ProjectSwitches {
   autoAdvisorMode?: "off" | "lite" | "full"
@@ -193,74 +187,24 @@ export interface ProjectSwitches {
   projectMemory?: "on" | "off"
 }
 
-/** Commented switch lines (`// "key": ...`) offered by the config template. */
-export function extractSwitchLines(templateContent: string): SwitchLine[] {
-  const out: SwitchLine[] = []
-  for (const line of templateContent.split(/\r?\n/)) {
-    const m = line.match(/^\s*\/\/\s*"([^"]+)"\s*:/)
-    if (m) out.push({ key: m[1], line })
-  }
-  return out
-}
-
-/** True when `content` already carries the key — active OR commented out. */
-export function contentHasKey(content: string, key: string): boolean {
-  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-  return new RegExp(`"${escaped}"\\s*:`).test(content)
-}
-
 /**
- * Apply project switch settings to a JSONC config string (template or existing).
- * Each entry's `value` (when set) replaces the matching line in active form
- * `"key": "value",` — replacing a previously commented template line or
- * appending before the closing `}` when the key is absent. Undefined entries
- * are skipped (template defaults stay commented). Indentation, comments, and
- * unrelated lines are preserved.
+ * Apply project switch settings to a config string (template or existing),
+ * converging on the shared text surgery (`upsertConfigField`): each defined
+ * entry replaces its active line, uncomments a commented template line in
+ * place, or appends into the root object keeping the result STRICT-JSON
+ * valid (P1-2: no trailing comma on the last member). Undefined entries are
+ * skipped (absent keys = defaults). Comments and unrelated lines survive.
  */
 export function applySwitchesToConfigContent(
   content: string,
   switches: ProjectSwitches,
 ): string {
   let result = content
-  const eol = content.includes("\r\n") ? "\r\n" : "\n"
-
-  const switchEntries: Array<{
-    key: string
-    value?: string
-  }> = [
-      { key: "autoAdvisorMode", value: switches.autoAdvisorMode },
-      { key: "adrGuard", value: switches.adrGuard },
-      { key: "adrLayout", value: switches.adrLayout },
-      { key: "adrDir", value: switches.adrDir },
-      { key: "envGuard", value: switches.envGuard },
-      { key: "e2eGuard", value: switches.e2eGuard },
-      { key: "projectMemory", value: switches.projectMemory },
-    ]
-
-  for (const entry of switchEntries) {
-    if (entry.value === undefined) continue
-    const escaped = entry.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-    // Match active or commented switch line: e.g. `  // "key": "val", ...` or `  "key": "val", ...`
-    const lineRegex = new RegExp(`^(\\s*)(//\\s*)?("${escaped}"\\s*:\\s*)"([^"]*)"(.*)$`, "m")
-    const match = lineRegex.exec(result)
-    const val = entry.value
-
-    if (match) {
-      const indent = match[1] || "  "
-      const prefix = match[3]
-      const suffix = match[5]
-      const newLine = `${indent}${prefix}"${val}"${suffix}`
-      result = result.replace(match[0], newLine)
-    } else {
-      // Key absent in existing content: append before closing brace
-      const close = result.lastIndexOf("}")
-      if (close >= 0) {
-        const line = `  "${entry.key}": "${val}",`
-        result = result.slice(0, close) + line + eol + result.slice(close)
-      }
-    }
+  for (const key of OCP_SWITCH_KEYS) {
+    const value = switches[key]
+    if (value === undefined) continue
+    result = upsertConfigField(result, key, value)
   }
-
   return result
 }
 
@@ -271,62 +215,59 @@ export function generateConfigContent(switches: ProjectSwitches): string {
   return applySwitchesToConfigContent(base, switches)
 }
 
+/** A config-only save: the written file plus the §3 migration it ran first. */
+export interface UpdateSwitchesResult {
+  file: ScaffoldResult
+  migration: MigrationReport
+}
+
 /**
- * Update ONLY the project config (opencode.jsonc) with the given switches.
- * Does NOT touch AGENTS.md, docs/git-commits.md, or any other baseline file
- * — that's the main-menu "Apply Init/Update" skeleton's job. When the config
- * is missing, creates it from the template with the switches applied
- * (skeleton-free first-time init path for sub-dialog Save in an empty
- * project directory).
+ * Update ONLY the project config (`.ocp/ocp.json`) with the given switches —
+ * the wizard save path. Runs the one-shot legacy migration first (ADR 0004
+ * §3: the wizard save is an init entry point), so a first save in a legacy
+ * project moves old state forward instead of silently shadowing it.
+ * Does NOT touch AGENTS.md, docs/git-commits.md, or any other baseline
+ * file — that's the main-menu "Apply Init/Update" skeleton's job. When the
+ * config is missing, creates it from the template with the switches applied
+ * (skeleton-free first-time save in an empty project directory).
  *
  * Same iron rule as runInit: never overwrite unrelated content. An existing
  * file with the same switch values is reported as "skipped" with no write.
- *
- * Mirrors `runInitWithSwitches`'s root-fallback: a legacy project with only
- * a root-level `opencode.jsonc` is updated in place (returning that relPath)
- * rather than spawning a second config under `.opencode/` — the wizard
- * detects and the runtime reads the same file throughout.
  */
-export function updateSwitchesOnly(switches: ProjectSwitches): ScaffoldResult {
+export function updateSwitchesOnly(switches: ProjectSwitches): UpdateSwitchesResult {
+  const migration = migrateLegacyProjectArtifacts(getProjectDir())
   const configPath = resolveTarget(CONFIG_REL)
   if (existsSync(configPath)) {
     const existing = readFileSync(configPath, "utf-8")
     const updated = applySwitchesToConfigContent(existing, switches)
     if (updated !== existing) {
       writeFileSync(configPath, updated, "utf-8")
-      return { relPath: CONFIG_REL, status: "updated" }
+      return { file: { relPath: CONFIG_REL, status: "updated" }, migration }
     }
-    return { relPath: CONFIG_REL, status: "skipped" }
-  }
-
-  // Legacy fallback: root opencode.jsonc, no .opencode/ yet.
-  const rootConfigPath = resolveTarget("opencode.jsonc" as ScaffoldTarget)
-  if (existsSync(rootConfigPath)) {
-    const existing = readFileSync(rootConfigPath, "utf-8")
-    const updated = applySwitchesToConfigContent(existing, switches)
-    if (updated !== existing) {
-      writeFileSync(rootConfigPath, updated, "utf-8")
-      return { relPath: "opencode.jsonc" as ScaffoldTarget, status: "updated" }
-    }
-    return { relPath: "opencode.jsonc" as ScaffoldTarget, status: "skipped" }
+    return { file: { relPath: CONFIG_REL, status: "skipped" }, migration }
   }
 
   // First-time: create the config from the template with switches applied.
   // Parent dirs created on demand; other baseline files (AGENTS.md,
-  // docs/git-commits.md) are intentionally NOT created here.
+  // docs/git-commits.md) are intentionally NOT created here. Mirror the
+  // shared `setConfigField` contract: a freshly created `.ocp/` also gets
+  // its gitignore bootstrap.
   ensureParentDir(configPath)
   writeFileSync(configPath, generateConfigContent(switches), "utf-8")
-  return { relPath: CONFIG_REL, status: "created" }
+  ensureOcpGitignore(getProjectDir())
+  return { file: { relPath: CONFIG_REL, status: "created" }, migration }
 }
 
 /**
  * Run `/project init` with explicit switches configured.
- * When config already exists, it updates the switches in-place.
- * When missing, creates .opencode/opencode.jsonc with the configured switches.
+ * Runs the §3 legacy migration first, like `runInit`.
+ * When `.ocp/ocp.json` already exists, updates the switches in place.
+ * When missing, creates it with the configured switches.
  * Also scaffolds docs/git-commits.md and AGENTS.md.
  */
-export function runInitWithSwitches(switches: ProjectSwitches): ScaffoldResult[] {
-  ensureOpencodeGitignore()
+export function runInitWithSwitches(switches: ProjectSwitches): InitScaffoldResult {
+  const migration = migrateLegacyProjectArtifacts(getProjectDir())
+  ensureOcpGitignore(getProjectDir())
   const results: ScaffoldResult[] = []
   for (const relPath of Object.keys(TEMPLATE_FILES) as ScaffoldTarget[]) {
     const absPath = resolveTarget(relPath)
@@ -346,22 +287,6 @@ export function runInitWithSwitches(switches: ProjectSwitches): ScaffoldResult[]
       continue
     }
 
-    // Fallback check for root opencode.jsonc if .opencode/opencode.jsonc is absent
-    if (relPath === CONFIG_REL) {
-      const rootConfigPath = resolveTarget("opencode.jsonc" as ScaffoldTarget)
-      if (existsSync(rootConfigPath)) {
-        const existing = readFileSync(rootConfigPath, "utf-8")
-        const updated = applySwitchesToConfigContent(existing, switches)
-        if (updated !== existing) {
-          writeFileSync(rootConfigPath, updated, "utf-8")
-          results.push({ relPath: "opencode.jsonc" as ScaffoldTarget, status: "updated" })
-        } else {
-          results.push({ relPath: "opencode.jsonc" as ScaffoldTarget, status: "skipped" })
-        }
-        continue
-      }
-    }
-
     ensureParentDir(absPath)
     if (relPath === CONFIG_REL) {
       writeFileSync(absPath, generateConfigContent(switches), "utf-8")
@@ -370,53 +295,30 @@ export function runInitWithSwitches(switches: ProjectSwitches): ScaffoldResult[]
     }
     results.push({ relPath, status: "created" })
   }
-  return results
+  return { files: results, migration }
 }
 
-/**
- * Additive merge of template switch lines into `existing`. Returns the
- * rewritten content plus the keys that were added; null when `existing`
- * is malformed — no closing brace, or anything but whitespace after it
- * (the file must not be touched). Zero missing keys → content returned
- * unchanged.
- */
-export function mergeSwitchLines(
-  existing: string,
-  templateContent: string,
-): { content: string; added: string[] } | null {
-  const close = existing.lastIndexOf("}")
-  if (close < 0 || existing.slice(close + 1).trim() !== "") return null
-  const missing = extractSwitchLines(templateContent).filter((s) => !contentHasKey(existing, s.key))
-  if (missing.length === 0) return { content: existing, added: [] }
-  const eol = existing.includes("\r\n") ? "\r\n" : "\n"
-  const block = missing.map((s) => s.line).join(eol)
-  return {
-    content: existing.slice(0, close) + block + eol + existing.slice(close),
-    added: missing.map((s) => s.key),
-  }
-}
-
-export type SyncStatus = "added" | "up-to-date" | "missing" | "invalid"
+export type SyncStatus = "added" | "up-to-date" | "missing"
 
 export interface SyncResult {
   status: SyncStatus
+  /** Migrated items (switch keys + moved artifact paths) — report lines. */
   added: string[]
+  /** Full §3 report, including per-item warnings. */
+  migration: MigrationReport
 }
 
 /**
- * Run `/project sync`: top up the EXISTING project config with template
- * switch lines it does not have yet. Append-only (see above). A missing
- * config is `missing` (that is init's job); a malformed file (no closing
- * brace, or trailing content after it) is `invalid` and left untouched.
+ * Run `/project sync`: on-demand re-invocation of the §3 legacy migration
+ * — the explicit escape hatch for users who upgraded and skipped the
+ * wizard. Idempotent: a second run finds nothing. `missing` = nothing to
+ * migrate and no `.ocp/ocp.json` yet (that is init's job).
  */
 export function runSync(): SyncResult {
-  const absPath = resolveTarget(CONFIG_REL)
-  if (!existsSync(absPath)) return { status: "missing", added: [] }
-  const existing = readFileSync(absPath, "utf-8")
-  const merged = mergeSwitchLines(existing, readTemplate(TEMPLATE_FILES[CONFIG_REL]))
-  if (!merged) return { status: "invalid", added: [] }
-  if (merged.added.length === 0) return { status: "up-to-date", added: [] }
-  writeFileSync(absPath, merged.content, "utf-8")
-  return { status: "added", added: merged.added }
+  const migration = migrateLegacyProjectArtifacts(getProjectDir())
+  const added = [...migration.switchedKeys, ...migration.movedFiles]
+  if (added.length > 0) return { status: "added", added, migration }
+  if (!existsSync(ocpConfigFile(getProjectDir()))) return { status: "missing", added, migration }
+  return { status: "up-to-date", added, migration }
 }
 

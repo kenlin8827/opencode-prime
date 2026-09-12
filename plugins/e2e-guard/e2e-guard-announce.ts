@@ -2,7 +2,7 @@
  * Hook: event — announce the e2e-guard state to the user.
  *
  * The switch persists as the `e2eGuard` field of the project's
- * opencode.jsonc and silently survives across sessions; without a visible
+ * .ocp/ocp.json and silently survives across sessions; without a visible
  * signal the user can forget the gate is on — and E2E runs may get blocked
  * unexpectedly. Also keeps the in-memory approval store tidy: approvals die
  * with their session (session.deleted).

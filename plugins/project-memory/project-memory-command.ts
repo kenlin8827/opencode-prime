@@ -9,7 +9,7 @@
  *   /memory show                      → preview what's currently injected
  *   /memory                           → help
  *
- * Both scopes are PROJECT-LEVEL inside `<projectDir>/.opencode/memory/`,
+ * Both scopes are PROJECT-LEVEL inside `<projectDir>/.ocp/memory/`,
  * file names self-describe visibility:
  *   public  → public.md   (committed)
  *   private → private.md  (gitignored)

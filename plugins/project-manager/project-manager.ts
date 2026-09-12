@@ -4,9 +4,11 @@
  *
  *   /project init  — create baseline files in the current project, but ONLY
  *                    when they don't already exist (never overwrites):
- *                      .opencode/opencode.jsonc  (project-level config stub)
- *                      docs/git-commits.md       (commit convention)
- *                      AGENTS.md                 (agent instructions stub)
+ *                      .ocp/ocp.json               (project-level config)
+ *                      docs/git-commits.md         (commit convention)
+ *                      AGENTS.md                   (agent instructions stub)
+ *                    a one-shot legacy migration moves OCP state out of
+ *                    .opencode/ into .ocp/ before any target is checked
  *                    then run every first-time backend init step, each only
  *                    when its CLI is installed + enabled:
  *                      `codegraph init`    one-time; watcher keeps it fresh
@@ -23,7 +25,7 @@
  *   project-manager-config.ts        — command name, project dir, target list
  *   project-manager-scaffold.ts      — exists-check-then-write init; template
  *                                      bodies live in templates/ (read once)
- *   templates/                       — opencode.jsonc, git-commits.md,
+ *   templates/                       — ocp.json, git-commits.md,
  *                                      AGENTS.md, dbhub.toml scaffold bodies
  *   project-manager-index.ts         — backend probes + plan + run
  *                                      (codegraph init / gitnexus analyze)
@@ -71,7 +73,7 @@ export const ProjectManagerPlugin: Plugin = async ({ client, directory }) => {
       cfg.command[COMMAND_NAME] = {
         template: "",
         description:
-          "Project scaffolding + index bootstrap — /project init creates missing baseline files (never overwrites; an existing project config gets new template switches appended) and runs first-time backend init (codegraph init, gitnexus analyze) when each CLI is installed + enabled; /project index manually refreshes existing indexes; /project sync tops up the project config alone",
+          "Project scaffolding + index bootstrap — /project init runs the one-shot legacy migration (.opencode/ OCP state into .ocp/), creates missing baseline files (never overwrites) and runs first-time backend init (codegraph init, gitnexus analyze) when each CLI is installed + enabled; /project index manually refreshes existing indexes; /project sync re-runs the legacy migration alone, on demand",
       }
     },
     "command.execute.before": makeCommandHook(client, handled),

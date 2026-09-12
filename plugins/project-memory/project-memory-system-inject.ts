@@ -3,8 +3,8 @@
  * files into the system prompt.
  *
  * Two files, one marker `[PROJECT MEMORY]`, two sections in the fragment:
- *   `=== Public (last edited ..., N entries) ===`  — `.opencode/memory/public.md`  (committed)
- *   `=== Private (last edited ..., N entries) ===` — `.opencode/memory/private.md` (gitignored)
+ *   `=== Public (last edited ..., N entries) ===`  — `.ocp/memory/public.md`  (committed)
+ *   `=== Private (last edited ..., N entries) ===` — `.ocp/memory/private.md` (gitignored)
  * Both share the marker so the existing strip logic (`stripBlockByLine`)
  * keeps working without plugin-scope changes. AGENTS.md wins on conflict
  * against both — stated inside each section so the model resolves without

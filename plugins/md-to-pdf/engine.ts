@@ -21,7 +21,7 @@ export interface ConversionResult {
   htmlPath?: string
 }
 
-import { getProjectLogDir } from "../shared/opencode-prime"
+import { getProjectLogDir, ocpArtifactPath } from "../shared/opencode-prime"
 
 export { getProjectLogDir }
 
@@ -405,10 +405,10 @@ export async function convertSingleFile(
     }
 
     if (!resolvedCssContent) {
-      const opencodeCss = resolve(projectDir, ".opencode", "md-to-pdf.css")
-      if (existsSync(opencodeCss)) {
-        resolvedCssPath = opencodeCss
-        resolvedCssContent = readFileSync(opencodeCss, "utf8")
+      const projectCss = ocpArtifactPath("md-to-pdf.css", projectDir)
+      if (existsSync(projectCss)) {
+        resolvedCssPath = projectCss
+        resolvedCssContent = readFileSync(projectCss, "utf8")
       } else {
         resolvedCssPath = resolve(__dirname, "style.css")
         if (existsSync(resolvedCssPath)) {

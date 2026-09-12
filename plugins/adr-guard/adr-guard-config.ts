@@ -1,5 +1,5 @@
 /**
- * Shared adr-guard config — project opencode.jsonc switch field + ADR
+ * Shared adr-guard config — project .ocp/ocp.json switch field + ADR
  * directory + ADR layout. Single source of truth for reading,
  * writing, and normalizing each.
  *
@@ -66,7 +66,7 @@ export function getStateSource(): GuardStateSource {
   return adrSwitch.getStateSource()
 }
 
-/** Write the switch into the project-level opencode.jsonc.
+/** Write the switch into the project-level .ocp/ocp.json.
  * Project-scoped and never throws: a read-only project dir degrades
  * to a false return instead of crashing a plugin hook. */
 export function setState(state: GuardState): boolean {

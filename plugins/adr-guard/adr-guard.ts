@@ -15,7 +15,7 @@
  * history, never in the number.
  *
  * File layout: one entry + one job per file.
- *   adr-guard-config.ts        — state normalize, project opencode.jsonc field IO,
+ *   adr-guard-config.ts        — state normalize, project .ocp/ocp.json field IO,
  *                                  ADR dir resolution
  *   adr-guard-runtime.ts       — log, bash tokenizer, commit message/type
  *                                  parsing, git working-tree ADR detection
@@ -32,7 +32,7 @@
  *                                  on|off|status (switch confirmations
  *                                  and status reports)
  *
- * Switch: `adrGuard` field in the project-level opencode.jsonc (no state file).
+ * Switch: `adrGuard` field in the project-level .ocp/ocp.json (no state file).
  */
 
 import type { Plugin } from "@opencode-ai/plugin"

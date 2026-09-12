@@ -24,16 +24,17 @@
  * style already used by OpenCode's sidebar.
  *
  * State sources (all read-only, same logic as each plugin's config module):
- *   - adrGuard        → project opencode.jsonc field (on | off, default off)
- *   - e2eGuard        → project opencode.jsonc field (on | off, default off)
- *   - projectMemory   → project opencode.jsonc field (on | off, default on —
+ *   - adrGuard        → project OCP config field (on | off, default off)
+ *   - e2eGuard        → project OCP config field (on | off, default off)
+ *   - projectMemory   → project OCP config field (on | off, default on —
  *                       advisory; nothing is injected unless a curated
  *                       public.md actually exists)
- *   - autoAdvisorMode → project opencode.jsonc field (off | lite | full, default off)
+ *   - autoAdvisorMode → project OCP config field (off | lite | full, default off)
  *   - deepSeekAnchor  → ~/.config/opencode/.deepseek-anchor-enabled (on | off, default on)
  *   - activeProfile   → ~/.config/opencode/.active-profile (name | none)
- *   - projectScaffold → /project init targets exist? (.opencode/opencode.jsonc +
- *                        docs/git-commits.md + AGENTS.md → init | partial | none)
+ *   - projectScaffold → /project init targets exist? (.ocp/ocp.json +
+ *                        docs/git-commits.md + AGENTS.md
+ *                        → init | partial | none)
  *   - gitCommits      → docs/git-commits.md exists (file-as-switch, same rule
  *                        as project-manager hasConventionFile())
  *   - capabilities     → codegraph/gitnexus: index dir exists AND MCP enabled
@@ -82,6 +83,7 @@ import { homedir } from "node:os"
 import { loadTgrepOptions } from "../tgrep/tgrep-config"
 import { resolveTgrepCapability, type TgrepCapabilityState } from "../tgrep/tgrep-service"
 import { countEntries, readPublic } from "../project-memory/project-memory-config"
+import { ocpConfigFile, readProjectConfig, stripJsonc } from "../shared/opencode-prime"
 
 // ─── Theme shape ───────────────────────────────────────────────────
 
@@ -117,87 +119,12 @@ interface Badge {
   variant: "error" | "warning" | "info" | "success"
 }
 
-// ─── Config readers (mirror each plugin's config module) ────────────
-
-/** Strip JSONC comments so project .jsonc files can be JSON.parsed. */
-function stripJsonc(raw: string): string {
-  return stripTrailingCommas(stripComments(raw))
-}
-
-function stripComments(raw: string): string {
-  let result = ""
-  let i = 0
-  const len = raw.length
-  let state: "normal" | "string" | "lineComment" | "blockComment" = "normal"
-  while (i < len) {
-    const c = raw[i]
-    const next = i + 1 < len ? raw[i + 1] : ""
-    switch (state) {
-      case "normal":
-        if (c === '"') { result += c; state = "string" }
-        else if (c === "/" && next === "/") { state = "lineComment"; i++ }
-        else if (c === "/" && next === "*") { state = "blockComment"; i++ }
-        else { result += c }
-        break
-      case "string":
-        result += c
-        if (c === "\\") { i++; if (i < len) result += raw[i] }
-        else if (c === '"') { state = "normal" }
-        break
-      case "lineComment":
-        if (c === "\n") { result += c; state = "normal" }
-        break
-      case "blockComment":
-        if (c === "*" && next === "/") { state = "normal"; i++ }
-        break
-    }
-    i++
-  }
-  return result
-}
-
-function stripTrailingCommas(src: string): string {
-  let result = ""
-  let inString = false
-  for (let i = 0; i < src.length; i++) {
-    const c = src[i]
-    if (inString) {
-      result += c
-      if (c === "\\") { if (i + 1 < src.length) result += src[++i] }
-      else if (c === '"') { inString = false }
-      continue
-    }
-    if (c === '"') { inString = true; result += c; continue }
-    if (c === ",") {
-      let j = i + 1
-      while (j < src.length && /\s/.test(src[j])) j++
-      if (j < src.length && (src[j] === "}" || src[j] === "]")) continue
-    }
-    result += c
-  }
-  return result
-}
-
-function projectConfigFiles(projectDir: string): string[] {
-  return [
-    join(projectDir, ".opencode", "opencode.jsonc"),
-    join(projectDir, ".opencode", "opencode.json"),
-    join(projectDir, "opencode.jsonc"),
-    join(projectDir, "opencode.json"),
-  ]
-}
-
-function readProjectConfig(projectDir: string): Record<string, unknown> | null {
-  for (const path of projectConfigFiles(projectDir)) {
-    if (!existsSync(path)) continue
-    try {
-      return JSON.parse(stripJsonc(readFileSync(path, "utf-8")))
-    } catch {
-      // try next
-    }
-  }
-  return null
-}
+// ─── Config readers ──────────────────────────────────────────────────
+// JSONC parsing and the `.ocp/ocp.json` read live in
+// `plugins/shared/opencode-prime` — same code path the running plugins use,
+// so sidebar state can never drift from actual plugin state (ADR 0004 v2:
+// single source, no fallback chain). `root` is passed per call because the
+// TUI process gets no server-side project dir injection.
 
 // ─── State resolvers ────────────────────────────────────────────────
 
@@ -267,12 +194,12 @@ function resolveActiveProfile(): string {
 /**
  * OCP project scaffolding state — mirrors SCAFFOLD_TARGETS from
  * plugins/project-manager/project-manager-config.ts:
- *   .opencode/opencode.jsonc | docs/git-commits.md | AGENTS.md
+ *   .ocp/ocp.json | docs/git-commits.md | AGENTS.md
  * 3/3 → init, 1–2 → partial, 0 → none.
  */
 function resolveProjectScaffold(projectDir: string): "init" | "partial" | "none" {
   const count = [
-    join(projectDir, ".opencode", "opencode.jsonc"),
+    ocpConfigFile(projectDir),
     join(projectDir, "docs", "git-commits.md"),
     join(projectDir, "AGENTS.md"),
   ].filter((p) => existsSync(p)).length
@@ -595,8 +522,8 @@ export async function fetchLatestVersion(lifecycleSignal?: AbortSignal): Promise
 //                   scaffold (init state), memory (curated lessons for this
 //                   project), git-commits, codegraph/gitnexus/serena/
 //                   tgrep indexes, dprint formatter. All keyed off the
-//                   current project (config lives in project opencode.jsonc;
-//                   memory data lives at .opencode/memory/ inside the project).
+//                   current project (config lives in project OCP config;
+//                   memory data lives at .ocp/memory/ inside the project).
 
 /** Guard/mode badges — group "OCP" (exported for tests/smoke checks).
  * `currentModelId` gates `deepseek-anchor`: only rendered when the active
@@ -640,7 +567,7 @@ export function buildGuardBadges(projectDir: string, currentModelId?: string): B
  *
  * Gating strategy:
  *   - `scaffold` and `memory` rows always render. memory's data lives
- *     at `.opencode/memory/public.md` inside the project (committed to
+ *     at `.ocp/memory/public.md` inside the project (committed to
  *     git — same lifecycle as the checkout, so `git clone` gives a new
  *     contributor the team's lessons immediately). The `private.md`
  *     sibling is gitignored and intentionally NOT surfaced in the sidebar

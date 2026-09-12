@@ -11,7 +11,7 @@
  *   - No-op; strips any injected prompt block.
  *
  * File layout:
- *   e2e-guard-config.ts        — project opencode.jsonc `e2eGuard` switch read/write
+ *   e2e-guard-config.ts        — project .ocp/ocp.json `e2eGuard` switch read/write
  *   e2e-guard-protocol.md      — protocol markdown definition
  *   e2e-guard-instructions.ts  — prompt fragment builder (marker + cached protocol)
  *   e2e-guard-system-inject.ts — system prompt injection hook
@@ -34,7 +34,7 @@ export const E2eGuardPlugin: Plugin = async ({ client, directory }) => {
       cfg.command[COMMAND_NAME] = {
         template: "",
         description:
-          "E2E guard project controls — /e2e-guard status shows gate state; /e2e-guard on|off flips the project gate in opencode.jsonc",
+          "E2E guard project controls — /e2e-guard status shows gate state; /e2e-guard on|off flips the project gate in .ocp/ocp.json",
       }
     },
     "experimental.chat.system.transform": makeSystemHook(client) as any,

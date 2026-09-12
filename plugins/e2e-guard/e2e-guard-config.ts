@@ -1,15 +1,16 @@
 /**
- * Shared e2e-guard config — project opencode.jsonc switch field.
+ * Shared e2e-guard config — project OCP config switch field.
  *
- * State is PROJECT-LEVEL and lives in the `e2eGuard` field of the
- * project's opencode.json/opencode.jsonc. The `/e2e-guard on|off`
- * command flips it by writing that field (targeted upsert; comments
- * and unrelated fields survive); it can also be flipped by hand.
+ * State is PROJECT-LEVEL and lives in the `e2eGuard` field of
+ * `.ocp/ocp.json`. The `/e2e-guard on|off` command flips it by
+ * writing that field (targeted upsert; comments and unrelated fields
+ * survive); it can also be flipped by hand.
  *   - absent or "off" → off (default — no enforcement, complete no-op)
  *   - "on"            → on (E2E runs are gated behind a user confirmation)
  *
- * Resolution: project config `e2eGuard` field → "off". Scanned via
- * `readProjectConfig()` which iterates candidate paths.
+ * Resolution: the `e2eGuard` field of `.ocp/ocp.json` → "off" (default).
+ * Single runtime source via `readProjectConfig()` (ADR 0004 v2) — legacy
+ * state moves once at project-init migration; no read fallback.
  *
  * The switch itself is delegated to `plugins/shared/plugin-switch.ts`;
  * this file keeps only e2e-guard-specific re-exports.

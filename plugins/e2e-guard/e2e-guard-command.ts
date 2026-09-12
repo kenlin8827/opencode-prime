@@ -2,7 +2,7 @@
  * Hook: command.execute.before — `/e2e-guard <subcommand>` user controls.
  *
  * Provides control over the project-level switch:
- *   /e2e-guard on|off  → flips the `e2eGuard` field in opencode.jsonc
+ *   /e2e-guard on|off  → flips the `e2eGuard` field in .ocp/ocp.json
  *   /e2e-guard status  → reports the current project gate state
  */
 
