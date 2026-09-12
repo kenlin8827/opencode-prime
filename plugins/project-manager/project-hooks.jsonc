@@ -1,7 +1,10 @@
 {
   // Project-level MCP lifecycle registry.
   // Each backend declares setup (run once by `/project init`), index (run by
-  // `/project index`), teardown, and git_hooks managed blocks.
+  // `/project index`), teardown, and git_hooks managed blocks. A phase set to
+  // null means the backend does not participate in it at all — it is omitted
+  // from that command's plan and report (e.g. dbhub is a live SQL proxy with
+  // no index to maintain).
   //
   // Condition grammar (all must pass):
   //   mcp_enabled:<name>      mcp.<name>.enabled is not false in opencode.jsonc
@@ -59,10 +62,22 @@
         "note": "dbhub.toml created (set the DBHUB_DSN env var)",
         "when": ["mcp_enabled:dbhub", "cli_installed:dbhub", "!toml_present:dbhub"]
       },
+      "index": null,
+      "teardown": null,
+      "git_hooks": null
+    },
+    "tgrep": {
+      "mcp": "tgrep",
+      "cli": "tgrep",
+      "init": {
+        "command": "tgrep index .",
+        "note": "initial local full-text index build",
+        "when": ["tool_enabled:tgrep", "cli_installed:tgrep", "index_missing:tgrep"]
+      },
       "index": {
-        "command": null,
-        "note": "not an index — dbhub.toml is scaffolded by /project init",
-        "when": ["always"]
+        "command": "tgrep index .",
+        "note": "rebuilding incomplete or unhealthy local full-text index",
+        "when": ["tool_enabled:tgrep", "cli_installed:tgrep", "tgrep_rebuild_needed"]
       },
       "teardown": null,
       "git_hooks": null

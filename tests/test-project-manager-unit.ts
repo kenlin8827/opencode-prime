@@ -43,14 +43,18 @@ import {
   extractSwitchLines,
   mergeSwitchLines,
   runInit,
+  runInitWithSwitches,
   runSync,
+  updateSwitchesOnly,
   writeDbhubToml,
+  ensureTgrepGitignore,
 } from "../plugins/project-manager/project-manager-scaffold"
 import {
   mcpEnabledFrom,
   planIndexBackends,
   planInitBackends,
   probeBackends,
+  shellwords,
   type BackendProbe,
 } from "../plugins/project-manager/project-manager-index"
 import { registerProjectHooks } from "../plugins/project-manager/project-manager-hooks"
@@ -60,6 +64,12 @@ import { makeCommandHook } from "../plugins/project-manager/project-manager-comm
 import { makeToolGuardHook, validateMessage } from "../plugins/project-manager/project-manager-tool-guard"
 
 // ─── Test framework ───────────────────────────────────────────────────────
+
+// Pin language=en via a sandboxed ocp config — guard command reports are
+// localized and this machine's real ~/.config/opencode/ocp.jsonc may say
+// zh-CN, which would break the English-phrase assertions below.
+process.env.OCP_CONFIG_PATH = join(tmpdir(), "pm-unit-ocp.jsonc")
+writeFileSync(process.env.OCP_CONFIG_PATH, `{ "language": "en" }`)
 
 let passed = 0
 let failed = 0
@@ -226,6 +236,91 @@ function test05_Scaffold() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════
+//  5b. updateSwitchesOnly — config-only write, never touches other files
+// ═════════════════════════════════════════════════════════════════════════
+
+function test05b_UpdateSwitchesOnly() {
+  section("05b: updateSwitchesOnly — config-only, no AGENTS.md / git-commits.md scaffold")
+
+  // (1) Empty project → only the config is created; other baseline files
+  //     MUST remain absent. Phase 1C sub-dialog Save path for first-time
+  //     projects (responsibility separation from the main-menu skeleton).
+  const dirSync = mkdtempSync(join(tmpdir(), "pm-switches-only-"))
+  setProjectDir(dirSync)
+
+  const switches = { envGuard: "on", projectMemory: "on" } as const
+  const result = updateSwitchesOnly(switches)
+  assert(result.relPath === CONFIG_REL, "result targets the config file")
+  assert(result.status === "created", "first call creates the config")
+
+  const cfgPath = join(dirSync, ".opencode", "opencode.jsonc")
+  assert(existsSync(cfgPath), "config file written")
+  assert(
+    !existsSync(join(dirSync, "AGENTS.md")),
+    "AGENTS.md NOT scaffolded — that's the main-menu skeleton's job",
+  )
+  assert(
+    !existsSync(join(dirSync, "docs", "git-commits.md")),
+    "git-commits.md NOT scaffolded — that's the main-menu skeleton's job",
+  )
+
+  // (2) Idempotent when values unchanged.
+  const r2 = updateSwitchesOnly(switches)
+  assert(r2.status === "skipped", "idempotent when values unchanged")
+
+  // (3) Different values → updated.
+  const r3 = updateSwitchesOnly({ envGuard: "off", projectMemory: "on" } as const)
+  assert(r3.status === "updated", "different switch value triggers an update")
+  const after = readFileSync(cfgPath, "utf-8")
+  assert(after.includes('"envGuard": "off"'), "updated config carries the new value")
+  assert(after.includes('"projectMemory": "on"'), "untouched switches remain in place")
+
+  rmSync(dirSync, { recursive: true, force: true })
+
+  // (4) Legacy fallback: root opencode.jsonc is updated in place rather
+  //     than spawning a second config under .opencode/. Mirrors
+  //     runInitWithSwitches — without this, sub-dialog Save in a legacy
+  //     project silently creates a divergent second file.
+  const dirLegacy = mkdtempSync(join(tmpdir(), "pm-switches-legacy-"))
+  setProjectDir(dirLegacy)
+  const rootCfg = join(dirLegacy, "opencode.jsonc")
+  writeFileSync(
+    rootCfg,
+    '{\n  // "autoAdvisorMode": "lite",\n}\n',
+    "utf-8",
+  )
+  const rLegacy = updateSwitchesOnly({ envGuard: "off" } as const)
+  assert(
+    rLegacy.relPath === "opencode.jsonc" && rLegacy.status === "updated",
+    "legacy root-only config is updated in place (no .opencode/ divergence)",
+  )
+  assert(
+    !existsSync(join(dirLegacy, ".opencode", "opencode.jsonc")),
+    "no second config spawned under .opencode/",
+  )
+  assert(readFileSync(rootCfg, "utf-8").includes('"envGuard": "off"'), "root file carries the new switch")
+  rmSync(dirLegacy, { recursive: true, force: true })
+
+  // (5) Contrast: runInitWithSwitches (the skeleton path) still
+  //     scaffolds AGENTS.md + git-commits.md. Proves responsibility
+  //     separation from both sides.
+  const dirInit = mkdtempSync(join(tmpdir(), "pm-switches-init-"))
+  setProjectDir(dirInit)
+  const ri = runInitWithSwitches({ envGuard: "on" } as const)
+  assert(
+    ri.find((r) => r.relPath === "AGENTS.md")?.status === "created",
+    "runInitWithSwitches (skeleton path) still scaffolds AGENTS.md",
+  )
+  assert(
+    existsSync(join(dirInit, "docs", "git-commits.md")),
+    "runInitWithSwitches (skeleton path) still scaffolds git-commits.md",
+  )
+  rmSync(dirInit, { recursive: true, force: true })
+
+  setProjectDir(projectDir)
+}
+
+// ═════════════════════════════════════════════════════════════════════════
 //  6. Command parsing
 // ═════════════════════════════════════════════════════════════════════════
 
@@ -320,11 +415,12 @@ function probe(overrides: Partial<BackendProbe>): BackendProbe {
     dbhubEnabled: true,
     dbhubCli: true,
     dbhubToml: false,
+    tgrepEnabled: false, tgrepCli: false, tgrepIndexed: false, tgrepReadiness: "unavailable", tgrepPolicyCurrent: false, tgrepOptions: { enabled: false },
     ...overrides,
   }
 }
 
-function planFor(plans: ReturnType<typeof planInitBackends>, backend: "codegraph" | "gitnexus" | "dbhub") {
+function planFor(plans: ReturnType<typeof planInitBackends>, backend: "codegraph" | "gitnexus" | "dbhub" | "tgrep") {
   return plans.find((p) => p.backend === backend)!
 }
 
@@ -348,7 +444,7 @@ function test08_IndexPlanning() {
   assert(planFor(planInitBackends(probe({ dbhubCli: false })), "dbhub").note.includes("CLI not installed"), "dbhub CLI missing → skipped silently")
   assert(!planFor(planInitBackends(probe({ dbhubCli: false })), "dbhub").note.startsWith("scaffold"), "dbhub CLI missing → never scaffolds")
   assert(planFor(planInitBackends(probe({ dbhubToml: true })), "dbhub").note.includes("already present"), "dbhub.toml exists → no scaffold")
-  assert(planFor(planIndexBackends(probe({})), "dbhub").note.includes("/project init"), "index never scaffolds dbhub.toml")
+  assert(!planIndexBackends(probe({})).some((p) => p.backend === "dbhub"), "dbhub has no index phase — never listed by /project index")
 
   // writeDbhubToml — creates with env-var DSN, preserves existing content.
   const dirDb = mkdtempSync(join(tmpdir(), "pm-dbh-"))
@@ -378,6 +474,10 @@ function test08_IndexPlanning() {
   assert(planFor(planIndexBackends(probe({ gitnexusIndex: "missing" })), "gitnexus").command === null, "missing index → init step, not a rebuild")
   assert(planFor(planIndexBackends(probe({ gitnexusCli: false })), "gitnexus").command === null, "CLI missing → skipped, never invoked")
   assert(planFor(planIndexBackends(probe({ gitnexusEnabled: false })), "gitnexus").command === null, "disabled → no run even with CLI")
+  assert(planFor(planInitBackends(probe({ tgrepEnabled: true, tgrepCli: true })), "tgrep").command === "tgrep index .", "tgrep init builds missing local index")
+  assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true })), "tgrep").command === null, "tgrep index command never creates first index")
+  assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true, tgrepIndexed: true, tgrepReadiness: "server", tgrepPolicyCurrent: true })), "tgrep").command === null, "healthy tgrep server skips rebuild")
+  assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true, tgrepIndexed: true, tgrepReadiness: "disk-index" })), "tgrep").command === "tgrep index .", "unhealthy tgrep index rebuilds")
 
   // mcp.<name>.enabled parsing (same JSONC subset rule as the profiler).
   assert(mcpEnabledFrom('{"mcp":{"gitnexus":{"enabled":false}}}', "gitnexus") === false, "explicit false honored")
@@ -399,6 +499,7 @@ async function test09_Announce() {
     codegraphEnabled: true, codegraphCli: true, codegraphIndexed: false,
     gitnexusEnabled: true, gitnexusCli: true, gitnexusIndex: "missing",
     dbhubEnabled: true, dbhubCli: true, dbhubToml: false,
+    tgrepEnabled: false, tgrepCli: false, tgrepIndexed: false, tgrepReadiness: "unavailable", tgrepPolicyCurrent: false, tgrepOptions: { enabled: false },
   }
   const msg = suggestInitMessage(["AGENTS.md"], probeFull)
   assert(msg.includes("/project init"), "message names the command")
@@ -445,7 +546,7 @@ async function test09_Announce() {
 
 const TEMPLATE_SNIPPET = [
   "// \"adrGuard\": \"on\",",
-  "// \"adrGuardDir\": \"docs/adr\",",
+  "// \"adrDir\": \"docs/adr\",",
   "// \"e2eGuard\": \"on\",",
 ].join("\n")
 
@@ -459,10 +560,10 @@ function test10_Sync() {
   assert(contentHasKey('{"e2eGuard": "on"}', "e2eGuard"), "active key counts as present")
   assert(contentHasKey('// "e2eGuard": "on",', "e2eGuard"), "commented key counts as present")
   assert(!contentHasKey('{"e2eGuardDir": "x"}', "e2eGuard"), "prefix collision not matched")
-  assert(!contentHasKey('{"adrGuardDir": "x"}', "adrGuard"), "adrGuard vs adrGuardDir distinguished")
+  assert(!contentHasKey('{"adrDir": "x"}', "adrGuard"), "adrGuard vs adrDir distinguished")
 
   // Pure: merge semantics.
-  const upToDate = mergeSwitchLines('{"e2eGuard": "on",\n"adrGuard": "off",\n"adrGuardDir": "d"\n}', TEMPLATE_SNIPPET)
+  const upToDate = mergeSwitchLines('{"e2eGuard": "on",\n"adrGuard": "off",\n"adrDir": "d"\n}', TEMPLATE_SNIPPET)
   assert(upToDate !== null && upToDate.added.length === 0, "all keys present → nothing added")
   assert(upToDate !== null && upToDate.content.includes("e2eGuard"), "content untouched when up to date")
   const merged = mergeSwitchLines('{\n  "custom": 1\n}\n', TEMPLATE_SNIPPET)
@@ -525,6 +626,7 @@ function hookProbe(overrides: Partial<BackendProbe>): BackendProbe {
     codegraphEnabled: true, codegraphCli: true, codegraphIndexed: false,
     gitnexusEnabled: true, gitnexusCli: true, gitnexusIndex: "missing",
     dbhubEnabled: true, dbhubCli: true, dbhubToml: false,
+    tgrepEnabled: false, tgrepCli: false, tgrepIndexed: false, tgrepReadiness: "unavailable", tgrepPolicyCurrent: false, tgrepOptions: { enabled: false },
     ...overrides,
   }
 }
@@ -603,17 +705,56 @@ function test11_Hooks() {
   rmSync(dir, { recursive: true, force: true })
 }
 
+function test12_TgrepGitignore() {
+  section("12: tgrep .gitignore is append-only")
+  const dir = mkdtempSync(join(tmpdir(), "pm-tgrep-"))
+  assert(ensureTgrepGitignore(dir) === "not-git", "non-Git directory stays untouched")
+  assert(!existsSync(join(dir, ".gitignore")), "non-Git directory does not gain .gitignore")
+  mkdirSync(join(dir, ".git"))
+  writeFileSync(join(dir, ".gitignore"), "custom\n", "utf8")
+  assert(ensureTgrepGitignore(dir) === "added", "appends tgrep rule once")
+  const first = readFileSync(join(dir, ".gitignore"), "utf8")
+  assert(first === "custom\n.tgrep/\n", "custom content is preserved")
+  assert(ensureTgrepGitignore(dir) === "present", "second run is idempotent")
+  assert(readFileSync(join(dir, ".gitignore"), "utf8") === first, "second run is byte stable")
+  rmSync(dir, { recursive: true, force: true })
+}
+
 test01_ValidateMessage()
 await test02_FileAsSwitch()
 await test03_ToolGuard()
 await test04_SwitchOff()
 test05_Scaffold()
+test05b_UpdateSwitchesOnly()
 await test06_Command()
 await test07_Injection()
 test08_IndexPlanning()
 await test09_Announce()
 test10_Sync()
 test11_Hooks()
+function test13_Shellwords() {
+  section("13: shellwords — POSIX argv tokenizer for registry commands")
+  // Bug guarded (P2 #1 in the audit): naive `split(" ")` would silently
+  // mangle a command like `tgrep index --filter "*.ts"` into 4 tokens at
+  // the wrong boundaries. shellwords honors quotes + backslash escapes.
+  assertEq(shellwords("a b c").length, 3, "plain split stays split")
+  assertEq(shellwords("a \"b c\" d").length, 3, "double-quoted space stays inside the token")
+  assertEq(shellwords("a 'b c' d").length, 3, "single-quoted space stays inside the token")
+  assertEq(shellwords("a b\\ c d").length, 3, "backslash-escaped space outside quotes stays inside the token (POSIX)")
+  assertEq(shellwords("  a   b  ").length, 2, "runs of whitespace collapse")
+  assertEq(shellwords("").length, 0, "empty string → empty argv")
+  // The actual motivating case from the audit.
+  const argv = shellwords(`tgrep index --filter "*.ts"`)
+  assertEq(argv.length, 4, "realistic quoted-filter argv stays 4 tokens")
+  assertEq(argv[3], "*.ts", "quoted filter value preserved verbatim")
+}
+
+function assertEq<T>(actual: T, expected: T, msg: string): void {
+  assert(actual === expected, `${msg} (got ${JSON.stringify(actual)}, want ${JSON.stringify(expected)})`)
+}
+
+test12_TgrepGitignore()
+test13_Shellwords()
 
 rmSync(projectDir, { recursive: true, force: true })
 

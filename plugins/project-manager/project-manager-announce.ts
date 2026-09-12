@@ -16,6 +16,7 @@
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
+import { refreshLocale, tr } from "../tui/i18n"
 import { getProjectDir, resolveTarget, SCAFFOLD_TARGETS } from "./project-manager-config"
 import { probeBackends, type BackendProbe } from "./project-manager-index"
 import { existsSync } from "node:fs"
@@ -30,16 +31,17 @@ type SessionCreatedEvent = {
 
 /** Pure message builder — exported for unit tests. */
 export function suggestInitMessage(missing: string[], probe: BackendProbe): string {
+  refreshLocale()
   const hint: string[] = []
   if (probe.codegraphEnabled && probe.codegraphCli && !probe.codegraphIndexed) {
-    hint.push("codegraph CLI is installed but not indexed")
+    hint.push(tr("guard.pm.hintCodegraph"))
   }
   if (probe.gitnexusEnabled && probe.gitnexusCli && probe.gitnexusIndex === "missing") {
-    hint.push("gitnexus CLI is installed but not indexed")
+    hint.push(tr("guard.pm.hintGitnexus"))
   }
-  const files = `missing baseline files: ${missing.join(", ")}`
-  const extras = hint.length > 0 ? ` Also: ${hint.join("; ")} — init covers both.` : ""
-  return `[project-manager] This project has never been initialized (${files}). Run \`/project init\` to scaffold them (never overwrites) and run the first-time backend init.${extras}`
+  const files = tr("guard.pm.suggestMissing", { files: missing.join(", ") })
+  const extras = hint.length > 0 ? tr("guard.pm.hintTail", { hints: hint.join("; ") }) : ""
+  return tr("guard.pm.suggestInit", { files, extras })
 }
 
 /** Probe result consumed by the hook — exported for tests. */
