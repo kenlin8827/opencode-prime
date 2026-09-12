@@ -5,7 +5,6 @@
   // agents and preserved forever. Consumed by install/src/merger.ts and
   // stripped from the merged output; never reaches the opencode runtime.
   "removed_agents": ["coworker", "explorer"],
-  "adrMode": "flat",
   "$schema": "https://opencode.ai/config.json",
   "snapshot": true,
   // No root `model`/`small_model` and no per-agent `model` presets below:
@@ -37,9 +36,7 @@
   // cheapest configured model — resolved with the host's own
   // protocol/credential handling. If the small-model call fails, opencode
   // leaves the default title; no plugin involved.
-  "plugin": [
-    "@dietrichgebert/ponytail"
-  ],
+  "plugin": [],
   // Serena: LSP-based semantic code retrieval (symbol-level queries instead of
   // full file reads) — shared by all agents, avoids duplicate file reads.
   // CLI provisioning: the install script runs the `install` field automatically
@@ -132,8 +129,9 @@
     // Headroom (optional): local context compression — compresses tool outputs,
     // logs, and RAG chunks before they reach the LLM; originals stay
     // retrievable on demand via CCR (`headroom_retrieve`). Apache 2.0,
-    // local-first. Complements rtk/ponytail, which cover the OUTPUT side —
-    // headroom targets the INPUT side. MCP mode is agent-driven (compress on
+    // local-first. Complements rtk, which covers the OUTPUT side —
+    // headroom targets the INPUT side.
+    // MCP mode is agent-driven (compress on
     // demand); the fully automatic `headroom proxy` mode is NOT wired in here
     // because it rewrites provider base URLs. Heavy provisioning: uv tool
     // with Python 3.13, and the first run downloads the ONNX runtime
@@ -217,11 +215,17 @@
   // prompt, skills scoped to the agent-less handoff + Git commands,
   // no MCP, OCP injectors skip it via plugin-scope.json,
   // plugins/lite-mode.ts strips L0 instructions (keeping the `<!-- lite-mode -->`
-  // sentinel), and plugins/lite-tools.ts compresses native tool descriptions
-  // (measured: stock ≈ 8.4k → ≈ 1.7k tok/step). Lite handles 80% of daily work
-  // (quick fixes, Q&A, lookups, small edits) at ~2.3k tok/step — 62% cheaper
-  // than code's ~5.4k. Escalation table in lite.md routes complex work to
-  // @code/@build/@code-review-fast/@code-review/@advisor when out of scope.
+  // sentinel). plugins/lite-tools.ts compresses tool descriptions for
+  // LITE_ONLY tools (bash/read/edit/write/grep/glob/webfetch/websearch/
+  // todowrite/task/skill/question — measured: stock ≈ 8.4k → ≈ 1.7k
+  // tok/step). tgrep_search is owned by `plugins/tgrep.ts` itself, which
+  // loads its description from `plugins/tgrep/tgrep-tool-description.md`
+  // — no lite-tools override needed (the canonical text already lives in
+  // the right place).
+  // Lite handles 80% of daily work (quick fixes, Q&A, lookups, small edits)
+  // at ~2.3k tok/step — 62% cheaper than code's ~5.4k. Escalation table in
+  // lite.md routes complex work to @code/@build/@code-review-fast/@code-review/
+  // @advisor when out of scope.
   "agent": {
     // Native subagents disabled: `explore`'s role is owned by the factory
     // `explore` agent below (the name captures models' training priors —
@@ -262,6 +266,13 @@
       // multi-domain coding escalates to @code or @build by the user.
       "permission": {
         "*": { "*": "deny" },
+        // external_directory (any path outside the project worktree, %TEMP%
+        // included) needs this explicit punch-through: the catch-all above is
+        // the last matching rule for it (last-match-wins), so without it lite
+        // hard-denies read/edit/glob/grep on external paths. opencode's native
+        // default is "ask"; every other agent here inherits the root
+        // "permission": "allow" and needs no such key.
+        "external_directory": { "*": "allow" },
         // Scoped skill access: /handoff and the five Git commands have no
         // `agent:` frontmatter, so they follow the current agent — and lite is
         // the default. Allow exactly those six skills; every other skill stays
@@ -292,7 +303,8 @@
         "todowrite": true,
         "task": true,
         "skill": true,
-        "question": true
+        "question": true,
+        "tgrep_search": true
       }
     },
     "code": {
