@@ -10,7 +10,8 @@
  * - Different workspaces: isolated Serena instances bound to each project directory.
  * - Zero manual intervention: automatically launches the project daemon if not running.
  * - 100% Silent execution: no console window popup on Windows.
- * - Logging: all daemon stdout/stderr redirected to <workspace>/.opencode/logs/serena.log.
+ * - Logging: all daemon stdout/stderr redirected to <OCP dir>/logs/serena.log
+ *   (default `.ocp`, `OCP_PROJECT_DIR`-aware — mirrors plugins/shared/opencode-prime.ts).
  * - Auto-shutdown watchdog: terminates idle Serena instance after 15 minutes of inactivity
  *   when all sessions are closed, freeing memory cleanly.
  */
@@ -100,20 +101,47 @@ function launchDaemon() {
     "--open-web-dashboard", "False",
   ]
 
-  // Prepare workspace log directory: <workspace>/.opencode/logs/serena.log
-  const opencodeDir = path.join(CWD, ".opencode")
-  const logDir = path.join(opencodeDir, "logs")
+  // Prepare workspace log directory: <runtime OCP dir>/logs/serena.log
+  // Plain-js mirror of ensureOcpGitignore() + ocpDir() in
+  // plugins/shared/opencode-prime.ts (ADR 0004) — this standalone shipped
+  // script cannot import the plugin tree; keep the ignore list AND the
+  // OCP_PROJECT_DIR resolution rules in sync with the shared
+  // implementation. PROJECT-RELATIVE ONLY: unset/empty/whitespace or an
+  // ABSOLUTE / ".."-traversing (invalid) value → <cwd>/.ocp; plain relative
+  // value → <cwd>/<value>.
+  const ocpEnv = (process.env.OCP_PROJECT_DIR || "").trim()
+  const ocpInvalid = !ocpEnv || path.isAbsolute(ocpEnv) || ocpEnv.split(/[\\/]/).includes("..")
+  const ocpDir = ocpInvalid ? path.join(CWD, ".ocp") : path.join(CWD, ocpEnv)
+  const logDir = path.join(ocpDir, "logs")
   try {
     if (!fs.existsSync(logDir)) {
       fs.mkdirSync(logDir, { recursive: true })
     }
-    const gitignoreFile = path.join(opencodeDir, ".gitignore")
+    const gitignoreFile = path.join(ocpDir, ".gitignore")
     if (!fs.existsSync(gitignoreFile)) {
-      fs.writeFileSync(gitignoreFile, "logs/\n*.log\n", "utf-8")
+      fs.writeFileSync(gitignoreFile, ".gitignore\nlogs/\n*.log\nhandoffs/\nmemory/private.md\ndev-ultra-state.md\n", "utf-8")
     } else {
       const gitignoreContent = fs.readFileSync(gitignoreFile, "utf-8")
+      let needsUpdate = false
+      let nextContent = gitignoreContent
       if (!gitignoreContent.includes("logs")) {
-        fs.appendFileSync(gitignoreFile, "\nlogs/\n*.log\n", "utf-8")
+        nextContent = nextContent.trimEnd() + "\nlogs/\n*.log\n"
+        needsUpdate = true
+      }
+      if (!gitignoreContent.includes("handoffs")) {
+        nextContent = nextContent.trimEnd() + "\nhandoffs/\n"
+        needsUpdate = true
+      }
+      if (!gitignoreContent.includes("memory/private.md")) {
+        nextContent = nextContent.trimEnd() + "\nmemory/private.md\n"
+        needsUpdate = true
+      }
+      if (!gitignoreContent.includes("dev-ultra-state.md")) {
+        nextContent = nextContent.trimEnd() + "\ndev-ultra-state.md\n"
+        needsUpdate = true
+      }
+      if (needsUpdate) {
+        fs.writeFileSync(gitignoreFile, nextContent, "utf-8")
       }
     }
   } catch {}

@@ -2,6 +2,23 @@ import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync 
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { execFileSync } from "node:child_process"
+import { createRequire } from "node:module"
+
+// The render worker runs as `node <tmpfile>` — its `require('playwright')`
+// would resolve from the TEMP dir (finds nothing), silently killing offline
+// Mermaid rendering under bun. Resolve playwright once from THIS module's
+// location and pass the absolute path into the worker.
+let playwrightTarget: string | undefined
+function playwrightRequirePath(): string {
+  if (playwrightTarget === undefined) {
+    try {
+      playwrightTarget = createRequire(import.meta.url).resolve("playwright")
+    } catch {
+      playwrightTarget = "" // bare-name fallback: still works under cwd/global resolution
+    }
+  }
+  return playwrightTarget || "playwright"
+}
 
 export interface MermaidBlock {
   fullMatch: string
@@ -315,7 +332,7 @@ export async function preprocessMermaidInMarkdown(
   `
 
   const script = `
-const { chromium } = require('playwright');
+const { chromium } = require(${JSON.stringify(playwrightRequirePath())});
 const fs = require('fs');
 
 (async () => {

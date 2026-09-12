@@ -1,6 +1,6 @@
 /**
  * Project-level plugin switch — shared abstraction over a project
- * opencode.jsonc field with aliases and a default. Used by every
+ * OCP config field (`.ocp/ocp.json`) with aliases and a default. Used by every
  * plugin whose "on/off" state is per-project (auto-advisor, adr-guard,
  * e2e-guard, env-guard).
  *
@@ -58,7 +58,7 @@ export function normalizeSwitchState<TState extends string>(
  * config IO, JSONC parsing, never-throw writes, comment-preserving
  * field upsert) is already shared via `../shared/opencode-prime`. */
 export interface PluginSwitchSpec<TState extends string> {
-  /** Field name in project opencode.jsonc. */
+  /** Field name in the project OCP config (`.ocp/ocp.json`). */
   readonly field: string
   /** Raw config value (boolean or string) → canonical state. */
   readonly aliases: Record<string, TState>
