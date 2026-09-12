@@ -4,7 +4,6 @@
   "workspaces": {
     "": {
       "dependencies": {
-        "@dietrichgebert/ponytail": "^4.9.0",
         "@opencode-ai/plugin": "1.18.15",
         "@opentui/core": "^0.5.4",
         "@opentui/solid": "^0.5.4",
@@ -128,8 +127,6 @@
     "@braintree/sanitize-url": ["@braintree/sanitize-url@7.1.2", "https://registry.npmmirror.com/@braintree/sanitize-url/-/sanitize-url-7.1.2.tgz", {}, "sha512-jigsZK+sMF/cuiB7sERuo9V7N9jx+dhmHHnQyDSVdpZwVutaBu7WvNYqMDLSgFgfB30n452TP3vjDAvFC973mA=="],
 
     "@chevrotain/types": ["@chevrotain/types@11.1.2", "https://registry.npmmirror.com/@chevrotain/types/-/types-11.1.2.tgz", {}, "sha512-U+HFai5+zmJCkK86QsaJtoITlboZHBqrVketcO2ROv865xfCMSFpELQoz1GkX5GzME8pTa+3kbKrZHQtI0gdbw=="],
-
-    "@dietrichgebert/ponytail": ["@dietrichgebert/ponytail@4.9.0", "https://registry.npmmirror.com/@dietrichgebert/ponytail/-/ponytail-4.9.0.tgz", {}, "sha512-OSdybtBZ3uDd5m/+zyz4h8/+BVBR9nGFhqTDmQkQb1v7k4Vfc1qql78naY64UjocdBPqR94htZEkKu2wpKTJaw=="],
 
     "@docsearch/css": ["@docsearch/css@3.8.2", "https://registry.npmmirror.com/@docsearch/css/-/css-3.8.2.tgz", {}, "sha512-y05ayQFyUmCXze79+56v/4HpycYF3uFqB78pLPrSV5ZKAlDuIAAJNhaRi8tTdRNXh05yxX/TyNnzD6LwSM89vQ=="],
 
