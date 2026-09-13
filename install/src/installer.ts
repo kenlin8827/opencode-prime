@@ -6,7 +6,7 @@ import { CliArgs, InstallOptions } from './types';
 import { deployHerdrConfig } from './herdr-config';
 import { deployModelsCost } from './models-cost';
 import { colorize } from './color';
-import { runShellCommand } from './shared/shell-command';
+import { runShellCommand, ShellCommandResult } from './shared/shell-command';
 import {
   collectHistoricalShippedFiles,
   collectShippedFiles,
@@ -508,7 +508,14 @@ export function installCommandSequence(
  *      fallback, mirror-only users would hard-fail on the first mirror
  *      hiccup.
  */
-export function runInstallCommand(cmd: string) {
+export function runInstallCommand(cmd: string, repoDir?: string) {
+  // "@script:<name>" references a script file under install/scripts/tools/
+  // (see tools.jsonc) instead of an inline command — long escape-prone
+  // one-liners live there as real .ps1/.sh files.
+  if (cmd.startsWith('@script:')) {
+    return runScriptCommand(cmd.slice('@script:'.length).trim(), repoDir);
+  }
+
   // Chain both rewriters — they target non-overlapping URL classes, so
   // applying one then the other is safe. Whichever (if any) actually
   // matches determines whether `installCommandSequence` produces a
@@ -532,6 +539,40 @@ export function runInstallCommand(cmd: string) {
 }
 
 /**
+ * Execute a "@script:<name>" reference: resolve the platform-matching file
+ * under install/scripts/tools/ and run it with the platform's native shell
+ * (powershell -File with ExecutionPolicy Bypass on Windows — registry .ps1
+ * files must run even under a restrictive default policy; `sh` on POSIX).
+ * OCP_*_MIRROR env vars pass through to the script, which does its own
+ * mirror-first/fallback URL handling (a file can't be URL-rewritten the way
+ * the inline-command path rewrites command strings).
+ */
+function runScriptCommand(name: string, repoDir?: string): ShellCommandResult {
+  const win = process.platform === 'win32';
+  const ext = win ? 'ps1' : 'sh';
+  const baseDir = path.join(repoDir ?? process.cwd(), 'install', 'scripts', 'tools');
+  let file: string | null = null;
+  for (const suffix of [`${process.platform}-${process.arch}`, process.platform, '']) {
+    const candidate = path.join(baseDir, suffix ? `${name}.${suffix}.${ext}` : `${name}.${ext}`);
+    if (fs.existsSync(candidate)) {
+      file = candidate;
+      break;
+    }
+  }
+  if (!file) {
+    console.error(`[ocp] "@script:${name}" matches no file under install/scripts/tools/ (${process.platform}-${process.arch}, .${ext})`);
+    return { status: 1, error: new Error(`script not found: ${name}`), stdout: '', stderr: '' };
+  }
+  console.log(`Running script: ${file}`);
+  const res = spawnSync(
+    win ? 'powershell.exe' : 'sh',
+    win ? ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', file] : [file],
+    { stdio: 'inherit', timeout: 600000 },
+  );
+  return { status: res.status ?? 1, error: res.error, stdout: '', stderr: '' };
+}
+
+/**
  * Provision CLIs for enabled MCP servers that declare an `install` field and
  * are missing from PATH. Never throws — failures are logged with manual
  * instructions so a missing CLI can't fail the config install.
@@ -539,7 +580,7 @@ export function runInstallCommand(cmd: string) {
 export function provisionMcpCli(repoDir: string, options: InstallOptions): void {
   for (const { name, install } of mcpProvisionPlan(repoDir, options)) {
     console.log(`🚀 [mcp] ${name} missing from PATH — provisioning via: ${install}`);
-    const res = runInstallCommand(install);
+    const res = runInstallCommand(install, repoDir);
     if (res.status !== 0 || res.error) {
       const detail = res.error ? res.error.message : `exit code ${res.status}`;
       console.log(`⚠ [mcp] ${name} automatic installation failed (${detail}). Install manually: ${install}`);
@@ -680,7 +721,7 @@ export function provisionTools(repoDir: string, options: InstallOptions): void {
       continue;
     }
     console.log(colorize.cyan(`🚀 [tool] ${name} missing from PATH — provisioning via: ${cmd}`));
-    const res = runInstallCommand(cmd);
+    const res = runInstallCommand(cmd, repoDir);
     if (res.error || res.status !== 0) {
       const detail = res.error ? res.error.message : `exit code ${res.status}`;
       const hint = def.url ? ` Manual install: ${def.url}` : '';

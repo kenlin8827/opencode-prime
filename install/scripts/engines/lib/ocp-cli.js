@@ -41,6 +41,7 @@ function cli(args, opts = {}) {
     encoding: opts.json ? 'utf8' : undefined,
     stdio: opts.json ? 'pipe' : 'inherit',
     shell: isWin(),
+    windowsHide: true,
     timeout: opts.timeout === 0 ? undefined : opts.timeout ?? 30000,
     cwd: opts.cwd ?? process.env.OCP_CWD ?? process.cwd(),
   });
@@ -97,6 +98,10 @@ function startDetached(args) {
     detached: true,
     stdio: 'ignore',
     shell: isWin(),
+    // Without this, the detached `herdr server` gets its own visible console
+    // window on Windows; closing that window kills the server (and every
+    // attached TUI with it).
+    windowsHide: true,
     cwd: process.env.OCP_CWD ?? process.cwd(),
   });
   // A parallel launch may already own the singleton socket — the loser exits

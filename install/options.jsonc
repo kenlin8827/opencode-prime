@@ -2,6 +2,10 @@
 // user choices persist here, not under ~/.config/opencode.
 {
   "global_commands": true,
+  // Unknown default_agent names retain the template value.
+  "default_agent": "lite",
+  // Direct runs in this shell; herdr and luvus run in a managed workspace.
+  "tui_mode": "herdr",
   // Opt-in external binaries declared in install/tools.jsonc.
   "tools": {
     // false also removes the bundled OpenRTK plugin from the target.
@@ -30,10 +34,6 @@
     // Implied true when tui_mode is "luvus".
     "luvus": false
   },
-  // Unknown default_agent names retain the template value.
-  "default_agent": "lite",
-  // Direct runs in this shell; herdr and luvus run in a managed workspace.
-  "tui_mode": "herdr",
   // Enabled MCPs provision their CLI when the template declares one.
   "mcp": {
     "serena": false,

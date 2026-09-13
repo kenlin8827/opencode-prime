@@ -714,18 +714,19 @@ export function buildProjectBadges(
  * testRender harness and inspect the rendered colors / dot glyphs
  * (the slot is mounted by OpenCode's TUI server and has no standalone
  * harness of its own).
- * Layout:
+ * Layout (dot = •, same glyph as the MCP group; value text always
+ * textMuted in title case — colour lives on the dot only):
  *   ─ OCP v0.30.0 ─────────────┐
- *   │ ● profile  zhipuai-coding │
- *   │ ○ adr-guard  OFF          │
- *   │ ○ e2e-guard  OFF          │
- *   │ ○ auto-advisor  OFF       │
- *   │ ● deepseek-anchor  ON     │
+ *   │ • profile  zhipuai-coding │
+ *   │ • adr-guard  Off          │
+ *   │ • e2e-guard  Off          │
+ *   │ • auto-advisor  Off       │
+ *   │ • deepseek-anchor  On     │
  *   │ ─ OCP project ────────────│
- *   │ ● project  INIT           │
- *   │ ● git-commits  ON        │
- *   │ ● codegraph  READY        │
- *   │ ● dprint  READY/OTHER/NONE│
+ *   │ • scaffold  Init          │
+ *   │ • git-commits  On         │
+ *   │ • codegraph  Ready        │
+ *   │ • dprint  Ready/Other/None│
  *   └───────────────────────────┘
  *
  * When `latestVersion` is strictly newer than `version` (the installed
@@ -745,26 +746,15 @@ export function renderStatusPanel(
   // Build one row per badge — each row is a <box> containing a status dot
   // and a <text> with label + state.
   const renderRows = (badges: Badge[]): unknown[] => badges.map((b) => {
-// Dot fill mirrors the value: filled (●) for any active state,
-// hollow (○) for OFF rows only. NOT INIT is intentionally NOT in this
-// list — it is an active warning that needs user action (run /project
-// init), so it renders as a filled ● in warning colour, matching PARTIAL.
-// OFF rows are pre-filtered; the check stays for defensive rendering.
-    const isActive = b.state !== "OFF"
     // Variant priority: error > warning > success > info (default).
-    // The text state falls back to textMuted for the neutral `info`
-    // variant — same fallback as before; only the dot gets theme.info
-    // so a blue dot still reads as "informational" rather than muted.
+    // The dot carries the colour; the value text is always textMuted —
+    // same convention as the MCP sidebar group (indicator coloured,
+    // value neutral).
     const dotColor =
       b.variant === "error" ? theme.error :
       b.variant === "warning" ? theme.warning :
       b.variant === "success" ? theme.success :
       theme.info
-    const stateColor =
-      b.variant === "error" ? theme.error :
-      b.variant === "warning" ? theme.warning :
-      b.variant === "success" ? theme.success :
-      theme.textMuted
 
     return jsx("box", {
       style: { flexDirection: "row", paddingLeft: 1, flexWrap: "wrap" },
@@ -778,7 +768,9 @@ export function renderStatusPanel(
           // Renaming to `fg` finally surfaces the warning/success/info
           // colour palette that the variant values already select.
           style: { fg: dotColor },
-          children: jsx("span", { children: isActive ? "● " : "○ " }),
+          // `•` (U+2022) — same bullet glyph as the MCP sidebar group;
+          // `●` renders noticeably larger in most terminal fonts.
+          children: jsx("span", { children: "• " }),
         }),
         // Label (muted) — fixed 2-space gap before the value; column
         // alignment is intentionally skipped so long values (profile
@@ -787,10 +779,16 @@ export function renderStatusPanel(
           style: { fg: theme.textMuted },
           children: jsx("span", { children: b.label + "  " }),
         }),
-        // State value — wraps to next line when too long
+        // State value — wraps to next line when too long. Always neutral
+        // (textMuted) — colour lives on the dot only. Display casing is
+        // title case per word ("Off", "No Index", "On · Empty"), matching
+        // MCP's "Needs Auth"-style readability without the shouty ALL-CAPS;
+        // the badge builders keep their ALL-CAPS contract for tests/filters.
         jsx("text", {
-          style: { fg: stateColor },
-          children: jsx("span", { children: b.state }),
+          style: { fg: theme.textMuted },
+          children: jsx("span", {
+            children: b.state.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" "),
+          }),
         }),
       ],
     })
@@ -798,12 +796,11 @@ export function renderStatusPanel(
 
   // Section header rows: "─ OCP v0.7.3 ─" / "─ OCP project ─"
   // Version comes from ~/.config/opencode/installed.version (written by installer).
-  // `gapAbove` adds a blank line above the header — used to separate the
-  // OCP and OCP project groups visually without affecting single-group
-  // layouts.
   // `suffix` is rendered inline after the title in warning colour —
-  // used for "↑ vX.Y.Z" when a newer release is available.
-  const renderHeader = (text: string, gapAbove = 0, suffix = "") => {
+  // used for "↑ vX.Y.Z" when a newer release is available. No gap above
+  // the OCP project header — the dashed header rule is separator enough,
+  // matching the tight stacking of the MCP/LSP sidebar groups.
+  const renderHeader = (text: string, suffix = "") => {
     // Same `fg` rename as the badge rows above — `color` is ignored by
     // OpenTUI's <text> reconciler.
     const borderStyle = { fg: theme.borderSubtle }
@@ -829,7 +826,7 @@ export function renderStatusPanel(
       }),
     )
     return jsx("box", {
-      style: { flexDirection: "row", paddingLeft: 1, paddingTop: gapAbove, height: gapAbove > 0 ? 1 + gapAbove : 1 },
+      style: { flexDirection: "row", paddingLeft: 1, height: 1 },
       children: headerChildren,
     })
   }
@@ -841,10 +838,8 @@ export function renderStatusPanel(
   // current project).
   const updateSuffix = isUpdateAvailable(version, latestVersion) ? latestVersion : ""
   const sections: unknown[] = []
-  if (guards.length > 0) sections.push(renderHeader(`OCP v${version}`, 0, updateSuffix), ...renderRows(guards))
-  // gapAbove:1 puts a blank line between OCP and OCP project so the two
-  // groups don't visually run together.
-  if (project.length > 0) sections.push(renderHeader("OCP project", 1), ...renderRows(project))
+  if (guards.length > 0) sections.push(renderHeader(`OCP v${version}`, updateSuffix), ...renderRows(guards))
+  if (project.length > 0) sections.push(renderHeader("OCP project"), ...renderRows(project))
 
   // Combine sections in a vertical container
   return jsx("box", {

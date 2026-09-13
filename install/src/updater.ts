@@ -56,6 +56,13 @@ interface ComponentCheck {
   local: string | null;
   latest: string | null;
   status: string;
+  /**
+   * True when the binary lives outside the user profile and the upgrade
+   * runs one of our @script: installers — those scripts refuse to overwrite
+   * another manager's file, so the row is informational only and must not
+   * be offered as a pending update.
+   */
+  external?: boolean;
 }
 
 /** `update_check.source` shape from install/tools.jsonc. */
@@ -83,6 +90,14 @@ interface ToolEntryUpdate {
   upgrade_package?: string;
   /** Optional fallback for both strategies when no pm is detected / no per-platform override. */
   upgrade?: unknown; // string | Record<string, string>; resolved via resolveInstallCommand
+  /**
+   * Optional hooks around the upgrade, resolved like `upgrade` (per-platform
+   * map or plain string). Needed when a running instance of the tool locks
+   * its own binary (Windows): e.g. luvus stops its background server before
+   * the installer replaces luvus.exe and restarts it afterwards.
+   */
+  pre_upgrade?: unknown;
+  post_upgrade?: unknown;
 }
 
 interface ToolEntry {
@@ -163,7 +178,9 @@ export async function executeUpdate(repoDir: string, passthrough: string[]): Pro
     console.log(`  ${c.label.padEnd(15)} ${fmtVer(c.local).padEnd(11)} latest ${fmtVer(c.latest).padEnd(11)} ${c.status}`);
   }
 
-  const pending = components.filter((c) => c.local && c.latest && isNewerVersion(c.latest, c.local));
+  const pending = components.filter(
+    (c) => !c.external && c.local && c.latest && isNewerVersion(c.latest, c.local),
+  );
   if (pending.length === 0) {
     console.log('\nEverything is up to date.');
     return 0;
@@ -206,6 +223,12 @@ export async function executeUpdate(repoDir: string, passthrough: string[]): Pro
     const code = await applyComponentUpgrade(c.key, repoDir, passthrough);
     if (code === 0) {
       console.log(`✔ ${c.label} upgraded.`);
+    } else if (code === 2 && isScriptRefusal(c.key, repoDir)) {
+      // The tool's @script installer refused: binary is managed by another
+      // package manager (the refusal message above says how to update it).
+      // Not a failure — don't count it against the run. Exit 2 from any
+      // other upgrade path is a real failure (see isScriptRefusal).
+      console.log(`↷ ${c.label} left as-is (managed outside ocp — see message above).`);
     } else {
       console.error(`✗ ${c.label} upgrade failed (exit ${code}).`);
       failed++;
@@ -249,6 +272,21 @@ async function applyComponentUpgrade(
 }
 
 /**
+ * Exit code 2 means "binary managed outside ocp — refused" ONLY for our
+ * @script: tool installers (scripts/tools/*.ps1|.sh). No other upgrade
+ * path carries that convention: package managers exit 2 on real errors,
+ * and `curl | bash` installers exit 2 when the download hands back an
+ * HTML error page. Misreading those as a benign refusal would hide the
+ * failure as a success, so everything else falls through to the failure
+ * branch.
+ */
+function isScriptRefusal(key: ComponentCheck['key'], repoDir: string): boolean {
+  if (key === 'ocp') return false;
+  const def = loadToolRegistry(repoDir)?.tools?.[key] as ToolEntry | undefined;
+  return !!resolveInstallCommand(def?.update_check?.upgrade)?.startsWith('@script:');
+}
+
+/**
  * Upgrade a tool declared in install/tools.jsonc. Two strategies are
  * supported via `update_check.upgrade_strategy`:
  *   - `"smart"` (default for npm-managed tools): detect which package
@@ -270,18 +308,45 @@ function upgradeToolFromRegistry(repoDir: string, toolName: string): number {
   }
   const strategy = def.update_check?.upgrade_strategy ?? 'static';
 
-  if (strategy === 'smart') {
-    return smartUpgrade(toolName, def);
+  // Optional pre/post hooks (see ToolEntryUpdate). Best-effort on purpose:
+  // correctness is enforced by the upgrade step itself — e.g. if the luvus
+  // server is still holding luvus.exe, the installer's copy fails loudly.
+  const pre = resolveInstallCommand(def?.update_check?.pre_upgrade);
+  const post = resolveInstallCommand(def?.update_check?.post_upgrade);
+  if (pre) {
+    console.log(`Running: ${pre}`);
+    runInstallCommand(pre, repoDir);
   }
 
-  // static path: resolve and run the upgrade command
+  let code: number;
+  if (strategy === 'smart') {
+    code = smartUpgrade(toolName, def, repoDir);
+  } else {
+    code = staticUpgrade(toolName, def, repoDir);
+  }
+
+  if (post) {
+    console.log(`Running: ${post}`);
+    const r = runInstallCommand(post, repoDir);
+    if ((r.status ?? 1) !== 0 || r.error) {
+      console.error(`post-upgrade step for "${toolName}" failed — re-run it manually if needed.`);
+    }
+  }
+  return code;
+}
+
+/**
+ * Static strategy: resolve and run the platform-resolved `upgrade` command.
+ * No `upgrade` command at all = 1 (refuses to do anything).
+ */
+function staticUpgrade(toolName: string, def: ToolEntry, repoDir: string): number {
   const cmd = resolveInstallCommand(def?.update_check?.upgrade);
   if (!cmd) {
     console.error(`No upgrade command declared for "${toolName}" on ${process.platform}-${process.arch} (and no smart upgrade configured).`);
     return 1;
   }
   console.log(`Running: ${cmd}`);
-  const res = runInstallCommand(cmd);
+  const res = runInstallCommand(cmd, repoDir);
   if (res.error) {
     console.error(`Failed to run upgrade for "${toolName}": ${res.error.message}`);
     return 1;
@@ -300,7 +365,7 @@ function upgradeToolFromRegistry(repoDir: string, toolName: string): number {
  *   2. Otherwise, the first of bun / pnpm / yarn / npm that is on PATH.
  *   3. Otherwise, run the static fallback (or fail).
  */
-function smartUpgrade(toolName: string, def: ToolEntry): number {
+function smartUpgrade(toolName: string, def: ToolEntry, repoDir: string): number {
   const pkg = def.update_check?.upgrade_package;
   if (!pkg) {
     console.error(`upgrade_strategy:"smart" requires "upgrade_package" in update_check for "${toolName}".`);
@@ -316,7 +381,7 @@ function smartUpgrade(toolName: string, def: ToolEntry): number {
     const fallback = resolveInstallCommand(def?.update_check?.upgrade);
     if (fallback) {
       console.log(`No package manager detected — falling back to: ${fallback}`);
-      return runInstallCommand(fallback).status ?? 1;
+      return runInstallCommand(fallback, repoDir).status ?? 1;
     }
     console.error(`No package manager detected for "${toolName}" and no static fallback upgrade configured.`);
     return 1;
@@ -388,11 +453,22 @@ async function probeToolFromRegistry(name: string, def: ToolEntry): Promise<Comp
     if (!latest) {
       return { ...base, local, latest: null, status: 'latest-version probe failed — skipped' };
     }
+    // Our @script: installers refuse to overwrite a binary outside the user
+    // profile (another manager owns it) — mirror that here so the row says
+    // "externally managed" instead of offering an upgrade that would refuse.
+    const binPath = resolveBinPath(def.binary);
+    const home = os.homedir().toLowerCase();
+    const external =
+      !!resolveInstallCommand(def.update_check.upgrade)?.startsWith('@script:') &&
+      !!binPath && !binPath.toLowerCase().startsWith(home);
     return {
       ...base,
       local,
       latest,
-      status: isNewerVersion(latest, local) ? 'update available' : 'up to date',
+      external,
+      status: external
+        ? `externally managed — update via ${externalUpdateHint(binPath as string, name)}`
+        : isNewerVersion(latest, local) ? 'update available' : 'up to date',
     };
   } catch (err) {
     return {
@@ -495,6 +571,20 @@ function resolveBinPath(cmd: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Best-effort update command for a binary that lives outside the user
+ * profile, derived from its install path. Unknown layouts fall back to
+ * generic wording.
+ */
+function externalUpdateHint(binPath: string, pkg: string): string {
+  const p = binPath.toLowerCase();
+  if (p.includes('chocolatey')) return `\`choco upgrade ${pkg} -y\` (admin terminal)`;
+  if (p.includes('scoop')) return `\`scoop update ${pkg}\``;
+  if (p.includes('homebrew') || p.includes('cellar')) return `\`brew upgrade ${pkg}\``;
+  if (p.startsWith('/usr/bin/')) return `\`sudo apt upgrade ${pkg}\``;
+  return 'the tool that installed it';
 }
 
 /** Target dir from -t/--target in passthrough args, else the default target. */

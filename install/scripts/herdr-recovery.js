@@ -108,6 +108,7 @@ function runHerdr(args, capture) {
   return spawnSync(herdr, args, {
     encoding: 'utf8',
     stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+    windowsHide: true,
   });
 }
 
@@ -135,7 +136,7 @@ function runHerdr(args, capture) {
   // 2. protocol_mismatch detected — recover.
   console.error('[herdr-recovery] detected protocol_mismatch; stopping stale server...');
   const stop = spawnSync(herdr, ['server', 'stop'], {
-    encoding: 'utf8', stdio: 'inherit',
+    encoding: 'utf8', stdio: 'inherit', windowsHide: true,
   });
   // `herdr server stop` exits 0 even when no server is running, so a
   // non-zero status here is genuinely unexpected.

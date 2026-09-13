@@ -9,6 +9,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { buildGuardBadges, buildProjectBadges } from "../plugins/tui/sidebar-status"
+import { setProjectDir } from "../plugins/project-memory/project-memory-config"
 
 let pass = 0
 let fail = 0
@@ -21,6 +22,11 @@ function check(name: string, ok: boolean) {
 // MCP disabled across the board so badges not under test stay filtered.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "sidebar-status-"))
 fs.mkdirSync(path.join(tmp, ".ocp"), { recursive: true })
+// The memory badge counts via readPublic(), which resolves through the
+// module-global projectDir (set by each plugin entry in production). Point
+// it at the sandbox so a real .ocp/memory/public.md on this machine can't
+// leak into the "ON · empty" assertions.
+setProjectDir(tmp)
 
 const noMcp = {
   mcp: {
