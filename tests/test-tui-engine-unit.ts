@@ -31,6 +31,9 @@ import { spawnSync } from 'node:child_process';
 
 const repo = resolve(__dirname, '..');
 const scripts = join(repo, 'install', 'scripts', 'engines');
+const ocpCli = require(join(scripts, 'lib', 'ocp-cli.js')) as {
+  startDetached(args: string[]): void;
+};
 
 let pass = 0;
 let fail = 0;
@@ -81,6 +84,30 @@ function runScript(script: string, responses: MockResponse[], env: Record<string
     ? readFileSync(callsFile, 'utf8').trim().split('\n').filter(Boolean).map((l: string) => JSON.parse(l) as string[])
     : [];
   return { status: res.status, stdout: res.stdout ?? '', stderr: res.stderr ?? '', calls };
+}
+
+{
+  const childProcess = require('node:child_process');
+  const originalSpawn = childProcess.spawn;
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+  let options: Record<string, unknown> | undefined;
+  childProcess.spawn = (_bin: string, _args: string[], opts: Record<string, unknown>) => {
+    options = opts;
+    return { on() {}, unref() {} };
+  };
+  try {
+    ocpCli.startDetached(['server']);
+    check('engine startDetached: current platform uses the correct detached mode',
+      options?.detached === (process.platform !== 'win32'), JSON.stringify(options));
+
+    Object.defineProperty(process, 'platform', { ...platform, value: 'linux' });
+    options = undefined;
+    ocpCli.startDetached(['server']);
+    check('engine startDetached: POSIX remains detached', options?.detached === true, JSON.stringify(options));
+  } finally {
+    childProcess.spawn = originalSpawn;
+    Object.defineProperty(process, 'platform', platform);
+  }
 }
 
 // --- herdr ensure-server ----------------------------------------------------

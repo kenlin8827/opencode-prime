@@ -13,7 +13,7 @@
 //   - Windows: `shell: true` so .cmd/.bat shims (npm globals) resolve; plain
 //     binaries work the same way (spawners previously mirrored this per-call).
 
-const { spawnSync, spawn } = require('node:child_process');
+const childProcess = require('node:child_process');
 const path = require('node:path');
 
 function engineBin() {
@@ -37,7 +37,7 @@ const isWin = () => process.platform === 'win32';
  *   opts.cwd        → spawn cwd; defaults to OCP_CWD.
  */
 function cli(args, opts = {}) {
-  return spawnSync(engineBin(), args, {
+  return childProcess.spawnSync(engineBin(), args, {
     encoding: opts.json ? 'utf8' : undefined,
     stdio: opts.json ? 'pipe' : 'inherit',
     shell: isWin(),
@@ -94,8 +94,11 @@ function pollUntil(fn, { timeoutMs, intervalMs = 500 } = {}) {
 
 /** Start a detached headless background process (fire-and-forget). */
 function startDetached(args) {
-  const child = spawn(engineBin(), args, {
-    detached: true,
+  const child = childProcess.spawn(engineBin(), args, {
+    // Windows has no SIGHUP when this launcher exits, so unref is sufficient.
+    // `detached: true` creates a separate cmd.exe console for .cmd shims,
+    // which visibly flashes even with windowsHide on some Windows builds.
+    detached: !isWin(),
     stdio: 'ignore',
     shell: isWin(),
     // Without this, the detached `herdr server` gets its own visible console
