@@ -1,10 +1,10 @@
 {
-  "description": "Z.AI Coding Plan — glm-5.1 carries the high-traffic standard tier (previous-gen flagship, cost-efficient), glm-5.2 codes on pro, glm-5.3 judges on max, glm-5.3-flash explores on flash, glm-5v-turbo handles vision (image input). Requires ZHIPU_API_KEY environment variable.",
+  "description": "Z.AI Coding Plan — the plan bills glm-5.1/5.2/5.3 at identical points (6.9/1.7/24 per 1M), so mid-gen flagships are dominated: glm-5.3 codes on pro and judges on max. glm-5.3-flash (2.3/0.56/8, one-third the points, benchmark-parity with glm-5.1) carries the high-traffic standard tier and flash, and doubles as vision (image/video/pdf input). Requires ZHIPU_API_KEY environment variable.",
   "tiers": {
     "flash": "zai-coding-plan/glm-5.3-flash",
-    "standard": "zai-coding-plan/glm-5.1",
-    "pro": "zai-coding-plan/glm-5.2",
+    "standard": "zai-coding-plan/glm-5.3-flash",
+    "pro": "zai-coding-plan/glm-5.3",
     "max": "zai-coding-plan/glm-5.3",
-    "vision": "zai-coding-plan/glm-5v-turbo"
+    "vision": "zai-coding-plan/glm-5.3-flash"
   }
 }

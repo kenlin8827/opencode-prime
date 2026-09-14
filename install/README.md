@@ -266,8 +266,8 @@ flash  (fastest/cheapest)  <=  standard  (general workhorse)  <=  pro  (stronges
 | `opencode-zen/qwen` | All-Qwen family fallback | qwen3.5-plus / qwen3.6-plus / qwen3.6-plus / qwen3.6-plus / qwen3.5-plus |
 | `opencode-zen/glm` | All-GLM family fallback | glm-5.3-flash / glm-5.1 / glm-5.2 / glm-5.3 / glm-5.3-flash |
 | `kimi-for-coding` | Kimi For Coding (official Kimi Code plan) | kimi-for-coding / kimi-for-coding / kimi-for-coding / k3-256k / kimi-for-coding |
-| `zai-coding-plan` | Z.AI Coding Plan (official GLM subscription) | glm-5.3-flash / glm-5.1 / glm-5.2 / glm-5.3 / glm-5v-turbo |
-| `zhipuai-coding-plan` | Zhipu AI Coding Plan (official GLM subscription) | glm-5.3-flash / glm-5.1 / glm-5.2 / glm-5.3 / glm-5v-turbo |
+| `zai-coding-plan` | Z.AI Coding Plan (official GLM subscription) | glm-5.3-flash / glm-5.3-flash / glm-5.3 / glm-5.3 / glm-5.3-flash |
+| `zhipuai-coding-plan` | Zhipu AI Coding Plan (official GLM subscription) | glm-5.3-flash / glm-5.3-flash / glm-5.3 / glm-5.3 / glm-5.3-flash |
 | `deepseek` | DeepSeek (official DeepSeek API) | deepseek-v4-flash / deepseek-v4-flash / deepseek-v4-pro / deepseek-v4-pro / MiniMax-M3 (minimax-cn) |
 | `anthropic` | Anthropic (official Anthropic API) | claude-haiku-4-5 / claude-haiku-4-5 / claude-sonnet-5 / claude-opus-5 / claude-sonnet-5 |
 | `google` | Google (official Vertex AI / Gemini API) | gemini-flash-lite-latest / gemini-2.5-flash / gemini-3-pro-preview / gemini-2.5-pro / gemini-2.5-flash |

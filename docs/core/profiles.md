@@ -48,7 +48,7 @@ A profile is a named preset that maps all model tiers to a specific provider's m
 | `alibaba/token-plan-cn-deepseek` | Official Coding Plan | Alibaba Bailian Token plan, all-DeepSeek variant (V4 Flash / V4 Pro) |
 | `alibaba/token-plan-cn-qwen` | Official Coding Plan | Alibaba Bailian Token plan, all-Qwen variant (Qwen3.8-Flash / Qwen3.8-Max) |
 | `minimax/coding-plan` / `minimax/cn-coding-plan` | Official Coding Plan | MiniMax official coding plan (M2.7, M3) |
-| `zhipuai-coding-plan` | Official Coding Plan | Zhipu AI official coding plan (GLM-5.1, GLM-5.2, GLM-5v) |
+| `zhipuai-coding-plan` | Official Coding Plan | Zhipu AI official coding plan (GLM-5.3, GLM-5.3-Flash) |
 | `zai-coding-plan` | Official Coding Plan | Z.AI official coding plan (GLM series) |
 | `tencent/coding-plan` | Official Coding Plan | Tencent Hunyuan Coding Plan (Hunyuan Turbo, TC Code, MiniMax M2.5) |
 | `tencent/token-plan` | Official Coding Plan | Tencent Hunyuan Token Plan (HY3) |

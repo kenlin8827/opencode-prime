@@ -48,7 +48,7 @@
 | `alibaba/token-plan-cn-deepseek` | 官方 Coding Plan | 阿里百炼 Token 计划的全 DeepSeek 变体 (V4 Flash / V4 Pro) |
 | `alibaba/token-plan-cn-qwen` | 官方 Coding Plan | 阿里百炼 Token 计划的全 Qwen 变体 (Qwen3.8-Flash / Qwen3.8-Max) |
 | `minimax/coding-plan` / `minimax/cn-coding-plan` | 官方 Coding Plan | 稀宇科技 MiniMax 官方开发套餐 (M2.7, M3) |
-| `zhipuai-coding-plan` | 官方 Coding Plan | 智谱 AI 官方 Coding 计划 (GLM-5.1, GLM-5.2, GLM-5v) |
+| `zhipuai-coding-plan` | 官方 Coding Plan | 智谱 AI 官方 Coding 计划 (GLM-5.3, GLM-5.3-Flash) |
 | `zai-coding-plan` | 官方 Coding Plan | Z.AI 官方开发套餐 (GLM 系列) |
 | `tencent/coding-plan` | 官方 Coding Plan | 腾讯混元 Coding 计划 (Hunyuan Turbo, TC Code, MiniMax M2.5) |
 | `tencent/token-plan` | 官方 Coding Plan | 腾讯混元 Token 计划 (HY3) |
