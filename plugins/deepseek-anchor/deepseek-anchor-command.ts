@@ -4,16 +4,21 @@
  * index.ts — no commands/deepseek-anchor.md file is needed.
  * One command file, argument selects mode (on/off).
  *
- *   /deepseek-anchor on   → state=on
- *   /deepseek-anchor off  → state=off
+ *   /deepseek-anchor on   → ~/.config/opencode/ocp.json deepSeekAnchor = "on"
+ *   /deepseek-anchor off  → ~/.config/opencode/ocp.json deepSeekAnchor = "off"
  *   /deepseek-anchor      → show help (no mode given)
  *
- * Every successful switch also gets user-visible feedback via
- * session.prompt({ noReply, ignored }) in the main chat UI, degrading
- * to toast in headless environments.
+ * Writes target the GLOBAL config — deepseek-anchor is a user preference
+ * (follows the user across projects), not a project convention. There is
+ * no project fallback. Every successful switch gets user-visible feedback
+ * via session.prompt({ noReply, ignored }) in the main chat UI.
+ * setMode() never throws; a `!ok` result is surfaced to the user as a
+ * single failure line with the target path so they can diagnose file
+ * permissions.
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
+import { ocpConfigPath } from "../shared/ocp-config"
 import { getMode, setMode, COMMAND_NAME, parseModeArg, type AnchorMode } from "./deepseek-anchor-config"
 
 /** One user-visible line per mode. */
@@ -30,58 +35,41 @@ export function makeCommandHook(client: PluginInput["client"], handled: () => ne
     const currentMode = getMode()
     const newMode = parseModeArg(input.arguments)
 
-    // If no valid argument provided or argument is invalid, show help
-    if (!newMode) {
-      const help = `[deepseek-anchor] Current status: ${currentMode === "on" ? "✅ ENABLED" : "❌ DISABLED"}
-
-Usage: /deepseek-anchor <on|off>
-- on  → Enable reasoning anchor (blocks first tool call)
-- off → Disable reasoning anchor (normal behavior)`
-
-      if (input.sessionID) {
-        await client.session.prompt({
-          path: { id: input.sessionID },
-          body: {
-            parts: [{ type: "text", text: help, ignored: true }],
-            noReply: true,
-          },
-        })
-      }
-      return handled()
-    }
-
-    // If already in target state, show a message
-    if (newMode === currentMode) {
-      const message = newMode === "on"
-        ? `[deepseek-anchor] Already enabled`
-        : `[deepseek-anchor] Already disabled`
-
-      if (input.sessionID) {
-        await client.session.prompt({
-          path: { id: input.sessionID },
-          body: {
-            parts: [{ type: "text", text: message, ignored: true }],
-            noReply: true,
-          },
-        })
-      }
-      return handled()
-    }
-
-    // Switch to new state
-    setMode(newMode)
-    const message = switchMessage(newMode)
-
-    if (input.sessionID) {
+    const send = async (text: string) => {
+      if (!input.sessionID) return
       await client.session.prompt({
         path: { id: input.sessionID },
         body: {
-          parts: [{ type: "text", text: message, ignored: true }],
+          parts: [{ type: "text", text, ignored: true }],
           noReply: true,
         },
       })
     }
 
+    // If no valid argument provided or argument is invalid, show help
+    if (!newMode) {
+      await send(`[deepseek-anchor] Current status: ${currentMode === "on" ? "✅ ENABLED" : "❌ DISABLED"}
+
+Usage: /deepseek-anchor <on|off>
+- on  → ~/.config/opencode/ocp.json deepSeekAnchor = "on"
+- off → ~/.config/opencode/ocp.json deepSeekAnchor = "off"`)
+      return handled()
+    }
+
+    // If already in target state, show a message
+    if (newMode === currentMode) {
+      await send(`[deepseek-anchor] Already ${newMode === "on" ? "enabled" : "disabled"}`)
+      return handled()
+    }
+
+    // Switch to new state — surface failure to user instead of swallowing it.
+    const ok = setMode(newMode)
+    if (!ok) {
+      await send(`[deepseek-anchor] Could not write ${ocpConfigPath()}; check file permissions`)
+      return handled()
+    }
+
+    await send(switchMessage(newMode))
     return handled()
   }
 }

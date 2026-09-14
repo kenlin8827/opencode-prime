@@ -93,10 +93,23 @@ const injectedSessions = new Set<string>()
 // step), at which point the block is lifted.
 const anchoredSessions = new Set<string>()
 
-// Subagent sessions (task-dispatched, carry parentID). The system.transform
-// input shape ({ sessionID?, model }) has no parent info, so we learn this
-// from session.created events instead.
-const subagentSessions = new Set<string>()
+// Contract: deepseek-anchor MUST NOT fire for subagent sessions.
+// Rationale: the plugin blocks tool calls for the first turn to force a
+// reasoning pass; if a subagent inherits that block, its dispatched task
+// cannot execute any tool and the parent session hangs.
+//
+// Enforcement (single source of truth: `scoped()`):
+//   - plugin-scope.json `*` deny = ["lite", "utility", "subagent:*"]
+//     applies because deepseek-anchor has no per-plugin override.
+//   - `experimental.chat.system.transform` line below calls
+//     `scoped(...)`; a subagent state is detected via parentID and
+//     returns false → early return → anchor never injected, so
+//     `anchoredSessions` never holds a subagent ID.
+//   - `tool.execute.before` only checks `anchoredSessions.has(sessionID)`,
+//     which is therefore automatically inert for subagents — no local
+//     subagent check needed here.
+// Do NOT add a bypass for subagents; if the gate ever needs tuning, edit
+// plugin-scope.json, not this file.
 
 // OpenCode's command hook has no cancel/noReply output. Throwing a raw
 // Effect response is handled by OpenCode's HTTP layer as an empty
@@ -105,7 +118,11 @@ const handled = (): never => {
   throw HttpServerResponse.empty({ status: 204 })
 }
 
-export const DeepSeekAnchorPlugin: Plugin = async ({ client }) => {
+export const DeepSeekAnchorPlugin: Plugin = async ({ client, directory }) => {
+  // Note: no setProjectDir() — deepseek-anchor config is global (user
+  // preference, follows the user), not project-scoped (commit convention,
+  // env file protection). `directory` stays in the destructuring because
+  // future hooks (e.g. session-scoped UI) may still need it.
   return {
     config: async (cfg) => {
       cfg.command ??= {}
@@ -116,18 +133,13 @@ export const DeepSeekAnchorPlugin: Plugin = async ({ client }) => {
     },
     "command.execute.before": makeCommandHook(client, handled),
     event: async (input: { event: any }) => {
-      // The system.transform input carries no parent info, so learn which
-      // sessions are subagents from session.created events.
-      const event = input.event as any
-      const info = event?.properties?.info
-      if (event?.type === "session.created" && info?.id && info?.parentID) {
-        subagentSessions.add(info.id)
-      }
       // Best-effort cleanup so the in-memory sets don't grow unbounded.
-      if (event?.type === "session.deleted" && info?.id) {
+      // Subagent filtering is handled by `scoped()` (plugin-scope.json) —
+      // no local session tracking needed.
+      const info = input.event?.properties?.info
+      if (input.event?.type === "session.deleted" && info?.id) {
         injectedSessions.delete(info.id)
         anchoredSessions.delete(info.id)
-        subagentSessions.delete(info.id)
       }
     },
     "experimental.chat.system.transform": async (
@@ -169,11 +181,6 @@ export const DeepSeekAnchorPlugin: Plugin = async ({ client }) => {
       const sessionID = input.sessionID
       if (!sessionID) return
 
-      // Skip subagent sessions - only apply anchor logic to main/top-level sessions
-      if (subagentSessions.has(sessionID)) {
-        return
-      }
-
       // Anchor already injected earlier in this session: we are past the
       // anchored generation. Lift the tool block and leave the system prompt
       // byte-identical so the prompt-cache stays warm.
@@ -199,10 +206,9 @@ export const DeepSeekAnchorPlugin: Plugin = async ({ client }) => {
       const sessionID = (input as any)?.sessionID as string | undefined
       const toolName = (input as any)?.tool as string | undefined
 
-      // Skip subagent sessions - only apply anchor logic to main/top-level sessions
-      if (!sessionID || subagentSessions.has(sessionID)) {
-        return
-      }
+      // Subagent sessions never reach `anchoredSessions` (the system-transform
+      // hook is gated by `scoped()`, which denies subagent:*), so the block
+      // below is automatically inert for them — no local check needed.
 
       // If this session is in the anchored generation, block all tool calls.
       if (sessionID && anchoredSessions.has(sessionID)) {

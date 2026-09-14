@@ -52,11 +52,27 @@ if (-not $Quick) {
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
 function Run-OpenCode([string]$prompt, [string]$anchorState) {
-    # Switch anchor state
-    $anchorFile = Join-Path $env:USERPROFILE ".config\opencode\.deepseek-anchor-enabled"
-    $configDir = Split-Path $anchorFile -Parent
-    if (-not (Test-Path $configDir)) { New-Item -ItemType Directory -Force -Path $configDir | Out-Null }
-    [System.IO.File]::WriteAllText($anchorFile, $anchorState)
+    # ADR 0004: deepseek-anchor reads OCP-owned config only. Project
+    # `<cwd>/.ocp/ocp.json` is the canonical switch location (the
+    # `cd` below pins the opencode run to this checkout so writes hit
+    # its .ocp/). Global fallback (cross-project default) lives at
+    # `~/.config/opencode/ocp.json` — we write that here so the
+    # benchmark applies regardless of project state.
+    $ocpCfg = Join-Path $env:USERPROFILE ".config\opencode\ocp.json"
+    $ocpDir = Split-Path $ocpCfg -Parent
+    if (-not (Test-Path $ocpDir)) { New-Item -ItemType Directory -Force -Path $ocpDir | Out-Null }
+    # Round-trip via ConvertFrom-Json / ConvertTo-Json to avoid the
+    # dangling-comma risk that targeted regex would introduce when the
+    # file is exactly "{}" (then -replace '{' produced "{ ..., }").
+    # Mirrors the cleanup path at the bottom of the file. Only writes
+    # when the value actually changes.
+    $cfg = if (Test-Path $ocpCfg) { Get-Content $ocpCfg -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
+    if ($null -eq $cfg) { $cfg = [pscustomobject]@{} }
+    $current = $cfg.PSObject.Properties["deepSeekAnchor"]
+    if (-not $current -or $current.Value -ne $anchorState) {
+        Add-Member -InputObject $cfg -MemberType NoteProperty -Name deepSeekAnchor -Value $anchorState -Force
+        $cfg | ConvertTo-Json -Depth 10 | Set-Content $ocpCfg
+    }
 
     # Run opencode
     $output = opencode run --agent build --model llm-router/default $prompt 2>&1
@@ -215,8 +231,16 @@ if ($onLonger -gt $total/2 -or $onMoreStructured -gt $total/2) {
 
 Write-Host "═════════════════════════════════════════════════════════════" -ForegroundColor Magenta
 
-# Restore default state
-$anchorFile = Join-Path $env:USERPROFILE ".config\opencode\.deepseek-anchor-enabled"
-if (Test-Path $anchorFile) {
-    [System.IO.File]::WriteAllText($anchorFile, "on")
+# Restore default state (off — opt-in). Strip the global deepSeekAnchor
+# key from ocp.json so the benchmark leaves no residue in the user's
+# cross-project config. Round-trip via ConvertFrom-Json / ConvertTo-Json
+# to avoid corrupting sibling keys with dangling commas — ocp.json is
+# JSON-only per the ocp-config.ts write path, so comments aren't a concern.
+$ocpCfg = Join-Path $env:USERPROFILE ".config\opencode\ocp.json"
+if (Test-Path $ocpCfg) {
+    $cfg = Get-Content $ocpCfg -Raw | ConvertFrom-Json
+    if ($cfg.PSObject.Properties["deepSeekAnchor"]) {
+        $cfg.PSObject.Properties.Remove("deepSeekAnchor")
+        $cfg | ConvertTo-Json -Depth 10 | Set-Content $ocpCfg
+    }
 }

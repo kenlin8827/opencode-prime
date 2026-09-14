@@ -1,64 +1,54 @@
 /**
- * DeepSeek Anchor Plugin configuration and state management
- * Inspired by the auto-advisor plugin implementation pattern
+ * DeepSeek Anchor Plugin configuration and state management.
  *
- * State file: ~/.config/opencode/.deepseek-anchor-enabled
- *   - "on"   → Enable plugin (default)
- *   - "off"  → Disable plugin
+ * Resolution chain (single source):
+ *   1. Global config  — `~/.config/opencode/ocp.json` `deepSeekAnchor`
+ *   2. Default        — "off" (opt-in)
  *
- * Cold start default value resolution:
- *   1. opencode.jsonc deepSeekAnchor field
- *   2. "on" (default value)
+ * deepseek-anchor is a USER preference (model behavior, follows the user)
+ * rather than a PROJECT behavior (commit convention, env file protection)
+ * — it sits next to `i18n`, not `auto-advisor` / `adr-guard`. Reads and
+ * writes both target the global `ocp.json` exclusively; the plugin entry
+ * no longer pins a project dir and the command never touches
+ * `<cwd>/.ocp/ocp.json`.
+ *
+ * Opt-in: the anchor forces DeepSeek V4 Pro through a reasoning checklist
+ * before any tool call, paying a first-turn latency cost. Users who don't
+ * run DeepSeek V4 Pro (or who actively want the original behavior) should
+ * never need to think about it.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
-import { join } from "node:path"
-import { homedir } from "node:os"
-
-const CONFIG_DIR = join(homedir(), ".config", "opencode")
-const STATE_FILE = join(CONFIG_DIR, ".deepseek-anchor-enabled")
-const OPENCODE_CONFIG = join(CONFIG_DIR, "opencode.jsonc")
+import { normalizeOnOff, readOcpField, writeOcpField } from "../shared/ocp-config"
 
 const VALID_MODES = ["on", "off"] as const
 export type AnchorMode = (typeof VALID_MODES)[number]
 
-const DEFAULT_MODE: AnchorMode = "on"
+const FIELD = "deepSeekAnchor"
+const DEFAULT_MODE: AnchorMode = "off"
 
 export function normalizeMode(mode: unknown): AnchorMode | null {
-  if (typeof mode !== "string") return null
-  const m = mode.trim().toLowerCase()
-  if ((VALID_MODES as readonly string[]).includes(m)) return m as AnchorMode
-  return null
+  return normalizeOnOff(mode)
 }
 
+/**
+ * Resolve the active mode. Reads the global `~/.config/opencode/ocp.json`
+ * `deepSeekAnchor` key only — falls back to the declared default ("off")
+ * when the key is absent or holds an unrecognized value.
+ */
 export function getMode(): AnchorMode {
-  // Check state file
-  if (existsSync(STATE_FILE)) {
-    try {
-      const m = normalizeMode(readFileSync(STATE_FILE, "utf-8"))
-      if (m) return m
-    } catch {
-      /* Ignore read errors */
-    }
-  }
-  
-  // Check opencode.jsonc config file
-  if (existsSync(OPENCODE_CONFIG)) {
-    try {
-      const cfg = JSON.parse(readFileSync(OPENCODE_CONFIG, "utf-8"))
-      const m = normalizeMode(cfg?.deepSeekAnchor)
-      if (m) return m
-    } catch {
-      /* Ignore parse errors */
-    }
-  }
-  
-  return DEFAULT_MODE
+  const raw = readOcpField<unknown>(FIELD)
+  const m = normalizeMode(raw)
+  return m ?? DEFAULT_MODE
 }
 
-export function setMode(mode: AnchorMode): void {
-  if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true })
-  writeFileSync(STATE_FILE, mode, "utf-8")
+/**
+ * Write the mode to the global `~/.config/opencode/ocp.json`. Returns
+ * true on success, false on IO failure (read-only fs, permission denied).
+ * The command hook surfaces a `!ok` to the user; we never throw — the
+ * TUI keeps running on a permission error.
+ */
+export function setMode(mode: AnchorMode): boolean {
+  return writeOcpField(FIELD, mode)
 }
 
 export function isEnabled(): boolean {
@@ -68,8 +58,8 @@ export function isEnabled(): boolean {
 export const COMMAND_NAME = "deepseek-anchor"
 
 /**
- * Parse the first argument of the `/deepseek-anchor <mode>` command
- * Returns null if argument is missing or invalid
+ * Parse the first argument of the `/deepseek-anchor <mode>` command.
+ * Returns null if the argument is missing or not a valid mode.
  *
  *   /deepseek-anchor        → null (show help)
  *   /deepseek-anchor on     → "on"

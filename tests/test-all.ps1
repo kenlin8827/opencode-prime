@@ -289,7 +289,6 @@ $allFiles = @(
     "plugins/deepseek-anchor/index.ts",
     "plugins/deepseek-anchor/deepseek-anchor-config.ts",
     "plugins/deepseek-anchor/deepseek-anchor-command.ts",
-    "plugins/deepseek-anchor/deepseek-anchor-announce.ts",
     "plugins/project-profiler.ts",
     "plugins/project-profiler/project-profiler.ts",
     "plugins/adr-guard.ts",

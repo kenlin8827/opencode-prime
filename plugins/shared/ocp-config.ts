@@ -70,3 +70,25 @@ export function writeOcpField(key: string, value: unknown): boolean {
     return false
   }
 }
+
+/**
+ * Normalize a raw config value to a canonical "on" | "off" | null.
+ * - Boolean `true` → "on"; `false` → "off" (callers can rely on this even
+ *   when the config author prefers `true` / `false` over quoted strings).
+ * - String trimmed + lowercased; "on" / "enabled" / "true" → "on";
+ *   "off" / "disabled" / "false" → "off".
+ * - Anything else (numbers, objects, unknown strings) → null so the
+ *   caller can fall back to its declared default.
+ *
+ * Shared between deepseek-anchor-config (config + command parsing) and
+ * sidebar-status (panel badge state). Pure function — exported for unit
+ * tests, no I/O, no module state.
+ */
+export function normalizeOnOff(v: unknown): "on" | "off" | null {
+  if (typeof v === "boolean") return v ? "on" : "off"
+  if (typeof v !== "string") return null
+  const s = v.trim().toLowerCase()
+  if (s === "on" || s === "enabled" || s === "true") return "on"
+  if (s === "off" || s === "disabled" || s === "false") return "off"
+  return null
+}

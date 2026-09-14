@@ -30,7 +30,7 @@
  *                       advisory; nothing is injected unless a curated
  *                       public.md actually exists)
  *   - autoAdvisorMode → project OCP config field (off | lite | full, default off)
- *   - deepSeekAnchor  → ~/.config/opencode/.deepseek-anchor-enabled (on | off, default on)
+ *   - deepSeekAnchor  → ~/.config/opencode/ocp.json deepSeekAnchor (on | off, default off — opt-in)
  *   - activeProfile   → ~/.config/opencode/.active-profile (name | none)
  *   - projectScaffold → /project init targets exist? (.ocp/ocp.json +
  *                        docs/git-commits.md + AGENTS.md
@@ -84,6 +84,7 @@ import { loadTgrepOptions } from "../tgrep/tgrep-config"
 import { resolveTgrepCapability, type TgrepCapabilityState } from "../tgrep/tgrep-service"
 import { countEntries, readPublic } from "../project-memory/project-memory-config"
 import { ocpConfigFile, readProjectConfig, stripJsonc } from "../shared/opencode-prime"
+import { normalizeOnOff, readOcpField } from "../shared/ocp-config"
 
 // ─── Theme shape ───────────────────────────────────────────────────
 
@@ -128,15 +129,6 @@ interface Badge {
 
 // ─── State resolvers ────────────────────────────────────────────────
 
-function normalizeOnOff(v: unknown): "on" | "off" | null {
-  if (typeof v === "boolean") return v ? "on" : "off"
-  if (typeof v !== "string") return null
-  const s = v.trim().toLowerCase()
-  if (["on", "enabled", "true"].includes(s)) return "on"
-  if (["off", "disabled", "false"].includes(s)) return "off"
-  return null
-}
-
 function resolveAdrGuard(projectDir: string): "on" | "off" {
   return normalizeOnOff(readProjectConfig(projectDir)?.adrGuard) ?? "off"
 }
@@ -161,22 +153,13 @@ function resolveAutoAdvisor(projectDir: string): "off" | "lite" | "full" {
 }
 
 function resolveDeepSeekAnchor(): "on" | "off" {
-  const stateFile = join(homedir(), ".config", "opencode", ".deepseek-anchor-enabled")
-  if (existsSync(stateFile)) {
-    try {
-      const m = normalizeOnOff(readFileSync(stateFile, "utf-8"))
-      if (m) return m
-    } catch { /* fall through */ }
-  }
-  const globalCfg = join(homedir(), ".config", "opencode", "opencode.jsonc")
-  if (existsSync(globalCfg)) {
-    try {
-      const cfg = JSON.parse(stripJsonc(readFileSync(globalCfg, "utf-8")))
-      const m = normalizeOnOff(cfg?.deepSeekAnchor)
-      if (m) return m
-    } catch { /* fall through */ }
-  }
-  return "on"
+  // deepseek-anchor is a user preference (global `~/.config/opencode/ocp.json`
+  // `deepSeekAnchor` field only) — same resolution the plugin's own
+  // getMode() uses, kept in lockstep so the sidebar badge never disagrees.
+  // Default: opt-in ("off"). The anchor forces a first-turn latency cost on
+  // DeepSeek V4 Pro; users who don't run that model (or who actively want
+  // the original behavior) should never see it on by default.
+  return normalizeOnOff(readOcpField<unknown>("deepSeekAnchor")) ?? "off"
 }
 
 function resolveActiveProfile(): string {
@@ -721,7 +704,7 @@ export function buildProjectBadges(
  *   │ • adr-guard  Off          │
  *   │ • e2e-guard  Off          │
  *   │ • auto-advisor  Off       │
- *   │ • deepseek-anchor  On     │
+ *   │ • deepseek-anchor  Off    │
  *   │ ─ OCP project ────────────│
  *   │ • scaffold  Init          │
  *   │ • git-commits  On         │
