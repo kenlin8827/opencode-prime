@@ -10,7 +10,8 @@ import { buildTgrepSearchArgs, resolveSearchPath, searchTgrep, summarizeTgrepSea
 import { loadTgrepOptions } from "../plugins/tgrep/tgrep-config"
 import { TgrepPlugin } from "../plugins/tgrep"
 import { tgrepLocation } from "../plugins/tgrep/tgrep-output"
-import { validateTgrepMode } from "../plugins/tgrep/tgrep-mode"
+import { validateTgrepMode, OUTPUT_ROW_BUDGET, OUTPUT_CHAR_BUDGET, exceedsDetailBudget, exceedsDetailCharBudget } from "../plugins/tgrep/tgrep-mode"
+import { capSummaryCounts } from "../plugins/tgrep/tgrep-output"
 import { logTgrepRequest } from "../plugins/tgrep/tgrep-request-log"
 
 let failed = 0
@@ -51,6 +52,27 @@ assert(validateTgrepMode("locations").ok && validateTgrepMode("content").ok, "ca
 const invalidMode = validateTgrepMode("files")
 assert(!invalidMode.ok && invalidMode.error.includes("`summary`, `locations`, or `content`") && invalidMode.error.includes("omit mode"), "unknown modes return actionable invalid-request errors")
 assert(!validateTgrepMode(42).ok, "non-string mode values are invalid")
+
+// ─── Output budget: broad requests degrade honestly, never context-dump. ───
+assert(!exceedsDetailBudget("summary", 1_000_000), "summary mode is never budget-refused")
+assert(exceedsDetailBudget("content", OUTPUT_ROW_BUDGET + 1) && exceedsDetailBudget("locations", OUTPUT_ROW_BUDGET + 1), "both detail modes are refused past the budget")
+assert(!exceedsDetailBudget("content", OUTPUT_ROW_BUDGET), "the budget boundary itself still materializes")
+const budgetRoot = mkdtempSync(join(tmpdir(), "tgrep-budget-"))
+writeFileSync(join(budgetRoot, "broad.ts"), "needle\n".repeat(OUTPUT_ROW_BUDGET + 1), "utf8")
+const broadSummary = summarizeTgrepSearch(budgetRoot, { pattern: "needle", path: budgetRoot, noIndex: true }, "server")
+assert(broadSummary.matchedLines === OUTPUT_ROW_BUDGET + 1 && exceedsDetailBudget("content", broadSummary.matchedLines), "a real broad corpus trips the detail budget")
+rmSync(budgetRoot, { recursive: true, force: true })
+const smallCap = capSummaryCounts(["a.ts:1", "b.ts:2"])
+assert(smallCap.complete && smallCap.rows.length === 2, "summary at or under budget returns complete counts")
+const manyCounts = Array.from({ length: OUTPUT_ROW_BUDGET + 5 }, (_, i) => `f${i}.ts:1`)
+const capped = capSummaryCounts(manyCounts)
+assert(!capped.complete && capped.rows.length === OUTPUT_ROW_BUDGET + 1 && capped.rows.at(-1) === "… 5 more matching files not shown; narrow path/glob", "summary past budget truncates with an explicit omission marker")
+assert(!exceedsDetailCharBudget("x".repeat(OUTPUT_CHAR_BUDGET)) && exceedsDetailCharBudget("x".repeat(OUTPUT_CHAR_BUDGET + 1)), "detail char budget boundary: at-budget passes, +1 refuses")
+const longLineRoot = mkdtempSync(join(tmpdir(), "tgrep-longline-"))
+writeFileSync(join(longLineRoot, "lock.json"), `{"blob":"${"x".repeat(OUTPUT_CHAR_BUDGET)}"}\n`, "utf8")
+const longLineDetail = searchTgrep(longLineRoot, { pattern: "blob", path: longLineRoot, noIndex: true }, "server", undefined, ["--with-filename", "--line-number"])
+assert(longLineDetail.status === "matches" && exceedsDetailCharBudget(longLineDetail.stdout.trim()), "a single long matched line trips the detail char budget")
+rmSync(longLineRoot, { recursive: true, force: true })
 const logRoot = mkdtempSync(join(tmpdir(), "tgrep-log-"))
 await logTgrepRequest(logRoot, { enabled: true, requestLog: true }, { pattern: "secret-looking-pattern", path: "src", literal: true }, "summary", { backend: "fallback", matchedFiles: 2, matchedLines: 3 })
 const requestLog = readFileSync(join(logRoot, ".ocp", "logs", "tgrep.jsonl"), "utf8")

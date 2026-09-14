@@ -3,8 +3,8 @@ import { tool } from "@opencode-ai/plugin"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { loadTgrepOptions } from "./tgrep/tgrep-config"
-import { validateTgrepMode } from "./tgrep/tgrep-mode"
-import { tgrepLocation } from "./tgrep/tgrep-output"
+import { validateTgrepMode, OUTPUT_ROW_BUDGET, OUTPUT_CHAR_BUDGET, exceedsDetailBudget, exceedsDetailCharBudget } from "./tgrep/tgrep-mode"
+import { tgrepLocation, capSummaryCounts } from "./tgrep/tgrep-output"
 import { logTgrepRequest } from "./tgrep/tgrep-request-log"
 import { searchTgrep, summarizeTgrepSearch, type TgrepSearchInput } from "./tgrep/tgrep-search"
 import { ensureWatcher, hasTgrepCli } from "./tgrep/tgrep-service"
@@ -53,16 +53,32 @@ return { tool: {
           return { title: "tgrep", output: "No matches.", metadata: { readiness, backend: summary.backend, matchedFiles: 0, matchedLines: 0, complete: true } }
         }
         if (mode.mode === "summary") {
+          const capped = capSummaryCounts(summary.counts)
           await logTgrepRequest(directory, config, input, "summary", summary)
-          return { title: "tgrep summary", output: summary.counts.join("\n"), metadata: { readiness, backend: summary.backend, matchedFiles: summary.matchedFiles, matchedLines: summary.matchedLines, complete: true } }
+          return { title: "tgrep summary", output: capped.rows.join("\n"), metadata: { readiness, backend: summary.backend, matchedFiles: summary.matchedFiles, matchedLines: summary.matchedLines, complete: capped.complete } }
+        }
+        if (exceedsDetailBudget(mode.mode, summary.matchedLines)) {
+          await logTgrepRequest(directory, config, input, mode.mode, { backend: summary.backend, matchedFiles: summary.matchedFiles, matchedLines: summary.matchedLines })
+          return { title: "tgrep detail refused", output: `${summary.matchedLines} matched lines exceed the ${OUTPUT_ROW_BUDGET}-line detail budget; narrow path/glob, or use summary mode to pick files first.`, metadata: { readiness, backend: summary.backend, matchedFiles: summary.matchedFiles, matchedLines: summary.matchedLines, complete: false } }
         }
         const result = searchTgrep(directory, input, readiness, config, ["--with-filename", "--line-number"])
         if (result.status === "error") throw new Error(result.stderr || "tgrep search failed")
         const output = mode.mode === "locations"
           ? result.stdout.split(/\r?\n/).filter(Boolean).map(tgrepLocation).join("\n")
           : result.stdout.trim()
-        await logTgrepRequest(directory, config, input, mode.mode, { backend: result.backend, matchedFiles: summary.matchedFiles, matchedLines: summary.matchedLines })
-        return { title: `tgrep ${mode.mode}`, output: output || "No matches.", metadata: { readiness, backend: result.backend, matchedFiles: summary.matchedFiles, matchedLines: summary.matchedLines, complete: true } }
+        // Summary and detail are two spawns; if files changed between them the
+        // detail run wins — never report totals the output contradicts.
+        const totals = result.status === "no-matches"
+          ? { matchedFiles: 0, matchedLines: 0 }
+          : { matchedFiles: summary.matchedFiles, matchedLines: summary.matchedLines }
+        // Row budget passed but the materialized output is still too large —
+        // long lines (lockfiles/minified) or growth between the two spawns.
+        if (exceedsDetailCharBudget(output)) {
+          await logTgrepRequest(directory, config, input, mode.mode, { backend: result.backend, ...totals })
+          return { title: "tgrep detail refused", output: `Detail output is ${output.length.toLocaleString("en-US")} chars, over the ${OUTPUT_CHAR_BUDGET.toLocaleString("en-US")}-char budget (long lines or files changed mid-search); narrow path/glob${mode.mode === "content" ? `, or use locations mode` : ""}.`, metadata: { readiness, backend: result.backend, ...totals, complete: false } }
+        }
+        await logTgrepRequest(directory, config, input, mode.mode, { backend: result.backend, ...totals })
+        return { title: `tgrep ${mode.mode}`, output: output || "No matches.", metadata: { readiness, backend: result.backend, ...totals, complete: true } }
       },
     }),
   } }

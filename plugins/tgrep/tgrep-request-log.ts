@@ -27,7 +27,9 @@ export async function logTgrepRequest(root: string, options: TgrepOptions, input
   const record = JSON.stringify({ timestamp: new Date().toISOString(), input: normalizedInput(input), mode, ...totals }) + "\n"
   try {
     await appendFile(join(getProjectLogDir(root), "tgrep.jsonl"), record, "utf8")
-  } catch {
-    // Development diagnostics must not change the search result.
+  } catch (error) {
+    // Diagnostics must not change the search result — but stay observable so
+    // a silently-empty log is diagnosable.
+    console.warn("tgrep request log write failed:", error)
   }
 }

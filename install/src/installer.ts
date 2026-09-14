@@ -678,7 +678,7 @@ export function loadToolRegistry(repoDir: string): ToolRegistry | null {
  */
 function toolEnabled(name: string, options: InstallOptions): boolean {
   const v = options.tools?.[name];
-  return typeof v === "object" ? v.enabled !== false : v !== false;
+  return v && typeof v === "object" ? v.enabled !== false : v !== false;
 }
 
 /**

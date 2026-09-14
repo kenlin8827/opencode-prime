@@ -72,8 +72,18 @@ restore a filename-only result or introduce another output shape.
 
 Each response reports the backend and complete matched-file and matched-line
 totals. `complete: true` means the process returned the requested representation
-successfully. Detail modes impose no OCP-only character cap or pagination
-truncation.
+successfully. Output rows are context-bounded by a single 2,000-row budget.
+Detail modes refuse before the detail search runs: past 2,000 matched lines
+the tool returns `complete: false` with the true totals and narrowing guidance
+rather than flooding the caller's context — a context-destroying dump is not
+a useful complete response. Summary count output past the same budget is
+truncated to the first 2,000 files plus an explicit omission marker with
+`complete: false` (partial aggregates stay truthful per file; metadata totals
+stay complete), because a bare summary refusal would leave the caller with no
+coarser mode to narrow from. Materialized detail output is additionally
+bounded at 150,000 characters, closing the long-line window (few matched
+lines, huge lines — lockfiles/minified data) and the growth race between the
+summary probe and the detail run.
 
 The process capture buffer is an explicit operational boundary:
 
@@ -112,6 +122,10 @@ fails. OCP does not persist, snapshot, or page either backend's results.
 - Agents make a second call when a summary identifies files needing detail.
 - Detail output can reach the 8 MiB process-capture boundary; callers must
   narrow the search instead of retrieving pages.
+- Detail requests whose summary exceeds the 2,000-line budget are refused,
+  summaries past 2,000 files are truncated with an omission marker, and detail
+  output past 150,000 chars is refused (`complete: false`); callers narrow the
+  search or drill down per file.
 - Summary counts describe matching lines, not a separate filename-only mode.
 
 ### Neutral

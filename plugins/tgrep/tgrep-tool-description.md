@@ -23,6 +23,11 @@ Args:
 
 Exit codes: `0` match; `1` no match; `2` error.
 
-The default probe returns complete per-file counts. `locations` and `content`
-return complete detail output. Metadata reports the backend and complete
-file/line totals.
+The default probe returns complete per-file counts, capped at 2,000 files —
+past the cap the first 2,000 plus an omission marker are returned with
+`complete: false`. `locations` and `content` return complete detail output;
+requests whose summary exceeds the 2,000-line budget are refused with
+`complete: false` and the true totals — narrow `path`/`glob` or use `summary`
+to pick files first. Materialized detail output is additionally bounded at
+150,000 chars (long lines count too). Metadata reports the backend and
+complete file/line totals.
