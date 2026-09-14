@@ -113,6 +113,22 @@ export function parseDynamicOptionsSchema(content: string, repoDir?: string): Dy
       continue;
     }
 
+    const objectToolMatch = currentSection === 'tools' && trimmed.match(/"([^"]+)"\s*:\s*\{\s*$/);
+    if (objectToolMatch) {
+      const body = lines.slice(i + 1).join('\n');
+      const enabledMatch = body.match(/"enabled"\s*:\s*(true|false)/);
+      if (enabledMatch) {
+        schema.toolItems.push({
+          key: objectToolMatch[1],
+          value: enabledMatch[1] === 'true',
+          hint: pendingComments.length > 0 ? pendingComments.join(' ') : '',
+        });
+      }
+      while (i + 1 < lines.length && lines[i + 1].trim() !== '}' && lines[i + 1].trim() !== '},') i++;
+      pendingComments = [];
+      continue;
+    }
+
     const boolMatch = trimmed.match(/"([^"]+)"\s*:\s*(true|false)/);
     if (boolMatch) {
       const key = boolMatch[1];
@@ -140,7 +156,7 @@ export function updateOptionsJsoncInPlace(
     defaultAgent?: string;
     globalCommands?: boolean;
     tuiMode?: 'direct' | 'herdr' | 'luvus';
-    tools?: Record<string, boolean>;
+    tools?: Record<string, boolean | { enabled?: boolean; requestLog?: boolean }>;
     mcps?: Record<string, boolean>;
     plugins?: Record<string, boolean>;
   }

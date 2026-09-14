@@ -43,7 +43,7 @@ Learn about installer commands, configuration options, token savings, and preser
         "rtk": true,
         // Optional external full-text cache (microsoft/tgrep) — auto-provisioned like rtk when missing.
         // It is not MCP, LSP, or a code graph; .tgrep/ must stay uncommitted.
-        "tgrep": true,
+         "tgrep": { "enabled": true, "requestLog": false },
        // OpenChamber ships as three independent surfaces, one switch each:
         // Web UI CLI (@openchamber/web; powers `ocp web`, needs Node.js 22+)
         // Disabled by default: enabling it installs a global package.
@@ -133,6 +133,15 @@ reports it as `stale`: indexed searches fall back to full scans until
 `/project index` rebuilds it, so results never violate the configured policy.
 The `tgrep_search` tool accepts gitignore-style `glob` filters in addition to
 `-i`/`-F` flags.
+
+### Development request log
+
+For temporary development visibility, set `tools.tgrep.requestLog` to `true`
+in `~/.config/opencode/options.jsonc`. OCP writes JSONL records to
+`<project>/.ocp/logs/tgrep.jsonl` after tool-schema validation. Records contain
+the normalized request fields, selected mode, backend, and result totals, never
+matched content. It defaults to `false` and **must remain disabled in
+production**, because it records requested patterns.
 
 ### Verification and benchmark (opt-in)
 

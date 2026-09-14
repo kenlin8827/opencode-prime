@@ -20,7 +20,7 @@ export interface InstallOptions {
   // cleanup in installer/merger.ts is the one side effect still wired by
   // name — it reads `tools.rtk === false` and removes `plugins/rtk-write*`
   // from the target.
-  tools?: Record<string, boolean>;
+  tools?: Record<string, boolean | { enabled?: boolean; requestLog?: boolean }>;
 }
 
 export type CommandAction =

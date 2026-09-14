@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
@@ -6,9 +6,12 @@ import { basename, join, resolve } from "node:path"
 import { parseTgrepOptions, stripJsonc, tgrepIndexArgs, tgrepOptionsFrom } from "../plugins/tgrep/tgrep-config"
 import { tgrepPolicyFingerprint } from "../plugins/tgrep/tgrep-state"
 import { acquireLeaseLock, hasTgrepCli, isCliMissing, parseTgrepStatusOutput, probeTgrepCapability, resolveTgrepCapability } from "../plugins/tgrep/tgrep-service"
-import { buildTgrepSearchArgs, resolveSearchPath, searchTgrep } from "../plugins/tgrep/tgrep-search"
+import { buildTgrepSearchArgs, resolveSearchPath, searchTgrep, summarizeTgrepSearch } from "../plugins/tgrep/tgrep-search"
 import { loadTgrepOptions } from "../plugins/tgrep/tgrep-config"
 import { TgrepPlugin } from "../plugins/tgrep"
+import { tgrepLocation } from "../plugins/tgrep/tgrep-output"
+import { validateTgrepMode } from "../plugins/tgrep/tgrep-mode"
+import { logTgrepRequest } from "../plugins/tgrep/tgrep-request-log"
 
 let failed = 0
 function assert(ok: boolean, message: string) { console.log(`${ok ? "✅" : "❌"} ${message}`); if (!ok) failed++ }
@@ -19,6 +22,8 @@ mkdirSync(join(root, "src")); writeFileSync(join(root, "src", "a.ts"), "x")
 assert(tgrepOptionsFrom(root, '{"tools":{"tgrep":true}}').enabled === true, "explicit tools.tgrep enables integration")
 assert(tgrepOptionsFrom(root, '{"tools":{"tgrep":false}}').enabled === false, "false disables integration")
 assert(tgrepOptionsFrom(root, '{/* c */"tools":{ "tgrep": { "enabled": true, }, }, } // tail').enabled === true, "inline comments, block comments and trailing commas parse")
+assert(tgrepOptionsFrom(root, '{"tools":{"tgrep":{"enabled":true,"requestLog":true}}}').requestLog === true, "request logging is opt-in")
+assert(throws(() => parseTgrepOptions(root, { enabled: true, requestLog: "yes" })), "rejects non-boolean request logging")
 assert(stripJsonc('{"url":"http://x/*ok*/"}') === '{"url":"http://x/*ok*/"}', "comment-like content inside strings survives")
 const options = parseTgrepOptions(root, { enabled: true, indexPath: ".cache/tgrep", maxFileSize: "64M", exclude: ["vendor"], noRequireGit: true })
 assert(tgrepIndexArgs(options).join(" ") === "--index-path .cache/tgrep --max-filesize 64M --exclude vendor --no-require-git", "stable index arguments (real tgrep flag names)")
@@ -26,23 +31,53 @@ assert(throws(() => parseTgrepOptions(root, { enabled: true, maxFileSize: "64MiB
 assert(tgrepPolicyFingerprint({ ...options, exclude: ["vendor", "build"] }) === tgrepPolicyFingerprint({ ...options, exclude: ["build", "vendor"] }), "policy fingerprint normalizes exclude order")
 assert(throws(() => parseTgrepOptions(root, { enabled: true, indexPath: "../outside" })), "rejects escaping index path")
 assert(throws(() => parseTgrepOptions(root, { enabled: true, exclude: [""] })), "rejects empty exclusion")
-const args = buildTgrepSearchArgs(root, { pattern: 'a "quoted" -- value', path: "src", flags: ["-F"], noIndex: true })
+const args = buildTgrepSearchArgs(root, { pattern: 'a "quoted" -- value', path: "src", literal: true, noIndex: true })
 assert(args[0] === "--no-index" && args.includes("--") && args.includes('a "quoted" -- value'), "pattern remains a single argv argument")
 const globArgs = buildTgrepSearchArgs(root, { pattern: "x", glob: ["*.ts", "src/**"] })
 assert(globArgs.filter((arg) => arg === "-g").length === 2 && globArgs.includes("*.ts") && globArgs.includes("src/**") && globArgs.indexOf("-g", 0) < globArgs.indexOf("--"), "glob filters travel as -g value pairs before --")
 assert(throws(() => buildTgrepSearchArgs(root, { pattern: "x", glob: ["-evil"] })), "rejects glob that looks like a flag")
-assert(throws(() => buildTgrepSearchArgs(root, { pattern: "x", flags: ["-g"] })), "rejects valueless -g flag")
+const optionArgs = buildTgrepSearchArgs(root, { pattern: "x", ignoreCase: true, literal: true })
+assert(optionArgs.includes("--ignore-case") && optionArgs.includes("--fixed-strings"), "explicit boolean options map to the supported CLI flags")
+const policySearchArgs = buildTgrepSearchArgs(root, { pattern: "x" }, options)
+assert(policySearchArgs.join(" ").includes("--index-path .cache/tgrep --max-filesize 64M --no-require-git"), "indexed searches carry the configured corpus policy without index-only excludes")
+assert(tgrepLocation("C:\\repo\\sample.ts:12:const time = \"12:34:56\"") === "C:\\repo\\sample.ts:12", "locations preserve Windows paths when content contains colon-number-colon")
+const omittedMode = validateTgrepMode(undefined)
+assert(omittedMode.ok && omittedMode.mode === "summary", "omitted mode returns file counts")
+const summaryMode = validateTgrepMode("summary")
+assert(summaryMode.ok && summaryMode.mode === "summary", "explicit summary mode returns file counts")
+const filesWithMatchesMode = validateTgrepMode("files_with_matches")
+assert(filesWithMatchesMode.ok && filesWithMatchesMode.mode === "summary", "files_with_matches explicitly aliases file-count summary")
+assert(validateTgrepMode("locations").ok && validateTgrepMode("content").ok, "canonical detail modes are accepted")
+const invalidMode = validateTgrepMode("files")
+assert(!invalidMode.ok && invalidMode.error.includes("`summary`, `locations`, or `content`") && invalidMode.error.includes("omit mode"), "unknown modes return actionable invalid-request errors")
+assert(!validateTgrepMode(42).ok, "non-string mode values are invalid")
+const logRoot = mkdtempSync(join(tmpdir(), "tgrep-log-"))
+await logTgrepRequest(logRoot, { enabled: true, requestLog: true }, { pattern: "secret-looking-pattern", path: "src", literal: true }, "summary", { backend: "fallback", matchedFiles: 2, matchedLines: 3 })
+const requestLog = readFileSync(join(logRoot, ".ocp", "logs", "tgrep.jsonl"), "utf8")
+assert(requestLog.includes('"matchedLines":3') && !requestLog.includes("matched content"), "request log records totals without matched content")
+rmSync(logRoot, { recursive: true, force: true })
 
-// ─── Schema-shape normalization (LLM middleboxes occasionally send bare
-// strings instead of arrays; the execute boundary must not crash). ───
-const stringFlagArgs = buildTgrepSearchArgs(root, { pattern: "x", flags: "--ignore-case" as unknown as string[] })
-assert(stringFlagArgs.includes("--ignore-case"), "bare-string flags is coerced to a single-element array")
+// ─── Schema-shape normalization for glob payloads. ───
 const stringGlobArgs = buildTgrepSearchArgs(root, { pattern: "x", glob: "!node_modules/**" as unknown as string[] })
 assert(stringGlobArgs.includes("!node_modules/**"), "bare-string glob is coerced to a single-element array")
-const nullFlagArgs = buildTgrepSearchArgs(root, { pattern: "x", flags: null as unknown as string[] })
-assert(!nullFlagArgs.some((arg) => arg.startsWith("-i")) || nullFlagArgs.includes("-i"), "null flags does not throw (treated as no flags)")
 const undefinedArgs = buildTgrepSearchArgs(root, { pattern: "x" })
-assert(!undefinedArgs.includes("-g") && undefinedArgs[undefinedArgs.length - 1] !== "--", "undefined flags/glob yields clean argv")
+assert(!undefinedArgs.includes("-g") && undefinedArgs[undefinedArgs.length - 1] !== "--", "undefined glob/options yield clean argv")
+
+// ─── Probe summaries keep broad searches compact. ───
+const countRoot = mkdtempSync(join(tmpdir(), "tgrep-count-"))
+writeFileSync(join(countRoot, "a.ts"), "needle\nnot a match\nneedle\n", "utf8")
+writeFileSync(join(countRoot, "b.ts"), "not a match\nneedle\n", "utf8")
+const summary = summarizeTgrepSearch(countRoot, { pattern: "needle", path: countRoot, noIndex: true }, "server")
+assert(summary.matchedFiles === 2 && summary.matchedLines === 3, "count-first summary reports complete file and line totals")
+assert(summary.counts.includes(`${join(countRoot, "a.ts")}:2`) && summary.counts.includes(`${join(countRoot, "b.ts")}:1`), "probe summary returns path:count entries")
+const singleFileSummary = summarizeTgrepSearch(countRoot, { pattern: "needle", path: join(countRoot, "a.ts"), noIndex: true }, "server")
+assert(singleFileSummary.matchedFiles === 1 && singleFileSummary.matchedLines === 2, "count-first summary retains filename metadata for a single-file path")
+const detailRoot = mkdtempSync(join(tmpdir(), "tgrep-detail-"))
+writeFileSync(join(detailRoot, "all.ts"), "needle\n".repeat(101), "utf8")
+const detail = searchTgrep(detailRoot, { pattern: "needle", path: detailRoot, noIndex: true }, "server", undefined, ["--with-filename", "--line-number"])
+assert(detail.status === "matches" && detail.stdout.split(/\r?\n/).filter(Boolean).length === 101, "detail searches return all matches without OCP-only caps")
+rmSync(detailRoot, { recursive: true, force: true })
+rmSync(countRoot, { recursive: true, force: true })
 // Full tgrep/rg/shell compatibility — relative paths anchor to
 // process.cwd() (matches shell/tgrep/rg convention; `.` means "where
 // I am", not "where the project root is"). Absolute paths pass through.
@@ -96,7 +131,6 @@ const cliOnPath = spawnSync("tgrep", ["--version"], { encoding: "utf8", timeout:
 const switchOn = loadTgrepOptions(root).enabled
 const hooks = await TgrepPlugin({ directory: root }) as { tool?: { tgrep_search?: unknown } }
 assert(!!hooks?.tool?.tgrep_search === (switchOn && cliOnPath), "tool registration gates on switch AND CLI presence")
-
 // ─── Parser: tgrep 1.0.5 status emits `Watcher:` (not `Server:`) ───
 // Before this fix the parser only looked for `Server:`, missed the
 // real field name, and the sidebar falsely reported NO WATCHER even

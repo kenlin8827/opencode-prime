@@ -43,7 +43,7 @@
         "rtk": true,
         // 可选外部全文检索缓存（microsoft/tgrep），缺失时由安装器自动拉取预编译包。
         // 它不是 MCP、LSP 或代码图谱；.tgrep/ 不可提交。
-        "tgrep": true,
+         "tgrep": { "enabled": true, "requestLog": false },
        // OpenChamber 拆分为三个独立面，各自一个开关：
         // 网页版 CLI（缺失时自动安装 @openchamber/web；提供 `ocp web`，需 Node.js 22+）
         // 默认关闭：启用后会安装全局包。
@@ -125,6 +125,14 @@ watcher 负责日常增量更新。将 `tools.tgrep` 设为 `false` 可完全退
 或不同 tgrep 版本下构建的，OCP 会将其报告为 `stale`：索引检索回退到 full scan，直到
 `/project index` 重建完成，结果因此不会违反已配置的策略。`tgrep_search` 工具除
 `-i`/`-F` 标志外还接受 gitignore 风格的 `glob` 过滤器。
+
+### 开发请求日志
+
+如需临时查看开发请求，请在 `~/.config/opencode/options.jsonc` 中将
+`tools.tgrep.requestLog` 设为 `true`。OCP 会在工具 schema 校验后向
+`<project>/.ocp/logs/tgrep.jsonl` 写入 JSONL 记录。记录包含规范化请求字段、
+选定模式、后端与结果总数，绝不包含匹配内容。默认值是 `false`，且**生产环境
+必须保持禁用**，因为它会记录请求的模式。
 
 ### 验证与基准测试（显式启用）
 

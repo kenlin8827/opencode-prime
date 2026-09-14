@@ -45,11 +45,12 @@ try {
   writeFileSync(join(root, "src", "sample.txt"), "just-written literal\n", "utf8")
   const current = run(["--no-index", "-F", "--", "just-written literal", "."])
   assert(current.status === 0 && current.stdout.includes("sample.txt"), "no-index search sees just-written text")
-  // OCP always passes these policy arguments when tools.tgrep is configured
-  // with policy fields; the real CLI must accept them on index and status.
+  // OCP carries this search-safe policy subset on every indexed search;
+  // --exclude remains restricted to index/serve commands.
   const policyArgs = ["--index-path", ".tgrep-policy", "--max-filesize", "1M", "--exclude", "vendor", "--no-require-git"]
   assert(run(["index", ".", ...policyArgs]).status === 0, "tgrep index accepts OCP policy arguments")
   assert(run(["status", ".", "--index-path", ".tgrep-policy", "--max-filesize", "1M", "--no-require-git"]).status === 0, "tgrep status accepts OCP policy arguments (minus --exclude, which status rejects)")
+  assert(run(["--index-path", ".tgrep-policy", "--max-filesize", "1M", "--no-require-git", "-F", "--", "just-written literal", "."]).status === 0, "tgrep search accepts OCP's search-safe policy arguments")
 } finally {
   try { server?.kill() } catch { /* best effort */ }
   rmSync(root, { recursive: true, force: true })

@@ -4,6 +4,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path"
 
 export interface TgrepOptions {
   enabled: boolean
+  requestLog?: boolean
   indexPath?: string
   maxFileSize?: string
   exclude?: string[]
@@ -82,6 +83,10 @@ export function parseTgrepOptions(root: string, value: unknown): TgrepOptions {
   if (raw.enabled !== undefined && typeof raw.enabled !== "boolean") throw new Error("tools.tgrep.enabled must be a boolean")
   const enabled = raw.enabled === true
   const result: TgrepOptions = { enabled }
+  if (raw.requestLog !== undefined) {
+    if (typeof raw.requestLog !== "boolean") throw new Error("tools.tgrep.requestLog must be a boolean")
+    result.requestLog = raw.requestLog
+  }
   if (raw.indexPath !== undefined) {
     if (typeof raw.indexPath !== "string" || !raw.indexPath.trim()) throw new Error("tools.tgrep.indexPath must be a non-empty relative path")
     const absolute = resolve(root, raw.indexPath)

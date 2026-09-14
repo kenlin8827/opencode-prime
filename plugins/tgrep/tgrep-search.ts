@@ -1,23 +1,18 @@
 import { spawnSync } from "node:child_process"
 import { existsSync, realpathSync } from "node:fs"
 import { isAbsolute, resolve } from "node:path"
+import type { TgrepOptions } from "./tgrep-config"
 import type { TgrepReadiness } from "./tgrep-service"
 
-export interface TgrepSearchInput { pattern: string; path?: string; glob?: string[]; flags?: string[]; noIndex?: boolean }
+export interface TgrepSearchInput { pattern: string; path?: string; glob?: string[]; ignoreCase?: boolean; literal?: boolean; noIndex?: boolean; mode?: "locations" | "content" }
 export type TgrepSearchStatus = "matches" | "no-matches" | "error"
 export interface TgrepSearchResult { backend: "tgrep" | "fallback"; code: number; status: TgrepSearchStatus; stdout: string; stderr: string }
-const ALLOWED_FLAGS = new Set(["-i", "--ignore-case", "-F", "--fixed-strings"])
 /** Sync spawns block the plugin host event loop, so every search is bounded;
  * a pathological pattern must never wedge the session. */
 const SEARCH_TIMEOUT_MS = 60_000
+const MAX_SEARCH_OUTPUT_BYTES = 8 * 1024 * 1024
 
-/** Coerce a possibly-mis-shaped flags/glob payload to a string array.
- * The schema declares `array(string)` but some callers (LLM tool-call
- * middleboxes seen in the wild) occasionally send a bare string or a
- * non-array value — we normalize here so `buildTgrepSearchArgs` never
- * dereferences `.some` on a non-array. Unknown or empty values drop
- * silently rather than throwing — the caller is the LLM, which retries
- * with the correct shape; an opaque error buys nothing. */
+/** Coerce a possibly-mis-shaped glob payload to a string array. */
 function toStringArray(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string")
   if (typeof value === "string") return value.trim() ? [value] : []
@@ -37,10 +32,8 @@ export function resolveSearchPath(root: string, path = "."): string {
   return existsSync(resolved) ? realpathSync(resolved) : resolved
 }
 
-export function buildTgrepSearchArgs(root: string, input: TgrepSearchInput): string[] {
+export function buildTgrepSearchArgs(root: string, input: TgrepSearchInput, options?: TgrepOptions): string[] {
   if (!input.pattern) throw new Error("search pattern must not be empty")
-  const flags = toStringArray(input.flags)
-  if (flags.some((flag) => !ALLOWED_FLAGS.has(flag))) throw new Error("unsupported tgrep search flag; use current/full scan fallback")
   // Globs are value-taking flags: they must travel as explicit "-g <value>"
   // pairs, never as a bare flag that would swallow the next argv.
   const globs = toStringArray(input.glob)
@@ -50,8 +43,12 @@ export function buildTgrepSearchArgs(root: string, input: TgrepSearchInput): str
   const target = resolveSearchPath(root, input.path)
   return [
     ...(input.noIndex ? ["--no-index"] : []),
-    ...flags,
+    ...(input.ignoreCase ? ["--ignore-case"] : []),
+    ...(input.literal ? ["--fixed-strings"] : []),
     ...globs.flatMap((glob) => ["-g", glob]),
+    ...(options?.indexPath ? ["--index-path", options.indexPath] : []),
+    ...(options?.maxFileSize ? ["--max-filesize", options.maxFileSize] : []),
+    ...(options?.noRequireGit ? ["--no-require-git"] : []),
     "--",
     input.pattern,
     target,
@@ -70,22 +67,41 @@ function resultFrom(backend: "tgrep" | "fallback", result: ReturnType<typeof spa
   }
 }
 
-function fallbackRg(root: string, input: TgrepSearchInput): TgrepSearchResult {
-  // rg understands every remaining argument, "--" included, so the argv
-  // stream is forwarded verbatim and dash-leading patterns stay protected.
-  const args = buildTgrepSearchArgs(root, { ...input, noIndex: false })
-  return resultFrom("fallback", spawnSync("rg", args, { cwd: root, encoding: "utf8", windowsHide: true, timeout: SEARCH_TIMEOUT_MS }))
+function runSearch(binary: "tgrep" | "rg", root: string, input: TgrepSearchInput, options: TgrepOptions | undefined, extraArgs: string[] = []): TgrepSearchResult {
+  // rg is the full-scan fallback, but does not share tgrep's corpus-policy
+  // switches. Passing them through would turn a recoverable tgrep failure into
+  // an invalid fallback command.
+  const args = buildTgrepSearchArgs(root, { ...input, noIndex: binary === "rg" ? false : input.noIndex }, binary === "tgrep" ? options : undefined)
+  const separator = args.indexOf("--")
+  args.splice(separator, 0, ...extraArgs)
+  return resultFrom(binary === "tgrep" ? "tgrep" : "fallback", spawnSync(binary, args, { cwd: root, encoding: "utf8", windowsHide: true, timeout: SEARCH_TIMEOUT_MS, maxBuffer: MAX_SEARCH_OUTPUT_BYTES }))
 }
 
-export function searchTgrep(root: string, input: TgrepSearchInput, readiness: TgrepReadiness): TgrepSearchResult {
+function fallbackRg(root: string, input: TgrepSearchInput, extraArgs: string[] = []): TgrepSearchResult {
+  // rg understands every remaining argument, "--" included, so the argv
+  // stream is forwarded verbatim and dash-leading patterns stay protected.
+  return runSearch("rg", root, input, undefined, extraArgs)
+}
+
+export function searchTgrep(root: string, input: TgrepSearchInput, readiness: TgrepReadiness, options?: TgrepOptions, extraArgs: string[] = []): TgrepSearchResult {
   // Trust-the-index path needs the live watcher; anything else (disk-index
   // or no-index) skips the server check entirely.
   if (!input.noIndex && readiness !== "server") {
-    return fallbackRg(root, input)
+    return fallbackRg(root, input, extraArgs)
   }
-  const mapped = resultFrom("tgrep", spawnSync("tgrep", buildTgrepSearchArgs(root, input), { cwd: root, encoding: "utf8", windowsHide: true, timeout: SEARCH_TIMEOUT_MS }))
+  const mapped = runSearch("tgrep", root, input, options, extraArgs)
   // Any tgrep failure degrades to the established full-scan backend: current
   // mode exists for correctness, and a server dying between probe and search
   // must not surface as an error either.
-  return mapped.status === "error" ? fallbackRg(root, input) : mapped
+  return mapped.status === "error" ? fallbackRg(root, input, extraArgs) : mapped
+}
+
+export interface TgrepSearchSummary { backend: TgrepSearchResult["backend"]; counts: string[]; matchedFiles: number; matchedLines: number; complete: true }
+
+export function summarizeTgrepSearch(root: string, input: TgrepSearchInput, readiness: TgrepReadiness, options?: TgrepOptions): TgrepSearchSummary {
+  const result = searchTgrep(root, input, readiness, options, ["-c", "--with-filename"])
+  if (result.status === "error") throw new Error(result.stderr || "tgrep count failed")
+  const counts = result.stdout.split(/\r?\n/).filter(Boolean)
+  const matchedLines = counts.reduce((total, line) => total + Number(line.slice(line.lastIndexOf(":") + 1)), 0)
+  return { backend: result.backend, counts, matchedFiles: counts.length, matchedLines, complete: true }
 }

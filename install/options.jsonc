@@ -17,7 +17,12 @@
     // Optional external full-text index (microsoft/tgrep). Enabled by default:
     // auto-provisions like rtk or uses binary if already on PATH.
     // The tgrep_search tool self-hides until the tgrep CLI is on PATH.
-    "tgrep": true,
+    "tgrep": {
+      "enabled": true,
+      // Development-only request diagnostics at <project>/.ocp/logs/tgrep.jsonl.
+      // Keep false in production: each record includes the requested pattern.
+      "requestLog": false
+    },
     // OpenChamber ships as three independent surfaces, one switch each.
     // Web UI CLI (@openchamber/web) — powers `ocp web`. Needs Node.js 22+;
     // disabled by default because it installs a global package.
