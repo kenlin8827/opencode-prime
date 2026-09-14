@@ -20,15 +20,14 @@ function toStringArray(value: unknown): string[] {
 }
 
 export function resolveSearchPath(root: string, path = "."): string {
-  // Relative paths always resolve against `process.cwd()` — matches
-  // shell/tgrep/rg convention (`.` means "where I am", not "where the
-  // project root is"). Absolute paths pass through untouched. `root`
-  // (OpenCode's project directory) is kept in the signature for
-  // plugin-contract compatibility but intentionally unused here, so
-  // an agent cd'd into a subdir naturally searches the subdir without
-  // having to thread the project root through every call.
-  void root
-  const resolved = isAbsolute(path) ? path : resolve(process.cwd(), path)
+  // Relative paths resolve against `root` (OpenCode's project directory),
+  // matching the platform contract: bash workdir, the glob tool default and
+  // the system prompt's "Working directory" all mean the project dir. The
+  // host process's launch cwd is arbitrary from the agent's perspective
+  // (e.g. %USERPROFILE% when started from a shortcut) — anchoring there made
+  // `.` search the wrong tree whenever opencode wasn't launched from the
+  // project root. Absolute paths pass through untouched.
+  const resolved = isAbsolute(path) ? path : resolve(root, path)
   return existsSync(resolved) ? realpathSync(resolved) : resolved
 }
 

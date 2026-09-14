@@ -33,7 +33,7 @@ return { tool: {
       description: TGREP_TOOL_DESCRIPTION,
       args: {
         pattern: tool.schema.string().describe("Text or regex pattern."),
-        path: tool.schema.string().optional().describe("Path relative to the current working directory. Default: ."),
+        path: tool.schema.string().optional().describe("Path relative to the project directory. Default: ."),
         glob: tool.schema.array(tool.schema.string()).optional().describe("Gitignore-style globs, each applied via -g."),
         ignoreCase: tool.schema.boolean().optional().describe("Case-insensitive search."),
         literal: tool.schema.boolean().optional().describe("Treat pattern as literal text instead of regex."),

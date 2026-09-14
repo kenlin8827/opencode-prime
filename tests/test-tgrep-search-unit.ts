@@ -100,9 +100,13 @@ const detail = searchTgrep(detailRoot, { pattern: "needle", path: detailRoot, no
 assert(detail.status === "matches" && detail.stdout.split(/\r?\n/).filter(Boolean).length === 101, "detail searches return all matches without OCP-only caps")
 rmSync(detailRoot, { recursive: true, force: true })
 rmSync(countRoot, { recursive: true, force: true })
-// Full tgrep/rg/shell compatibility — relative paths anchor to
-// process.cwd() (matches shell/tgrep/rg convention; `.` means "where
-// I am", not "where the project root is"). Absolute paths pass through.
+// Full tgrep/rg/shell compatibility — relative paths anchor to `root`
+// (OpenCode's project directory: bash workdir, glob default and the
+// system prompt's "Working directory" all mean the project dir). The
+// host process's launch cwd is arbitrary from the agent's perspective
+// (e.g. %USERPROFILE% via a shortcut), so cwd-anchoring made `.` search
+// the wrong tree whenever opencode wasn't started from the project root.
+// Absolute paths pass through.
 const absNonexistent = join(tmpdir(), "tgrep-abs-nonexistent-" + Date.now())
 assert(resolveSearchPath(root, absNonexistent) === absNonexistent, "absolute non-existent path returned unchanged")
 const absExisting = join(tmpdir(), "tgrep-abs-existing-" + Date.now() + ".txt")
@@ -112,15 +116,16 @@ try {
 } finally {
   rmSync(absExisting, { force: true })
 }
-const parentTarget = realpathSync(resolve(process.cwd(), ".."))
-assert(resolveSearchPath(root, "..") === parentTarget, "relative `..` resolves to realpath of cwd-parent (matches shell convention)")
+const parentTarget = realpathSync(resolve(root, ".."))
+assert(resolveSearchPath(root, "..") === parentTarget, "relative `..` resolves to realpath of root's parent (project-anchored, not host-cwd)")
 if (process.platform !== "win32") {
-  // Symlink in cwd (relative paths now resolve against cwd, not root).
+  // Symlink inside root pointing outside — relative names resolve against
+  // root, and symlinks are still followed even when the target escapes it.
   const outside = mkdtempSync(join(tmpdir(), "tgrep-outside-"))
-  const escapePath = join(process.cwd(), `.tgrep-test-escape-${Date.now()}`)
+  const escapePath = join(root, `.tgrep-test-escape-${Date.now()}`)
   symlinkSync(outside, escapePath)
   try {
-    assert(resolveSearchPath(root, basename(escapePath)) === realpathSync(outside), "symlinks followed even when target escapes cwd (matches rg)")
+    assert(resolveSearchPath(root, basename(escapePath)) === realpathSync(outside), "symlinks followed even when target escapes root (matches rg)")
   } finally {
     unlinkSync(escapePath)
     rmSync(outside, { recursive: true, force: true })
@@ -129,9 +134,8 @@ if (process.platform !== "win32") {
 if (process.platform === "win32") {
   assert(!throws(() => resolveSearchPath(root, "\\\\localhost\\c$")), "absolute UNC paths accepted (matches tgrep/rg)")
 }
-// Use `path: root` (absolute) instead of relying on cwd-anchored `.`
-// default — the literal pattern appears in this very test file, so
-// searching cwd would yield a false positive.
+// `path: root` (absolute) is explicit here — the literal pattern appears
+// in this very test file, so a repo-rooted search would false-positive.
 const unavailable = searchTgrep(root, { pattern: "definitely-no-result", path: root }, "unavailable")
 assert(unavailable.backend === "fallback", "unready indexed search transparently falls back to rg")
 assert(unavailable.status === "no-matches", "rg exit code 1 maps to no matches")

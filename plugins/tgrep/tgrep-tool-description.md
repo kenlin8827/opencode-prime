@@ -14,7 +14,7 @@ Fast regex/literal search over the repo, ripgrep-compatible.
 Args:
 
 - `pattern` (string, required): regex, or literal with `-F`.
-- `path` (string, default `.`): search root relative to the current working directory.
+- `path` (string, default `.`): search root relative to the project directory (absolute paths also accepted).
 - `glob` (string[]): gitignore-style filters, applied via `-g`.
 - `ignoreCase` (boolean, optional): case-insensitive search.
 - `literal` (boolean, optional): treat `pattern` as literal text instead of regex.
