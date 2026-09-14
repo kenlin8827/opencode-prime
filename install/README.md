@@ -1,4 +1,4 @@
-# install (v0.37.0)
+# install (v0.38.0)
 
 Self-installing OpenCode Prime (OCP) powered by a unified **TypeScript engine** and an **interactive TUI Setup Wizard**.
 
@@ -167,6 +167,10 @@ model picks are now configured inside opencode itself:
 - `llm-router` credentials — set the `LLM_ROUTER_BASE_URL` /
   `LLM_ROUTER_API_KEY` environment variables, or edit the target
   `providers/llm-router.json` preset file directly
+- `omniroute` credentials — set the `OMNIROUTE_BASE_URL` /
+  `OMNIROUTE_API_KEY` environment variables (baseURL
+  `https://orouter.agent.byteswim.cn/v1`), or edit
+  `providers/omniroute.json` directly
 
 Together the slash commands (inside opencode sessions) and the `ocp provider` /
 `ocp profile` CLI commands (outside them) replace the retired helpers.
@@ -243,6 +247,7 @@ flash  (fastest/cheapest)  <=  standard  (general workhorse)  <=  pro  (stronges
 | `router/qoder` | qoder gateway — Ultimate flags / Lite explores | lite / performance / ultimate / ultimate / auto |
 | `router/claude-code` | Claude Code gateway — Fable codes / Sonnet default | claude-haiku-4-5 / claude-sonnet-5 / claude-fable-5 / claude-opus-5 / claude-sonnet-5 |
 | `router/antigravity` | Antigravity gateway — Gemini Flash reasoning steps | gemini-3.7-flash-low / -medium / -high / -high / -high |
+| `router/omniroute-auto` | OmniRoute gateway — auto-routed combos per role | fast / chat / coding / reasoning-pro / vision |
 | `qoder/default` | Qoder subscription via opencode-qoder-bridge (official Qoder Agent SDK; needs `qoder login`) | lite / performance / ultimate / ultimate / auto |
 | `qoder/deepseek` | All-DeepSeek family on Qoder (same bridge) | dfmodel / dfmodel / dmodel / dmodel / qmodel |
 | `qoder/qwen` | All-Qwen family on Qoder (same bridge) | qmodel / qmodel_latest / qmodel_38max / qmodel_38max / qmodel |

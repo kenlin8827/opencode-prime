@@ -78,6 +78,7 @@ A profile is a named preset that maps all model tiers to a specific provider's m
 | `router/claude-code` | Custom Gateway | Self-hosted Claude Code gateway (Anthropic protocol) |
 | `router/codex` | Custom Gateway | Self-hosted codex gateway (Sol/Luna series) |
 | `router/qoder` | Custom Gateway | Self-hosted qoder gateway (Ultimate/Performance/Lite) |
+| `router/omniroute-auto` | Custom Gateway | Self-hosted OmniRoute gateway (`auto/*` combo routing) |
 | `router/llm` | Custom Gateway | Server-side routing baseline |
 
 ### Using profiles
@@ -287,6 +288,8 @@ The `/provider` slash command (a TUI plugin registered via `tui.template.jsonc`)
 ## LLM Router credentials
 
 For the `llm-router` custom provider, set `baseURL` / `apiKey` via the environment variables below (recommended), via the `/provider` wizard (interactive), or by editing `~/.config/opencode/providers/llm-router.json` directly (this is the preset definition file opencode loads — `opencode.jsonc` no longer carries an inline `llm-router` block).
+
+The `omniroute` custom provider (profile `router/omniroute-auto`) follows the same pattern: set `OMNIROUTE_BASE_URL` (`https://orouter.agent.byteswim.cn/v1`) and `OMNIROUTE_API_KEY`, or edit `~/.config/opencode/providers/omniroute.json`.
 
 > The `/provider` wizard stores literal API keys in `~/.local/share/opencode/auth.json` — the same store the official `/connect` command writes, so both stay in sync.
 

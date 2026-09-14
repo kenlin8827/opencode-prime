@@ -1,0 +1,10 @@
+{
+  "description": "omniroute (self-hosted OmniRoute gateway, auto-routed combos) — auto/fast explores on flash (ship-fast weights), auto/chat carries the high-traffic standard tier (balanced default), auto/coding codes on pro (quality-first weights), auto/reasoning:pro judges on max (reasoning-only + premium pool), auto/vision handles vision (vision-capable pool). Requires OMNIROUTE_BASE_URL + OMNIROUTE_API_KEY environment variables.",
+  "tiers": {
+    "flash": "omniroute/fast",
+    "standard": "omniroute/chat",
+    "pro": "omniroute/coding",
+    "max": "omniroute/reasoning-pro",
+    "vision": "omniroute/vision"
+  }
+}

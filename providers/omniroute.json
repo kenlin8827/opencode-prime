@@ -1,0 +1,51 @@
+{
+  "omniroute": {
+    "npm": "@ai-sdk/openai-compatible",
+    "name": "omniroute",
+    "options": {
+      "baseURL": "{env:OMNIROUTE_BASE_URL}",
+      "apiKey": "{env:OMNIROUTE_API_KEY}"
+    },
+    "models": {
+      "auto":             { "name": "Auto (OmniRoute)",      "id": "auto",                  "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "best-coding":      { "name": "Auto Best Coding",      "id": "auto/best-coding",      "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "best-reasoning":   { "name": "Auto Best Reasoning",   "id": "auto/best-reasoning",   "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "best-fast":        { "name": "Auto Best Fast",        "id": "auto/best-fast",        "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "best-vision":      { "name": "Auto Best Vision",      "id": "auto/best-vision",      "attachment": true, "reasoning": true, "modalities": { "input": ["text", "image"], "output": ["text"] } },
+      "best-chat":        { "name": "Auto Best Chat",        "id": "auto/best-chat",        "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "best-coding-fast": { "name": "Auto Best Coding (Fast)", "id": "auto/best-coding-fast", "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "best-free":        { "name": "Auto Best Free",        "id": "auto/best-free",        "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "best-chaos":       { "name": "Auto Best Chaos",       "id": "auto/best-chaos",       "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "pro-coding":       { "name": "Auto Pro Coding",       "id": "auto/pro-coding",       "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "pro-reasoning":    { "name": "Auto Pro Reasoning",    "id": "auto/pro-reasoning",    "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "pro-fast":         { "name": "Auto Pro Fast",         "id": "auto/pro-fast",         "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "pro-vision":       { "name": "Auto Pro Vision",       "id": "auto/pro-vision",       "attachment": true, "reasoning": true, "modalities": { "input": ["text", "image"], "output": ["text"] } },
+      "pro-chat":         { "name": "Auto Pro Chat",         "id": "auto/pro-chat",         "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "coding":           { "name": "Auto Coding",           "id": "auto/coding",           "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "coding-fast":      { "name": "Auto Coding (Fast)",    "id": "auto/coding:fast",      "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "coding-cheap":     { "name": "Auto Coding (Cheap)",   "id": "auto/coding:cheap",     "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "coding-free":      { "name": "Auto Coding (Free)",    "id": "auto/coding:free",      "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "coding-pro":       { "name": "Auto Coding (Pro)",     "id": "auto/coding:pro",       "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "coding-reliable":  { "name": "Auto Coding (Reliable)", "id": "auto/coding:reliable", "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "reasoning":        { "name": "Auto Reasoning",        "id": "auto/reasoning",        "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "reasoning-pro":    { "name": "Auto Reasoning (Pro)",  "id": "auto/reasoning:pro",    "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "vision":           { "name": "Auto Vision",           "id": "auto/vision",           "attachment": true, "reasoning": true, "modalities": { "input": ["text", "image"], "output": ["text"] } },
+      "multimodal":       { "name": "Auto Multimodal",       "id": "auto/multimodal",       "attachment": true, "reasoning": true, "modalities": { "input": ["text", "image"], "output": ["text"] } },
+      "fast":             { "name": "Auto Fast",             "id": "auto/fast",             "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "chat":             { "name": "Auto Chat",             "id": "auto/chat",             "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "smart":            { "name": "Auto Smart",            "id": "auto/smart",            "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "cheap":            { "name": "Auto Cheap",            "id": "auto/cheap",            "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "offline":          { "name": "Auto Offline",          "id": "auto/offline",          "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "chaos":            { "name": "Auto Chaos",            "id": "auto/chaos",            "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "claude-opus":      { "name": "Auto Claude Opus",      "id": "auto/claude-opus",      "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "claude-sonnet":    { "name": "Auto Claude Sonnet",    "id": "auto/claude-sonnet",    "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "glm":              { "name": "Auto GLM",              "id": "auto/glm",              "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "minimax":          { "name": "Auto MiniMax",          "id": "auto/minimax",          "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "mimo":             { "name": "Auto MiMo",             "id": "auto/mimo",             "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "zai":              { "name": "Auto Z.AI",             "id": "auto/zai",              "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "gemma":            { "name": "Auto Gemma",            "id": "auto/gemma",            "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "llama":            { "name": "Auto Llama",            "id": "auto/llama",            "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } },
+      "gemini":           { "name": "Auto Gemini",           "id": "auto/gemini",           "reasoning": true, "modalities": { "input": ["text"], "output": ["text"] } }
+    }
+  }
+}

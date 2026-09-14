@@ -78,6 +78,7 @@
 | `router/claude-code` | 自建网关 | 自建 Claude Code 网关（Anthropic 协议） |
 | `router/codex` | 自建网关 | 自建 codex 网关（Sol/Luna 系列） |
 | `router/qoder` | 自建网关 | 自建 qoder 网关（Ultimate/Performance/Lite） |
+| `router/omniroute-auto` | 自建网关 | 自建 OmniRoute 网关（`auto/*` 组合路由） |
 | `router/llm` | 自建网关 | 服务端路由基线 |
 
 ### 使用预设
@@ -285,6 +286,8 @@
 ## LLM Router 凭证
 
 对于 `llm-router` 自定义服务商，通过下面的环境变量设置 `baseURL` / `apiKey`（推荐）、通过 `/provider` 向导（交互式），或直接编辑 `~/.config/opencode/providers/llm-router.json`（这是 opencode 加载的预设定义文件，`opencode.jsonc` 不再内联 `llm-router` 块）。
+
+`omniroute` 自定义服务商（profile `router/omniroute-auto`）模式相同：设置 `OMNIROUTE_BASE_URL`（`https://orouter.agent.byteswim.cn/v1`）和 `OMNIROUTE_API_KEY`，或编辑 `~/.config/opencode/providers/omniroute.json`。
 
 > `/provider` 向导把明文 API 密钥存入 `~/.local/share/opencode/auth.json` — 与官方 `/connect` 命令同一存储，两者保持一致。
 
