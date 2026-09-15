@@ -53,8 +53,26 @@ fi
 
 log()   { echo -e "${GREEN}[OCP]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[OCP]${NC} $1"; }
-err()   { echo -e "${RED}[OCP ERROR]${NC} $1" >&2; }
-info()  { echo -e "${CYAN}[OCP]${NC} $1"; }
+err()  { echo -e "${RED}[OCP ERROR]${NC} $1" >&2; }
+info() { echo -e "${CYAN}[OCP]${NC} $1"; }
+
+# ---------------------------------------------------------------------------
+# Local checkout detection: if an in-repo installer is available next to this
+# script or in the current directory, run it directly instead of downloading.
+# Requires OCP-specific markers (not just any project with install/install.sh)
+# and shows which version is being installed. An explicit -v/--version always
+# takes the download path (it names a release).
+# ---------------------------------------------------------------------------
+if [ -z "$VERSION" ]; then
+    _SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || _SELF_DIR=""
+    for _d in "$_SELF_DIR" "$PWD"; do
+        if [ -n "$_d" ] && [ -f "$_d/install/install.sh" ] && [ -f "$_d/install/version.json" ] && [ -f "$_d/install/src/index.ts" ]; then
+            log "Local OCP checkout detected (v$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_d/install/version.json" | head -1)); running in-repo installer directly..."
+            exec bash "$_d/install/install.sh" "${INSTALLER_ARGS[@]}"
+        fi
+    done
+    unset _SELF_DIR _d
+fi
 
 # ---------------------------------------------------------------------------
 # Detect platform

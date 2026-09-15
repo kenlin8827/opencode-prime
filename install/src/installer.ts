@@ -158,17 +158,47 @@ export function pruneOldBackups(targetDir: string, keep: number = getMaxBackups(
   return pruned;
 }
 
+/**
+ * Providers seeding ledger: rel paths of every providers/*.json this machine
+ * has ever been delivered (or has adopted from the user). Installer state in
+ * .ocp/ — NOT user config — so `ocp uninstall` wipes it and the next install
+ * reseeds like a fresh machine.
+ */
+function getProviderLedgerPath(targetDir: string): string {
+  return path.join(targetDir, OCP_STATE_DIR, 'providers.seeded.txt');
+}
+
+function readProviderLedger(targetDir: string): Set<string> {
+  try {
+    return new Set(
+      fs
+        .readFileSync(getProviderLedgerPath(targetDir), 'utf8')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+    );
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function writeProviderLedger(targetDir: string, seen: Set<string>): void {
+  const stateDir = path.join(targetDir, OCP_STATE_DIR);
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(getProviderLedgerPath(targetDir), [...seen].sort().join('\n') + '\n', 'utf8');
+}
+
 export function copyRepoFiles(repoDir: string, targetDir: string, files: string[]): number {
   let count = 0;
-  // Shipped preset files in `providers/` are seeded on first install only.
-  // After that, the user owns `~/.config/opencode/providers/`: opencode loads
+  // Preset files in `providers/` are user-owned once seen: opencode loads
   // every JSON there as an available preset (see `/provider` → "Add preset"),
-  // and the user can delete / edit / re-add presets as they see fit. We use
-  // the presence of `installed.version` (written at the end of a successful
-  // install) as the "first install already happened" signal — checking the
-  // preset file itself is unreliable because the user may have just deleted
-  // it and we must not undo that.
-  const userOwnsProviders = fs.existsSync(path.join(targetDir, 'installed.version'));
+  // and users delete / edit presets freely. Per-preset rule:
+  //   already in the ledger      → never re-seed (deletions stick)
+  //   on disk (user-made/edited) → adopt into the ledger, never overwrite
+  //   neither                    → seed it (first install AND new presets in
+  //                                upgrades — no version reasoning needed)
+  const seen = readProviderLedger(targetDir);
+  const seenNext = new Set(seen);
   for (const relFile of files) {
     // The config template ships in the package but never lands in the target:
     // mergeConfig renders it (plus options + preserved fields) into the
@@ -182,12 +212,14 @@ export function copyRepoFiles(repoDir: string, targetDir: string, files: string[
     // would lose them on every reinstall.
     if (relFile === 'tui.template.jsonc') continue;
 
-    if (
-      userOwnsProviders &&
-      relFile.startsWith('providers/') &&
-      relFile.endsWith('.json')
-    ) {
-      continue;
+    const isProviderPreset =
+      relFile.startsWith('providers/') && relFile.endsWith('.json');
+    if (isProviderPreset) {
+      if (seen.has(relFile)) continue;
+      if (fs.existsSync(path.join(targetDir, relFile))) {
+        seenNext.add(relFile);
+        continue;
+      }
     }
 
     const src = path.join(repoDir, relFile);
@@ -200,9 +232,11 @@ export function copyRepoFiles(repoDir: string, targetDir: string, files: string[
 
     if (fs.existsSync(src)) {
       fs.copyFileSync(src, dest);
+      if (isProviderPreset) seenNext.add(relFile);
       count++;
     }
   }
+  writeProviderLedger(targetDir, seenNext);
   return count;
 }
 

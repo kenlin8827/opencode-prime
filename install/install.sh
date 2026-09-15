@@ -55,6 +55,51 @@ if [ "$IS_INFO_CMD" = false ] && ! command -v opencode >/dev/null 2>&1; then
     fi
 fi
 
+# 0.5 Check for Bun runtime and offer automated install if missing — the
+# interactive TUI (ocp dashboard / wizard) can only be hosted by Bun.
+if [ "$IS_INFO_CMD" = false ] && ! command -v bun >/dev/null 2>&1; then
+    echo ""
+    echo "============================================================"
+    echo "  ⚠️  Bun runtime was not found in your PATH"
+    echo "============================================================"
+    echo ""
+    echo "Bun hosts the interactive TUI (ocp dashboard / wizard). Everything else also works with Node.js."
+
+    INSTALL_BUN=false
+    for arg in "$@"; do
+        if [ "$arg" = "-Yes" ] || [ "$arg" = "--yes" ] || [ "$arg" = "-y" ]; then
+            INSTALL_BUN=true
+        fi
+    done
+
+    if [ "$INSTALL_BUN" = false ] && [ -t 0 ]; then
+        read -r -p "Would you like to install Bun automatically now? [Y/n] " choice
+        case "$choice" in
+            [nN][oO]|[nN])
+                INSTALL_BUN=false
+                ;;
+            *)
+                INSTALL_BUN=true
+                ;;
+        esac
+    fi
+
+    if [ "$INSTALL_BUN" = true ]; then
+        echo -e "\n🚀 Installing Bun via official installer..."
+        # Capture first, then pipe: `curl | bash` would report bash's status,
+        # so a dead curl would feed bash empty stdin and "succeed". Honor a
+        # custom BUN_INSTALL like bun's own installer does.
+        if BUN_INSTALL_SCRIPT="$(curl -fsSL https://bun.sh/install)" && printf '%s' "$BUN_INSTALL_SCRIPT" | bash; then
+            export PATH="${BUN_INSTALL:-$HOME/.bun}/bin:$PATH"
+            echo -e "✔ Bun installed successfully!\n"
+        else
+            echo "⚠️ Automatic installation encountered an issue. Install Bun manually: curl -fsSL https://bun.sh/install | bash"
+        fi
+    else
+        echo -e "ℹ️ Skipping Bun installation. The TUI dashboard/wizard will stay unavailable; run this installer again to install it later.\n"
+    fi
+fi
+
 # 1. In a git/dev checkout, prefer source whenever TypeScript/plugin files are
 # newer than the bundled engine; otherwise a stale ignored install/dist/index.js
 # can hide fixes. Release installs still use the bundle for instant startup.

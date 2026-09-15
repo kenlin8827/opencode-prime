@@ -24,6 +24,25 @@ function Find-WorkingBun {
     return $null
 }
 
+function Invoke-RemoteInstaller {
+    param([string]$Url)
+    # PS 5.1 on old .NET may default below TLS 1.2; bun.sh/opencode.ai reject it.
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    # ScriptBlock child scope on purpose: these vendors' scripts contain
+    # top-level `return` and set `$ErrorActionPreference` — iex in our scope
+    # would abort the OCP installer and leak the preference change.
+    & ([scriptblock]::Create((Invoke-RestMethod $Url)))
+}
+
+function Update-SessionPath {
+    # Machine first (standard precedence), drop empties — a leading '' in PATH
+    # resolves to the current directory.
+    $parts = @([System.Environment]::GetEnvironmentVariable('Path', 'Machine'),
+               [System.Environment]::GetEnvironmentVariable('Path', 'User')) |
+        Where-Object { $_ }
+    $env:Path = $parts -join ';'
+}
+
 $BunExe = Find-WorkingBun
 $isInfoCmd = $args -contains "status" -or $args -contains "version" -or $args -contains "--help" -or $args -contains "-h" -or $args -contains "help" -or $args -contains "unregister" -or $args -contains "session" -or $args -contains "auth" -or $args -contains "desktop" -or $args -contains "code" -or $args -contains "project" -or $args -contains "provider"
 
@@ -50,8 +69,8 @@ if (-not $isInfoCmd -and -not (Get-Command opencode -ErrorAction SilentlyContinu
     if ($installOpencode) {
         Write-Host "`n🚀 Installing OpenCode CLI via official installer..." -ForegroundColor Cyan
         try {
-            Invoke-Expression (Invoke-RestMethod "https://opencode.ai/install.ps1")
-            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "User") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+            Invoke-RemoteInstaller "https://opencode.ai/install.ps1"
+            Update-SessionPath
             Write-Host "✔ OpenCode CLI installed successfully!`n" -ForegroundColor Green
         }
         catch {
@@ -60,6 +79,50 @@ if (-not $isInfoCmd -and -not (Get-Command opencode -ErrorAction SilentlyContinu
     }
     else {
         Write-Host "ℹ️ Skipping OpenCode CLI installation. You can install it later from https://opencode.ai`n" -ForegroundColor DarkGray
+    }
+}
+
+# 0.5 Check for Bun runtime and offer automated install if missing — the
+# interactive TUI (ocp dashboard / wizard) can only be hosted by Bun.
+if (-not $isInfoCmd -and -not $BunExe) {
+    Write-Host ""
+    Write-Host "============================================================" -ForegroundColor Yellow
+    Write-Host "  ⚠️  Bun runtime was not found in your PATH"                 -ForegroundColor Yellow
+    Write-Host "============================================================" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Bun hosts the interactive TUI (ocp dashboard / wizard). Everything else also works with Node.js."
+
+    $installBun = $false
+    if ($args -contains "-Yes" -or $args -contains "--yes" -or $args -contains "-y") {
+        $installBun = $true
+    }
+    elseif ([Environment]::UserInteractive) {
+        $choice = Read-Host "Would you like to install Bun automatically now? [Y/n]"
+        if ([string]::IsNullOrWhiteSpace($choice) -or $choice.Trim().ToLower() -eq 'y' -or $choice.Trim().ToLower() -eq 'yes') {
+            $installBun = $true
+        }
+    }
+
+    if ($installBun) {
+        Write-Host "`n🚀 Installing Bun via official installer..." -ForegroundColor Cyan
+        try {
+            Invoke-RemoteInstaller "https://bun.sh/install.ps1"
+            Update-SessionPath
+            $BunExe = Find-WorkingBun
+        }
+        catch {
+            $BunExe = $null
+            Write-Host "⚠️ Automatic installation encountered an issue: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+        if ($BunExe) {
+            Write-Host "✔ Bun installed successfully!`n" -ForegroundColor Green
+        }
+        else {
+            Write-Host "⚠️ Automatic installation encountered an issue. Install Bun manually: powershell -c `"irm bun.sh/install.ps1 | iex`"" -ForegroundColor Yellow
+        }
+    }
+    else {
+        Write-Host "ℹ️ Skipping Bun installation. The TUI dashboard/wizard will stay unavailable; run this installer again to install it later.`n" -ForegroundColor DarkGray
     }
 }
 

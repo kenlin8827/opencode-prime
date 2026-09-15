@@ -673,6 +673,54 @@ if (fs.existsSync(llmRouterPresetPath)) {
 }
 console.log('✓ User-deleted preset stays deleted after upgrade');
 
+// 5d. Provider seeding ledger (.ocp/providers.seeded.txt): seen-once, then
+// user-owned — no version/manifest reasoning anywhere.
+//   (a) a preset new to this machine (absent on disk, not in ledger) is seeded
+//   (b) a same-named user file is adopted into the ledger, never clobbered
+//   (c) a seen preset deleted by the user stays deleted on any later install
+console.log('\nTest 5d: Provider Seeding Ledger');
+const newPresetRel = 'providers/test-new-preset.json';
+const newPresetSrc = path.join(repoDir, newPresetRel);
+const newPresetDst = path.join(testTargetDir, newPresetRel);
+const ledgerPath = path.join(testTargetDir, '.ocp', 'providers.seeded.txt');
+const reInstall = () => executeInstall(repoDir, {
+  action: 'install',
+  target: testTargetDir,
+  force: true,
+  noBackup: true,
+  yes: true,
+  isInteractive: false,
+});
+fs.writeFileSync(newPresetSrc, '{"name":"test-new-preset"}\n', 'utf8');
+try {
+  fs.rmSync(newPresetDst, { force: true });
+  if (!reInstall().success) throw new Error('Ledger seed install failed');
+  if (!fs.existsSync(newPresetDst)) {
+    throw new Error('Preset new to this machine was not seeded');
+  }
+
+  // (b) user content under the same name is adopted, not overwritten.
+  fs.writeFileSync(newPresetDst, 'user-owned\n', 'utf8');
+  if (!reInstall().success) throw new Error('No-clobber install failed');
+  if (fs.readFileSync(newPresetDst, 'utf8') !== 'user-owned\n') {
+    throw new Error('Seeding overwrote a same-named user file in providers/');
+  }
+
+  // (c) after adoption the ledger owns its fate: deletion sticks.
+  fs.rmSync(newPresetDst, { force: true });
+  if (!reInstall().success) throw new Error('Post-delete install failed');
+  if (fs.existsSync(newPresetDst)) {
+    throw new Error('Ledger failed to keep a user-deleted preset deleted');
+  }
+  if (!readManifest(ledgerPath)?.includes(newPresetRel)) {
+    throw new Error('Ledger did not record the preset');
+  }
+  console.log('✓ Seed / no-clobber / deletion-sticks via .ocp/providers.seeded.txt');
+} finally {
+  fs.rmSync(newPresetSrc, { force: true });
+  fs.rmSync(newPresetDst, { force: true });
+}
+
 // 6. Status Check
 console.log('\nTest 6: Status Check');
 const st = executeStatus(repoDir, testTargetDir);

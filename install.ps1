@@ -47,6 +47,27 @@ function Write-Warn  { param([string]$Msg) Write-Host "[OCP] $Msg" -ForegroundCo
 function Write-Err   { param([string]$Msg) Write-Host "[OCP ERROR] $Msg" -ForegroundColor Red }
 
 # ---------------------------------------------------------------------------
+# Local checkout detection: if an in-repo installer is available next to this
+# script or in the current directory, run it directly instead of downloading.
+# Requires OCP-specific markers (not just any project with install/install.ps1)
+# and shows which version is being installed. An explicit -Version always takes
+# the download path (it names a release).
+# ---------------------------------------------------------------------------
+if (-not $Version) {
+    $LocalRoot = @($PSScriptRoot, (Get-Location).Path) |
+        Where-Object { $_ -and (Test-Path (Join-Path $_ "install\install.ps1")) `
+            -and (Test-Path (Join-Path $_ "install\version.json")) `
+            -and (Test-Path (Join-Path $_ "install\src\index.ts")) } |
+        Select-Object -First 1
+    if ($LocalRoot) {
+        $LocalVersion = try { (Get-Content (Join-Path $LocalRoot "install\version.json") -Raw | ConvertFrom-Json).version } catch { '?' }
+        Write-Info "Local OCP checkout detected (v$LocalVersion); running in-repo installer directly..."
+        & (Join-Path $LocalRoot "install\install.ps1") @InstallerArgs
+        exit $LASTEXITCODE
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Build download URL (versioned or latest)
 # ---------------------------------------------------------------------------
 if ($Version) {
