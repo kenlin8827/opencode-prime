@@ -1,0 +1,10 @@
+{
+  "description": "omniroute (self-hosted OmniRoute gateway, fixed bcp/qwen mapping) — flash, standard, pro and vision all pinned to bcp/qwen3.8-flash; only max routes to bcp/qwen3.8-max. Requires OMNIROUTE_BASE_URL + OMNIROUTE_API_KEY environment variables.",
+  "tiers": {
+    "flash": "omniroute/qwen3.8-flash",
+    "standard": "omniroute/qwen3.8-flash",
+    "pro": "omniroute/qwen3.8-flash",
+    "max": "omniroute/qwen3.8-max",
+    "vision": "omniroute/qwen3.8-flash"
+  }
+}
