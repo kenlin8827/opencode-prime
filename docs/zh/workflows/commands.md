@@ -26,7 +26,7 @@ OpenCode 多智能体配置自带一系列生产级工作流斜杠命令。
 | **`/git-rebase <source> <target> [--dry-run] [--no-verify] [--continue] [--skip] [--abort]`** | Git 工程流 | **原生 `git rebase`，agent 扮演解决冲突的人**：把源分支独有的全部 commit 重放到目标分支 HEAD 之上，得到线性历史 —— 同步目标分支、对**两个**尖端建 guard 备份、逐个停下的 commit 做语义解冲突，最后 fast-forward 目标分支。会改写 source：更新已推送的 source 需 `git push --force-with-lease`，由你决定 |
 | **`/git-pull [--rebase] [--dry-run] [--no-verify] [--abort]`** | Git 工程流 | **当前分支的安全上游同步**：先试 `git pull --ff-only`，什么都不重写；已分叉 → 建 guard 备份，再委托 git-merge 协议（拉取到的上游引用作为 source）。`--rebase` 则把本地 commit 重放到远程 tip 之上。不支持 `--squash` —— 压扁已发布的分支历史永不正当 |
 | **`/git-push [--rebase\|--merge] [--dry-run] [--no-verify] [--force-with-lease] [--abort]`** | Git 工程流 | **当前分支的安全推送**：先 fetch 配置的上游并尝试普通 `git push`；确认是 `non-fast-forward` → 建 guard，按 merge 或 rebase 调和、验证后重试。认证、策略、hook、网络和语义冲突会停下；裸 `--force` 永远禁止 |
-| **`/grill-improve-loop [subject] [--max-rounds=N] [--target=N]`** | 评分驱动闭环 | 评分驱动改进闭环：评分→分析改进路径→修复/重构→验证→重新评分，直到结构性天花板、停滞或最大轮次。每轮触发 verification-honesty 评分机制（规则 5–7） |
+| **`/improve-loop [subject] [--max-rounds=N] [--target=N]`** | 评分驱动闭环 | 评分驱动改进闭环：评分→分析改进路径→修复/重构→验证→重新评分，直到结构性天花板、停滞或最大轮次。每轮触发 verification-honesty 评分机制（规则 5–7） |
 | **`/goal [text]`** | 自动化协议 | 结构化目标执行协议，包含审计友好的验收清单和可机械检测的停止条件 |
 | **`/handoff [focus]`** | 状态交接 | 将当前会话状态压缩为轻量交接包（存至 Git 忽略的 `.ocp/handoffs/`），生成新会话一键恢复开场白 |
 | **`/adr-guard [on\|off\|status]`** | 质量硬门禁 | 项目级 ADR 提交铁律门禁：拦截缺少架构决策记录的 `feat:` 与 `refactor:` 提交 |

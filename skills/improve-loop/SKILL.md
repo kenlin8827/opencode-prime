@@ -1,26 +1,26 @@
 ---
-name: grill-improve-loop
-description: Grill-improve-loop - score-driven improvement loop (score, analyze, fix, verify, re-score) until the structural ceiling or max rounds. Load ONLY when the user invokes /grill-improve-loop.
+name: improve-loop
+description: Improve-loop - score-driven improvement loop (score, analyze, fix, verify, re-score) until the structural ceiling or max rounds. Load ONLY when the user invokes /improve-loop.
 ---
 
-# Grill-Improve-Loop Protocol — score-driven improvement loop
+# Improve-Loop Protocol — score-driven improvement loop
 
-You are now running the **grill-improve-loop** — a score-driven iterative improvement cycle. The loop grills "can the score be raised?" to drive review → fix/refactor → re-score until the score cannot be raised further or max rounds are reached.
+You are now running the **improve-loop** — a score-driven iterative improvement cycle. The loop drives review → fix/refactor → re-score until the score cannot be raised further or max rounds are reached.
 
 ## Core principle
 
-> **Grill, don't console.** Every round must either produce concrete improvements with evidence, or stop with a structural reason. "Can't improve" without a structural reason is a consolation conclusion — see `instructions/verification-honesty.md` Rule 3.
+> **Improve, don't console.** Every round must either produce concrete improvements with evidence, or stop with a structural reason. "Can't improve" without a structural reason is a consolation conclusion — see `instructions/verification-honesty.md` Rule 3.
 
 ## Arguments
 
-- Positional arg: the subject to grill (a file, a directory, a feature, a rule system, or empty for the current diff).
+- Positional arg: the subject to improve (a file, a directory, a feature, a rule system, or empty for the current diff).
 - `--max-rounds=N` (optional): maximum iterations. Default: 10, range 1–999.
 - `--target=N` (optional): stop when the score reaches N/10. Default: unset (runs until structural ceiling).
 
 ## Graph
 
 ```
-[*] → Scope: Determine grilling subject
+[*] → Scope: Determine improvement subject
   → ROUND 1
     1. Score: Agent self-assesses with verification-honesty scoring table (R5–R7)
     2. Analyze: Identify concrete improvement paths (or structural ceiling)
@@ -45,18 +45,18 @@ Post-loop: Final score table + improvement log
 **Exit conditions (exactly one fires per loop):**
 
 | Exit | Condition | Next action |
-|------|-----------|-------------|
+|------|-----------|------------|
 | ✅ Ceiling | No improvement path found — structural reason stated | Post-loop → final score + summary |
 | ⚠️ Max rounds | Max rounds exhausted, score still improvable | Post-loop → final score + remaining paths |
 | ⚠️ Stall | Score unchanged after a fix attempt | Post-loop → analyze why fix didn't move score |
 | 🔴 Regression | Score dropped after a fix | Revert fix, post-loop → diagnose what broke |
 | 🎯 Target reached | Score ≥ --target value | Post-loop → done |
 
-## Determining grilling subject
+## Determining the subject to improve
 
 Parse the arguments:
 
-1. **If a file/directory path** → grill that specific target.
+1. **If a file/directory path** → improve that specific target.
 2. **If "current diff" or empty** → run `git diff` to discover uncommitted changes.
 3. **If a feature/concept name** → identify the relevant files (use code-intelligence backend if available, else grep/glob).
 4. **If unclear** → ask one focused question to clarify.
@@ -85,7 +85,7 @@ Apply the scoring format from `instructions/verification-honesty.md` (Rules 5–
 **Phase marker** at the start of every reply (for compaction recovery):
 
 ```
-[grill-improve-loop] Round: 1 | Score: 7.2/10 | Improvement: pending
+[improve-loop] Round: 1 | Score: 7.2/10 | Improvement: pending
 ```
 
 #### Step 2 — Analyze improvement paths
@@ -170,7 +170,7 @@ Once the loop exits:
 **Per-round output** (concise):
 
 ```
-### Grill-Improve Round N
+### Improve Round N
 - Score: <N>/10 (was <prev>, delta <±N>)
 - Improvement target: <dimension> — <what to fix>
 - Fix dispatched: <agent> — <what changed>
@@ -181,7 +181,7 @@ Once the loop exits:
 **Final summary:**
 
 ```markdown
-## Grill-Improve-Loop Summary
+## Improve-Loop Summary
 
 **Final score: <N>/10** (started at <initial>, improved by <delta>)
 

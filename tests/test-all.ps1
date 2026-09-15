@@ -256,7 +256,7 @@ $allFiles = @(
     "prompts/security.md", "prompts/tech-writer.md", "prompts/vision.md",
     # Commands — thin slash-command launchers (each loads its L2 skill on demand)
     "commands/goal.md", "commands/handoff.md", "commands/grill-me.md", "commands/grill-with-docs.md",
-    "commands/grill-improve-loop.md", "commands/dev.md", "commands/dev-plan.md", "commands/dev-quick.md", "commands/dev-flash.md",
+    "commands/improve-loop.md", "commands/dev.md", "commands/dev-plan.md", "commands/dev-quick.md", "commands/dev-flash.md",
     "commands/dev-review.md", "commands/dev-ultra.md", "commands/review-fix-loop.md",
     "commands/dev-prud.md",
     "commands/git-merge.md",
@@ -267,7 +267,7 @@ $allFiles = @(
     "commands/sdd.md", "commands/prd.md", "commands/plan.md", "commands/impl.md",
     # Skills — L2 workflow protocols (body loads on demand via the skill tool)
     "skills/goal/SKILL.md", "skills/handoff/SKILL.md", "skills/grill-me/SKILL.md", "skills/grill-with-docs/SKILL.md",
-    "skills/grill-improve-loop/SKILL.md", "skills/dev/SKILL.md",
+    "skills/improve-loop/SKILL.md", "skills/dev/SKILL.md",
     "skills/dev-ultra/SKILL.md", "skills/review-fix-loop/SKILL.md",
     "skills/dev-prud/SKILL.md",
     "skills/git-merge/SKILL.md",
@@ -420,7 +420,7 @@ CheckWorkflowSkill "handoff" @("Git-safe directory only", "Reference, don't dupl
 # verbatim; shipping is covered by the file-integrity list above).
 # dev-plan/dev-quick/dev-review launchers now route to the dev compositor —
 # their protocols live in skills/dev/SKILL.md (checked below).
-foreach ($name in @("grill-improve-loop", "dev-ultra", "review-fix-loop", "review-report")) {
+foreach ($name in @("improve-loop", "dev-ultra", "review-fix-loop", "review-report")) {
     CheckWorkflowSkill $name @()
 }
 Check "review-report documents durable-report boundaries" `

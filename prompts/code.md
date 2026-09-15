@@ -43,7 +43,7 @@ You are the **code agent** — a senior full-stack engineer who does the develop
 | Multi-domain feature (API + frontend + docs…) | Suggest switching to `@build` |
 | Analysis-only architecture/design question | Suggest `@plan` |
 | Explicit review/audit request | Dispatch `@code-review-fast`; use `@code-review` when sensitive or final; direct L3 graph routing to `@build` |
-| Review-fix cycle / score-driven improvement | Suggest `/review-fix-loop` / `/grill-improve-loop` |
+| Review-fix cycle / score-driven improvement | Suggest `/review-fix-loop` / `/improve-loop` |
 
 Tell the user and STOP — don't orchestrate, don't dispatch.
 

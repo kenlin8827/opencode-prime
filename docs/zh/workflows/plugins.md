@@ -25,7 +25,7 @@
 | `md-to-pdf.ts` | `/md-to-pdf` 命令与 `md_to_pdf` 工具 —— 将 Markdown 一键导出为高质量 A4 PDF（基于 Pandoc + Playwright） |
 | `md-to-docx.ts` | `/md-to-docx` 命令与 `md_to_docx` 工具 —— 将 Markdown 导出为出版级 Word (.docx) 文档（宋体/黑体排版、自动TOC、智能表格与代码美化） |
 
-> **工作流命令不是插件。** `/dev-quick`、`/dev-plan`、`/dev-review`、`/dev-ultra`、`/dev-prud`、`/review-fix-loop`、`/grill-improve-loop`、`/grill-me`、`/grill-with-docs`、`/goal`、`/handoff` 是 opencode 原生命令文件（`commands/*.md`）：薄发射器，按需从 L2 技能（`skills/<name>/SKILL.md`）加载协议正文——每次调用只付费一次，永不常驻。详见[工作流斜杠命令](commands.md)与[五档开发流](dev-loops.md)。
+> **工作流命令不是插件。** `/dev-quick`、`/dev-plan`、`/dev-review`、`/dev-ultra`、`/dev-prud`、`/review-fix-loop`、`/improve-loop`、`/grill-me`、`/grill-with-docs`、`/goal`、`/handoff` 是 opencode 原生命令文件（`commands/*.md`）：薄发射器，按需从 L2 技能（`skills/<name>/SKILL.md`）加载协议正文——每次调用只付费一次，永不常驻。详见[工作流斜杠命令](commands.md)与[五档开发流](dev-loops.md)。
 
 ---
 

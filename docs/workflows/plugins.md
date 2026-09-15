@@ -25,7 +25,7 @@ Plugins provide runtime enforcement and workflows that prompts alone cannot achi
 | `md-to-pdf.ts` | `/md-to-pdf` command & `md_to_pdf` tool — export Markdown files as publication-quality A4 PDFs (via Pandoc + Playwright) |
 | `md-to-docx.ts` | `/md-to-docx` command & `md_to_docx` tool — export Markdown files as publication-quality Word (.docx) documents (Chinese typography, auto TOC, styled tables & code blocks) |
 
-> **Workflow commands are not plugins.** `/dev-quick`, `/dev-plan`, `/dev-review`, `/dev-ultra`, `/dev-prud`, `/review-fix-loop`, `/grill-improve-loop`, `/grill-me`, `/grill-with-docs`, `/goal`, `/handoff` are native opencode command files (`commands/*.md`): thin launchers that load their protocol from an L2 skill (`skills/<name>/SKILL.md`) on demand — paid once per invocation, never resident. See [Workflow Slash Commands](commands.md) and [Five Dev Flows](dev-loops.md).
+> **Workflow commands are not plugins.** `/dev-quick`, `/dev-plan`, `/dev-review`, `/dev-ultra`, `/dev-prud`, `/review-fix-loop`, `/improve-loop`, `/grill-me`, `/grill-with-docs`, `/goal`, `/handoff` are native opencode command files (`commands/*.md`): thin launchers that load their protocol from an L2 skill (`skills/<name>/SKILL.md`) on demand — paid once per invocation, never resident. See [Workflow Slash Commands](commands.md) and [Five Dev Flows](dev-loops.md).
 
 ---
 

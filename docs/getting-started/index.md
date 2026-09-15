@@ -121,7 +121,7 @@ Launch with `ocp code` to open the current project in VS Code (also VSCodium, Cu
 | **Four Working Modes** | `@lite` (default — lean daily driver, ~2k tok/step), `@code` (direct development), `@build` (orchestrated execution), `@plan` (read-only analysis) |
 | **Code Intelligence & DB (MCP)** | Pre-configured MCP servers (Serena LSP, CodeGraph knowledge graph, GitNexus, DBHub gateway) with automatic CLI provisioning |
 | **Profiles** | `/profile` maps all 5 model tiers to a provider's models in one shot — no per-agent `set model` |
-| **Workflow Slash Commands** | `/dev` compositor · `/dev-quick` · `/dev-plan` · `/dev-review` · `/dev-ultra` dev flows, `/review-fix-loop`, `/grill-improve-loop`, `/goal`, `/handoff`, `/grill-me`, `/advisor` modes, and more |
+| **Workflow Slash Commands** | `/dev` compositor · `/dev-quick` · `/dev-plan` · `/dev-review` · `/dev-ultra` dev flows, `/review-fix-loop`, `/improve-loop`, `/goal`, `/handoff`, `/grill-me`, `/advisor` modes, and more |
 | **Optional Guardrails** | Per-project ADR enforcement (`/adr-guard`), secret-file gate (`env-guard`), E2E gate (`/e2e-guard`), commit discipline (`/project`) — all default off |
 | **One-Command Installer** | PowerShell + Bash, manifest-based upgrades; your credentials and model picks survive every reinstall |
 | **Token Savings** | [rtk](https://github.com/rtk-ai/rtk) output compression (60–90%) auto-provisioned on install + `@lite` measured ~2k tok/step system prompt where full-config agents carry 13k+ tok/step of overhead |
@@ -141,7 +141,7 @@ Two kinds of batteries, two kinds of rides. omp builds and ships its own native 
 | **Scheduling & Orchestration** | 🟢 `task` fan-out into isolated worktrees, typed results, live subagent hub | 🏆 **`@build` orchestrator + predefined role pipelines (plan visible before execution) + tiered scheduling (Flash codes, Flagship reviews) + dynamic domain-persona injection + auto-retry with task resume** |
 | **Review Gates** | `/review` post-hoc P0–P3 verdict, single reviewer | 🏆 **`/dev-review` dual flagship review + `@advisor` safety arbitration — fixes converge inside the loop** |
 | **Spec-Driven Lifecycle** | None built-in (requires external tools) | 🏆 **`/prd` → `/plan` (auto-links PRD & ADRs) → `/impl` → `/sdd handoff` — full SDD lifecycle** |
-| **Workflow Command Suite** | `ultrathink` / `orchestrate` / `workflowz` keywords | 🏆 **`/grill-me` Socratic plan interrogation + `/review-fix-loop` auto-fix until zero P0/P1 + `/grill-improve-loop` score-driven improvement loop + `/goal` mechanically-checkable stop conditions + `/handoff` git-safe session bundles** |
+| **Workflow Command Suite** | `ultrathink` / `orchestrate` / `workflowz` keywords | 🏆 **`/grill-me` Socratic plan interrogation + `/review-fix-loop` auto-fix until zero P0/P1 + `/improve-loop` score-driven improvement loop + `/goal` mechanically-checkable stop conditions + `/handoff` git-safe session bundles** |
 | **Token & Cost Governance** | hashline edit savings + efficient in-process tools | 🏆 **Five-tier agent-to-model routing (`tiers.json`) + RTK proxy-layer output compression (60–90%) auto-provisioned at install** |
 | **Guardrails** | Stream rules course-correct model behavior mid-stream | 🏆 **Auditable policy gates: ADR/MADR enforcement + secret-file gate + E2E gate + commit discipline** |
 | **Code Intelligence** | 🟢 Built-in LSP/DAP/AST (14 LSP + 28 DAP ops) | Serena LSP + CodeGraph call graphs + GitNexus + DBHub database gateway |
