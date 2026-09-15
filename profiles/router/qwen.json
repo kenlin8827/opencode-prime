@@ -1,0 +1,10 @@
+{
+  "description": "qwen-router (self-hosted gateway, fixed qwen mapping) — qwen3.8-flash explores on flash, carries the high-traffic standard tier, codes on pro and handles vision; only qwen3.8-max judges on max.",
+  "tiers": {
+    "flash": "qwen-router/qwen3.8-flash",
+    "standard": "qwen-router/qwen3.8-flash",
+    "pro": "qwen-router/qwen3.8-flash",
+    "max": "qwen-router/qwen3.8-max",
+    "vision": "qwen-router/qwen3.8-flash"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "qwen-router": {
+    "npm": "@ai-sdk/openai-compatible",
+    "name": "qwen-router",
+    "options": {
+      "baseURL": "{env:QWEN_ROUTER_BASE_URL}",
+      "apiKey": "{env:QWEN_ROUTER_API_KEY}"
+    },
+    "models": {
+      "qwen3.8-flash":     { "name": "qwen3.8-flash",    "id": "qwen3.8-flash",   "attachment": true, "reasoning": true, "modalities": { "input": ["text", "image"], "output": ["text"] } },
+      "qwen3.8-max":       { "name": "qwen3.8-max",     "id": "qwen3.8-max",     "attachment": true, "reasoning": true, "modalities": { "input": ["text", "image"], "output": ["text"] } }
+    }
+  }
+}
