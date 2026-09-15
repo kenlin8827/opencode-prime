@@ -332,6 +332,22 @@
         "idea_*": { "*": "deny" }
       }
     },
+    "ultra": {
+      "description": "Ultra — universal full-domain commander. Triages any task (web frontend / backend / DB & SQL / mobile apps / mini-programs / CLI / scripts / performance tuning / docs / infra / libraries) into either the full product pipeline or a lightweight focused loop. Contracts the work, dispatches the best specialist from the platform's subagent roster, verifies with evidence, guards gates. Tech-stack agnostic — stack knowledge lives in references/constitution/language_stacks.yaml (open registry). Invoke directly or via /build-product.",
+      "prompt": "{file:~/.config/opencode/prompts/ultra.md}",
+      "mode": "primary",
+      "temperature": 0.3,
+      "variant": "medium",
+      // Coordinator: dispatches; graph/DB/IDE surfaces belong to specialists
+      // (mirrors build/plan hygiene).
+      "permission": {
+        "serena_*": { "*": "deny" },
+        "codegraph_*": { "*": "deny" },
+        "gitnexus_*": { "*": "deny" },
+        "dbhub_*": { "*": "deny" },
+        "idea_*": { "*": "deny" }
+      }
+    },
     "plan": {
       "description": "Plan orchestrator — coordinator that dispatches analysis tasks to specialists, persists structured plan artifacts (docs/plan/<topic>.md), and provides clean execution handoffs.",
       "prompt": "{file:~/.config/opencode/prompts/plan.md}",
@@ -541,6 +557,25 @@
       "temperature": 0.3,
       "variant": "medium",
       "permission": { "skill": { "*": "deny" } },
+      "tools": { "task": false }
+    },
+    "designer": {
+      "description": "UX/UI designer — produces design documents (tokens, motion, page/screen inventory, exact copy, asset manifest) detailed enough that implementers reach zero aesthetic decisions. Universal target: web, mobile app, mini-program. Never writes product code, never picks implementation libraries. Invoke for design docs, UI/UX specs, visual direction.",
+      "prompt": "{file:~/.config/opencode/prompts/designer.md}",
+      "mode": "subagent",
+      "temperature": 0.5,
+      "variant": "medium",
+      // Design work needs read/write for DESIGN.md; no shell needed; no MCP
+      // graph/DB/IDE surfaces (mirrors other coordinators).
+      "permission": {
+        "bash": "deny",
+        "skill": { "*": "deny" },
+        "serena_*": { "*": "deny" },
+        "codegraph_*": { "*": "deny" },
+        "gitnexus_*": { "*": "deny" },
+        "dbhub_*": { "*": "deny" },
+        "idea_*": { "*": "deny" }
+      },
       "tools": { "task": false }
     },
     "qa": {

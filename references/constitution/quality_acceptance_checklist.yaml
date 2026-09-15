@@ -1,0 +1,130 @@
+# =============================================================================
+# Product Quality Acceptance Checklist v3.0 (English edition)
+# =============================================================================
+# Ported from the "awesome-product" three-piece kit (quality_acceptance_checklist
+# v3.0), published for reproduction by its author.
+#
+# Philosophy (isomorphic with the requirements constitution):
+#   This is the MOTHER LIST. Does not enumerate per-project items (that would
+#   be brittle). At acceptance time DERIVES a project-specific sub-list:
+#     1. Read the spec's scope_verdict (shape/activation/pruning/transforms)
+#     2. Walk the 9 universal acceptance dimensions (always apply)
+#     3. Expand spec content via derivation_rules into concrete check items
+#     4. Transform surface quality & wow per shape
+#     5. Each EXT node -> its registered acceptance item
+#
+# Acceptance rules:
+#   1. Binary PASS / FAIL. No "basically passes"
+#   2. Any critical:true FAIL -> do not ship; fix, then FULL re-audit
+#   3. Ship gate: all critical PASS and wow >= 3
+#   4. Every item must run its verify - ticking from impressions is forbidden
+#   5. Unsure = FAIL. A false PASS is ten times worse than a FAIL
+# =============================================================================
+
+meta:
+  name: quality_acceptance_checklist
+  version: "3.0-en"
+  gate: "all critical PASS and wow >= 3 PASS"
+  report_format: "sub-list item by item: [PASS|FAIL] + evidence + fix notes on FAIL; with derivation map"
+
+derivation_rules:
+  - from: "every capability in the spec (with Given/When/Then)"
+    derive: "-> sub-list item: run that Given/When/Then against the running product"
+  - from: "every entity (OP-ENTITY product)"
+    derive: "-> check item: test every CRUD op; audit 'intentionally omitted' ops"
+  - from: "every state machine (OP-LIFECYCLE product)"
+    derive: "-> check item: every legal transition + sample illegal/concurrent"
+  - from: "every interaction point (OP-STATES4 product)"
+    derive: "-> check item: manufacture each state's condition (network/empty/double-click)"
+  - from: "every boundary table (OP-BOUNDARY product)"
+    derive: "-> check item: empty/huge/long/malicious/concurrent/disconnect/duplicate"
+  - from: "every dependency failure matrix (OP-FAILURE product)"
+    derive: "-> check item: inject failure, verify degradation and recovery"
+  - from: "permission matrix (OP-ACTOR product)"
+    derive: "-> check item: cell by cell; horizontal escalation actually tested"
+  - from: "every EXT node in the extension registry"
+    derive: "-> check item: declared acceptance item appears and executes"
+  - from: "every decision-tree leaf (each tech choice)"
+    derive: "-> check item: implementation matches the leaf decision, no mid-course swap"
+
+# =============================================================================
+# 9 universal acceptance dimensions (shape-agnostic; pruning needs a stated
+# reason)
+# =============================================================================
+acceptance_dimensions:
+
+  - dimension: A_spec_conformance
+    items:
+      - { id: A1, critical: true, item: "every capability's acceptance criteria passes when actually executed", verify: "walk the derived sub-list" }
+      - { id: A2, critical: true, item: "zero placeholders: no TODO/FIXME/Lorem/coming-soon/dead links/unresponsive controls", verify: "global search + traverse every interactive element" }
+      - { id: A3, critical: true, item: "no fake data masquerading as features; data comes from the real data layer", verify: "inspect data flow; cleared-data behavior matches empty-state definition" }
+      - { id: A4, critical: true, item: "core journey runs end-to-end: first contact -> first value -> core loop, no dead ends", verify: "full walkthrough as a brand-new user" }
+
+  - dimension: B_full_state_coverage
+    items:
+      - { id: B1, critical: true, item: "every interaction point's full states match the spec", verify: "manufacture each condition and test per the derived sub-list" }
+      - { id: B2, critical: true, item: "errors are recoverable: clear human message + retry/undo; no stack traces; no silent failure", verify: "inject each failure class" }
+      - { id: B3, critical: false, item: "destructive operations confirm and support undo", verify: "test delete-class operations" }
+
+  - dimension: C_surface_quality (transformed by scope_verdict; never downgraded)
+    transforms:
+      frontend_web: "design-token consistency (no magic numbers) / visual hierarchy / low-saturation palette / no emoji icons / responsive 3 breakpoints / motion per design tokens / a11y AA"
+      backend: "API contract quality: naming consistency / structured error codes / pagination & filtering / idempotency / versioning / rate-limit semantics / self-documentation matches behavior"
+      fullstack: "frontend + backend bars both apply"
+      library: "API ergonomics / complete types with zero any leaks / docs-as-product / semver / size & tree-shaking"
+      cli: "complete consistent help / rigorous exit codes / pipeable output / NO_COLOR / graceful interruption"
+      mobile_app: "platform HIG/Material compliance / safe areas / touch targets / offline behavior / platform feature integration"
+      mini_program: "main-package size budget / platform design language / pages.json navigation / share + subscribe / cold start <2s"
+    items:
+      - { id: C1, critical: true, item: "transformed surface bar met item by item", verify: "walk per the shape's bar" }
+      - { id: C2, critical: false, item: "professional copy: no typos, error messages include the fix, consistent tone", verify: "full copy walkthrough" }
+
+  - dimension: D_engineering_quality
+    items:
+      - { id: D1, critical: true, item: "build/lint/typecheck zero errors zero warnings; no uncaught exceptions", verify: "actually run commands + walk main flows" }
+      - { id: D2, critical: true, item: "no dead code: unused components/dependencies/large commented-out blocks", verify: "dependency analysis + global search" }
+      - { id: D3, critical: false, item: "clean layering, meaningful naming, no monolith files", verify: "structure review" }
+      - { id: D4, critical: true, item: "secrets/connection strings all via env vars; no plaintext secrets in repo or build artifacts", verify: "global secret-pattern search" }
+
+  - dimension: E_robustness_and_failure
+    items:
+      - { id: E1, critical: true, item: "entire boundary table passes (empty/huge/long/malicious/concurrent/disconnect/duplicate)", verify: "construct each case" }
+      - { id: E2, critical: true, item: "entire dependency failure matrix passes: down/slow/dirty/recovery convergence", verify: "inject the failures" }
+      - { id: E3, critical: false, item: "no jank at extreme data volume", verify: "load test data and operate" }
+
+  - dimension: F_security
+    items:
+      - { id: F1, critical: true, item: "injection immune: parameterized queries/ORM, no string-concatenated SQL; output escaped against XSS", verify: "code review + injection test strings" }
+      - { id: F2, critical: true, item: "permission matrix enforced cell by cell, horizontal escalation rejected", verify: "replay requests as another identity / no identity" }
+      - { id: F3, critical: true, item: "server-side (or data-layer) input validation exists; illegal input returns structured error, never a crash", verify: "hit every write entry with illegal payloads" }
+
+  - dimension: G_performance (budgets declared in the spec per shape)
+    items:
+      - { id: G1, critical: true, item: "meets the spec's declared performance budget", verify: "measure and record numbers" }
+
+  - dimension: H_delivery_completeness
+    items:
+      - { id: H1, critical: true, item: "clean environment runs in <= 5 README steps", verify: "simulate a clean environment from zero" }
+      - { id: H2, critical: true, item: "README complete: intro/capabilities/stack/architecture/startup steps/env var table", verify: "checklist against the doc" }
+      - { id: H3, critical: false, item: "seed/example data excellent: real, beautiful, shows the best side", verify: "reset and review the first-run experience" }
+
+  - dimension: I_WOW (>= 3 PASS required to ship; wow definition from scope_verdict)
+    items:
+      - { id: W1, critical: false, item: "first experience: new user gets the value in 5 seconds and first value within 5 minutes", verify: "timed test from a fresh perspective" }
+      - { id: W2, critical: false, item: ">= 3 shape-appropriate wow points", verify: "enumerate and experience each" }
+      - { id: W3, critical: false, item: "a memory hook: one quality detail people remember", verify: "third-party view: 'what do you remember?'" }
+      - { id: W4, critical: false, item: "holds its own side-by-side with the category's best", verify: "side-by-side hands-on comparison" }
+
+execution_protocol:
+  step_1: "read the spec -> derive the project sub-list via derivation_rules -> transform surface quality & wow per scope_verdict"
+  step_2: "build & start; zero build errors is the precondition"
+  step_3: "run each verify, record PASS/FAIL + evidence"
+  step_4: "FAIL -> fix -> back to step_2 for a FULL re-audit"
+  step_5: "emit the acceptance report: sub-list results + derivation map + FAIL fix records"
+  honesty_clause: "never relax a judgment to pass acceptance; unsure = FAIL; a false PASS is ten times worse than a FAIL"
+  adversarial_stance: >
+    before running this checklist, complete the adversarial-tester persona switch:
+    assume the product has bugs; finding one is a victory; never substitute
+    implementation memory for actual testing. In a multi-agent environment this
+    checklist belongs to an agent that took no part in implementation.
+  pruning_rule: "any pruned dimension/check item must state its reason in the report; a silent skip counts as a false PASS"

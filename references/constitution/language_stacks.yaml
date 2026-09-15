@@ -1,0 +1,377 @@
+# =============================================================================
+# Language Stack Registry v1.0-en
+# =============================================================================
+# Ported from the "awesome-product" three-piece kit (language_stacks.yaml v1.0),
+# published for reproduction by its author.
+#
+# Design philosophy (isomorphic with the requirements constitution): this file
+# does not enumerate every stack; it defines the standard STRUCTURE of a
+# "stack card". Cards are an open registry — equal citizens. There is NO
+# "default frontend" or "default backend". Each card carries:
+#   toolchain_check + scaffold + layout + gates four-piece + red_lines +
+#   test_surface + deliverable
+# Routing: the SPEC's MACHINE.LANGUAGE field looks up here; @ultra injects
+# the matched card into the relevant dispatches (preflight, scaffold, QC,
+# personal gate). Uncovered stacks grow live per the extension_rule (no
+# force-fit to nearest card).
+# =============================================================================
+
+meta:
+  version: "1.0-en"
+  rule: "stack card = toolchain check + scaffold + layout + gates + red lines + test surface + deliverable"
+  framing: "registry of cards; no card is more default than another; tech-stack-agnostic policy"
+
+stack_schema:
+  toolchain_check: "probe command list (missing -> prompt install)"
+  scaffold: "commands/steps to init the project"
+  layout: "standard directory structure (path semantics, not framework-specific filenames)"
+  gates: { build: "build command (must exit 0)", lint: "static check (zero warnings)", test: "test command", fmt: "format check" }
+  red_lines: "engineering red lines at idiom level (universal principles, not implementation-library names)"
+  test_surface: "verification surface for adversarial QC (browser | miniprogram-automator | emulator+@vision)"
+  deliverable: "deliverable shape (binary / jar / dist / package / mini-program package / apk-ipa)"
+
+stacks:
+
+  # ─── Web frontend (multiple cards, equal weight) ───
+
+  typescript_web:
+    match: [typescript web, "react+vite", "react+typescript", "vite+react"]
+    language: TypeScript + web framework (per subagent craft)
+    toolchain_check: ["node -v >= 20", "npm -v"]
+    scaffold: "framework-specific init per the implementer's craft"
+    layout: "standard web project structure: routing skeleton / global styles / shared components / data layer / public assets"
+    gates:
+      build: "framework-specific production build"
+      lint: "framework-specific lint with zero warnings"
+      test: "framework-specific test runner (if tests exist)"
+      fmt: "framework-specific formatter check"
+    red_lines:
+      - "TypeScript strict mode"
+      - "zero `any` leaks in shared module boundaries"
+      - "components <= 300 lines"
+      - "design tokens (no magic numbers in CSS)"
+      - "no emoji as functional icons"
+      - "responsive behavior honored at 3 breakpoints"
+      - "design-directed motion (per design tokens)"
+      - "accessibility AA target"
+    test_surface: "browser (Playwright via e2e-guard)"
+    deliverable: "static dist bundle"
+
+  vue_web:
+    match: [vue, vue3, vue+vite, vue+pinia]
+    language: TypeScript + Vue 3 ecosystem
+    toolchain_check: ["node -v >= 20", "npm -v"]
+    scaffold: "Vue 3 ecosystem init per the implementer's craft"
+    layout: "Vue 3 standard structure: pages / components / stores / router / global styles / shared components / public assets"
+    gates:
+      build: "Vue ecosystem production build"
+      lint: "Vue ecosystem lint with zero warnings"
+      test: "Vue ecosystem test runner (if tests exist)"
+      fmt: "Vue ecosystem formatter check"
+    red_lines:
+      - "TypeScript strict mode"
+      - "zero `any` leaks"
+      - "components <= 300 lines"
+      - "Pinia stores typed end-to-end"
+      - "single-root templates preferred"
+      - "design tokens (no magic numbers)"
+      - "no emoji as functional icons"
+      - "responsive + accessibility"
+    test_surface: "browser (Playwright via e2e-guard)"
+    deliverable: "static dist bundle"
+
+  svelte_web:
+    match: [svelte, sveltekit]
+    language: TypeScript + Svelte/SvelteKit
+    toolchain_check: ["node -v >= 20", "npm -v"]
+    scaffold: "SvelteKit init per the implementer's craft"
+    layout: "SvelteKit structure: routes / lib / components / global styles"
+    gates:
+      build: "SvelteKit production build"
+      lint: "SvelteKit lint with zero warnings"
+      test: "SvelteKit test runner (if tests exist)"
+      fmt: "SvelteKit formatter check"
+    red_lines:
+      - "TypeScript strict mode"
+      - "components <= 300 lines"
+      - "design tokens (no magic numbers)"
+      - "no emoji as functional icons"
+      - "responsive + accessibility"
+    test_surface: "browser (Playwright via e2e-guard)"
+    deliverable: "static/SSR bundle"
+
+  static_web:
+    match: [static site, hugo, jekyll, astro, eleventy, 11ty, plain html]
+    language: per stack (often no language runtime)
+    toolchain_check: ["node -v >= 20 (if JS-based)", "framework-specific tool presence"]
+    scaffold: "framework-specific static-site init"
+    layout: "per framework conventions"
+    gates:
+      build: "static-site production build"
+      lint: "html/css/a11y lint"
+      test: "if tests exist"
+      fmt: "per framework"
+    red_lines:
+      - "no emoji as functional icons"
+      - "responsive + accessibility"
+      - "design tokens consistent"
+    test_surface: "browser (Playwright via e2e-guard)"
+    deliverable: "static dist bundle"
+
+  # ─── Mobile apps ───
+
+  flutter:
+    match: [flutter, dart, mobile app, ios app, android app, 安卓 app, 跨端 app]
+    language: Dart + Flutter (>= 3.x)
+    toolchain_check: ["flutter --version (>= 3.x)", "dart --version", "(optional) adb --version for Android, xcodebuild -version for iOS"]
+    scaffold: "Flutter create + add state-management / routing / network packages per implementer's craft"
+    layout: "lib/{features,core,widgets,router}/ + test/ + platform-specific android/ ios/"
+    gates:
+      build: "platform build (Android: flutter build apk --debug; iOS: flutter build ios --debug --no-codesign)"
+      lint: "flutter analyze (zero issues)"
+      test: "flutter test"
+      fmt: "dart format --set-exit-if-changed --output=none ."
+    red_lines:
+      - "no business logic inside build()/widgets; controllers/providers own it"
+      - "const constructors for static widget trees"
+      - "async errors handled (typed result or wrapped exceptions)"
+      - "package size budget per platform per release config"
+      - "platform-channel calls validated and exception-wrapped"
+      - "platform HIG/Material compliance per target"
+    test_surface: "emulator / simulator + integration_test + screenshots via @vision"
+    deliverable: "APK / IPA + store listing assets"
+
+  react_native:
+    match: [react native, rn, expo, expo sdk]
+    language: TypeScript + React Native (Expo or bare workflow)
+    toolchain_check: ["node -v >= 20", "RN/Expo CLI presence", "(optional) adb / xcodebuild"]
+    scaffold: "RN or Expo init per chosen workflow"
+    layout: "src/{screens,components,hooks,navigation,api}/ + app.json (Expo) or android/ ios/ (bare) + assets/"
+    gates:
+      build: "RN/Expo production build (e.g. expo export or eas build for store)"
+      lint: "TypeScript + ESLint with zero warnings"
+      test: "Jest (or framework's test runner)"
+      fmt: "Prettier (or chosen formatter)"
+    red_lines:
+      - "no web-specific libraries (use platform-native or RN-compatible equivalents)"
+      - "typed navigation route params"
+      - "platform-specific code via conditional paths (not web APIs)"
+      - "secure storage for tokens (no plain key-value stores for secrets)"
+      - "offline behavior handled"
+    test_surface: "emulator / simulator + device farm (or manual) + screenshots via @vision"
+    deliverable: "APK / IPA + store listing assets"
+
+  swift_kotlin_native:
+    match: [swift, swiftui, kotlin, jetpack compose, native app, 原生 app]
+    language: Swift / Kotlin per platform
+    toolchain_check: ["xcodebuild -version (iOS)", "java -version >= 17 + Android SDK (Android)"]
+    scaffold: "Xcode project (iOS) or Android Studio project (Android) per platform conventions"
+    layout: "per platform's standard layout"
+    gates:
+      build: "platform build (xcodebuild / gradlew)"
+      lint: "platform lint (SwiftLint / Android Lint)"
+      test: "XCTest (iOS) / JUnit (Android)"
+      fmt: "SwiftFormat / ktlint"
+    red_lines:
+      - "platform HIG / Material compliance"
+      - "safe areas and accessibility"
+      - "secure storage (Keychain / EncryptedSharedPreferences)"
+      - "no business logic in views"
+    test_surface: "simulator / emulator + UI tests + screenshots via @vision"
+    deliverable: "App Store / Play Store package"
+
+  # ─── Mini-programs ───
+
+  taro:
+    match: [taro, 微信小程序, mini program, miniprogram, 微信, wechat, alipay, 支付宝小程序, mp]
+    language: TypeScript + Taro (multi-target, React syntax ecosystem)
+    toolchain_check: ["node -v >= 20", "npm -v", "platform devtools CLI presence (WeChat devtools / Alipay devtools)"]
+    scaffold: "Taro init (multi-target: WeChat / Alipay / H5 / RN) per Taro's standard create"
+    layout: "src/{pages,components,store,utils}/ + project.config.json + app.config.ts + platform-specific config"
+    gates:
+      build: "Taro build for the target platform (e.g. build:weapp / build:alipay / build:h5)"
+      lint: "ESLint with zero warnings"
+      test: "Jest (if tests exist)"
+      fmt: "Prettier (or chosen formatter)"
+    red_lines:
+      - "main package size <= 2 MB (subcontract otherwise)"
+      - "no browser-only APIs (use platform-native APIs)"
+      - "lifecycle semantics per platform (onLoad/onShow/onReady/onHide)"
+      - "share-menu config explicit; permission scope requests justified"
+      - "navigation registered in app config"
+    test_surface: "platform devtools automation (WeChat devtools / Alipay devtools)"
+    deliverable: "mini-program package (upload via devtools or CI)"
+
+  uniapp:
+    match: [uniapp, uni-app, vue 小程序, 多端 vue, mp-vue]
+    language: TypeScript + uni-app (Vue 3 syntax, multi-target)
+    toolchain_check: ["node -v >= 20", "npm -v"]
+    scaffold: "uni-app init per uni-app's standard preset"
+    layout: "src/{pages,components,store,utils}/ + pages.json + manifest.json + platform config"
+    gates:
+      build: "uni-app build for the target platform"
+      lint: "ESLint with zero warnings"
+      test: "Vitest (if tests exist)"
+      fmt: "Prettier (or chosen formatter)"
+    red_lines:
+      - "main package size <= 2 MB; subcontract by tab/page"
+      - "no browser-only APIs (use uni.* APIs)"
+      - "pages.json required for every route"
+      - "platform-specific guards when API differs across targets"
+    test_surface: "platform devtools automation (WeChat devtools / Alipay devtools / H5 browser)"
+    deliverable: "mini-program package (or h5 / app build per target)"
+
+  # ─── Backend ───
+
+  node_ts:
+    match: [node, express, hono, fastify, nestjs, ts backend]
+    language: TypeScript + Node.js
+    toolchain_check: ["node -v >= 20", "npm -v"]
+    scaffold: "Node + framework init (Hono / Fastify / Express / NestJS per implementer's craft)"
+    layout: "src/{routes,services,db,middleware}/ + src/index.ts"
+    gates:
+      build: "TypeScript compile (tsc --noEmit)"
+      lint: "ESLint with zero warnings"
+      test: "Vitest / Jest"
+      fmt: "Prettier"
+    red_lines:
+      - "TypeScript strict mode"
+      - "input validation at every entry (zod / equivalent)"
+      - "no `any` leaks"
+      - "errors uniformly structured"
+      - "parameterized queries"
+    test_surface: "HTTP integration tests (curl / supertest)"
+    deliverable: "npm-startable service + container config"
+
+  go:
+    match: [go, golang, 高并发服务, 微服务, cli tool]
+    language: Go
+    toolchain_check: ["go version >= 1.22", "golangci-lint --version (prompt install if missing)"]
+    scaffold: "go mod init + standard cmd/internal layout"
+    layout: "cmd/<app>/ + internal/{handler,service,repo,domain}/ + go.mod"
+    gates:
+      build: "go build ./..."
+      lint: "golangci-lint run (or go vet ./... fallback)"
+      test: "go test ./... -race"
+      fmt: "gofmt -l . (must output nothing)"
+    red_lines:
+      - "every error handled explicitly; swallowing with `_` forbidden"
+      - "exported symbols documented"
+      - "no panic as business error; HTTP handlers never accept unvalidated input"
+      - "concurrency managed via sync/errgroup; bare goroutine leaks forbidden"
+    test_surface: "go test integration suites + curl smoke"
+    deliverable: "static binary + Makefile + container config"
+
+  rust:
+    match: [rust, 系统级, 性能敏感, wasm]
+    language: Rust
+    toolchain_check: ["rustc --version", "cargo --version", "cargo clippy --version"]
+    scaffold: "cargo new <name> (binary) or cargo new --lib <name> (library)"
+    layout: "src/main.rs|lib.rs + src/{modules}/ + Cargo.toml + tests/"
+    gates:
+      build: "cargo build --release"
+      lint: "cargo clippy -- -D warnings (zero-warning hard gate)"
+      test: "cargo test"
+      fmt: "cargo fmt --check"
+    red_lines:
+      - "no `unsafe` unless spec explicitly approves with commented reason"
+      - "no `unwrap()`/`expect()` in library code or error paths (use `?` + thiserror)"
+      - "public APIs carry doc comments and examples"
+      - "clippy warnings: zero tolerance"
+    test_surface: "cargo test + criterion benchmarks"
+    deliverable: "release binary or crates.io-ready library + README"
+
+  java:
+    match: [java, spring, 企业级, 安卓后端]
+    language: Java 17+ / Spring Boot
+    toolchain_check: ["java -version >= 17", "mvn -v or gradle -v"]
+    scaffold: "Spring Initializr / Maven archetype / standard Maven layout"
+    layout: "src/main/java/<group>/{controller,service,repository,domain}/ + src/test/"
+    gates:
+      build: "mvn -q package -DskipTests=false (or gradle build)"
+      lint: "checkstyle / spotbugs"
+      test: "mvn test (or gradle test)"
+      fmt: "spotless (if configured)"
+    red_lines:
+      - "layering discipline: controllers hold no business logic; services stay clear of HTTP details; repositories only persist"
+      - "no bare catch swallowing exceptions; business errors unified via @ControllerAdvice"
+      - "bean-validation on entity fields + service-layer double validation"
+      - "no System.out; SLF4J only"
+    test_surface: "JUnit + Spring Test + integration"
+    deliverable: "executable jar + application.yml example + container config"
+
+  python:
+    match: [python, fastapi, django, flask, 脚本, data processing, ai, ml]
+    language: Python 3.11+
+    toolchain_check: ["python3 --version >= 3.11", "pip --version or uv --version"]
+    scaffold: "uv init or python -m venv .venv + framework deps"
+    layout: "src/<pkg>/{api,services,models}/ + tests/ + pyproject.toml"
+    gates:
+      build: "python -m compileall src/ -q"
+      lint: "ruff check src/ + mypy src/ --strict (core modules)"
+      test: "pytest -q"
+      fmt: "ruff format --check src/"
+    red_lines:
+      - "full type annotations on core modules (mypy strict)"
+      - "no bare `except:`; layered exception definitions"
+      - "dependency lock file committed (uv.lock / pinned requirements.txt)"
+      - "configuration via environment variables"
+    test_surface: "pytest + httpx integration for API targets"
+    deliverable: "runnable service/CLI + pyproject.toml + lock file"
+
+  # ─── Database-only / SQL-focused ───
+
+  sql_focused:
+    match: [sql, sql optimization, query tuning, index, migration review, schema review, sql audit]
+    language: SQL (any engine)
+    toolchain_check: ["database CLI / driver presence per engine (psql / mysql / sqlite3 / sqlcmd / etc.)"]
+    scaffold: "n/a (focused work on existing schema)"
+    layout: "n/a"
+    gates:
+      build: "n/a"
+      lint: "EXPLAIN / EXPLAIN ANALYZE on representative queries (before and after)"
+      test: "representative workload replay (before and after)"
+      fmt: "n/a"
+    red_lines:
+      - "no full-table scans on hot paths (verify in EXPLAIN)"
+      - "every foreign key has an index on the referencing side"
+      - "no N+1 query patterns in ORMs"
+      - "every migration is reversible (down-migration exists) or explicitly documented irreversible"
+    test_surface: "staging replica + load harness + before/after timing"
+    deliverable: "query rewrites / index additions / migration scripts + before/after EXPLAIN + measured timing delta"
+
+  # ─── Library / SDK ───
+
+  library_sdk:
+    match: [library, sdk, npm package, crates package, pypi package, framework, component library]
+    language: per stack card above (choose the appropriate backend language)
+    toolchain_check: ["per chosen language"]
+    scaffold: "library init (e.g. cargo new --lib, uv init --lib, npm init + tsup/vite lib mode)"
+    layout: "src/{module} + tests/ + README + docs/"
+    gates:
+      build: "library build (per language)"
+      lint: "library lint with zero warnings"
+      test: "full test suite"
+      fmt: "library formatter check"
+    red_lines:
+      - "complete public types (no `any` leaks)"
+      - "doc comments on every public API"
+      - "semver commitment"
+      - "tree-shaking friendly (no side effects at module load)"
+      - "examples in README"
+    test_surface: "unit + integration + example app"
+    deliverable: "publishable package + README + changelog"
+
+# ─────────────────────────────────────────────────────────────
+# Live-growth rule for uncovered stacks
+# =============================================================================
+extension_rule: |
+  The requested stack is not in the registry (C#/Elixir/Erlang/Zig/Solidity/etc.):
+  1. Grow a stack card live per stack_schema (toolchain/scaffold/layout/gates/red lines/test surface/deliverable)
+  2. The gates four-piece (build/lint/test/fmt) is mandatory — not knowing the
+     lint tool is itself a signal: research the ecosystem's mainstream choice;
+     leaving any gate blank is forbidden
+  3. Write the grown card into the spec's extension registry and declare it in
+     the delivery summary
+  4. @ultra's preflight probes the card's toolchain_check; missing tools get
+     install hints + a continue/stop question

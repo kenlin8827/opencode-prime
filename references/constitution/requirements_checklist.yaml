@@ -1,0 +1,207 @@
+# =============================================================================
+# Requirements Grilling Checklist v3.0 (English edition)
+# =============================================================================
+# Ported from the "awesome-product" three-piece kit (requirements_grill_checklist
+# v3.0), published for reproduction by its author.
+#
+# Philosophy: thinking skeleton, NOT answer bank. Any checklist trying to
+# enumerate every product type will fail. Three layers let the operator grow
+# flesh at runtime:
+#   L0 Meta-framework  - 7 universal question layers (always apply)
+#   L1 Expansion ops   - 8 generation rules turning each layer into concrete,
+#                        executable decisions
+#   L2 Scope adapter   - detect shape (frontend/backend/fullstack/library/CLI/
+#                        mobile_app/mini_program/...) then activate/prune/transform
+# Output bar: concrete executable decisions, never "it depends".
+# =============================================================================
+
+meta:
+  name: requirements_grill_checklist
+  version: "3.0-en"
+  max_questions: 5
+  principle: "Decisive inference with declared assumptions beats question bombing"
+  output_required:
+    - scope_verdict           # L2 output
+    - product_spec            # completed product specification
+    - assumptions             # every inferred assumption
+    - questions_to_user       # <= max_questions high-leverage questions
+    - decision_trees_grown    # OP-TREE products, source-labeled per level
+    - extension_registry      # EXT nodes (declare "none" if empty)
+
+# =============================================================================
+# L0 - META-FRAMEWORK: 7 universal layers
+# =============================================================================
+meta_framework:
+  - layer: L0-1_intent
+    core_questions: [who is it for?, what problem does it solve (one-line value prop)?, what does success look like?, what is explicitly NOT done?]
+    apply_operators: [OP-JOURNEY]
+    note: "Success has 3 tiers: (1) core flow runs end-to-end, (2) acceptance sub-list all green, (3) at least one wow moment."
+  - layer: L0-2_scope
+    core_questions: [which 3-5 capabilities are core?, acceptance bar per capability?, enhancements & roadmap?]
+    apply_operators: [OP-ENTITY, OP-LIFECYCLE, OP-JOURNEY]
+  - layer: L0-3_structure
+    core_questions: [which core objects/entities/states?, their relations & lifecycle?, where does data live and how long?]
+    apply_operators: [OP-ENTITY, OP-LIFECYCLE, OP-TREE]
+  - layer: L0-4_interaction
+    core_questions: [how does the user drive the system?, per operation: input/output/side effects?]
+    apply_operators: [OP-STATES4, OP-ACTOR]
+  - layer: L0-5_presentation
+    core_questions: [what is the surface quality bar?, who is the reference benchmark?]
+    apply_operators: [OP-BOUNDARY]
+  - layer: L0-6_engineering
+    core_questions: [floors for build/test/security/perf/config?, which external dependencies?]
+    apply_operators: [OP-FAILURE, OP-BOUNDARY, OP-CROSS]
+  - layer: L0-7_delivery
+    core_questions: [how many steps to run from a clean environment?, how good are docs & onboarding?]
+    apply_operators: [OP-JOURNEY]
+
+# =============================================================================
+# L1 - EXPANSION OPERATORS: the core asset
+# =============================================================================
+expansion_operators:
+
+  - op: OP-ENTITY
+    name: entity expansion
+    when: "a core object/entity/resource is identified"
+    expand: "per entity -> full CRUD matrix + list/detail views + field constraints + relations"
+    output: "entity list + complete operation matrix per entity; 'intentionally omitted' ops marked with reason"
+
+  - op: OP-LIFECYCLE
+    name: lifecycle expansion
+    when: "an entity changes state"
+    expand: "state machine: all states + legal transitions + trigger + terminal states; behavior on illegal/concurrent transitions"
+    output: "state machine definition (illegal & concurrent behavior included); state machine without terminal states = incomplete"
+
+  - op: OP-JOURNEY
+    name: journey expansion
+    when: "any layer involves a 'user'"
+    expand: "first contact -> first value (<=5 min?) -> core loop -> deep use -> exit/migration"
+    output: "user journey map with zero dead ends; 'first value' stop has concrete design (sample data / onboarding / template)"
+
+  - op: OP-STATES4
+    name: full-state expansion
+    when: "every async operation, page, endpoint, command"
+    expand: >
+      frontend -> loading / empty / error / success per point.
+      backend -> success / client-error (4xx semantics) / server-error (5xx) / timeout / rate-limited / idempotent-retry response spectrum.
+      CLI/library -> normal output / input error (exit code + hint) / environment error / interruption.
+    output: "full-state definition table per interaction point; any point missing a state = incomplete"
+
+  - op: OP-BOUNDARY
+    name: boundary expansion
+    when: "every input, collection, number, external resource"
+    expand: "empty / huge (1000+) / very long / malicious (XSS, emoji, SQL strings) / concurrent / disconnect / duplicate"
+    output: "boundary behavior table: each boundary -> the system's SPECIFIC behavior"
+
+  - op: OP-ACTOR
+    name: actor expansion
+    when: "more than one user type exists, or a data boundary exists"
+    expand: "per actor x per resource -> permission matrix; behavior on privilege-escalation; existing data when roles change"
+    output: "permission matrix; single-actor systems must declare 'single-actor', not skip"
+
+  - op: OP-FAILURE
+    name: failure expansion
+    when: "every external dependency"
+    expand: "what if it is down / slow / returns dirty data / recovers - how does state converge"
+    output: "dependency failure matrix; no external deps -> declare so explicitly"
+
+  - op: OP-CROSS
+    name: cross-cutting expansion
+    when: "after each core capability is settled"
+    expand: "capability x (performance / security / permissions / audit logging / observability), cell by cell"
+    output: "cross-cutting checklist; 'not applicable to this shape' cells must say so explicitly"
+
+  - op: OP-TREE
+    name: decision-tree growth protocol (star)
+    when: "an unknown variable drives many downstream decisions"
+    grow_rules:
+      - "R1 find the load-bearing variable: which unknown, once fixed, changes the most downstream decisions? It is the root"
+      - "R2 branch MECE: every level mutually exclusive, collectively exhaustive; each branch must change at least one downstream decision"
+      - "R3 recursive termination: a leaf is a 'concrete executable decision', never 'it depends'"
+      - "R4 source labeling: label each level's value source - user-explicit / inferred / default - fully traceable"
+      - "R5 escalation: depth >= 3, or architecturally irreversible leaf -> escalate to user question (counts toward max_questions)"
+
+# =============================================================================
+# L2 - SCOPE ADAPTER
+# =============================================================================
+scope_adapter:
+  detection:
+    method: "extract shape signal words from the request; no signals -> default fullstack and declare the assumption"
+  shapes:
+    frontend_only:
+      signals: ["frontend", "page", "landing", "component", "no backend", "static"]
+      activate: [L0-1, L0-2, L0-4, L0-5, L0-6, L0-7]
+      transform:
+        L0-3: "state model + local persistence (localStorage/IndexedDB); schema reserves backend migration"
+        L0-5: "full UI/UX bar: tokens / responsive / motion / a11y / four states"
+      wow_definition: "micro-interactions, keyboard shortcuts, command palette, beautiful empty states, benchmark-grade drag feel"
+    backend_only:
+      signals: ["API", "service", "endpoint", "backend", "crawler", "pipeline", "webhook", "microservice", "SQL optimization", "SQL tune", "query optimization"]
+      activate: [all 7 layers]
+      transform:
+        L0-5: "API-contract quality: naming consistency, error taxonomy (structured codes), pagination, filtering, idempotency, versioning, rate-limit semantics, self-documentation (OpenAPI)"
+        L0-4: "caller journey: onboarding -> first successful call (<=5 min) -> debuggability -> error troubleshooting"
+      wow_definition: "elegant SDK / self-documenting / idempotent design / 5-minute dev run"
+    fullstack:
+      signals: [default shape]
+      activate: [all 7 layers]
+      wow_definition: "frontend wow + backend wow"
+    library_sdk:
+      signals: ["library", "SDK", "npm package", "framework", "component library"]
+      transform:
+        L0-4: "API ergonomics: minimal up-and-running code, sensible defaults, progressive config, error messages that teach the fix"
+        L0-5: "type-system quality + docs-as-product + semver + tree-shaking"
+      wow_definition: "miracle in 3 lines, perfect type hints, error messages teach the fix"
+    cli_tool:
+      signals: ["CLI", "command line", "terminal tool"]
+      transform:
+        L0-4: "command system + flag design + composability"
+        L0-5: "help-as-docs, output layout, color with NO_COLOR, progress feedback"
+      wow_definition: "help teaches everything, rigorous exit codes, pipe-composable"
+    mobile_app:
+      signals: ["mobile app", "iOS app", "Android app", "flutter", "react native", "rn", "expo", "APP"]
+      activate: [all 7 layers]
+      transform:
+        L0-3: "data layer: device storage + remote sync; offline-first by default"
+        L0-5: "platform HIG (iOS) / Material 3 (Android); safe areas, touch targets >=44pt, dark-mode parity; motion follows platform-native idioms (no web-specific animation libraries)"
+      wow_definition: "platform-native feel, offline-capable, haptics, share intent"
+    mini_program:
+      signals: ["mini program", "miniprogram", "小程序", "wechat", "taro", "uniapp", "微信"]
+      activate: [all 7 layers]
+      transform:
+        L0-5: "WeChat design language, pages.json navigation, main package <= 2 MB (subcontract)"
+        L0-4: "lifecycle: onLoad/onShow/onReady/onHide; share + subscribe-message flows"
+      wow_definition: "sub-2s cold start, share-card richness, platform-feature integration (login/payment/subscribe)"
+    unmatched:
+      rule: "no shape matches -> trigger extension_interface to define a new shape + its transforms live; never force-fit"
+  verdict_format: "shape | hit signals | activated layers | pruned layers (with reason) | transform table | wow definition"
+
+# =============================================================================
+# EXTENSION INTERFACE
+# =============================================================================
+extension_interface:
+  trigger: "coverage self-check finds an uncovered/partially-covered domain signal"
+  rules:
+    - "extension nodes isomorphic with existing nodes: id (EXT- prefix) / owning layer / grill_questions / default_strategy / rationale / confidence / auto_generated"
+    - "default_strategy must be a concrete decision, never 'TBD'"
+    - "confidence < 0.7 -> escalate to user question (counts toward max_questions; over cap -> replace lowest-leverage)"
+    - "every extension node must register >= 1 acceptance item with the quality checklist"
+    - "all extensions go into spec's extension registry; on conflict, existing rules win + conflict declared"
+  forbidden: ["force-fitting uncovered domain into nearest existing node", "silently ignoring uncovered domain"]
+
+# =============================================================================
+# EXECUTION PROTOCOL
+# =============================================================================
+execution_protocol:
+  step_0: "coverage self-check + extension_interface growth"
+  step_1: "scope_adapter decides shape -> emit scope_verdict"
+  step_2: "walk activated layers per verdict, expand with L1 operators"
+  step_3: "grow decision trees live with OP-TREE for load-bearing unknowns"
+  step_4: "infer everything inferable -> assumptions; rank questions by leverage; take <= max_questions"
+  step_5: "ask once, each question with recommended option + default; silence -> advance on all defaults"
+  step_6: "emit spec: positioning / capabilities (Given-When-Then) / structure / interaction & full states / surface quality / engineering floor / boundary & failure + assumptions + open questions + decision trees + extension registry + scope_verdict"
+  anti_patterns:
+    - "exceed max_questions; low-leverage questions"
+    - "capability without acceptance criteria; operator expansion abandoned midway"
+    - "tech choice by gut - every decision hangs on a decision-tree leaf with traceable source"
+    - "treat checklist as fill-in-the-blank - it is skeleton, flesh is grown by operators live"
