@@ -11,11 +11,11 @@ commands/git-pull.md
 commands/git-push.md
 commands/git-rebase.md
 commands/goal.md
-commands/grill-improve-loop.md
 commands/grill-me.md
 commands/grill-with-docs.md
 commands/handoff.md
 commands/impl.md
+commands/improve-loop.md
 commands/memory-summarize.md
 commands/plan.md
 commands/prd.md
@@ -61,7 +61,6 @@ plugins/browser-screenshot.ts
 plugins/context-watch.ts
 plugins/context-watch/context-watch.ts
 plugins/deepseek-anchor.ts
-plugins/deepseek-anchor/deepseek-anchor-announce.ts
 plugins/deepseek-anchor/deepseek-anchor-command.ts
 plugins/deepseek-anchor/deepseek-anchor-config.ts
 plugins/deepseek-anchor/index.ts
@@ -120,7 +119,7 @@ plugins/project-manager/project-manager.ts
 plugins/project-manager/templates/AGENTS.md
 plugins/project-manager/templates/dbhub.toml
 plugins/project-manager/templates/git-commits.md
-plugins/project-manager/templates/opencode.jsonc
+plugins/project-manager/templates/ocp.json
 plugins/project-memory.ts
 plugins/project-memory/project-memory-command.ts
 plugins/project-memory/project-memory-config.ts
@@ -150,6 +149,9 @@ plugins/shared/provider-creds.ts
 plugins/shared/system-block.ts
 plugins/tgrep.ts
 plugins/tgrep/tgrep-config.ts
+plugins/tgrep/tgrep-mode.ts
+plugins/tgrep/tgrep-output.ts
+plugins/tgrep/tgrep-request-log.ts
 plugins/tgrep/tgrep-search.ts
 plugins/tgrep/tgrep-service.ts
 plugins/tgrep/tgrep-state.ts
@@ -204,7 +206,10 @@ profiles/router/antigravity.json
 profiles/router/claude-code.json
 profiles/router/codex.json
 profiles/router/llm.json
+profiles/router/omniroute-auto.json
+profiles/router/omniroute-qwen.json
 profiles/router/qoder.json
+profiles/router/qwen.json
 profiles/tencent/coding-plan.json
 profiles/tencent/token-plan.json
 profiles/xiaomi/token-plan-ams.json
@@ -242,7 +247,9 @@ providers/antigravity-router.json
 providers/claude-code-router.json
 providers/codex-router.json
 providers/llm-router.json
+providers/omniroute.json
 providers/qoder-router.json
+providers/qwen-router.json
 scripts/headroom-proxy-daemon.mjs
 scripts/serena-workspace-daemon.mjs
 skills/dev-prud/SKILL.md
@@ -254,10 +261,10 @@ skills/git-pull/SKILL.md
 skills/git-push/SKILL.md
 skills/git-rebase/SKILL.md
 skills/goal/SKILL.md
-skills/grill-improve-loop/SKILL.md
 skills/grill-me/SKILL.md
 skills/grill-with-docs/SKILL.md
 skills/handoff/SKILL.md
+skills/improve-loop/SKILL.md
 skills/md-to-docx/SKILL.md
 skills/md-to-pdf/SKILL.md
 skills/memory-summarize/SKILL.md
