@@ -258,7 +258,7 @@ $allFiles = @(
     "commands/goal.md", "commands/handoff.md", "commands/grill-me.md", "commands/grill-with-docs.md",
     "commands/improve-loop.md", "commands/dev.md", "commands/dev-plan.md", "commands/dev-quick.md", "commands/dev-flash.md",
     "commands/dev-review.md", "commands/dev-ultra.md", "commands/review-fix-loop.md",
-    "commands/dev-prud.md",
+    "commands/dev-prud.md", "commands/clean-dead-code.md",
     "commands/git-merge.md",
     "commands/git-pick.md",
     "commands/git-pull.md",
@@ -269,7 +269,7 @@ $allFiles = @(
     "skills/goal/SKILL.md", "skills/handoff/SKILL.md", "skills/grill-me/SKILL.md", "skills/grill-with-docs/SKILL.md",
     "skills/improve-loop/SKILL.md", "skills/dev/SKILL.md",
     "skills/dev-ultra/SKILL.md", "skills/review-fix-loop/SKILL.md",
-    "skills/dev-prud/SKILL.md",
+    "skills/dev-prud/SKILL.md", "skills/clean-dead-code/SKILL.md",
     "skills/git-merge/SKILL.md",
     "skills/git-pick/SKILL.md",
     "skills/git-pull/SKILL.md",
@@ -435,6 +435,12 @@ CheckWorkflowSkill "dev-prud" @("Surface model", "SEV", "PROB", "Tier A", "misse
 # dev compositor: anchors protect flag grammar, preset routing, zero-loss
 # passthrough, Safety-First arbitration, and the test-scope tier.
 CheckWorkflowSkill "dev" @("--plan-review", "--code-review", "--sdd", "dev-quick", "dev-plan", "dev-review", "Zero-Loss", "Safety-First", "test-scope", "--auto-advisor")
+
+# clean-dead-code: anchors protect the user-decides doctrine (uncertain findings
+# escalate, R2/R3 doubt resolves to R3, R3 never pre-approvable), the two diff
+# directions, the no-regress baseline contract, report-before-delete ordering,
+# and the persistent exclusions file.
+CheckWorkflowSkill "clean-dead-code" @("introduced-dead", "orphaned-by-diff", "R3 is never pre-approvable", "it is R3", "no-regress contract", "Report before delete", "exclusions.md", "verification-honesty", "Focus mode", "narrows **what is reported, never what is searched**", "snapshots/<ts>", "Snapshot lifetime = the undo window", "blocking — presented via the **question tool**")
 
 # git-merge: anchors protect the stock-merge model, sync-first baseline,
 # baseline-authority resolution, deletion-is-intent, confidence self-check +

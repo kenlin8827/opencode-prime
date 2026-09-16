@@ -298,7 +298,7 @@ Workflow slash commands (`/dev`, `/goal`, `/handoff`, …) are native opencode c
 4. **Update `docs/workflows/commands.md`** (English) and **`docs/zh/workflows/commands.md`** (Chinese) — add one row to the command overview table. The row description is the user-facing summary; keep it short (≤ ~250 chars) and link related docs where useful.
 5. **Update `DEVELOPING.md` repository layout** (this file, around line 495) — add the new files to the `commands/` and `skills/` directory tree so the listing stays truthful. Don't list every file; list the new *category* entry.
 6. **Bump version and regenerate manifest**:
-   - `install/version.json` + `package.json` + `install/README.md` title — bump minor for new features (e.g. `0.22.0 → 0.23.0`)
+   - `install/version.json` + `package.json` + `install/README.md` title — bump minor for new features (e.g. `0.22.0 → 0.23.0`); a purely additive command+skill MAY ship as a patch bump at the maintainer's discretion, with the reason recorded in that version's notes file.
     - `bun run manifest:generate` — `commands/` and `skills/` are in `SHIPPED_DIRS` (see `install/src/manifest.ts`), so new files appear automatically in `install/versions/<version>.manifest.txt`
    - If a custom protocol needs a self-check script (recommended for safety-critical skills), add it to the skill's `## Protocol self-check` section **using shell variables to assemble forbidden-pattern literals** — otherwise grep in the check will false-positive on the literals themselves.
 7. **Run structural tests** — `pwsh -ExecutionPolicy Bypass -File tests/test-all.ps1 -StructuralOnly`. Verify the test suite accepts the new files and frontmatter.
@@ -615,7 +615,7 @@ commands/                     # Native opencode slash-command launchers (thin: f
 ├── git-pick.md                  # Selective/all source-only cherry-pick with per-commit conflict resolution (agent-less; added in v0.27.0)
 ├── git-rebase.md                # Git rebase launcher — replay source commits onto target HEAD, linear (agent-less; added in v0.25.0)
 ├── git-pull.md                  # Safe upstream sync — ff-only first, diverged → guard + git-merge protocol; --rebase → git-rebase (agent-less; added in v0.24.0)
-├── goal.md · handoff.md · grill-*.md · review-fix-loop.md
+├── goal.md · handoff.md · grill-*.md · review-fix-loop.md · clean-dead-code.md
 └── sdd.md · prd.md · plan.md · impl.md   # SDD launchers (agent: plan/code)
 
 skills/                       # L2 workflow protocols — metadata resident, body loads on demand
@@ -626,7 +626,7 @@ skills/                       # L2 workflow protocols — metadata resident, bod
 ├── git-rebase/SKILL.md         # /git-rebase protocol — replay source onto target HEAD, linear; self-contained conflict resolution (same Step 2 doctrine as git-merge in rebase terms — see § Git workflow skill family) (added in v0.25.0)
 ├── git-pull/SKILL.md           # /git-pull protocol — ff-first sync; diverged → guard backup + delegate to git-merge (--rebase → git-rebase) (added in v0.24.0)
 ├── goal/ · handoff/ · grill-me/ · grill-with-docs/ · improve-loop/
-├── review-fix-loop/
+├── review-fix-loop/ · clean-dead-code/
 └── sdd-workflow/             # Merged SDD protocol (/sdd /prd /plan /impl)
 
 plugins/
