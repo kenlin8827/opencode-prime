@@ -679,7 +679,7 @@ export function buildProjectBadges(
   //   - NO PKG → dprint can't be installed (no package.json — degenerate)
   // Kept (actionable):
   //   - NOT INIT    → /project init not run on this directory
-  //   - NO INDEX    → MCP/CLI enabled but index not built — /project index
+  //   - NO INDEX    → MCP/CLI enabled but index not built — /project init
   //   - NO CLI      → tgrep enabled in config but binary missing — install
   //   - NO WATCHER  → tgrep index on disk but no live serve — start serve
   //   - STALE       → tgrep index built under different policy — rebuild

@@ -100,9 +100,11 @@ function isBackendActive(backend: string, cli: string, probe: BackendProbe): boo
 }
 
 function inactiveReason(backend: string, cli: string, probe: BackendProbe): string {
-  if (backend === "gitnexus") return !probe.gitnexusEnabled ? "gitnexus disabled in options.jsonc" : "gitnexus CLI not installed"
-  if (backend === "codegraph") return !probe.codegraphEnabled ? "codegraph disabled in options.jsonc" : "codegraph CLI not installed"
-  if (backend === "dbhub") return !probe.dbhubEnabled ? "dbhub disabled in options.jsonc" : "dbhub CLI not installed"
+  // The <name>Enabled flags come from mcp.<name>.enabled in
+  // ~/.config/opencode/opencode.jsonc — name the right file.
+  if (backend === "gitnexus") return !probe.gitnexusEnabled ? "gitnexus disabled in opencode.jsonc" : "gitnexus CLI not installed"
+  if (backend === "codegraph") return !probe.codegraphEnabled ? "codegraph disabled in opencode.jsonc" : "codegraph CLI not installed"
+  if (backend === "dbhub") return !probe.dbhubEnabled ? "dbhub disabled in opencode.jsonc" : "dbhub CLI not installed"
   return `${backend} inactive`
 }
 

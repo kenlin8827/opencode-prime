@@ -6,10 +6,9 @@
  *   - init / index / teardown actions with `when` condition lists
  *   - git_hooks: hook-name → command to run inside the managed block
  *
- * Resolution order:
- *   1. `<plugin-dir>/../../project-hooks.jsonc` (repo root or installed
- *      ~/.config/opencode/)
- *   2. `~/.config/opencode/project-hooks.jsonc`
+ * Resolution: the registry ships NEXT TO THIS MODULE only (repo
+ * `plugins/project-manager/`, installed `~/.config/opencode/project-
+ * manager/`) — no per-project or user-level override is looked up.
  */
 
 import { existsSync, readFileSync } from "node:fs"

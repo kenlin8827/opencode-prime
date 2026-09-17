@@ -487,10 +487,18 @@ function test08_IndexPlanning() {
   assert(planFor(planIndexBackends(probe({ gitnexusIndex: "stale" })), "gitnexus").command === "gitnexus analyze", "stale index → rebuild")
   assert(planFor(planIndexBackends(probe({ gitnexusIndex: "ready" })), "gitnexus").command === null, "ready index → no run")
   assert(planFor(planIndexBackends(probe({ gitnexusIndex: "missing" })), "gitnexus").command === null, "missing index → init step, not a rebuild")
+  assert(planFor(planIndexBackends(probe({ gitnexusIndex: "missing" })), "gitnexus").note.includes("/project init"), "missing index → note points to /project init, never claims 'up to date'")
+  assert(planFor(planIndexBackends(probe({ gitnexusIndex: "ready" })), "gitnexus").note === "index up to date", "ready index → note says up to date")
   assert(planFor(planIndexBackends(probe({ gitnexusCli: false })), "gitnexus").command === null, "CLI missing → skipped, never invoked")
   assert(planFor(planIndexBackends(probe({ gitnexusEnabled: false })), "gitnexus").command === null, "disabled → no run even with CLI")
+  // Skip notes must name the file that ACTUALLY gates the flag: mcp_enabled
+  // reads ~/.config/opencode/opencode.jsonc; tool_enabled (tgrep) reads options.jsonc.
+  assert(planFor(planIndexBackends(probe({ gitnexusEnabled: false })), "gitnexus").note.includes("opencode.jsonc"), "mcp_enabled skip → names opencode.jsonc")
+  assert(planFor(planIndexBackends(probe({ tgrepEnabled: false })), "tgrep").note.includes("disabled in options.jsonc"), "tool_enabled skip → names options.jsonc")
   assert(planFor(planInitBackends(probe({ tgrepEnabled: true, tgrepCli: true })), "tgrep").command === "tgrep index .", "tgrep init builds missing local index")
   assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true })), "tgrep").command === null, "tgrep index command never creates first index")
+  assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true })), "tgrep").note.includes("/project init"), "tgrep missing index → note points to /project init, not a rebuild loop")
+  assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true, tgrepIndexed: true, tgrepReadiness: "server", tgrepPolicyCurrent: true })), "tgrep").note.includes("healthy tgrep server"), "tgrep indexed+healthy → note says healthy")
   assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true, tgrepIndexed: true, tgrepReadiness: "server", tgrepPolicyCurrent: true })), "tgrep").command === null, "healthy tgrep server skips rebuild")
   assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true, tgrepIndexed: true, tgrepReadiness: "disk-index" })), "tgrep").command === "tgrep index .", "unhealthy tgrep index rebuilds")
 
@@ -716,6 +724,17 @@ function test11_Hooks() {
   const afterCleanup = readFileSync(userPath, "utf-8")
   assert(afterCleanup.includes("echo 'user script'"), "user content survives cleanup")
   assert(!afterCleanup.includes(MARKER_START), "managed block removed in cleanup")
+
+  // Disabled backend, no hook files yet → skipped with reason naming the
+  // file that actually gates the flag (mcp.<name>.enabled lives in
+  // opencode.jsonc, NOT options.jsonc).
+  const dirOff = mkdtempSync(join(tmpdir(), "pm-hooksoff-"))
+  mkdirSync(join(dirOff, ".git", "hooks"), { recursive: true })
+  const off = registerProjectHooks(dirOff, hookProbe({ gitnexusEnabled: false }))
+  assert(off.length > 0 && off.every((h) => h.status === "skipped"), "disabled backend skips fresh hook files")
+  assert(off[0].detail.includes("disabled in opencode.jsonc"), "disabled-hook note names opencode.jsonc")
+  assert(!off[0].detail.includes("options.jsonc"), "disabled-hook note never misnames options.jsonc")
+  rmSync(dirOff, { recursive: true, force: true })
 
   rmSync(dir, { recursive: true, force: true })
 }

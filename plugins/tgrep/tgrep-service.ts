@@ -61,7 +61,7 @@ export function isCliMissing(result: { error?: Error; status: number | null }): 
  *   no-watcher  — index on disk but no live serve; indexed mode falls back to rg
  *   stale       — index built under different policy; do not trust indexed mode
  *   building    — index build in progress; wait or use rg
- *   no-index    — CLI present, no `.tgrep/` yet; run /project index
+ *   no-index    — CLI present, no `.tgrep/` yet; run /project init
  *   no-cli      — switch on, binary missing; install tgrep
  *
  * Cross-platform invariant: state names are kebab-case ASCII (no path

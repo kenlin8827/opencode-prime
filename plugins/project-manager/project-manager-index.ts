@@ -245,7 +245,10 @@ function evaluateCondition(cond: string, root: string, probe: BackendProbe): boo
 
 function conditionSkipNote(cond: string, probe: BackendProbe): string {
   if (cond.startsWith("tool_enabled:")) return `${cond.slice("tool_enabled:".length)} disabled in options.jsonc`
-  if (cond.startsWith("mcp_enabled:")) return `${cond.slice("mcp_enabled:".length)} disabled in options.jsonc`
+  // `mcp.<name>.enabled` is read from ~/.config/opencode/opencode.jsonc
+  // (mcpEnabled above) — NOT options.jsonc, which only governs tool options
+  // like tgrep. Point users at the file that actually controls the flag.
+  if (cond.startsWith("mcp_enabled:")) return `${cond.slice("mcp_enabled:".length)} disabled in opencode.jsonc`
   if (cond.startsWith("cli_installed:")) return `${cond.slice("cli_installed:".length)} CLI not installed`
   if (cond === "indexed:codegraph") return "no index yet — that's an init step, run /project init"
   if (cond === "!indexed:codegraph") return "already indexed"
@@ -254,15 +257,35 @@ function conditionSkipNote(cond: string, probe: BackendProbe): string {
   if (cond === "index_missing") {
     return probe.gitnexusIndex === "ready" ? "already indexed" : "stale — rebuild via /project index"
   }
-  if (cond === "index_stale") return "index up to date"
-  if (cond === "index_ready") return "no index yet — that's an init step, run /project init"
+  if (cond === "index_stale") {
+    // A MISSING index also fails `index_stale` — report it as the init step
+    // it is instead of falsely claiming the index is up to date.
+    return probe.gitnexusIndex === "missing"
+      ? "no index yet — that's an init step, run /project init"
+      : "index up to date"
+  }
+  if (cond === "index_ready") {
+    return probe.gitnexusIndex === "stale"
+      ? "stale — rebuild via /project index"
+      : "no index yet — that's an init step, run /project init"
+  }
   if (cond === "index_missing:tgrep") return "local tgrep index already exists"
   if (cond === "!server_healthy:tgrep") return "healthy tgrep server keeps the index current"
-  if (cond === "policy_current:tgrep") return "tgrep index policy/version changed — rebuild via /project index"
+  if (cond === "policy_current:tgrep") {
+    // policyCurrent is forced false while unindexed — don't send those users
+    // to a rebuild that this phase provably skips.
+    return probe.tgrepIndexed
+      ? "tgrep index policy/version changed — rebuild via /project index"
+      : "no index yet — that's an init step, run /project init"
+  }
   if (cond === "tgrep_rebuild_needed") {
-    return probe.tgrepReadiness === "server" ? "healthy tgrep server and current policy"
-      : probe.tgrepReadiness === "stale" ? "index policy/version changed — rebuild via /project index"
-        : "no healthy tgrep server"
+    // Fails only when: no index yet, or server healthy AND policy current.
+    // Claiming "rebuild via /project index" for a MISSING index would loop —
+    // this phase skips missing indexes under this very condition; first
+    // index is an init step (same rule as gitnexus).
+    return !probe.tgrepIndexed
+      ? "no index yet — that's an init step, run /project init"
+      : "healthy tgrep server and current policy"
   }
   return `skipped (${cond})`
 }
