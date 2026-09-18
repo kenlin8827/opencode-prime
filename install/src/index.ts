@@ -128,6 +128,7 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
     keepBackups: undefined,
     yes: false,
     projectMode: 'auto',
+    useDefaultConfig: false,
     isInteractive: process.stdout.isTTY && process.stdin.isTTY,
   };
 
@@ -333,6 +334,10 @@ function parseCliArgs(rawArgs: string[]): CliArgs {
       args.cleanDirectory = process.cwd();
     } else if (arg === '-Target' || arg === '--target' || arg === '-t') {
       args.target = rawArgs[++i];
+    } else if (arg === '-DefaultConfig' || arg === '--default-config' || arg === '-D') {
+      // Escape wrapper-injected OPENCODE_CONFIG_DIR (e.g. orca's
+      // opencode-hooks) by routing the install to the canonical default.
+      args.useDefaultConfig = true;
     } else if (arg === '-Force' || arg === '--force' || arg === '-f') {
       args.force = true;
     } else if (arg === '-NoBackup' || arg === '--no-backup') {
@@ -439,6 +444,8 @@ Actions:
 
 Options:
   -t, --target <path>      Custom target directory (default: ~/.config/opencode)
+  -D, --default-config     Ignore OPENCODE_CONFIG_DIR; install to the canonical default
+                           (escape wrapper-injected overrides, e.g. orca opencode-hooks)
   -f, --force              Force install even if version is unchanged
   --no-backup              Skip automatic backup of existing configuration
   --keep-backups <n>       Max backups kept after each run (default: 5, env: OCP_MAX_BACKUPS)

@@ -60,6 +60,14 @@ export interface CliArgs {
   target?: string;
   force: boolean;
   noBackup: boolean;
+  /**
+   * When true, ignore `OPENCODE_CONFIG_DIR` in this process and install to
+   * the canonical default (~/.config/opencode on POSIX, %USERPROFILE%\.config\opencode
+   * on Windows). Use this when an external wrapper (e.g. orca's
+   * opencode-hooks) injects OPENCODE_CONFIG_DIR per-process and you'd
+   * rather land in the dir the running opencode TUI actually reads.
+   */
+  useDefaultConfig?: boolean;
   // Max backup directories kept beside the target after each run.
   // Unset = OCP_MAX_BACKUPS env, else 5 (see installer.getMaxBackups).
   keepBackups?: number;

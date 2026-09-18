@@ -42,12 +42,194 @@ export function getMaxBackups(): number {
   return DEFAULT_MAX_BACKUPS;
 }
 
-export function getDefaultTargetDir(): string {
-  if (process.env.OPENCODE_CONFIG_DIR) {
+/**
+ * Resolve the install target directory.
+ *
+ * Precedence:
+ *   1. Caller passes `true` as `useDefaultConfig` → ignore
+ *      `OPENCODE_CONFIG_DIR` and fall through to the canonical default
+ *      (~/.config/opencode on POSIX, %USERPROFILE%\.config\opencode on
+ *      Windows). Used to escape wrapper-injected overrides (orca's
+ *      opencode-hooks, e.g.) that diverge from where the running
+ *      opencode TUI actually reads.
+ *   2. `OPENCODE_CONFIG_DIR` in this process — caller has not opted out.
+ *   3. Default ~/.config/opencode.
+ *
+ * Existing callers that omit `useDefaultConfig` get the previous
+ * behaviour (env var wins) — backward compatible.
+ */
+export function getDefaultTargetDir(useDefaultConfig = false): string {
+  if (!useDefaultConfig && process.env.OPENCODE_CONFIG_DIR) {
     return path.resolve(process.env.OPENCODE_CONFIG_DIR);
   }
   const home = os.homedir();
   return path.join(home, '.config', 'opencode');
+}
+
+/**
+ * Probe a running opencode process and infer its effective config dir.
+ *
+ * Why this exists: the install writes to whatever `getDefaultTargetDir()`
+ * resolves to (driven by `OPENCODE_CONFIG_DIR` in *this* shell). The opencode
+ * TUI independently reads from `api.state.path.config`, which the opencode
+ * server resolves from its OWN environment. If the two differ, an `ocp
+ * install` will land in a directory opencode never sees — the classic
+ * "shell has OPENCODE_CONFIG_DIR but opencode was started outside that
+ * scope" divergence that the orca opencode-hooks wrapper can produce.
+ *
+ * Returns the inferred dir, or null when:
+ *   - no opencode process is running
+ *   - the probe fails / is not supported on this platform
+ *   - the running process inherited its env without an explicit override
+ *     and the platform doesn't expose per-process env vars to other UIDs
+ *     (notably macOS: ps eww requires same UID; we fall back to silent)
+ *
+ * Detection strategy (cross-platform):
+ *   - Windows: `wmic process where name='opencode.exe' get CommandLine`
+ *     matches an explicit `--config-dir=X` flag.
+ *   - Linux:   scan `/proc/<pid>/environ` for `OPENCODE_CONFIG_DIR=X`.
+ *     Also matches `--config-dir=X` in `/proc/<pid>/cmdline` as a backup.
+ *   - macOS:   `ps -p <pid> -wwE` (BSD `ps` env-var syntax). Falls back
+ *     to `pgrep -af opencode` cmdline match when env-var probe fails
+ *     (e.g. different UID, SIP-protected shell).
+ */
+export function probeRunningOpencodeConfigDir(): string | null {
+  try {
+    if (process.platform === 'win32') return probeWindows()
+    if (process.platform === 'linux') return probeLinux()
+    if (process.platform === 'darwin') return probeDarwin()
+    return null
+  } catch {
+    return null
+  }
+}
+
+// ── Per-platform probes ────────────────────────────────────────────
+
+function probeWindows(): string | null {
+  const res = spawnSync(
+    'wmic',
+    [
+      'process', 'where', "name='opencode.exe'",
+      'get', 'CommandLine', '/format:list',
+    ],
+    { encoding: 'utf8', timeout: 3000, windowsHide: true },
+  )
+  if (res.error || !res.stdout) return null
+  return matchConfigDirFromString(res.stdout)
+}
+
+interface ProcListing {
+  pid: number
+  cmdline: string
+}
+
+function listOpencodeProcsLinux(): ProcListing[] {
+  const res = spawnSync('pgrep', ['-x', 'opencode'], { encoding: 'utf8', timeout: 3000 })
+  if (res.error || !res.stdout) return []
+  return res.stdout.split(/\s+/).filter(Boolean).map((p) => ({ pid: Number(p), cmdline: '' }))
+}
+
+function probeLinux(): string | null {
+  const procs = listOpencodeProcsLinux()
+  for (const p of procs) {
+    try {
+      const envRaw = fs.readFileSync(`/proc/${p.pid}/environ`, 'utf8')
+      const envParts = envRaw.split('\0')
+      for (const kv of envParts) {
+        const eq = kv.indexOf('=')
+        if (eq < 0) continue
+        if (kv.slice(0, eq) === 'OPENCODE_CONFIG_DIR') {
+          return path.normalize(kv.slice(eq + 1))
+        }
+      }
+    } catch { /* /proc not readable — fall through to cmdline */ }
+    try {
+      const cmdRaw = fs.readFileSync(`/proc/${p.pid}/cmdline`, 'utf8')
+      const joined = cmdRaw.split('\0').filter(Boolean).join(' ')
+      const m = matchConfigDirFromString(joined)
+      if (m) return m
+    } catch { /* ignore */ }
+  }
+  return null
+}
+
+function probeDarwin(): string | null {
+  const pg = spawnSync('pgrep', ['-x', 'opencode'], { encoding: 'utf8', timeout: 3000 })
+  if (pg.error || !pg.stdout) return null
+  const pids = pg.stdout.split(/\s+/).filter(Boolean)
+  for (const pid of pids) {
+    const ps = spawnSync('ps', ['-p', pid, '-wwE'], { encoding: 'utf8', timeout: 3000 })
+    if (ps.error || !ps.stdout) continue
+    const lines = ps.stdout.split('\n')
+    if (lines.length < 2) continue
+    const cmdlineAndEnv = lines.slice(1).join('\n')
+    for (const line of cmdlineAndEnv.split(/\s+/)) {
+      if (line.startsWith('OPENCODE_CONFIG_DIR=')) {
+        return path.normalize(line.slice('OPENCODE_CONFIG_DIR='.length))
+      }
+    }
+    const m = matchConfigDirFromString(cmdlineAndEnv)
+    if (m) return m
+  }
+  return null
+}
+
+/**
+ * Extract an explicit --config-dir flag from a free-form string. Matches
+ * both `--config-dir=X` and `--config-dir X` forms, and accepts both
+ * Windows (`C:\...`) and POSIX (`/home/...`) path shapes. Returns null
+ * when no explicit flag is present — the opencode process inherits its
+ * env from its parent in that case, and we can't infer the effective
+ * dir from outside the process.
+ */
+function matchConfigDirFromString(s: string): string | null {
+  const m = s.match(/--config-dir(?:=|\s+)?["']?((?:[A-Za-z]:[\\\/][^\s"']+|\/[^\s"']+))["']?/)
+  return m ? path.normalize(m[1]!) : null
+}
+
+/**
+ * Cross-process sanity check for the install target. Returns a non-empty
+ * warning when there is a *detectable* divergence between where the install
+ * will write and where the running opencode.exe instance will read:
+ *
+ *   1. --target was passed but OPENCODE_CONFIG_DIR is also set and they
+ *      disagree — explicit caller inconsistency.
+ *   2. A running opencode.exe was started with --config-dir pointing
+ *      somewhere OTHER than our resolved targetDir — the install will
+ *      land in a place opencode never reads.
+ *
+ * The probe is injected so unit tests can run anywhere (Bun on macOS/Linux
+ * do not have `wmic`); production callers omit the second arg and get the
+ * live probe.
+ */
+export function warnInstallTargetMismatch(
+  targetDir: string,
+  runtimeConfigDir: string | null = probeRunningOpencodeConfigDir(),
+): string | null {
+  const envOverride = process.env.OPENCODE_CONFIG_DIR
+  const envAbs = envOverride ? path.resolve(envOverride) : null
+  const runtimeAbs = runtimeConfigDir ? path.resolve(runtimeConfigDir) : null
+
+  const warnings: string[] = []
+
+  if (envAbs && targetDir !== envAbs) {
+    warnings.push(
+      `[ocp] ⚠ OPENCODE_CONFIG_DIR=${envAbs} is set but --target resolved to ${targetDir}.`,
+      `[ocp] ⚠ These should be the same directory; pick one.`,
+    )
+  }
+
+  if (runtimeAbs && runtimeAbs !== targetDir) {
+    warnings.push(
+      `[ocp] ⚠ A running opencode.exe was launched with --config-dir=${runtimeAbs},`,
+      `[ocp] ⚠ but the install will write to ${targetDir}.`,
+      `[ocp] ⚠ The opencode TUI will NOT see this install until restart with --config-dir=${targetDir}.`,
+    )
+  }
+
+  if (warnings.length === 0) return null
+  return warnings.join('\n')
 }
 
 export function getCurrentRepoVersion(repoDir: string): string {
@@ -945,7 +1127,18 @@ export function executeInstall(
   filesInstalled: number;
   backupPath: string | null;
 } {
-  const targetDir = args.target ? path.resolve(args.target) : getDefaultTargetDir();
+  const targetDir = args.target
+    ? path.resolve(args.target)
+    : getDefaultTargetDir(args.useDefaultConfig === true);
+  // Cross-process sanity: the shell that runs `ocp install` may have a
+  // different OPENCODE_CONFIG_DIR (or none) than the opencode TUI process
+  // that will actually load the installed files. Surface the divergence
+  // loudly here so a silent "installed but not visible" install fails
+  // fast, before we touch the user's installed tree.
+  const mismatchWarning = warnInstallTargetMismatch(targetDir)
+  if (mismatchWarning) {
+    console.warn(colorize.yellow(mismatchWarning))
+  }
   const curVersion = getCurrentRepoVersion(repoDir);
 
   // Load options: repo defaults < user overrides < explicit customOptions
