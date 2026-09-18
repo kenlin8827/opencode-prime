@@ -12,3 +12,4 @@
 | 0.36.0 | [tgrep probe-first contract](./0.36.0-tgrep-probe-first-contract.md) |
 | 0.38.0 | [OmniRoute gateway profile](./0.38.0-omniroute-gateway-profile.md) |
 | 0.40.0 | [Multi-style ADL and prose language policy](./0.40.0-multi-style-adl-and-prose-language-policy.md) |
+| 0.40.1 | [Project-level ADR overrides](./0.40.1-project-level-adr-overrides.md) |

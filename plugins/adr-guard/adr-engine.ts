@@ -16,7 +16,7 @@ import { dirname, join, relative, resolve } from "node:path"
 import { getAdrConfig, type AdrLayout, getAdrLayout, normalizeAdrStyle, resolveAdrStyleForNew, setAdrLayout } from "./adr-guard-config"
 import { groupByIteration, renderIterationIndex, validateEvolutionMetadataShape } from "./adr-evolution"
 import { getAdrStyleAdapter, resolveDocumentAdapter } from "./adr-style-registry"
-import { buildAdrTree, renderAdlIndex, type AdrTreeNode } from "./adr-views"
+import { buildAdrTree, renderAdlIndex, type AdrTreeNode, type IndexColumn as AdrIndexColumn } from "./adr-views"
 import {
   adrIdFromFilename,
   adrTextCollator,
@@ -78,15 +78,47 @@ const IGNORED_DIRS = new Set([
 ])
 
 /**
- * Slugify a title for file naming (e.g., "Event Bus & Streaming" -> "event-bus-streaming")
+ * Slugify a title for file naming. Honors `adr.slugStyle` when called from
+ * engine code that has access to `getAdrConfig()` (createAdr /
+ * createAdrContainer / section appenders). The default style is `kebab`,
+ * which is the historical behavior — Phase 7 added `snake` and `lower`
+ * as opt-in project-level overrides via `.ocp/ocp.json`.
+ *
+ *   slugify("Event Bus & Streaming")                  // "event-bus-streaming"
+ *   slugify("Event Bus & Streaming", "snake")         // "event_bus_streaming"
+ *   slugify("Event Bus & Streaming", "lower")         // "eventbusstreaming"
+ *
+ * Pure — exported for unit tests.
  */
-export function slugify(title: string): string {
-  return title
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/[\s_-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
+export function slugify(title: string, style: "kebab" | "snake" | "lower" = "kebab"): string {
+  const lower = title.toLowerCase().trim()
+  if (style === "lower") {
+    return lower.replace(/[^\w]+/g, "")
+  }
+  const stripped = lower.replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "")
+  if (style === "snake") return stripped.replace(/-/g, "_")
+  return stripped
+}
+
+/**
+ * Render an ADR filename from the project's `adr.filenamePattern`.
+ * Supported placeholders: `{id}` (required, bare or prefixed per style),
+ * `{slug}` (post-slugify, optional). The `{id}` placeholder is the only
+ * required token; a pattern without it is rejected at config-read time.
+ * Unknown `{…}` placeholders are stripped with a one-shot warning
+ * (handled in normalizeFilenamePattern).
+ *
+ * Pure — exported for unit tests.
+ */
+export function renderAdrFilename(
+  pattern: string,
+  id: string,
+  slug: string,
+): string {
+  const trimmed = pattern.replace(/\s+/g, " ").trim()
+  if (!trimmed.includes("{id}")) return `${id}-${slug}`
+  const safeSlug = slug.replace(/[/\\:*?"<>|]/g, "")
+  return `${trimmed.replace("{slug}", safeSlug).replace("{id}", id)}.md`
 }
 
 /**
@@ -402,16 +434,26 @@ export function allocateAdrIterationId(projectDir: string, baseline: string, ite
  * (global/system) records first, then child scope links. Regeneration is
  * deterministic — an unchanged ADL yields byte-identical files.
  * Returns the written INDEX.md paths (POSIX, relative to projectDir).
+ *
+ * `columns` (Phase 7) projects the project-supplied column set from
+ * `.ocp/ocp.json:adr.indexColumns`. When omitted, the canonical 8-column
+ * shape is used so existing projects regenerate byte-identical indexes.
  */
-export function regenerateAdlIndexes(projectDir: string, defaultDir = "docs/adr", layout?: AdrLayout): string[] {
+export function regenerateAdlIndexes(
+  projectDir: string,
+  defaultDir = "docs/adr",
+  layout?: AdrLayout,
+  columns?: readonly AdrIndexColumn[],
+): string[] {
   const rootRel = defaultDir.replace(/\\/g, "/").replace(/\/+$/, "")
   const records = getNormalizedAdrs(projectDir, rootRel, layout)
   const forest = buildAdrTree(records, rootRel)
+  const cols = columns ?? getAdrConfig().indexColumns
 
   const written: string[] = []
   const writeNode = (node: AdrTreeNode): void => {
     const relPath = `${node.relDir}/INDEX.md`
-    writeFileSync(join(projectDir, relPath), renderAdlIndex(node), "utf-8")
+    writeFileSync(join(projectDir, relPath), renderAdlIndex(node, cols), "utf-8")
     written.push(relPath)
     for (const child of node.children) {
       writeNode(child)
@@ -437,6 +479,10 @@ export function updateAdrIndex(projectDir: string, targetRelDir: string): void {
   regenerateAdlIndexes(projectDir, targetRelDir)
 }
 
+// Re-export the views' column type so callers can pass it without
+// importing both modules.
+export type { IndexColumn as AdrIndexColumn } from "./adr-views"
+
 /**
  * Re-generate INDEX.by-iteration.md at the ADL root from the shared
  * `iteration` frontmatter metadata (§7.3 requirement 2 — a generated
@@ -460,8 +506,30 @@ function statusBadge(status: string): string {
   if (status.includes("superseded")) return `⚪ Superseded`
   if (status.includes("deprecated")) return `🟡 Deprecated`
   if (status.includes("rejected")) return `🔴 Rejected`
-  if (status.includes("proposed")) return `🔵 Proposed`
-  return `⚪ ${status}`
+  return `🔵 ${status}`
+}
+
+/**
+ * Append the project's `adr.extraSections` to a freshly scaffolded
+ * per-record body. OCP containers deliberately opt out — their §9
+ * output protocol is grammar-validated against a fixed set of H3
+ * sections, and a top-level H2 injection would either be ignored or
+ * cause validate() to flag a structural deviation. Sections for
+ * per-record styles (nygard/madr) are appended after the style's
+ * last canonical section. Pure — exported for unit tests.
+ */
+export function appendExtraSections(
+  scaffolded: string,
+  sections: string[],
+  style: AdrStyle,
+): string {
+  if (sections.length === 0) return scaffolded
+  if (style === "ocp") return scaffolded
+  // Trim trailing whitespace, then ensure exactly one blank line before
+  // the appended block.
+  const base = scaffolded.replace(/\s+$/, "")
+  const block = sections.map((s) => `\n${s}\n\n<!-- TODO: document — in the working language -->\n`).join("")
+  return `${base}\n${block}`
 }
 
 /**
@@ -545,8 +613,8 @@ export function createAdr(options: CreateAdrOptions): { relPath: string; fullPat
     id = allocateAdrSequentialId(projectDir)
   }
 
-  const slug = slugify(title) || "decision"
-  const filename = `${id}-${slug}.md`
+  const slug = slugify(title, getAdrConfig().slugStyle) || "decision"
+  const filename = renderAdrFilename(getAdrConfig().filenamePattern, id, slug)
   const fullPath = join(fullDir, filename)
   const relPath = `${targetRelDir}/${filename}`
   const today = new Date().toISOString().split("T")[0]
@@ -558,20 +626,25 @@ export function createAdr(options: CreateAdrOptions): { relPath: string; fullPat
     )
   }
   const adapter = getAdrStyleAdapter(style)
-  const content = adapter.scaffold({
-    id,
-    title,
-    status,
-    date: today,
-    created: today,
-    layer,
-    scope,
-    domain: options.domain,
-    baseline: options.baseline,
-    iteration: options.iteration,
-    parent,
-    supersedes,
-  })
+  const adrCfg = getAdrConfig()
+  const content = appendExtraSections(
+    adapter.scaffold({
+      id,
+      title,
+      status,
+      date: today,
+      created: today,
+      layer,
+      scope,
+      domain: options.domain,
+      baseline: options.baseline,
+      iteration: options.iteration,
+      parent,
+      supersedes,
+    }),
+    adrCfg.extraSections,
+    style,
+  )
 
   writeFileSync(fullPath, content, "utf-8")
   updateAdrIndex(projectDir, targetRelDir)
@@ -643,7 +716,7 @@ export function createAdrContainer(
     mkdirSync(fullDir, { recursive: true })
   }
 
-  const slug = slugify(title) || "batch"
+  const slug = slugify(title, getAdrConfig().slugStyle) || "batch"
   let id: string
   let filename: string
   if (baseline && iteration) {
@@ -654,11 +727,11 @@ export function createAdrContainer(
     assertContainerNamespaceFree(adrs, baseline, iteration)
     const bare = `${baseline}.${iteration}`
     id = normalizeAdrId(bare) ?? `ADR-${bare}`
-    filename = `${bare}-${slug}.md`
+    filename = renderAdrFilename(getAdrConfig().filenamePattern, bare, slug)
   } else {
     const seq = allocateAdrSequentialId(projectDir)
     id = `ADR-${seq}`
-    filename = `${seq}-${slug}.md`
+    filename = renderAdrFilename(getAdrConfig().filenamePattern, seq, slug)
   }
 
   const fullPath = join(fullDir, filename)
@@ -666,6 +739,11 @@ export function createAdrContainer(
   const today = new Date().toISOString().split("T")[0]
 
   const adapter = getAdrStyleAdapter("ocp")
+  // OCP containers own their own output protocol (§9 — Cheatsheet, Quick
+  // view, and per-section appends via `/adr section`). Project-supplied
+  // extraSections would clash with the container's grammar-validated
+  // section structure, so we deliberately skip injection here — the
+  // project's `adr.extraSections` applies to per-record styles only.
   const content = adapter.scaffold({
     id: bareAdrId(id),
     title,

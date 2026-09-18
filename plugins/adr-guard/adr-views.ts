@@ -107,9 +107,46 @@ function indexRelLink(fromDir: string, toDir: string): string {
 
 // ─── Generated directory indexes (§9.3) ──────────────────────────────
 
-const INDEX_HEADER =
-  `| ID | Decision Title | Style | Layer | Status | Domain | Iteration | Created |\n` +
-  `| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`
+const DEFAULT_INDEX_COLUMNS = [
+  "id",
+  "title",
+  "style",
+  "layer",
+  "status",
+  "domain",
+  "iteration",
+  "created",
+] as const
+
+const COLUMN_HEADERS: Record<string, string> = {
+  id: "ID",
+  title: "Decision Title",
+  style: "Style",
+  layer: "Layer",
+  status: "Status",
+  domain: "Domain",
+  iteration: "Iteration",
+  created: "Created",
+}
+
+/** Project-level column projection — every adapter renders the same
+ * shape given the same column set, so the unified row stays valid. */
+export type IndexColumn =
+  | "id"
+  | "title"
+  | "style"
+  | "layer"
+  | "status"
+  | "domain"
+  | "iteration"
+  | "created"
+
+function buildIndexHeader(columns: readonly IndexColumn[]): string {
+  return (
+    `| ${columns.map((c) => COLUMN_HEADERS[c] ?? c).join(" | ")} |\n` +
+    `| ${columns.map(() => ":---").join(" | ")} |\n`
+  )
+}
 
 /**
  * Render one directory's generated INDEX.md. Local indexes list ONLY the
@@ -119,8 +156,12 @@ const INDEX_HEADER =
  * system decisions) come first, then child scope links. Every index
  * carries a parent link (when applicable) and a generated-file banner.
  * Pure + deterministic → byte-stable regeneration.
+ *
+ * `columns` is the project-supplied column set from `adr.indexColumns`
+ * (Phase 7); when omitted, the canonical 8-column shape is used and the
+ * output stays byte-identical to pre-Phase-7 renderings.
  */
-export function renderAdlIndex(node: AdrTreeNode): string {
+export function renderAdlIndex(node: AdrTreeNode, columns: readonly IndexColumn[] = DEFAULT_INDEX_COLUMNS): string {
   let out = `# Architecture Decision Log\n\n`
   out += `> ⚠️ **GENERATED INDEX — DO NOT EDIT BY HAND.** This file is regenerated from the\n`
   out += `> ADR records in this directory and its subtree (§9.3). Any hand edit is overwritten\n`
@@ -137,9 +178,9 @@ export function renderAdlIndex(node: AdrTreeNode): string {
   if (node.records.length === 0) {
     out += `*(No records in this directory.)*\n`
   } else {
-    out += INDEX_HEADER
+    out += buildIndexHeader(columns)
     for (const record of node.records) {
-      out += renderUnifiedIndexRow(record) + `\n`
+      out += renderUnifiedIndexRow(record, columns) + `\n`
     }
   }
 
@@ -159,10 +200,51 @@ export function renderAdlIndex(node: AdrTreeNode): string {
  * One unified index row via the record's own style adapter
  * (registry dispatch) — the same style-aware link rendering every
  * adapter ships. Row shape (§9.3): ID, title, style, status, source
- * link, optional layer/domain/iteration.
+ * link, optional layer/domain/iteration. `columns` lets a project
+ * narrow or reorder the projection; columns not produced by an
+ * adapter's renderIndexEntry are filled with an empty cell.
  */
-export function renderUnifiedIndexRow(record: NormalizedAdrRecord): string {
-  return getAdrStyleAdapter(record.style).renderIndexEntry(record)
+export function renderUnifiedIndexRow(
+  record: NormalizedAdrRecord,
+  columns: readonly IndexColumn[] = DEFAULT_INDEX_COLUMNS,
+): string {
+  // Delegate to the adapter so per-style formatting (e.g. Nygard's badge
+  // text) stays style-true, then project onto the requested columns by
+  // removing columns the project dropped. The adapter's full row carries
+  // all 8 columns in the canonical order, so we map by token presence.
+  const fullRow = getAdrStyleAdapter(record.style).renderIndexEntry(record)
+  const cells = splitRow(fullRow)
+  const canonicalCells = mapRowToCanonical(cells, record)
+  const projected = columns.map((c) => canonicalCells[c] ?? "").join(" | ")
+  return `| ${projected} |`
+}
+
+/** Split a `| a | b | c |` row into raw cells (length 9 incl. outer empties). */
+function splitRow(row: string): string[] {
+  // Drop leading/trailing pipe + split on ` | ` for clean cells.
+  return row.replace(/^\s*\||\|\s*$/g, "").split(/\s*\|\s*/)
+}
+
+/** Map the canonical 8-cell adapter row to a {column: value} object. */
+function mapRowToCanonical(cells: string[], record: NormalizedAdrRecord): Record<string, string> {
+  // Every adapter ships the same 8-column shape:
+  // [id, title, style, layer, status, domain, iteration, created]
+  // so we can read by position safely. `cells` carries the trim-aware
+  // pieces from splitRow (it splits on `\s*\|\s*`, so each cell is
+  // already trimmed); the missing-cell fallbacks rebuild from the
+  // record to keep a malformed adapter row self-healing.
+  const filename = record.sourcePath.split("/").pop() ?? record.sourcePath
+  const trim = (s: string | undefined): string => (s ?? "").trim()
+  return {
+    id: trim(cells[0]) || `[${record.id}](./${filename})`,
+    title: trim(cells[1]) || record.title,
+    style: trim(cells[2]) || `\`${record.style}\``,
+    layer: trim(cells[3]) || `\`${record.layer ?? "system"}\``,
+    status: trim(cells[4]) || String(record.status),
+    domain: trim(cells[5]) || record.domain || "",
+    iteration: trim(cells[6]) || record.iteration || "",
+    created: trim(cells[7]) || record.created || record.date || "",
+  }
 }
 
 // ─── Tree views (§9.4 — `/adr tree [--by path|layer|domain|iteration]`) ──

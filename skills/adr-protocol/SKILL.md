@@ -1,3 +1,19 @@
+---
+name: adr-protocol
+description: |
+  ADR (Architecture Decision Record) protocol for the OCP adr-guard engine —
+  iron law, governance modes, hierarchical model, slash commands, project-level
+  overrides, natural-language triggers, commit checklist, per-style output
+  protocol (madr / nygard / ocp), prose language rule, frontmatter semantics,
+  guard-block handling. Load ONLY when the user signals an ADR intent: writing
+  / superseding / checking decisions, asking about commit rules, governance,
+  the iron law, or /adr config; or when an ADR-related file under docs/adr/
+  is being scaffolded / drafted. NEVER force-load on ordinary chats — the
+  protocol body is ~5 KB and stays out of the system prompt by design
+  (Phase 7.8). The system hint always advertises `/adr config` and points
+  at this skill, so the agent knows where to find the body.
+---
+
 # ADR Iron Law & Living Architecture
 
 This project records architecture decisions as ADRs. Each record declares
@@ -59,7 +75,85 @@ In complex codebases, ADRs are structured into three distinct layers:
 - `/adr migrate [h|f|a] [--confirm]` — Restructures ADR directories between flat and hierarchical layouts.
 - `/adr tree` — Visualizes the full hierarchical decision map and Mermaid DAG.
 - `/adr check` — Validates links, frontmatter integrity, and index synchronization.
+- `/adr config [key] [value]` — Read or set a single project-level ADR config key (see §7). Keys: `style`, `numbering`, `layout`, `governance`, `filenamePattern`, `slugStyle`, `extraSections`, `indexColumns`. Use `/adr config reset <key>` to revert one key to its default.
 - `/adr-guard on|off|status` — Toggles the hard commit guard.
+
+## §7. Project-level overrides (Phase 7)
+
+This project's `.ocp/ocp.json` may carry an `adr.*` block with eight
+keys. The system prompt always carries the LIVE values as a small
+table — **honor those values** when scaffolding, naming, and indexing.
+Do not invent your own filename pattern or default style.
+
+The keys fall into two groups that share the same storage and the
+same `/adr config` command:
+
+### §7.1 Suite fields (same block as `/adr init`)
+
+| Key | Allowed | Default | Effect |
+| :--- | :--- | :--- | :--- |
+| `adr.style` | `nygard` \| `madr` \| `ocp` | `madr` | Default style for new records (file declares its own style; `--style` on `/adr new` overrides). |
+| `adr.numbering` | `sequential` \| `iteration` | `sequential` | ID allocator. `iteration` requires `--baseline/--iteration` per `/adr new`. |
+| `adr.layout` | `auto` \| `flat` \| `hierarchical` | (inherit from legacy `adrLayout`) | Directory layout mode. |
+| `adr.governance` | `none` \| `review` \| `strict` | `none` | Lifecycle strictness. `strict` enables the proposed→accepted gate. |
+
+### §7.2 Phase 7 overrides (file naming, slug, body, index)
+
+| Key | Allowed | Default | Effect |
+| :--- | :--- | :--- | :--- |
+| `adr.filenamePattern` | string with `{id}` (required) and optional `{slug}` | `{id}-{slug}` | Filename template; `.md` appended automatically. `{id}` is the bare ID (`0001`, `0.2.54`) per style. `{slug}` is sanitized for `/\\:*?"<>\|`. |
+| `adr.slugStyle` | `kebab` \| `snake` \| `lower` | `kebab` | Slug transform: `kebab` = `event-bus-streaming`; `snake` = `event_bus_streaming`; `lower` = `eventbusstreaming`. |
+| `adr.extraSections` | array of `## <Heading>` strings | `[]` | Extra H2 sections appended to nygard/madr scaffolds after the style's last canonical section. **OCP containers deliberately opt out** — append sections via `/adr section`. |
+| `adr.indexColumns` | subset of `id, title, style, layer, status, domain, iteration, created` | all 8 | Project the generated `INDEX.md` table to these columns; cells for dropped columns render empty. Order preserved. |
+
+### §7.3 Quick examples
+
+```text
+# Project wants ADR-NNNN-slug.md with snake slug:
+/adr config filenamePattern "ADR-{id}-{slug}"
+/adr config slugStyle snake
+
+# Project wants a Risks section on every MADR scaffold:
+/adr config extraSections "## Risks"
+
+# Project wants a narrow INDEX.md (no style column):
+/adr config indexColumns id,title,status,created
+
+# Revert a single key:
+/adr config reset filenamePattern
+```
+
+Invalid values are silently rejected with a warning — the in-code
+default stays in place. Re-running with the same value is a no-op
+(byte-stable).
+
+## §8. Natural-language triggers (no slash command needed)
+
+When the user types a sentence instead of a slash command, infer the
+intent and run the matching slash command. Common phrasings:
+
+| User says | Route to |
+| :--- | :--- |
+| "写个 ADR / record a decision / document this choice" | `/adr new <title>` |
+| "记录一下我们用 Postgres" / "note that we're switching to X" | `/adr new <title>` |
+| "建一个决策记录" / "给这个方案建个 ADR" | `/adr new <title>` |
+| "supersede ADR-0007 with the new approach" | `/adr supersede 0007 <new-title>` |
+| "查看所有 ADR" / "show me the decision tree" | `/adr tree` |
+| "ADR 校验 / validate ADRs / run integrity check" | `/adr check` |
+| "ADR-0005 的历史 / supersession chain of ADR-0005" | `/adr history 0005` |
+| "看一下跟 ADR-0007 相关的所有决策 / context bundle" | `/adr context 0007` |
+| "把 ADR 目录打开严格治理 / turn on strict governance" | `/adr config governance strict` |
+| "我们的 ADR 用什么格式" / "what's our ADR config" | `/adr config` |
+| "开启 / 关闭 提交闸门 / enable / disable commit gate" | `/adr-guard on\|off` |
+| "把 ADR 文件名加 ADR- 前缀" | `/adr config filenamePattern "ADR-{id}-{slug}"` |
+| "再加一个 Risks section 到所有 MADR" | `/adr config extraSections "## Risks"` |
+
+**Inference rules**:
+
+1. The verb is the disambiguator. "记录 / record / document / 写" → `new`. "替换 / 取代 / supersede" → `supersede`. "看 / show / 查" → `tree|history|context`.
+2. When in doubt between `new` and `supersede`, ask: "Does an existing ADR cover the same topic?" If yes (and the user names it), use `supersede`; otherwise `new`.
+3. After scaffolding, the engine leaves a placeholder file. Draft the body per the style's output protocol (§3 below). Do NOT rewrite the scaffold as prose.
+4. For `/adr config` style requests, prefer the single-key form `/adr config <key> <value>` over the bulk `/adr init` path — it's idempotent and reversible.
 
 ## ocp container red lines (style: ocp)
 - Prose wins over diagrams: the cheatsheet/quick view restate

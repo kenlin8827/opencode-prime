@@ -1,58 +1,98 @@
 /**
- * Hook: experimental.chat.system.transform — inject the ADR iron-law
- * protocol (loaded from adr-guard-protocol.md) into the system prompt
- * when the switch is on; strip any stale marker when it is off.
+ * Hook: experimental.chat.system.transform — inject the ADR system hint
+ * + live runtime config into the system prompt on EVERY chat request.
+ * Stale markers are stripped defensively on every turn.
+ *
+ * Phase 7.8: the full protocol body is NO LONGER injected here — it
+ * lives as `skills/adr-protocol/SKILL.md` and the LLM loads it on
+ * demand via `read_file`. This file now injects only:
+ *
+ *   1. **Hint block** (`[ADR-GUARD]`) — ~117 tokens, advertises the
+ *      engine + commands + points at the protocol skill. Stable across
+ *      the entire session.
+ *
+ *   2. **Runtime config block** (`[ADR-CONFIG-RUNTIME]`) — ~192 tokens,
+ *      re-rendered every chat from `.ocp/ocp.json`. Honors mid-session
+ *      `/adr config <key> <value>` edits without restart.
  *
  * Opencode runtime note (verified 2026-09-11, see ADR 0002): the
  * runtime rebuilds `output.system` per chat request — output.system
  * never contains fragments injected on a previous step. Behavior:
  *
- *   - on + fresh prompt → strip no-op + inject → marker present.
- *   - on + persistent prompt (Scenario B hypothetical) → strip stale
- *     + re-inject → byte-identical to previous turn → provider cache
- *     hit. The defensive strip is what keeps the cache stable under
- *     a future Scenario-B runtime.
- *   - off + fresh prompt → strip no-op + no inject → prompt clean.
- *   - off + persistent prompt → strip stale → prompt clean.
+ *   - fresh prompt → strip no-op + inject hint + inject config.
+ *   - persistent prompt (Scenario B hypothetical) → strip stale of
+ *     both markers + re-inject → byte-identical hint prefix across
+ *     turns → provider cache hit. The config block may shift byte-
+ *     for-byte, but it's the LAST block — provider cache hits the
+ *     stable hint prefix and only re-bills the trailing config delta.
  *
- * The fragment is cached in `cachedPrompt` so we don't re-concat the
- * ~few-KB body every chat. The protocol body never changes during a
- * session; cache invalidation is unnecessary within a process lifetime.
+ * The iron-law switch `adrGuard` no longer affects prompt content —
+ * it still controls the `tool.execute.before` commit guard
+ * (`adr-guard-tool-guard.ts`), but ON/OFF state is no longer surfaced
+ * in the system prompt. Users discover the switch via `/adr help` or
+ * the hint's command list.
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
 import { scoped } from "../shared/plugin-scope"
 import { appendBlock } from "../shared/system-block"
-import { isEnabled } from "./adr-guard-config"
-import { getGuardPrompt, MARKER } from "./adr-guard-instructions"
+import {
+  getAdrConfigRuntimeFragment,
+  getGuardHintPrompt,
+  MARKER_CONFIG,
+  MARKER_HINT,
+} from "./adr-guard-instructions"
 import { makeLogger } from "./adr-guard-runtime"
 
 type Log = ReturnType<typeof makeLogger>
 
-function hasAnyMarker(system: string[]): boolean {
-  return system.some((s) => typeof s === "string" && s.includes(MARKER))
+/** Common prefix for all ADR markers we own. */
+const ANY_MARKER = "[ADR-"
+
+function hasAnyMarker(system: Array<unknown>): boolean {
+  return system.some((s) => typeof s === "string" && s.includes(ANY_MARKER))
 }
 
-function stripMarker(system: string[]): boolean {
-  let changed = false
+/** Strip every ADR block we own from `system` in place. Each injected
+ *  fragment owns the span from its marker to the next ADR marker (or
+ *  end of string) — fragments are appended sequentially at the tail —
+ *  so cutting whole spans byte-restores the pre-injection prompt.
+ *  Returns which markers were found. */
+function stripAllMarkers(system: Array<unknown>): { hint: boolean; config: boolean } {
+  const found = { hint: false, config: false }
   for (let i = 0; i < system.length; i++) {
-    const s = system[i]
-    if (typeof s !== "string") continue
-    const idx = s.indexOf(MARKER)
-    if (idx === -1) continue
-    // Trim the separator whitespace that preceded the marker so the
-    // original prompt restores without leftover blank space.
-    system[i] = s.substring(0, idx).replace(/\s+$/, "")
-    changed = true
+    const raw = system[i]
+    if (typeof raw !== "string") continue
+    let s = raw
+    for (;;) {
+      // Locate the leftmost ADR marker and the span end (the next ADR
+      // marker after it, or EOF). Re-scan each round because each cut
+      // invalidates downstream offsets.
+      const hi = s.indexOf(MARKER_HINT)
+      const ci = s.indexOf(MARKER_CONFIG)
+      if (hi === -1 && ci === -1) break
+      let start: number
+      let end: number
+      let kind: "hint" | "config"
+      if (hi === -1 || (ci !== -1 && ci < hi)) {
+        start = ci
+        kind = "config"
+      } else {
+        start = hi
+        kind = "hint"
+      }
+      const nextMarker = kind === "hint" ? (ci > start ? ci : -1) : hi > start ? hi : -1
+      end = nextMarker === -1 ? s.length : nextMarker
+      // Trim the separator whitespace that preceded the marker so the
+      // original prompt restores without leftover blank space.
+      const head = s.substring(0, start).replace(/\s+$/, "")
+      s = head + s.substring(end)
+      found[kind] = true
+    }
+    system[i] = s
   }
-  return changed
+  return found
 }
-
-/** Cached rendered fragment. The protocol body is constant across
- * turns, so caching avoids re-concatenating the fragment on every
- * chat. Module-level: the on/off switch is a project-level
- * preference. */
-let cachedPrompt: string | undefined
 
 export function makeSystemHook(client: PluginInput["client"]) {
   const log: Log = makeLogger(client, "adr-guard")
@@ -63,19 +103,22 @@ export function makeSystemHook(client: PluginInput["client"]) {
 
     // Defensive strip — correct under Scenario B (hypothetical
     // prompt-persistence), no-op under Scenario A (verified current
-    // runtime, see ADR 0002). Cheap substring scan; keeps the
-    // behavior correct if opencode ever changes to preserve
-    // output.system across turns.
+    // runtime, see ADR 0002).
     const hadMarker = hasAnyMarker(output.system)
-    const stripped = hadMarker ? stripMarker(output.system) : false
+    if (hadMarker) stripAllMarkers(output.system)
 
-    if (!isEnabled()) {
-      if (stripped) await log("info", "system prompt: stale iron-law block stripped (state=off)")
-      return
-    }
+    // 1. Hint block — ~117 tokens, stable for the whole session.
+    //    appendBlock's marker-absence check keeps this idempotent
+    //    within a turn.
+    const hintPrompt = getGuardHintPrompt()
+    const hintChanged = appendBlock(output.system, hintPrompt)
+    if (hintChanged) await log("info", "system prompt: ADR hint injected")
 
-    if (!cachedPrompt) cachedPrompt = getGuardPrompt()
-    const changed = appendBlock(output.system, cachedPrompt)
-    if (changed) await log("info", "system prompt: iron-law protocol injected (state=on)")
+    // 2. Runtime config block — re-rendered every turn from .ocp/ocp.json.
+    //    No cache at this layer: a project edit or `/adr config <key>
+    //    <value>` mid-session shows up on the next chat request.
+    const configBlock = getAdrConfigRuntimeFragment()
+    const configChanged = appendBlock(output.system, configBlock)
+    if (configChanged) await log("info", "system prompt: runtime config block injected")
   }
 }

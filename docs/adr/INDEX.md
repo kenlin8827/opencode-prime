@@ -7,7 +7,7 @@
 
 *Directory: `docs/adr`*
 
-## Records (6)
+## Records (7)
 
 | ID | Decision Title | Style | Layer | Status | Domain | Iteration | Created |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -17,3 +17,4 @@
 | [ADR-0.36.0](./0.36.0-tgrep-probe-first-contract.md) | Iteration 0.36.0 · tgrep probe-first contract (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 0 | 2026-09-14 |
 | [ADR-0.38.0](./0.38.0-omniroute-gateway-profile.md) | Iteration 0.38.0 · OmniRoute gateway profile (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 0 | 2026-09-15 |
 | [ADR-0.40.0](./0.40.0-multi-style-adl-and-prose-language-policy.md) | Iteration 0.40.0 · Multi-style ADL and prose language policy (2 sections) | `ocp` | `system` | 🔵 Proposed | adr-governance | 0 | 2026-09-18 |
+| [ADR-0.40.1](./0.40.1-project-level-adr-overrides.md) | Iteration 0.40.1 · Project-level ADR overrides (4 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 0 | 2026-09-18 |

@@ -52,6 +52,7 @@ import {
 import { announce, announceStatus, announceSwitch } from "./adr-guard-announce"
 import {
   ADR_COMMAND,
+  clearAdrConfigKey,
   clearAdrLayout,
   clearState,
   COMMAND_NAME,
@@ -65,13 +66,20 @@ import {
   normalizeAdrNumbering,
   normalizeAdrStyle,
   normalizeAdrSuite,
+  normalizeExtraSections,
+  normalizeFilenamePattern,
+  normalizeIndexColumns,
+  normalizeSlugStyle,
   parseResetArg,
   parseStateArg,
   resolveAdrSuite,
   setAdrConfigFields,
+  setAdrConfigKey,
   setAdrLayout,
   setState,
+  type AdrConfigKey,
 } from "./adr-guard-config"
+import { readProjectConfig } from "../shared/opencode-prime"
 import { makeLogger } from "./adr-guard-runtime"
 
 type Log = ReturnType<typeof makeLogger>
@@ -203,6 +211,10 @@ async function handleAdrCommand(
       sessionID,
     )
     return { handled: true }
+  }
+
+  if (sub === "config") {
+    return handleAdrConfigCommand(client, rest, sessionID, log)
   }
 
   if (sub === "migrate" || sub === "refactor") {
@@ -684,6 +696,134 @@ async function handleAdrCommand(
   return { handled: true }
 }
 
+/** Phase 7 — `/adr config` — view & edit the project's per-field ADR
+ * config. The override fields (filenamePattern, slugStyle, extraSections,
+ * indexColumns) live in the same `.ocp/ocp.json:adr.*` block as
+ * style/numbering/layout/governance and follow the same read=fallback,
+ * write=upsert, reset=clear conventions. */
+async function handleAdrConfigCommand(
+  client: PluginInput["client"],
+  rawArgs: string,
+  sessionID: string | undefined,
+  log: Log,
+): Promise<{ handled: boolean }> {
+  const trimmed = rawArgs.trim()
+  if (!trimmed) {
+    await announce(client, renderAdrConfigList(), "info", sessionID)
+    return { handled: true }
+  }
+
+  const parts = trimmed.split(/\s+/)
+  const first = parts[0].toLowerCase()
+
+  if (first === "reset") {
+    const key = (parts[1] ?? "").toLowerCase() as AdrConfigKey
+    if (!isAdrConfigKey(key)) {
+      await announce(client, tr("guard.adr.configUsage"), "warning", sessionID)
+      return { handled: true }
+    }
+    const ok = clearAdrConfigKey(key)
+    await announce(client, tr("guard.adr.configReset", { key, ok: String(ok) }), ok ? "info" : "warning", sessionID)
+    return { handled: true }
+  }
+
+  const key = first as AdrConfigKey
+  if (!isAdrConfigKey(key)) {
+    await announce(client, tr("guard.adr.configUnknownKey", { key: first }), "warning", sessionID)
+    return { handled: true }
+  }
+
+  const value = trimmed.slice(parts[0].length).trim()
+  if (!value) {
+    await announce(client, renderAdrConfigKeyDetail(key), "info", sessionID)
+    return { handled: true }
+  }
+  const ok = setAdrConfigKey(key, value)
+  await log(
+    ok ? "info" : "warn",
+    ok
+      ? `adr.${key} written to project config`
+      : `failed to write adr.${key} (invalid value)`,
+  )
+  await announce(client, tr("guard.adr.configSet", { key, value, ok: String(ok) }), ok ? "info" : "warning", sessionID)
+  return { handled: true }
+}
+
+const ADR_CONFIG_KEYS: ReadonlySet<AdrConfigKey> = new Set([
+  "filenamePattern",
+  "slugStyle",
+  "extraSections",
+  "indexColumns",
+  "style",
+  "numbering",
+  "layout",
+  "governance",
+])
+
+function isAdrConfigKey(value: string): value is AdrConfigKey {
+  return ADR_CONFIG_KEYS.has(value as AdrConfigKey)
+}
+
+function isInAdrBlock(key: AdrConfigKey): boolean {
+  const block = readProjectConfig()?.adr
+  if (!block || typeof block !== "object") return false
+  return Object.prototype.hasOwnProperty.call(block, key)
+}
+
+function renderAdrConfigList(): string {
+  const cfg = getAdrConfig()
+  const fmt = (v: unknown): string =>
+    Array.isArray(v) ? (v.length === 0 ? "_(empty)_" : `\`${v.join("`, `")}\``) : `\`${String(v)}\``
+  const src = (k: AdrConfigKey): "config" | "default" => (isInAdrBlock(k) ? "config" : "default")
+  return tr("guard.adr.configList", {
+    style: cfg.style,
+    styleSrc: src("style"),
+    numbering: cfg.numbering,
+    numberingSrc: src("numbering"),
+    layout: cfg.layout ?? "(inherit from adrLayout)",
+    layoutSrc: src("layout"),
+    governance: cfg.governance,
+    governanceSrc: src("governance"),
+    filenamePattern: cfg.filenamePattern,
+    filenamePatternSrc: src("filenamePattern"),
+    slugStyle: cfg.slugStyle,
+    slugStyleSrc: src("slugStyle"),
+    extraSections: fmt(cfg.extraSections),
+    extraSectionsSrc: src("extraSections"),
+    indexColumns: fmt(cfg.indexColumns),
+    indexColumnsSrc: src("indexColumns"),
+  })
+}
+
+function renderAdrConfigKeyDetail(key: AdrConfigKey): string {
+  const cfg = getAdrConfig()
+  const value =
+    key === "filenamePattern"
+      ? cfg.filenamePattern
+      : key === "slugStyle"
+        ? cfg.slugStyle
+        : key === "extraSections"
+          ? cfg.extraSections.length === 0
+            ? "_(empty)_"
+            : cfg.extraSections.join("\n")
+          : key === "indexColumns"
+            ? cfg.indexColumns.join(", ")
+            : key === "style"
+              ? cfg.style
+              : key === "numbering"
+                ? cfg.numbering
+                : key === "layout"
+                  ? (cfg.layout ?? "(inherit from adrLayout)")
+                  : cfg.governance
+  return [
+    `**adr.${key}** = ${value}`,
+    `source: ${isInAdrBlock(key) ? "config" : "default"}`,
+    "",
+    tr("guard.adr.configUsage"),
+  ].join("\n")
+}
+
+
 /**
  * `/adr init [standard|evolution|ocp|custom] [--style s] [--numbering n]
  *          [--layout l] [--governance g]` (§6.3).
@@ -780,4 +920,3 @@ async function handleAdrInit(
   )
   return { handled: true }
 }
-

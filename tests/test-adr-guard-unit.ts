@@ -226,37 +226,50 @@ function test05_StateParsing() {
 // ═════════════════════════════════════════════════════════════════════════
 
 async function test06_SystemHook() {
-  section("06: System hook inject / idempotency / strip")
+  section("06: System hook inject / idempotency / strip (Phase 7.8)")
   const hook = makeSystemHook(fakeClient)
 
+  // Phase 7.8: the hook injects hint + config on EVERY turn regardless
+  // of the adrGuard switch (the switch now only gates the tool guard).
+  // No protocol body is ever inlined — it lives in the adr-protocol skill.
   setState("on")
   const out1 = { system: ["base prompt"] }
   await hook({}, out1 as any)
-  assert(out1.system[0].includes("[ADR-GUARD: ON]"), "marker injected when on")
-  assert(out1.system[0].includes("ADR Iron Law"), "protocol body injected")
-  assert(out1.system[0].includes("ADR directory"), "runtime ADR directory section present")
+  assert(out1.system[0].includes("[ADR-GUARD]"), "hint marker injected (state=on)")
+  assert(out1.system[0].includes("[ADR-CONFIG-RUNTIME]"), "config marker injected (state=on)")
+  assert(!out1.system[0].includes("ADR Iron Law"), "protocol body NEVER inlined (skill-based, Phase 7.8)")
+  assert(out1.system[0].includes("adrDir"), "runtime adrDir field present in config table")
+  assert(out1.system[0].includes("filenamePattern"), "runtime filenamePattern field present in config table")
+  assert(out1.system[0].includes("`docs/adr/`"), "adrDir default rendered with leading docs/adr/")
 
+  // Idempotency: same config → byte-identical output (provider
+  // prefix-cache contract; deterministic rendering, no volatile content).
   const afterFirst = out1.system[0]
   await hook({}, out1 as any)
-  assert(out1.system[0] === afterFirst, "second call is a no-op (cache-friendly)")
+  assert(out1.system[0] === afterFirst, "second call is byte-identical (cache-friendly)")
 
+  // Switch off: hint + config STAY injected (Phase 7.8 — the switch no
+  // longer toggles prompt content); no protocol body appears either way.
   setState("off")
   await hook({}, out1 as any)
-  assert(!out1.system[0].includes("[ADR-GUARD"), "marker stripped when switched off")
-  assert(out1.system[0] === "base prompt", "original prompt restored exactly")
+  assert(out1.system[0].includes("[ADR-GUARD]"), "hint marker still injected (state=off)")
+  assert(out1.system[0].includes("[ADR-CONFIG-RUNTIME]"), "config marker still injected (state=off)")
+  assert(!out1.system[0].includes("ADR Iron Law"), "no protocol body in off state either")
 
   const out2 = { system: ["base prompt"] }
   await hook({}, out2 as any)
-  assert(out2.system[0] === "base prompt", "off + no marker → complete no-op")
+  assert(out2.system[0].includes("[ADR-GUARD]"), "fresh prompt → hint injected")
+  assert(out2.system[0].includes("[ADR-CONFIG-RUNTIME]"), "fresh prompt → config injected")
+  assert(out2.system[0].includes("/adr config"), "hint advertises /adr config")
 
-  // Multi-entry system prompt: the fragment must land in the LAST entry
-  // only — the old loop duplicated it across every entry.
-  setState("on")
+  // Multi-entry system prompt: fragments land in the LAST entry only —
+  // the old loop duplicated them across every entry.
   const out3 = { system: ["entry A", "entry B"] }
   await hook({}, out3 as any)
   assert(out3.system[0] === "entry A", "multi-entry: first entry untouched")
-  assert(out3.system[1].includes("[ADR-GUARD: ON]"), "marker present in last entry only")
-  assert(out3.system.filter((s) => s.includes("[ADR-GUARD: ON]")).length === 1, "marker appears exactly once across entries")
+  assert(out3.system[1].includes("[ADR-GUARD]"), "hint marker present in last entry only")
+  assert(out3.system[1].includes("[ADR-CONFIG-RUNTIME]"), "config marker present in last entry only")
+  assert(out3.system.filter((s) => s.includes("[ADR-GUARD]")).length === 1, "hint marker appears exactly once across entries")
 }
 
 // ═════════════════════════════════════════════════════════════════════════
