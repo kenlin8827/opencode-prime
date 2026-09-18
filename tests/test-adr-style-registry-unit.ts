@@ -39,8 +39,10 @@ import {
 } from "../plugins/adr-guard/adr-guard-config"
 import {
   allocateAdrIterationId,
+  appendAdrSection,
   checkAdrIntegrity,
   createAdr,
+  createAdrContainer,
   getAllAdrs,
   getNormalizedAdrs,
   parseAdrFile,
@@ -391,7 +393,7 @@ function test07_ConfigAndSuites() {
     assert(std.style === "madr" && std.numbering === "sequential" && std.layout === "auto" && std.governance === "none" && std.suite === "standard", "standard suite resolves to the §6.3 row")
     const evo = resolveAdrSuite("evolution").fields
     assert(evo.numbering === "iteration" && evo.layout === "hierarchical" && evo.governance === "review", "evolution suite resolves to the §6.3 row")
-    // ocp suite: container style + iteration numbering + review (baijiu-shop preset)
+    // ocp suite: container style + iteration numbering + review (OCP preset)
     const ocpSuite = resolveAdrSuite("ocp").fields
     assert(
       ocpSuite.style === "ocp" && ocpSuite.numbering === "iteration" && ocpSuite.layout === "hierarchical" && ocpSuite.governance === "review" && ocpSuite.suite === "ocp",
@@ -711,6 +713,49 @@ function test10_LegacyKeyWarning() {
   }
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+// 11. appendAdrSection style gate — ocp containers only
+// ═════════════════════════════════════════════════════════════════════════
+
+function test11_SectionStyleGate() {
+  section("11: appendAdrSection — ocp container style gate")
+  const sandbox = makeSandbox("section-gate")
+  try {
+    mkdirSync(join(sandbox, "docs/adr"), { recursive: true })
+
+    // Sequential MADR record passes the container ID grammar but must be
+    // refused: an appended ocp block would corrupt the MADR grammar and
+    // stay invisible to style-dispatched tooling.
+    const madr = createAdr({ projectDir: sandbox, title: "Plain madr decision", targetDir: "docs/adr" })
+    const before = readFileSync(madr.fullPath, "utf-8")
+    let threw = ""
+    try {
+      appendAdrSection(sandbox, "ADR-0001", "must not append")
+    } catch (err) {
+      threw = String(err)
+    }
+    assert(threw.includes("'madr'"), `madr record refused with its actual style named (got: ${threw})`)
+    assert(readFileSync(madr.fullPath, "utf-8") === before, "refused append leaves the madr record byte-stable")
+
+    // Legacy record without style frontmatter dispatches as madr → refused.
+    writeAdr(sandbox, "docs/adr/0002-legacy-record.md", legacyAdr("0002", "Legacy no-style record"))
+    threw = ""
+    try {
+      appendAdrSection(sandbox, "ADR-0002", "must not append")
+    } catch (err) {
+      threw = String(err)
+    }
+    assert(threw.includes("ocp container records only"), `legacy sequential record refused (got: ${threw})`)
+
+    // The gate is not over-broad: a real sequential ocp container still works.
+    const seqContainer = createAdrContainer({ projectDir: sandbox, title: "Sequential container" })
+    const appended = appendAdrSection(sandbox, seqContainer.id, "container section")
+    assert(appended.id === "ADR-0003#01", `sequential ocp container still accepts sections (got ${appended.id})`)
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true })
+  }
+}
+
 // ─── Main entry ───────────────────────────────────────────────────────────
 
 function main() {
@@ -733,6 +778,7 @@ function main() {
     test08_Numbering()
     test09_ScaffoldContract()
     test10_LegacyKeyWarning()
+    test11_SectionStyleGate()
   } finally {
     setProjectDir(origDir)
   }

@@ -1,6 +1,6 @@
 /**
  * OCP container style adapter — the OCP-native record grammar
- * (baijiu-shop discipline, ADR-0007 §7 amendment).
+ * (OCP discipline, ADR-0007 §7 amendment).
  *
  * One record = one ITERATION file: the container `ADR-<baseline>.<iteration>`
  * (`0.2.54-slug.md`) reserves the whole `<baseline>.<iteration>.*` sub-ID
@@ -11,11 +11,15 @@
  * history / context) operates at CONTAINER granularity: sections are
  * structured payload on the record, never records themselves; partial
  * supersession of one section stays a status-line annotation plus prose
- * cross-reference, exactly the baijiu-shop practice.
+ * cross-reference, exactly the OCP practice.
  *
- * Language policy: field labels and scaffolding are English — grammar is
- * language-fixed, like MADR's section names. Prose content is the
- * author's choice: write in any language. Emoji status markers are
+ * Language policy (ADR-0008): field labels and scaffolding are English —
+ * grammar is language-fixed, like MADR's section names. ALL prose —
+ * container title, section titles, field bodies, cheatsheet lines, emoji
+ * status decoration words — is drafted in the WORKING LANGUAGE derived
+ * from the language environment (project declaration, else conversation
+ * language). Scaffold placeholders are bilingual: working-language
+ * guidance first, English grammar hint second. Emoji status markers are
  * language-neutral by design.
  *
  * Strict style isolation (§7.4): this adapter scaffolds and validates
@@ -73,7 +77,7 @@ interface SectionHeading {
 
 /** Match one H3 line as a section heading. Short headings compose the
  * canonical `#`-form ID from the container namespace; legacy full-ID
- * headings (baijiu-shop dotted) whose prefix matches THIS container map
+ * headings (OCP dotted) whose prefix matches THIS container map
  * onto the same canonical form (same sequence), foreign full-IDs keep
  * their dotted form and fail validation later. */
 function matchSectionHeading(line: string, containerId: string): SectionHeading | null {
@@ -212,7 +216,15 @@ export const ocpAdapter: AdrStyleAdapter = {
 
   /** Scaffold one empty iteration container (zero sections — a fresh
    * container validates with a zero-sections warning until its first
-   * section lands via /adr section). */
+   * section lands via /adr section).
+   *
+   * The scaffold is opinionated about the output protocol so the drafter
+   * fills a structure rather than improvising one. Cheatsheet is numbered
+   * (1–6, ≤60 chars per line, ADR ref suffix); Quick view is the restate
+   * layer (mermaid flowchart LR + tables); sections carry the five-part
+   * skeleton with table-based Decision and Rejected, layered Impact, and
+   * bold-keyword Rationale. See `docs/adr/README.md` §OCP output protocol
+   * for the full rule set. */
   scaffold(input: CreateAdrInput): string {
     const id = bareAdrId(normalizeAdrId(input.id) ?? input.id)
     let content = `---\n`
@@ -226,43 +238,85 @@ export const ocpAdapter: AdrStyleAdapter = {
     content += `---\n\n`
 
     content += `# ${input.title}\n\n`
+    content += `> Index: [\`README.md\`](./README.md). Supersedes / amends: <list prior IDs this iteration supersedes or amends; "—" if none>.\n`
+    content += `>\n`
     content += `> Cheatsheet & quick view are restatement layers: diagrams/tables restate the\n`
     content += `> section prose and never add facts — on conflict the prose wins.\n`
     content += `> Amend/supersede relations are declared in each section's status line;\n`
     content += `> accepted semantics never move one character.\n\n`
     content += `## Cheatsheet\n\n`
-    content += `- <Conclusion 1: one conclusion per line>\n`
-    content += `- <Conclusion 2>\n\n`
+    content += `1. <Conclusion 1 — ≤60 chars, in the working language> (ADR-${id}#01)\n`
+    content += `2. <Conclusion 2 — ≤60 chars> (ADR-${id}#01)\n`
+    content += `3. <Conclusion 3 — ≤60 chars> (ADR-${id}#01)\n`
+    content += `4. <Conclusion 4 — ≤60 chars> (ADR-${id}#01)\n`
+    content += `5. <Conclusion 5 — ≤60 chars> (ADR-${id}#01)\n`
+    content += `6. <Conclusion 6 — ≤60 chars> (ADR-${id}#01)\n\n`
+    content += `---\n\n`
     content += `## Quick view\n\n`
-    content += `<!-- Draw only when there is structure (flowchart LR); plain value questions\n`
-    content += `     deserve a table; omit the whole section when there is nothing to draw. -->\n\n`
+    content += `<!-- Draw only when there is structure. mermaid \`flowchart LR\` preferred (horizontal flow reads better than vertical chains). Tables for: >=2 candidates x >=3 dimensions, old->new mapping, enum semantics, decision lists, rejected-option lists. <=2 figures per section; the restate layer fills the rest by table. -->\n\n`
+    content += `\`\`\`mermaid\n`
+    content += `flowchart LR\n`
+    content += `  A[<entry / iteration start>] --> B{<key decision>}\n`
+    content += `  B -- <branch a> --> C[<branch a outcome>]\n`
+    content += `  B -- <branch b> --> D[<branch b outcome>]\n`
+    content += `\`\`\`\n\n`
+    content += `| Aspect | Before | After |\n`
+    content += `| --- | --- | --- |\n`
+    content += `| <old-vs-new row 1> | <old> | <new> |\n`
+    content += `| <old-vs-new row 2> | <old> | <new> |\n\n`
     content += `---\n\n`
     content += `<!-- Sections: /adr section ADR-${id} "<title>" appends the next one.\n`
     content += `     H3 short form "### NN. <title>" — the canonical ID derives from the\n`
     content += `     container namespace and is never spelled out in the heading.\n`
-    content += `     Drafter: fill the Cheatsheet above in the team's language — it is the\n`
-    content += `     reader's primary entry (pure conclusions). Field labels stay English. -->\n`
+    content += `     Drafter (ADR-0.40.0#02): fill ALL prose — cheatsheet, section titles,\n`
+    content += `     field bodies, status decoration words — in the working language\n`
+    content += `     derived from the language environment; the Cheatsheet is the\n`
+    content += `     reader's primary entry (pure conclusions). Field labels stay English.\n`
+    content += `\n`
+    content += `     Output protocol (see docs/adr/README.md OCP output protocol section):\n`
+    content += `     - Cheatsheet: <=6 numbered items, each <=60 chars, ADR ref suffix\n`
+    content += `     - Background: <=3 sentences — situation + pain, no solution detail\n`
+    content += `     - Decision: TABLE form \`| # | Point | Content |\` — no prose dump\n`
+    content += `     - Rationale: >=2 bullets, bold-keyword led (e.g. "**Why X**: ...")\n`
+    content += `     - Rejected: TABLE form \`| Option | Reason rejected |\` — no prose dump\n`
+    content += `     - Impact: bullets grouped by layer (Plugins / Runtime / Dispatcher / Installer / Tests / Docs)\n`
+    content += `     - Paragraphs <=4 lines; one sentence = one idea; no nested dashes\n`
+    content += `     - mermaid \`flowchart LR\`; <=2 figures per section; restate layer fills the rest by table -->\n`
     return content
   },
 
   /** Render one new section block for appendAdrSection — canonical short
    * heading (`### NN. <title>`); the canonical ID rides the caller.
    * Placeholder values keep the section valid-shaped and teach the
-   * five-part skeleton. */
+   * five-part skeleton. The placeholders explicitly call for table-based
+   * Decision and Rejected (no prose dump), bold-keyword Rationale bullets,
+   * and layer-grouped Impact bullets — the OCP output protocol. */
   scaffoldSection(input: { id: string; title: string }): string {
     const bare = bareAdrId(input.id)
     const seq = bare.includes("#") ? bare.slice(bare.indexOf("#") + 1) : bare.split(".").pop() ?? input.id
     return (
       `### ${seq.padStart(2, "0")}. ${input.title}\n` +
       `**Status**: 🟡 Proposed\n` +
-      `**Background**: <situation + pain point; no solution detail here>\n\n` +
-      `**Decision**: <what was decided>\n\n` +
-      `**Rationale**: <≥2 items, bulleted, each led by a bold keyword>\n\n` +
+      `**Background**: <situation + pain, ≤3 sentences, no solution detail — in the working language>\n\n` +
+      `**Decision**:\n` +
+      `\n` +
+      `| # | Point | Content |\n` +
+      `| --- | --- | --- |\n` +
+      `| 1 | <decision point 1> | <what was decided — in the working language> |\n` +
+      `| 2 | <decision point 2> | <what was decided — in the working language> |\n\n` +
+      `**Rationale**:\n` +
+      `- **<bold keyword>**: <single-line justification>\n` +
+      `- **<bold keyword>**: <single-line justification>\n\n` +
       `**Rejected**:\n` +
-      `- <rejected option>: <why rejected>\n\n` +
+      `\n` +
+      `| Option | Reason rejected |\n` +
+      `| --- | --- |\n` +
+      `| <rejected option 1> | <why rejected — in the working language> |\n` +
+      `| <rejected option 2> | <why rejected — in the working language> |\n\n` +
       `**Impact**:\n` +
-      `- <layer or area>: <what changes>\n\n` +
-      `**Future extensions**: <optional; delete this line when none>\n`
+      `- **<layer 1 — Plugins / Runtime / Dispatcher / Installer / Tests / Docs>**: <what changes — in the working language>\n` +
+      `- **<layer 2>**: <what changes — in the working language>\n\n` +
+      `**Future extensions**: <optional — delete the line when none>\n`
     )
   },
 

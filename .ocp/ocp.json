@@ -1,0 +1,9 @@
+{
+  "adr": {
+    "style": "ocp",
+    "numbering": "iteration",
+    "layout": "hierarchical",
+    "governance": "review",
+    "suite": "ocp"
+  }
+}

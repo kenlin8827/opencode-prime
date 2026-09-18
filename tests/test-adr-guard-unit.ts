@@ -15,7 +15,8 @@
  *     dotted iteration IDs), status-line-only byte-stable flip, append-only
  *     ledger, refusal outside strict, strict commit gate pass/fail, legacy
  *     gate independence, governance invariance over parsing/index,
- *     `git commit -a` unstaged-flip audit (F13), CRLF byte-stability (F14),
+ *     `git commit -a` / named-path unstaged-flip audit (F13), CRLF
+ *     byte-stability (F14),
  *     adrDir-override decide/gate resolution (I)
  *
  * Run: bun run tests/test-adr-guard-unit.ts   (or: npx tsx tests/test-adr-guard-unit.ts)
@@ -50,6 +51,7 @@ import {
   extractCommitMessage,
   requiresAdr,
   segmentCommitsAll,
+  segmentCommitsNamedPaths,
 } from "../plugins/adr-guard/adr-guard-runtime"
 import { makeSystemHook } from "../plugins/adr-guard/adr-guard-system-inject"
 import { makeToolGuardHook } from "../plugins/adr-guard/adr-guard-tool-guard"
@@ -816,6 +818,35 @@ async function test11_StrictGovernance() {
     assert(
       blocked !== null && blocked.includes(`ADR-${a17.id}`),
       "unstaged hand-flip + git commit --all is BLOCKED too",
+    )
+
+    // Named-path commits ship working-tree content of NAMED paths WITHOUT
+    // -a: bare positional pathspecs (git's implied --only when paths are
+    // given), `--only`/`--include`, `-o`/`-i`, and `-- <paths>`. Same hole,
+    // same fix — the audit must detect them token-level and probe the
+    // working diff. Value tokens of value-taking options are never paths.
+    assert(segmentCommitsNamedPaths(["docs/adr/0007.md", "-m", "chore: x"]), "token level: bare pathspec detected")
+    assert(segmentCommitsNamedPaths(["-m", "chore: x", "docs/adr/0007.md"]), "token level: trailing pathspec after the message value detected")
+    assert(segmentCommitsNamedPaths(["--only", "docs/adr", "-m", "chore: x"]), "token level: --only detected")
+    assert(segmentCommitsNamedPaths(["--include", "docs/adr", "-m", "chore: x"]), "token level: --include detected")
+    assert(segmentCommitsNamedPaths(["-o", "-m", "chore: x"]), "token level: -o detected")
+    assert(segmentCommitsNamedPaths(["-io", "-m", "chore: x"]), "token level: cluster -io detected")
+    assert(segmentCommitsNamedPaths(["--", "src.ts"]), "token level: -- separator detected")
+    assert(!segmentCommitsNamedPaths(["-m", "chore: x"]), "token level: -m value is NOT a pathspec")
+    assert(!segmentCommitsNamedPaths(["-am", "fix: x"]), "token level: cluster -am message value skipped")
+    assert(!segmentCommitsNamedPaths(["-mfeat: api"]), "token level: glued -m message skipped")
+    assert(!segmentCommitsNamedPaths(["-F", "msg.txt"]), "token level: -F value skipped")
+    assert(!segmentCommitsNamedPaths(["--message=hi"]), "token level: --message= inline value skipped")
+    assert(!segmentCommitsNamedPaths(["--amend", "--no-edit"]), "token level: --amend ships no named paths")
+    blocked = await call(`git commit docs/adr/${basename(a17.fullPath)} -m "chore: named path"`)
+    assert(
+      blocked !== null && blocked.includes(`ADR-${a17.id}`) && blocked.includes("decision record"),
+      "unstaged hand-flip + bare pathspec commit (no -a) is BLOCKED (working diff probed)",
+    )
+    blocked = await call(`git commit --only docs/adr -m "chore: only flag"`)
+    assert(
+      blocked !== null && blocked.includes(`ADR-${a17.id}`),
+      "unstaged hand-flip + git commit --only docs/adr is BLOCKED too",
     )
     writeFileSync(a17.fullPath, a17Content, "utf-8")
     blocked = await call(`git commit -am "chore: tidy"`)

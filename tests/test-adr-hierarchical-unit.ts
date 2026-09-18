@@ -70,6 +70,18 @@ function runTests() {
     assert(dirs.includes("docs/adr"), "discovered root docs/adr")
     assert(dirs.includes("packages/payment/docs/adr"), "discovered subsystem docs/adr")
 
+    // `docs/adr/zh/` is a reader-facing translation mirror. Its records keep
+    // source IDs, so discovery must exclude it rather than report duplicate
+    // ADRs or let it affect allocation/indexes/relationships.
+    const localizedAdrDir = join(rootAdrDir, "zh")
+    mkdirSync(localizedAdrDir, { recursive: true })
+    writeFileSync(
+      join(localizedAdrDir, "0001-global-modular-monolith.md"),
+      "---\nstyle: madr\nstatus: accepted\n---\n\n# 0001. 全局模块化单体\n\n## Context and Problem Statement\n\n翻译镜像。\n\n## Considered Options\n\n- 选项。\n\n## Decision Outcome\n\nChosen option: 模块化单体, because 保持边界。\n",
+    )
+    const dirsAfterLocalizedMirror = discoverAdrDirectories(sandbox)
+    assert(!dirsAfterLocalizedMirror.includes("docs/adr/zh"), "excludes docs/adr/zh localized mirror from ADR discovery")
+
     assert(getNextAdrNumber(sandbox, "docs/adr") === "0001", "first ADR is 0001")
 
     // 3. Create L1 System ADR
@@ -112,6 +124,7 @@ function runTests() {
     // 5. Parse ADRs and test getAllAdrs
     const all = getAllAdrs(sandbox)
     assert(all.length === 2, `retrieved ${all.length}/2 ADRs across workspace`)
+    assert(!all.some((adr) => adr.relPath.startsWith("docs/adr/zh/")), "localized mirror does not enter ADR records")
     const parsed1 = parseAdrFile(adr1.fullPath, sandbox)
     assert(parsed1?.title === "Global Modular Monolith", "parsed ADR-0001 title correctly")
 

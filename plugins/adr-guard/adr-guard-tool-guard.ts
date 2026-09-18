@@ -52,6 +52,7 @@ import {
   makeLogger,
   requiresAdr,
   segmentCommitsAll,
+  segmentCommitsNamedPaths,
 } from "./adr-guard-runtime"
 
 type Log = ReturnType<typeof makeLogger>
@@ -144,14 +145,17 @@ export function makeToolGuardHook(client: PluginInput["client"]) {
       // — a nested undecided flip would otherwise pass silently, and a
       // legitimately decided nested flip would falsely block.
       const adrDirs = discoverAdrDirectories(projectDir, getAdrDir(), getAdrLayout())
-      // `git commit -a` (incl. combined `-am`/`-qa`) also ships TRACKED
-      // UNSTAGED modifications — invisible to `git diff --cached`. Probe
-      // the working diff too whenever a segment commits-all, else a
-      // hand-flip left unstaged bypasses the audit via `git commit -am`.
-      // Scanned across ALL segments (not just non-amend candidates):
-      // `git commit -a --amend` stages working-tree changes as well.
-      const commitsAll = segments.some(segmentCommitsAll)
-      const flips = stagedAcceptFlips(projectDir, adrDirs, commitsAll)
+      // `git commit -a` (incl. combined `-am`/`-qa`) AND named-path commits
+      // (bare positional pathspecs like `git commit docs/adr/0007.md -m …`,
+      // `-- <paths>`, `--only`/`-o`, `--include`/`-i`) ship TRACKED UNSTAGED
+      // content of the named paths — invisible to `git diff --cached`. Probe
+      // the working diff too whenever a segment does either, else a
+      // hand-flip left unstaged bypasses the audit via `git commit -am` or
+      // `git commit <path>`. Scanned across ALL segments (not just non-amend
+      // candidates): `git commit -a --amend` stages working-tree changes
+      // as well.
+      const shipsWorkingTree = segments.some((s) => segmentCommitsAll(s) || segmentCommitsNamedPaths(s))
+      const flips = stagedAcceptFlips(projectDir, adrDirs, shipsWorkingTree)
       const decided = readDecidedIds(projectDir)
       const undecided = flips.filter((f) => !decided.has(f.id))
       if (undecided.length > 0) {

@@ -62,7 +62,7 @@ export function resolveDocumentAdapter(document: AdrDocument): ResolvedDocumentS
 }
 
 // Built-in styles (§7): Nygard and MADR 4 (industry canonical), plus the
-// OCP-native container style (baijiu-shop grammar — one record per
+// OCP-native container style (OCP grammar — one record per
 // iteration file, sections as structured payload). Adding a style = one
 // adapter module + one registration call.
 registerAdrStyle(nygardAdapter)

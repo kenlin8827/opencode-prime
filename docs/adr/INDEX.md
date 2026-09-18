@@ -1,11 +1,19 @@
-# ADR Index
+# Architecture Decision Log
 
-| #   | Title                                                                | Status   |
-| --- | -------------------------------------------------------------------- | -------- |
-| 0001 | OCP CLI migration + `ocp ui .` OpenChamber activation                | accepted |
-| 0002 | Project profiler cache: key on profile content hash, not cwd        | accepted |
-| 0003 | `@dietrichgebert/ponytail` flipped to opt-in (default off)           | accepted |
-| 0004 | OCP path contract: `.opencode/` → `.ocp/`, `ocp.jsonc` → `ocp.json`  | accepted |
-| 0005 | tgrep probe-first search contract                                    | accepted |
-| 0006 | OmniRoute gateway profile                                            | accepted |
-| 0007 | Multi-style ADL with a universal protocol layer                      | proposed |
+> ⚠️ **GENERATED INDEX — DO NOT EDIT BY HAND.** This file is regenerated from the
+> ADR records in this directory and its subtree (§9.3). Any hand edit is overwritten
+> on the next regeneration — change the records instead. It is a navigation aid,
+> never a hand-maintained source of truth.
+
+*Directory: `docs/adr`*
+
+## Records (6)
+
+| ID | Decision Title | Style | Layer | Status | Domain | Iteration | Created |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| [ADR-0.10.0](./0.10.0-cli-and-openchamber-activation.md) | Iteration 0.10.0 · CLI and OpenChamber activation (1 sections) | `ocp` | `system` | 🔵 Proposed | adr-governance | 0 | 2026-08-29 |
+| [ADR-0.34.0](./0.34.0-profiler-cache-and-ponytail-removal.md) | Iteration 0.34.0 · Profiler cache and ponytail removal (2 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 0 | 2026-09-11 |
+| [ADR-0.35.0](./0.35.0-ocp-path-contract.md) | Iteration 0.35.0 · OCP path contract (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 0 | 2026-09-12 |
+| [ADR-0.36.0](./0.36.0-tgrep-probe-first-contract.md) | Iteration 0.36.0 · tgrep probe-first contract (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 0 | 2026-09-14 |
+| [ADR-0.38.0](./0.38.0-omniroute-gateway-profile.md) | Iteration 0.38.0 · OmniRoute gateway profile (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 0 | 2026-09-15 |
+| [ADR-0.40.0](./0.40.0-multi-style-adl-and-prose-language-policy.md) | Iteration 0.40.0 · Multi-style ADL and prose language policy (2 sections) | `ocp` | `system` | 🔵 Proposed | adr-governance | 0 | 2026-09-18 |

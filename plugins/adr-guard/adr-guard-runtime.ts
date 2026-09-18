@@ -163,6 +163,53 @@ export function segmentCommitsAll(seg: string[]): boolean {
   return false
 }
 
+/** Long options whose separate-token value must not be misread as a
+ *  pathspec — the `=` form carries the value inline instead. */
+const COMMIT_VALUE_LONG_OPTS = new Set([
+  "--message", "--file", "--template", "--reuse-message", "--author", "--date",
+])
+
+/** Short flags consuming a value: glued to the cluster tail (`-mmsg`) or,
+ *  as the cluster's LAST letter, the whole next token (`-F file`). */
+const COMMIT_VALUE_SHORT_OPTS = new Set(["m", "F", "t", "C"])
+
+/** True when a commit segment ships NAMED working-tree paths: a bare
+ *  positional pathspec (git's implied --only when paths are given), the
+ *  `--` separator, `--only`/`--include`, `-o`/`-i`, or short clusters
+ *  containing them. Tokens consumed as values by known value-taking
+ *  options are NOT pathspecs — mirrors commitMessageOfSegment's skipping
+ *  discipline. Fail-closed: an ambiguous bare token counts as a path. */
+export function segmentCommitsNamedPaths(seg: string[]): boolean {
+  let valueNext = false
+  for (const t of seg) {
+    if (valueNext) {
+      valueNext = false
+      continue
+    }
+    if (t === "--") return true // everything after -- is a pathspec
+    if (t.startsWith("--")) {
+      const eq = t.indexOf("=")
+      const name = eq === -1 ? t : t.slice(0, eq)
+      if (name === "--only" || name === "--include") return true
+      if (COMMIT_VALUE_LONG_OPTS.has(name) && eq === -1) valueNext = true
+      continue
+    }
+    if (!t.startsWith("-")) return true // bare positional = named pathspec
+    if (!/^-[a-zA-Z]/.test(t)) continue // "-3"-style: neither path nor cluster
+    const cluster = t.slice(1)
+    for (let k = 0; k < cluster.length; k++) {
+      const c = cluster.charAt(k)
+      if (c === "o" || c === "i") return true
+      if (COMMIT_VALUE_SHORT_OPTS.has(c)) {
+        // value glued to the rest of the token, or in the next token
+        if (k === cluster.length - 1) valueNext = true
+        break
+      }
+    }
+  }
+  return false
+}
+
 // ─── Commit message extraction ───────────────────────────────────────
 // Supports the forms agents actually emit:
 //   -m "msg"   -m 'msg'   -m msg   -m=msg   --message "msg"   --message=msg

@@ -15,7 +15,7 @@
  *     (§7.3 requirement 2: generated, never hand-maintained);
  *   - iteration context bundling (active records + supersession chains,
  *     bounded, with a reported retrieval path);
- *   - the opt-in `evolution` validation profile (baijiu-shop discipline:
+ *   - the opt-in `evolution` validation profile (OCP discipline:
  *     non-empty Considered Options with per-option cons, good/bad
  *     Consequences split, Confirmation for frontmatter-flagged high-risk
  *     records). Nygard records get only what maps: non-empty canonical

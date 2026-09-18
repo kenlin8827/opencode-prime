@@ -215,7 +215,7 @@ export function clearAdrLayout(): boolean {
 // `style` affects only NEW documents: --style > adr.style >
 // madr fallback. Existing documents dispatch by their own frontmatter.
 
-// `ocp` is the OCP-native container style (baijiu-shop grammar, ADR-0007
+// `ocp` is the OCP-native container style (OCP grammar, ADR-0007
 // §7): one record per iteration file, sections as structured payload. The two
 // industry templates stay canonical for interop; existing documents
 // dispatch by their own frontmatter.

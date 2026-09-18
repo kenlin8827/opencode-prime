@@ -12,6 +12,10 @@ living, queryable artifacts rather than dead archives.
 ADR in the same commit.** Other commit types (fix, docs, chore, test, …) are
 not gated, but a genuinely architectural fix **MAY** still deserve an ADR.
 
+The commit gate remains deliberately narrow: it mechanically enforces only
+`feat` and `refactor`. Commit type is a signal for ADR review, never proof of
+an iteration boundary or an excuse to omit an architectural decision.
+
 ## Governance modes (`adr.governance`, §11)
 
 Governance is a project-level policy, uniform across every record and style:
@@ -73,23 +77,79 @@ In complex codebases, ADRs are structured into three distinct layers:
   ID (`ADR-<container>#NN` — the `#` fragment form) derives from the container namespace
   and is never spelled out in the heading.
 
+## ocp iteration boundary (style: ocp)
+
+An OCP container represents one bounded delivery iteration: normally a release
+version or a coherent feature/refactor batch. A commit is NOT an iteration:
+one container may cover multiple commits, while a large feature may span
+multiple containers.
+
+- **Start a new iteration container** for a new release/version or an
+  independently deliverable architectural batch.
+- **Append a section to the current container** when the decision belongs to
+  the same delivery scope and release boundary.
+- `feat` and `refactor` are the default high-confidence signals that a new or
+  changed ADR is needed. `perf` and security work are equally strong signals
+  when they alter a long-lived architecture (for example caching, concurrency,
+  data layout, authentication, authorization, audit, or isolation).
+- Evaluate `fix`, `build`, and `ci` for ADR coverage when they alter a data,
+  compatibility, reliability, release, deployment, or security boundary.
+  Ordinary fixes, build repairs, and pipeline maintenance do not create an
+  iteration merely because of their Conventional Commit type.
+- `docs`, `test`, `chore`, `style`, and `revert` normally do not create an
+  iteration. Treat them as exceptions only when the change itself establishes,
+  revises, or rolls back a durable architectural contract.
+- Never invent `baseline` or `iteration` values. Derive them from the project
+  release/version plan or existing containers; if neither is authoritative,
+  ask the user before creating the container.
+
 ## Slash Command & Natural Language Auto-Drafting Protocol
 When `/adr`, `/adr new`, `/adr supersede`, or a natural language ADR request is received:
-1. **Scaffold Discovery**: The local TypeScript engine has already created the new `docs/adr/NNNN-slug.md` file (and updated `INDEX.md`). Find the latest ADR file in `docs/adr/` (or target layer directory).
+1. **Scaffold Discovery**: The local TypeScript engine has already created the new `docs/adr/NNNN-slug.md` file (and updated `INDEX.md`). Find the latest ADR file in `docs/adr/` (or target layer directory). The ocp scaffold (`plugins/adr-guard/styles/ocp.ts`) emits the structured placeholders — fill the structure, do not rewrite it as a prose essay.
 2. **Context Research**: Use tools (`read_file`, `grep_search`, `find_by_name`) to research the workspace context, current technical architecture, dependencies, and requirements.
-3. **Write Complete MADR**: Use `replace_file_content` or `write_to_file` to flesh out the document with:
-   - Real **Context and Problem Statement**
-   - Concrete **Decision Drivers**
-   - Viable **Considered Options** with **Pros and Cons**
-   - Defensible **Decision Outcome** and **Consequences** (Positive, Negative/Risks & Mitigations)
-   - Preserve valid YAML frontmatter (`status`, `date`, `layer`, `scope`, `parent`, `superseded_by`).
-4. **Respond to User**: Provide a crisp walkthrough and summary of the decision record drafted.
+3. **Write the record** per the chosen style, **following the OCP output protocol** at `docs/adr/README.md` §OCP output protocol. The rules are the same for every style:
+   - For `ocp`: numbered Cheatsheet (1–6, ≤ 60 chars each, ADR ref suffix) → mermaid `flowchart LR` + table Quick view (`≤ 2` figures) → sections with `**Background**` (≤ 3 sentences) → `**Decision**` as `| # | Point | Content |` table → `**Rationale**` ≥ 2 bullets, bold-keyword led → `**Rejected**` as `| Option | Reason rejected |` table → `**Impact**` layered bullets (Plugins / Runtime / Dispatcher / Installer / Tests / Docs) → optional `**Future extensions**`.
+   - For `madr`: `## Context and Problem Statement` → `## Decision Drivers` (bullet list) → `## Considered Options` (each option carries `**Pros**` / `**Cons**` as a sub-list) → `## Decision Outcome` (lead-in `Chosen option: …, because …`) → `### Consequences` (`**Positive**` / `**Negative / Risks**`, bullets ≤ ~80 chars).
+   - For `nygard`: `## Context` / `## Decision` / `## Consequences` — short narrative, paragraphs ≤ 4 lines, bullets ≤ ~80 chars.
+   - Preserve valid YAML frontmatter (`style`, `status`, `created`, `date`,
+     `baseline`, `iteration`, `domain`, `parent`, `supersedes`, `superseded_by`).
+   - Language: draft ALL prose in the team's working language per the
+     Prose language rule (ADR-0.40.0#02) — English only where grammar requires
+     (canonical section headings, ocp field labels, status word, MADR `Chosen
+     option …, because …` lead-in, frontmatter keys/enum, ID/numbering).
+4. **Respond to User**: Provide a crisp walkthrough and summary of the decision record drafted, calling out which OCP output protocol rules the record conforms to (cheatsheet item count, table-based Decision/Rejected, mermaid figures ≤ 2, …).
 
-## Reading aids vs grammar (every style)
+## Prose language rule (every style) — ADR-0.40.0#02
+
 Grammar labels and section headings are a single English authority across
-all styles. Multilingual reading is a CONTENT concern, never grammar:
-- ocp containers: the Cheatsheet is the reader's primary entry — draft
-  it in the team's working language (pure conclusions).
+all styles. EVERYTHING else is prose and MUST be drafted in the team's
+working language. The working language is derived from the language
+environment: a project-level declaration (pinned at init/config) wins;
+otherwise the language of the conversation/request at drafting time
+decides (a Chinese session drafts Chinese prose, an English session
+drafts English prose):
+
+- In the working language: H1 title, ocp section titles
+  (`### 01. <title>`), all body prose (background / decision / rationale /
+  rejected reasons / impact content), Cheatsheet conclusion lines, Mermaid
+  node labels, and MADR Consequences bullet content.
+- The ocp status word after the emoji is NOT prose: it is a fixed protocol
+  token echoing the frontmatter enum — always `✅ accepted`, `🟡 proposed`,
+  `🔄 superseded`, `⛔ deprecated`, never localized. The emoji carries the
+  semantics; the word keeps one vocabulary per concept and stays greppable
+  across every language tree.
+- English grammar, never translated: canonical section headings
+  (`## Context`, `## Decision Outcome`, `## Considered Options`, …), ocp
+  field labels (`**Status**:`, `**Rejected**:`, …), MADR Consequences
+  labels (`**Positive**` / `**Negative / Risks**`), the MADR lead-in
+  `Chosen option: …, because …`, frontmatter keys AND enum values
+  (`status: accepted`), ID/numbering formats (`0001.`, `### 01.`,
+  `ADR-0.2.54#01`), the numeric filename prefix + ASCII slug, and the ocp
+  container's fixed scaffold headings (`## Cheatsheet` / `## Quick view`).
+- ocp `**Rejected**` bullets split option from reason on an ASCII colon
+  (`- <option>: <reason>`); full-width colons do not split.
+- ocp containers: the Cheatsheet is the reader's primary entry — pure
+  conclusions in the team's working language.
 - one-time glossary: optionally keep a single label mapping in the ADL
   root README so first-time readers decode the field labels once.
 - per-label parentheticals are NOT recommended (repetition that drifts
@@ -97,11 +157,14 @@ all styles. Multilingual reading is a CONTENT concern, never grammar:
   parenthetical replace the English label.
 
 
+
 ## Before you commit — checklist
 
 1. For feat/refactor the answer to "did this change make or alter a
-   decision?" is treated as **YES by default** — architecture shape,
-   boundaries, tech choice, integration pattern, deliberate deviation,
+   decision?" is treated as **YES by default**. Apply the same review to
+   architectural `perf` and security work, and assess `fix`/`build`/`ci` when
+   they change a durable boundary — architecture shape, tech choice,
+   integration pattern, data or release behavior, deliberate deviation, or a
    constraint not visible in code.
 2. **New decision** → run `/adr new [layer] <title>` or create the next ADR file
    (sequential number `NNNN-slug.md`).
@@ -121,34 +184,49 @@ scope: global        # optional scope or package name
 parent: docs/adr/0001-slug.md  # optional parent ADR
 ---
 
-# NNNN. <short title of the decision>
+# NNNN. <short title of the decision — in the working language>
 
 ## Context and Problem Statement
 
-<the situation, architectural context, and the decision to be made>
+<the situation, architectural context, and the decision to be made — in the working language>
 
 ## Decision Outcome
 
-Chosen option: <what we decided>, because <why>.
+Chosen option: <the chosen option>, because <rationales and trade-offs>. (Prose — in the working language.)
 ```
 
 ## ocp container skeleton (style: ocp)
 
 Frontmatter: `style/status/created/date` (+ `baseline/iteration` on the iteration form; optional
-`domain`). Body: `# <iteration title>` → `## Cheatsheet` (≤6 conclusions,
-team language — the reader's primary entry) → optional `## Quick view`
-(diagrams/tables restate prose) → `---` → sections:
+`domain`). Body: `# <iteration title>` → `## Cheatsheet` (≤ 6 numbered conclusions,
+each ≤ 60 chars, ADR ref suffix, team language — the reader's primary entry)
+→ `## Quick view` (diagrams/tables restate prose; mermaid `flowchart LR`
+preferred; ≤ 2 figures; tables fill the rest) → `---` → sections. **The
+scaffold from `plugins/adr-guard/styles/ocp.ts` emits the structured
+placeholders below; fill them, do not rewrite them as a prose essay.**
+Full rules: `docs/adr/README.md` §OCP output protocol.
 
 ```md
-### 01. <title>
+### 01. <section title — working language>
 **Status**: 🟡 proposed
-**Background**: <situation + pain>
-**Decision**: <what was decided>
-**Rationale**: <bulleted, bold-keyword led>
+**Background**: <situation + pain, ≤ 3 sentences — working language>
+**Decision**:
+| # | Point | Content |
+| --- | --- | --- |
+| 1 | <point> | <what was decided — working language> |
+| 2 | <point> | <what was decided — working language> |
+**Rationale**:
+- **<keyword>**: <single-line justification — working language>
+- **<keyword>**: <single-line justification — working language>
 **Rejected**:
-- <option>: <why rejected>
+| Option | Reason rejected |
+| --- | --- |
+| <option> | <why rejected — working language> |
+| <option> | <why rejected — working language> |
 **Impact**:
-- <layer or area>: <what changes>
+- **<Plugins / Runtime / Dispatcher / Installer / Tests / Docs>**: <what changes — working language>
+- **<layer>**: <what changes — working language>
+**Future extensions**: <optional — delete the line when none>
 ```
 
 Canonical section IDs derive from the container namespace
@@ -173,4 +251,3 @@ Known ceiling (strict gate): `git commit -F msg.txt` carries no inline `-m`
 message, so the positive feat/fix/refactor decision check cannot see its type
 and the commit passes that check — the undecided-flip audit still holds on
 every commit regardless of message form.
-

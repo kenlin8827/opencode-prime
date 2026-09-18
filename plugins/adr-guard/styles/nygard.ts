@@ -10,6 +10,10 @@
  *
  * Every newly scaffolded record declares `style: nygard` and writes
  * `created` (immutable) alongside `date` (last-status-change).
+ *
+ * Prose language (ADR-0008): placeholders are bilingual — team working
+ * language first, English grammar hint second — so drafters never imitate
+ * English-only prose. Grammar (the three canonical headings) stays English.
  */
 
 import type {
@@ -76,9 +80,10 @@ export const nygardAdapter: AdrStyleAdapter = {
     content += `---\n\n`
 
     content += `# ${id}. ${input.title}\n\n`
-    content += `## Context\n\n<Describe the forces at play: technical, business, project context.>\n\n`
-    content += `## Decision\n\n<State the decision made in response to the context.>\n\n`
-    content += `## Consequences\n\n<Describe the resulting context: what becomes easier or harder.>\n`
+    content += `<!-- Drafting language (ADR-0008): write ALL prose below — title\n     included — in the team's working language; English is reserved for\n     grammar (the three canonical headings). -->\n\n`
+    content += `## Context\n\n<Forces at play: technical, business, project context — in the working language>\n\n`
+    content += `## Decision\n\n<The decision made in response to the context — in the working language>\n\n`
+    content += `## Consequences\n\n<Resulting context: what becomes easier or harder — in the working language>\n`
 
     return content
   },

@@ -108,6 +108,13 @@ export function discoverAdrDirectories(
   const adrDirs = new Set<string>()
   adrDirs.add(normalizedDefault)
 
+  // Localized ADR mirrors are reader-facing translations, not a second ADL:
+  // their files deliberately retain the source IDs and would otherwise be
+  // discovered as duplicate records. Keep the exclusion narrow and relative
+  // to the configured ADL root so real package/domain ADR directories named
+  // `zh` remain possible outside that root.
+  const localizedMirrorRoot = `${normalizedDefault}/zh`
+
   function scan(dir: string, depth = 0) {
     if (depth > 6) return
     let entries: string[] = []
@@ -125,6 +132,7 @@ export function discoverAdrDirectories(
         if (!stat.isDirectory()) continue
 
         const rel = relative(projectDir, fullPath).replace(/\\/g, "/")
+        if (rel === localizedMirrorRoot || rel.startsWith(`${localizedMirrorRoot}/`)) continue
         if (rel.endsWith("/docs/adr") || rel === "docs/adr" || rel.includes("/adr/")) {
           adrDirs.add(rel)
         }
@@ -602,7 +610,7 @@ export interface CreateAdrContainerOptions {
   projectDir: string
   title: string
   /** Both or neither: given → ITERATION container (`ADR-<b>.<i>`, the
-   * baijiu-shop shape, reserves the iteration namespace); omitted →
+   * OCP shape, reserves the iteration namespace); omitted →
    * SEQUENTIAL container (`ADR-NNNN`, shares the sequential allocator
    * with per-decision records — numbering is orthogonal to the
    * container style, §6). */
@@ -692,6 +700,15 @@ export function appendAdrSection(
   const container = resolveAdrRef(cleanRef, adrs)
   if (!container) {
     throw new Error(`Cannot find container ADR matching '${containerRef}'.`)
+  }
+  // Style gate before the ID grammar check: a sequential MADR/Nygard record
+  // passes the grammar below, but an appended ocp block would be invisible
+  // to style-dispatched tooling. Legacy (no style) dispatches as madr.
+  const containerStyle = normalizeAdrStyle(container.style) ?? "madr"
+  if (containerStyle !== "ocp") {
+    throw new Error(
+      `'${cleanRef}' is a '${containerStyle}' record — /adr section appends sections to ocp container records only.`,
+    )
   }
   const canonical = normalizeAdrId(container.id)
   const bareId = canonical?.replace(/^ADR-/, "") ?? ""
@@ -1272,4 +1289,3 @@ export function executeAdrMigration(
     touchedDirs: Array.from(touchedDirs),
   }
 }
-

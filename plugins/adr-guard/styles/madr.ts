@@ -8,6 +8,11 @@
  *
  * Every newly scaffolded record declares `style: madr` and writes
  * `created` (immutable) alongside `date` (last-status-change).
+ *
+ * Prose language (ADR-0008): placeholders are bilingual — team working
+ * language first, English grammar hint second — so drafters never imitate
+ * English-only prose. Grammar (canonical headings, the `Chosen option …,
+ * because …` lead-in, Consequences labels) stays English.
  */
 
 import type {
@@ -67,16 +72,17 @@ export const madrAdapter: AdrStyleAdapter = {
     content += `---\n\n`
 
     content += `# ${id}. ${input.title}\n\n`
+    content += `<!-- Drafting language (ADR-0008): write ALL prose below — title\n     included — in the working language derived from the language\n     environment (project declaration, else conversation language);\n     English is reserved for grammar (canonical headings, the Chosen\n     option/because lead-in, Consequences labels). -->\n\n`
 
     if (input.layer === "system") {
-      content += `## Context and Problem Statement\n\n<Describe the architectural context, system-level problem, and constraints.>\n\n`
-      content += `## Decision Drivers\n\n- Driver 1 (e.g. scalability, security, maintainability)\n- Driver 2\n\n`
-      content += `## Considered Options\n\n- **Option 1**: <Description>\n- **Option 2**: <Description>\n\n`
-      content += `## Decision Outcome\n\nChosen option: **Option 1**, because <rationales and trade-offs>.\n\n`
-      content += `### Consequences\n\n- **Positive**: <Good impacts>\n- **Negative / Risks**: <Trade-offs & mitigations>\n`
+      content += `## Context and Problem Statement\n\n<Architectural context, system-level problem, and constraints — in the working language>\n\n`
+      content += `## Decision Drivers\n\n- <Driver 1: e.g. scalability, security, maintainability — in the working language>\n- <Driver 2 — in the working language>\n\n`
+      content += `## Considered Options\n\n- **<Option 1>**: <description — in the working language>\n- **<Option 2>**: <description — in the working language>\n\n`
+      content += `## Decision Outcome\n\nChosen option: **<chosen option>**, because <rationales and trade-offs — in the working language>.\n\n`
+      content += `### Consequences\n\n- **Positive**: <good impacts — in the working language>\n- **Negative / Risks**: <trade-offs & mitigations — in the working language>\n`
     } else {
-      content += `## Context and Problem Statement\n\n<Describe the situation, module context, and requirement.>\n\n`
-      content += `## Decision Outcome\n\nChosen option: <what was decided>, because <why>.\n`
+      content += `## Context and Problem Statement\n\n<Situation, module context, and requirement — in the working language>\n\n`
+      content += `## Decision Outcome\n\nChosen option: <what was decided>, because <why>. (Both — in the working language.)\n`
     }
 
     return content

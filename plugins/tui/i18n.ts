@@ -626,7 +626,7 @@ export const STRINGS = {
   "project.valueAdrGovernanceStrict": { en: "Strict — user-only /adr decide ratification", "zh-CN": "严格 —— 仅用户可通过 /adr decide 拍板" },
   "project.adrSuiteStandardDesc": { en: "Plain ADR log — madr · sequential · auto layout · no governance", "zh-CN": "纯决策日志 —— madr · 顺序编号 · auto 布局 · 无治理" },
   "project.adrSuiteEvolutionDesc": { en: "Decisions per iteration — madr · iteration numbering · hierarchical layout · review governance", "zh-CN": "按迭代跟踪决策 —— madr · 迭代编号 · 层级布局 · review 治理" },
-  "project.adrSuiteOcpDesc": { en: "Container record per iteration (baijiu-shop discipline) — ocp · iteration numbering · hierarchical layout · review governance; every /adr new needs --baseline/--iteration", "zh-CN": "每迭代一条容器记录（baijiu-shop 纪律）—— ocp · 迭代编号 · 层级布局 · review 治理；每次 /adr new 须带 --baseline/--iteration" },
+  "project.adrSuiteOcpDesc": { en: "Container record per iteration (OCP discipline) — ocp · iteration numbering · hierarchical layout · review governance; every /adr new needs --baseline/--iteration", "zh-CN": "每迭代一条容器记录（OCP 纪律）—— ocp · 迭代编号 · 层级布局 · review 治理；每次 /adr new 须带 --baseline/--iteration" },
   "project.switchEnvGuard": { en: "Protect secret .env file reads", "zh-CN": "保护 .env 密钥文件读取" },
   "project.switchE2eGuard": { en: "Assess E2E before test execution", "zh-CN": "测试执行前评估 E2E 影响" },
   "project.switchProjectMemory": { en: "Inject curated project memory into context (.ocp/memory/public.md inside the project, committed)", "zh-CN": "将整理后的项目记忆注入上下文(项目内 .ocp/memory/public.md,进 git)" },

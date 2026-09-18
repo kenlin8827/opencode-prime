@@ -95,4 +95,13 @@ bun run tests/test-adr-hierarchical-unit.ts
 bun run tests/test-adr-guard-unit.ts
 ```
 
+---
+
+## 📚 三风格示例库
+
+每种规范风格一份完整示例记录，覆盖手册的两种语言（同一组决策、不同语言环境，见 `ADR-0008`）：
+
+- [ADR 三风格示例（中文）](./adr-samples/index.md) — `nygard` · `madr` · `ocp`
+- [ADR Style Samples（English）](../../workflows/adr-samples/index.md)
+
 **测试结果**：`108 / 108` 项单元测试 100% 通过。
