@@ -37,7 +37,7 @@ import type { PluginInput } from "@opencode-ai/plugin"
 import { scoped } from "../shared/plugin-scope"
 import { appendBlock } from "../shared/system-block"
 import {
-  getAdrConfigRuntimeFragment,
+  getAdrConfigRuntimeFragmentWithHistory,
   getGuardHintPrompt,
   MARKER_CONFIG,
   MARKER_HINT,
@@ -46,11 +46,15 @@ import { makeLogger } from "./adr-runtime"
 
 type Log = ReturnType<typeof makeLogger>
 
-/** Common prefix for all ADR markers we own. */
-const ANY_MARKER = "[ADR-"
+/** Common prefix for all ADR markers we own — must cover both
+ *  `[ADR]` (hint) and `[ADR-CONFIG-RUNTIME]` (config). The trailing `-`
+ *  would miss the hint, so the prefix stops at `[ADR`. */
+const ANY_MARKER = "[ADR"
 
 function hasAnyMarker(system: Array<unknown>): boolean {
-  return system.some((s) => typeof s === "string" && s.includes(ANY_MARKER))
+  return system.some(
+    (s) => typeof s === "string" && (s.includes(MARKER_HINT) || s.includes(MARKER_CONFIG) || s.includes(ANY_MARKER)),
+  )
 }
 
 /** Strip every ADR block we own from `system` in place. Each injected
@@ -117,7 +121,9 @@ export function makeSystemHook(client: PluginInput["client"]) {
     // 2. Runtime config block — re-rendered every turn from .ocp/ocp.json.
     //    No cache at this layer: a project edit or `/adr config <key>
     //    <value>` mid-session shows up on the next chat request.
-    const configBlock = getAdrConfigRuntimeFragment()
+    //    On corrupt+Map-miss (restart) we low-frequency try to recover the
+    //    last good block from the session history via shared/last-good.
+    const configBlock = await getAdrConfigRuntimeFragmentWithHistory(client, input?.sessionID)
     const configChanged = appendBlock(output.system, configBlock)
     if (configChanged) await log("info", "system prompt: runtime config block injected")
   }

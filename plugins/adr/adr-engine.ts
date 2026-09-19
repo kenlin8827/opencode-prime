@@ -108,6 +108,9 @@ export function slugify(title: string, style: "kebab" | "snake" | "lower" = "keb
  * Unknown `{…}` placeholders are stripped with a one-shot warning
  * (handled in normalizeFilenamePattern).
  *
+ * Section IDs (`ADR-…#NN`) are never filenames — they address H3 payload
+ * inside a container. Passing one here is a programmer error.
+ *
  * Pure — exported for unit tests.
  */
 export function renderAdrFilename(
@@ -115,6 +118,11 @@ export function renderAdrFilename(
   id: string,
   slug: string,
 ): string {
+  if (id.includes("#")) {
+    throw new Error(
+      `renderAdrFilename: section ID '${id}' is not a filename — sections are H3 payload inside a container, not files.`,
+    )
+  }
   const trimmed = pattern.replace(/\s+/g, " ").trim()
   if (!trimmed.includes("{id}")) return `${id}-${slug}`
   const safeSlug = slug.replace(/[/\\:*?"<>|]/g, "")
@@ -328,10 +336,10 @@ export function toAdrDocument(adr: AdrMeta): AdrDocument {
  * ADR ID. Both ID forms (`0001`, `ADR-0001`, dotted) and legacy path forms
  * (relPath, filename) resolve here; relationship fields are normalized IDs,
  * never paths. Cross-directory duplicate IDs (legal under the old
- * per-directory engine) resolve by first match — callers that hold a path
- * SHOULD pass it so resolution is path-scoped.
+ * per-directory engine) are tolerated as warnings — callers that can
+ * provide a hint path SHOULD do so for path-scoped disambiguation.
  */
-export function resolveAdrRef(ref: string, adrs: AdrMeta[]): AdrMeta | null {
+export function resolveAdrRef(ref: string, adrs: AdrMeta[], hintPath?: string): AdrMeta | null {
   const clean = ref.trim().replace(/^["']|["']$/g, "")
   if (!clean) return null
   const byPath = adrs.find((a) => a.relPath === clean || a.filename === clean)
@@ -339,9 +347,34 @@ export function resolveAdrRef(ref: string, adrs: AdrMeta[]): AdrMeta | null {
   const canonical = normalizeAdrId(clean)
   if (canonical) {
     const bare = canonical.replace(/^ADR-/i, "")
-    return adrs.find((a) => a.id === bare) ?? null
+    const matches = adrs.filter((a) => a.id === bare)
+    if (matches.length === 0) return null
+    if (matches.length === 1) return matches[0]
+    // Ambiguous — multiple ADRs share the same ID across directories
+    // (legacy duplicate). Prefer the one whose directory is closest to
+    // the hint path when available; otherwise fall back to first.
+    if (hintPath) {
+      const hint = hintPath.replace(/\\/g, "/")
+      const hintDir = hint.includes("/") ? hint.slice(0, hint.lastIndexOf("/")) : ""
+      const byHintDir = matches.find((a) => a.dir === hintDir)
+      if (byHintDir) return byHintDir
+      const byHintPrefix = matches.find((a) => hint.startsWith(a.dir + "/") || hint === a.dir)
+      if (byHintPrefix) return byHintPrefix
+    }
+    return matches[0]
   }
   return null
+}
+
+/** True when an ID resolves ambiguously (duplicate across directories). */
+export function isAmbiguousAdrRef(ref: string, adrs: AdrMeta[]): boolean {
+  const clean = ref.trim().replace(/^["']|["']$/g, "")
+  if (!clean) return false
+  if (adrs.some((a) => a.relPath === clean || a.filename === clean)) return false
+  const canonical = normalizeAdrId(clean)
+  if (!canonical) return false
+  const bare = canonical.replace(/^ADR-/i, "")
+  return adrs.filter((a) => a.id === bare).length > 1
 }
 
 /** Parse-context factory: closes over the discovered records so adapters

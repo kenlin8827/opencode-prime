@@ -21,11 +21,18 @@
  * the plugin's config file as thin wrappers.
  */
 
+import { existsSync, readFileSync } from "node:fs"
 import {
   clearConfigField,
+  ocpConfigFile,
   readProjectConfig,
   setConfigField,
+  stripJsonc,
 } from "./opencode-prime"
+import {
+  createProjectScopedMemo,
+  loadLastMarkerFromHistory,
+} from "./last-good"
 
 /** Coerce the rich SetConfigResult down to the historical boolean contract.
  *  Existing plugin hooks that only need pass/fail (e.g. project-memory's
@@ -97,35 +104,138 @@ export interface PluginSwitch<TState extends string> {
  * declares a `PluginSwitch<TState>` once at module load and exposes
  * named wrappers (`isEnabled`, `getState`, ...) so existing callers
  * keep their import paths. */
+/** Single-IO helper: read one field and detect corruption in one file read.
+ *  Returns `{ corrupt, raw }`; `corrupt=true` only when the file exists and
+ *  `JSON.parse(stripJsonc(...))` throws. An absent file is NOT corrupt
+ *  (defaults are correct there). On success `raw` is the field value or
+ *  `undefined` when absent/unrecognized. */
+function loadFieldOnce(field: string): { corrupt: boolean; raw: unknown } {
+  const file = ocpConfigFile()
+  if (!existsSync(file)) return { corrupt: false, raw: undefined }
+  try {
+    const parsed = JSON.parse(stripJsonc(readFileSync(file, "utf-8"))) as Record<string, unknown>
+    return { corrupt: false, raw: parsed[field] }
+  } catch {
+    return { corrupt: true, raw: undefined }
+  }
+}
+
+/** Build a plugin switch from its spec. Each plugin's config file
+ * declares a `PluginSwitch<TState>` once at module load and exposes
+ * named wrappers (`isEnabled`, `getState`, ...) so existing callers
+ * keep their import paths.
+ *
+ * Last-good extension (shared/last-good): when `.ocp/ocp.json` is
+ * corrupt (`isProjectConfigCorrupt()==true`) `getState()` serves the
+ * last successfully normalized state for that project instead of lying
+ * with `defaultState`. Cold-start corrupt (no memo) still falls back to
+ * `defaultState` — fail-open, never throw. The memo is per-switch and
+ * per-project (`Map<projectDir, TState>` via `createProjectScopedMemo`),
+ * so project A's corruption never poisons project B.
+ * `setState()`/`clear()` keep the memo coherent. See ADR instructions
+ * for the fragment-level analogue of this contract.
+ *
+ * History fallback (Map miss on restart) is available via the separate
+ * `getStateWithHistory(client, sessionID)` path on the returned object
+ * (kept off the `PluginSwitch` interface so sync callers are unaffected;
+ * system-transform hooks that already have `client`/`sessionID` can opt
+ * in when the per-plugin marker parser is ready). For now the sync
+ * `getState()` covers the common case (process has seen a good value
+ * before corruption); restart-miss stays fail-open to default — same
+ * pre-migration behaviour, just documented. */
 export function createPluginSwitch<TState extends string>(
   spec: PluginSwitchSpec<TState>,
-): PluginSwitch<TState> {
-  return {
+): PluginSwitch<TState> & {
+  /** Per-project last-good memo (exposed for tests / history opt-in). */
+  readonly _lastGood: ReturnType<typeof createProjectScopedMemo<TState>>
+  /** Clear the memo for the current project or a specific dir (test helper). */
+  clearMemo(dir?: string): void
+  /** Async variant that also tries history on corrupt+miss (low-frequency restart). */
+  getStateWithHistory(client?: unknown, sessionID?: string, historyMarker?: string, parseMarker?: (block: string) => TState | null): Promise<TState>
+} {
+  const lastGood = createProjectScopedMemo<TState>()
+
+  const sw: PluginSwitch<TState> & {
+    readonly _lastGood: ReturnType<typeof createProjectScopedMemo<TState>>
+    clearMemo(dir?: string): void
+    getStateWithHistory(client?: unknown, sessionID?: string, historyMarker?: string, parseMarker?: (block: string) => TState | null): Promise<TState>
+  } = {
     spec,
+    _lastGood: lastGood,
+    clearMemo(dir?: string): void {
+      if (typeof dir === "string" && dir.trim() !== "") lastGood.delete(dir)
+      else lastGood.delete()
+    },
     isOn(): boolean {
       return spec.onStates.includes(this.getState())
     },
     getState(): TState {
-      const cfg = readProjectConfig()
-      const normalized = normalizeSwitchState(cfg?.[spec.field], spec.aliases)
-      return normalized ?? spec.defaultState
+      const { corrupt, raw } = loadFieldOnce(spec.field)
+      if (corrupt) {
+        const hit = lastGood.get()
+        if (hit !== undefined) return hit
+        return spec.defaultState
+      }
+      const normalized = normalizeSwitchState(raw, spec.aliases)
+      if (normalized !== null) {
+        lastGood.set(normalized)
+        return normalized
+      }
+      return spec.defaultState
     },
     getStateSource(): "config" | "default" {
-      const cfg = readProjectConfig()
-      return normalizeSwitchState(cfg?.[spec.field], spec.aliases)
-        ? "config"
-        : "default"
+      const { corrupt, raw } = loadFieldOnce(spec.field)
+      if (corrupt) {
+        return lastGood.get() !== undefined ? "config" : "default"
+      }
+      return normalizeSwitchState(raw, spec.aliases) ? "config" : "default"
     },
     setState(state: TState): boolean {
-      return toBool(setConfigField(spec.field, state))
+      const res = setConfigField(spec.field, state)
+      if (res.ok) lastGood.set(state)
+      return toBool(res)
     },
     clear(): boolean {
-      return toBool(clearConfigField(spec.field))
+      const res = clearConfigField(spec.field)
+      if (res.ok) lastGood.delete()
+      return toBool(res)
     },
     parseArg(args: unknown): TState | null {
       if (typeof args !== "string") return null
       const first = args.trim().split(/\s+/)[0]
       return normalizeSwitchState(first, spec.aliases)
     },
+    async getStateWithHistory(
+      client?: unknown,
+      sessionID?: string,
+      historyMarker?: string,
+      parseMarker?: (block: string) => TState | null,
+    ): Promise<TState> {
+      const { corrupt, raw } = loadFieldOnce(spec.field)
+      if (corrupt) {
+        const hit = lastGood.get()
+        if (hit !== undefined) return hit
+        if (client && sessionID && historyMarker && parseMarker) {
+          try {
+            const block = await loadLastMarkerFromHistory(client, sessionID, historyMarker)
+            if (typeof block === "string") {
+              const parsed = parseMarker(block)
+              if (parsed !== null) {
+                lastGood.set(parsed)
+                return parsed
+              }
+            }
+          } catch { /* fail open */ }
+        }
+        return spec.defaultState
+      }
+      const normalized = normalizeSwitchState(raw, spec.aliases)
+      if (normalized !== null) {
+        lastGood.set(normalized)
+        return normalized
+      }
+      return spec.defaultState
+    },
   }
+  return sw
 }

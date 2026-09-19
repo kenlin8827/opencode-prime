@@ -36,8 +36,14 @@
  */
 
 import { existsSync, readFileSync } from "node:fs"
-import { ocpConfigFile, stripJsonc } from "../shared/opencode-prime"
-import { getAdrConfig, getAdrDir } from "./adr-config"
+import { getProjectDir, ocpConfigFile, stripJsonc } from "../shared/opencode-prime"
+import {
+  createProjectScopedMemo,
+  extractLastMarkerBlock,
+  isProjectConfigCorrupt as sharedIsCorrupt,
+  loadLastMarkerFromHistory,
+} from "../shared/last-good"
+import { getAdrConfig, getAdrConfigFromParsed, getAdrDir } from "./adr-config"
 
 // ─── Markers ────────────────────────────────────────────────────────────
 // One marker per fragment — independent strip / re-inject.
@@ -82,33 +88,53 @@ export function getGuardHintPrompt(): string {
 // re-render replaces the memo. Corrupt-state renders are NEVER memoized,
 // so a process that starts against a corrupt file recovers the moment
 // the file is fixed.
+//
+// Per-project sharding: the memo is keyed by `getProjectDir()` (which
+// `ocpConfigFile()` resolves against). A single process may serve
+// multiple project directories (IDE workspace, test harness); a global
+// singleton would let a corrupt file in project A poison the table
+// served to project B.
+//
+// Shared implementation: the Map and `isProjectConfigCorrupt` live in
+// `plugins/shared/last-good.ts` so other plugins (auto-advisor,
+// e2e-guard, …) can reuse the same per-project last-good contract
+// without duplicating corrupt-check / history-fallback logic. This file
+// re-exports that contract for tests and keeps ADR-specific rendering
+// single-IO (one file read shared by corrupt-check + render).
 
-let lastGoodFragment: string | null = null
+const lastGoodMemo = createProjectScopedMemo<string>()
 
 /** True when the config file EXISTS but cannot be parsed (mirrors
  *  parseConfigFile's `JSON.parse(stripJsonc(...))` semantics). An absent
- *  file is NOT corruption — defaults are legitimately correct there. */
-function isProjectConfigCorrupt(): boolean {
-  const file = ocpConfigFile()
-  if (!existsSync(file)) return false
-  try {
-    JSON.parse(stripJsonc(readFileSync(file, "utf-8")))
-    return false
-  } catch {
-    return true
-  }
+ *  file is NOT corruption — defaults are legitimately correct there.
+ *  Exported for unit tests. Delegates to `shared/last-good`. */
+export function isProjectConfigCorrupt(): boolean {
+  return sharedIsCorrupt()
 }
 
-/** Test-only: clear the last-good memo. */
-export function resetAdrLastGoodFragment(): void {
-  lastGoodFragment = null
+/** Test-only: clear the last-good memo. Pass a project dir to clear
+ *  only that entry; omit to clear all. */
+export function resetAdrLastGoodFragment(dir?: string): void {
+  if (typeof dir === "string" && dir.trim() !== "") {
+    lastGoodMemo.delete(dir)
+    return
+  }
+  lastGoodMemo.clear()
+}
+
+/** Direct access to the underlying memo for advanced callers (tests,
+ *  shared utils). Prefer `resetAdrLastGoodFragment` for test cleanup. */
+export function getAdrLastGoodMemo(): ReturnType<typeof createProjectScopedMemo<string>> {
+  return lastGoodMemo
 }
 
 /** Render the config table body from the current config state. Pure with
  *  respect to config content — no timestamps or volatile values, so an
  *  unchanged config renders byte-identical output (provider cache-safe). */
-function renderAdrConfigTable(): string {
-  const cfg = getAdrConfig()
+function renderAdrConfigTableFromConfig(
+  cfg: ReturnType<typeof getAdrConfig>,
+  adrDir: string,
+): string {
   const fmt = (v: unknown): string => {
     if (Array.isArray(v)) return v.length === 0 ? "_(none)_" : v.map((s) => `\`${s}\``).join(", ")
     if (v === null || v === undefined) return "_(null)_"
@@ -127,12 +153,42 @@ function renderAdrConfigTable(): string {
     `| adr.slugStyle | ${fmt(cfg.slugStyle)} |\n` +
     `| adr.extraSections | ${fmt(cfg.extraSections)} |\n` +
     `| adr.indexColumns | ${fmt(cfg.indexColumns)} |\n` +
-    `| adrDir | \`${getAdrDir()}/\` |\n\n` +
+    `| adrDir | \`${adrDir}/\` |\n\n` +
     `**Honor these values** when scaffolding, naming, and indexing. Do NOT\n` +
     `invent your own filename pattern or default style — they override\n` +
     `the protocol defaults. Use \`/adr config\` to read or change them;\n` +
     `use \`/adr config reset <key>\` to fall back to the protocol default.\n`
   )
+}
+
+function renderAdrConfigTable(): string {
+  return renderAdrConfigTableFromConfig(getAdrConfig(), getAdrDir())
+}
+
+/** Shared single-IO loader: read once, return `{ corrupt, parsed }`.
+ *  Keeping this inline preserves the single-read guarantee documented
+ *  above while letting both sync and async entry points share it. */
+function loadConfigOnce(): { corrupt: boolean; parsed: Record<string, unknown> | null } {
+  const file = ocpConfigFile()
+  if (!existsSync(file)) return { corrupt: false, parsed: null }
+  try {
+    const raw = readFileSync(file, "utf-8")
+    return { corrupt: false, parsed: JSON.parse(stripJsonc(raw)) as Record<string, unknown> }
+  } catch {
+    return { corrupt: true, parsed: null }
+  }
+}
+
+function renderFromParsedOrDefault(parsed: Record<string, unknown> | null): string {
+  if (parsed !== null) {
+    const cfg = getAdrConfigFromParsed(parsed)
+    const adrDirRaw = parsed.adrDir
+    const adrDir = typeof adrDirRaw === "string" && adrDirRaw.trim() !== ""
+      ? adrDirRaw.trim().replace(/\\/g, "/").replace(/\/+$/, "")
+      : "docs/adr"
+    return renderAdrConfigTableFromConfig(cfg, adrDir)
+  }
+  return renderAdrConfigTable()
 }
 
 /** Render the project-level `adr.*` config as a small markdown table the
@@ -151,16 +207,74 @@ function renderAdrConfigTable(): string {
  *  `getAdrConfig()` would silently fall back to defaults — the table
  *  would claim values the user never set. In that state this function
  *  serves the LAST GOOD table instead (stale but truthful) and never
- *  memoizes the corrupt-state render. */
+ *  memoizes the corrupt-state render.
+ *
+ *  Single-IO path: the file is read ONCE; corrupt detection and config
+ *  rendering share that read. The per-project memo (`lastGoodMemo`,
+ *  from `shared/last-good`) prevents a corrupt file in one project
+ *  from poisoning another. */
 export function getAdrConfigRuntimeFragment(): string {
-  const rendered = renderAdrConfigTable()
-  if (isProjectConfigCorrupt()) {
-    if (lastGoodFragment !== null) return lastGoodFragment
-    // Corrupt from process start (no memo yet) — degrade to defaults
-    // gracefully, but do NOT memoize so recovery lands on the next call
-    // after the file is fixed.
-    return rendered
+  const { corrupt, parsed } = loadConfigOnce()
+  if (corrupt) {
+    const memo = lastGoodMemo.get()
+    if (memo !== undefined) return memo
+    // Cold-start corrupt (no memo yet) — degrade to defaults gracefully
+    // but do NOT memoize so the next good read heals.
+    return renderFromParsedOrDefault(null)
   }
-  lastGoodFragment = rendered
+  const rendered = renderFromParsedOrDefault(parsed)
+  lastGoodMemo.set(rendered)
   return rendered
+}
+
+/** Async variant of `getAdrConfigRuntimeFragment` with low-frequency
+ *  history fallback. When the file is corrupt and the in-memory memo is
+ *  empty (e.g. immediately after a process restart) it tries to load the
+ *  last good `[ADR-CONFIG-RUNTIME]` block from the session's system history
+ *  via `client`/`sessionID`. That path is expected to be rare — a cold
+ *  corrupt start with no prior good turn in this process — and is
+ *  fail-open to defaults.
+ *
+ *  System transform already has `client` and `sessionID` (hook args), so
+ *  passing them here costs no extra plumbing; other callers can omit them
+ *  and get the sync-behaviour. The history scan uses
+ *  `shared/last-good:loadLastMarkerFromHistory`, which duck-types both
+ *  server (`client.session.messages`) and TUI clients and never throws. */
+export async function getAdrConfigRuntimeFragmentWithHistory(
+  client?: unknown,
+  sessionID?: string,
+): Promise<string> {
+  const { corrupt, parsed } = loadConfigOnce()
+  if (corrupt) {
+    const memo = lastGoodMemo.get()
+    if (memo !== undefined) return memo
+    // Low-frequency restart recovery: Map miss → try conversation/system history
+    if (client && sessionID) {
+      try {
+        const fromHistory = await loadLastMarkerFromHistory(client, sessionID, MARKER_CONFIG)
+        if (typeof fromHistory === "string" && fromHistory.includes(MARKER_CONFIG)) {
+          // History blocks may be a tail slice (from marker onward) — keep them verbatim
+          // so the LLM sees byte-identical truthful config until the file heals.
+          lastGoodMemo.set(fromHistory)
+          return fromHistory
+        }
+        // Also try a direct scan of already-injected system history if the
+        // caller passed an explicit buffer (not available here — keep the
+        // hook's own `output.system` scan as a second fallback below if needed).
+      } catch { /* fail open */ }
+    }
+    return renderFromParsedOrDefault(null)
+  }
+  const rendered = renderFromParsedOrDefault(parsed)
+  lastGoodMemo.set(rendered)
+  return rendered
+}
+
+/** Extract the last `[ADR-CONFIG-RUNTIME]` block from a system prompt
+ *  history array (output.system shape). Pure helper for history fallback
+ *  when `client.session.messages` is unavailable but the current system
+ *  array already carries a prior good block from an earlier transform.
+ *  Delegates to `shared/last-good:extractLastMarkerBlock`. */
+export function extractLastConfigBlockFromSystem(system: string[]): string | null {
+  return extractLastMarkerBlock(system, MARKER_CONFIG)
 }

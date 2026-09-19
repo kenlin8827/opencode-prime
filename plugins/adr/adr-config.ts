@@ -338,6 +338,26 @@ export function getAdrConfig(): AdrConfig {
   }
 }
 
+/** Build an AdrConfig from an already-parsed `.ocp/ocp.json` object
+ *  without re-reading the file. Used by the per-turn system prompt
+ *  fragment to avoid a second IO per chat turn. Warning side-effects
+ *  (unknown governance/override) are identical to getAdrConfig(). */
+export function getAdrConfigFromParsed(parsed: Record<string, unknown> | null): AdrConfig {
+  const block = readAdrBlock(parsed)
+  const governance = normalizeAdrGovernance(block.governance)
+  if (governance === null && block.governance !== undefined) {
+    warnUnknownGovernance(block.governance)
+  }
+  return {
+    style: normalizeAdrStyle(block.style) ?? "madr",
+    numbering: normalizeAdrNumbering(block.numbering) ?? "sequential",
+    layout: normalizeAdrLayout(block.layout),
+    governance: governance ?? "none",
+    suite: typeof block.suite === "string" && block.suite.trim() !== "" ? block.suite.trim() : null,
+    ...readProjectOverrides(block),
+  }
+}
+
 /** Style resolution for NEW documents (§6): explicit > config > madr. */
 export function resolveAdrStyleForNew(explicit?: string): AdrStyle {
   return normalizeAdrStyle(explicit) ?? getAdrConfig().style
