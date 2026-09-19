@@ -11,14 +11,20 @@
  *   - system hook: inject when on, idempotent, strip when off
  *   - tool guard: blocks feat commit without ADR change, allows fix/amend/off
  *     (incl. per-invocation gating of chained commits)
+ *   - strict governance (Phase 6, §11/§13): /adr decide flow (madr + nygard +
+ *     dotted iteration IDs), status-line-only byte-stable flip, append-only
+ *     ledger, refusal outside strict, strict commit gate pass/fail, legacy
+ *     gate independence, governance invariance over parsing/index,
+ *     `git commit -a` unstaged-flip audit (F13), CRLF byte-stability (F14),
+ *     adrDir-override decide/gate resolution (I)
  *
  * Run: bun run tests/test-adr-guard-unit.ts   (or: npx tsx tests/test-adr-guard-unit.ts)
  */
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
-import { join, dirname } from "node:path"
+import { join, dirname, basename } from "node:path"
 import { fileURLToPath } from "node:url"
 
 import {
@@ -28,15 +34,22 @@ import {
   setState,
   setProjectDir,
   getProjectDir,
+  getAdrConfig,
+  getAdrDir,
+  setAdrConfigFields,
   stripJsonc,
   COMMAND_NAME,
 } from "../plugins/adr-guard/adr-guard-config"
+import { createAdr, getNormalizedAdrs, supersedeAdr } from "../plugins/adr-guard/adr-engine"
+import { decideAdr, DECISIONS_LEDGER_REL, readDecidedIds, stagedAcceptFlips, acceptFlipsFromDiff } from "../plugins/adr-guard/adr-governance"
+import { setConfigField, clearConfigField } from "../plugins/shared/opencode-prime"
 import {
   tokenize,
   isGitCommit,
   hasAmendFlag,
   extractCommitMessage,
   requiresAdr,
+  segmentCommitsAll,
 } from "../plugins/adr-guard/adr-guard-runtime"
 import { makeSystemHook } from "../plugins/adr-guard/adr-guard-system-inject"
 import { makeToolGuardHook } from "../plugins/adr-guard/adr-guard-tool-guard"
@@ -433,17 +446,21 @@ async function test10_AdrSupersede() {
     assert(existsSync(adr2Path), "ADR 0002 created via unpadded numeric '1'")
 
     const adr1Content = readFileSync(adr1Path, "utf-8")
-    assert(adr1Content.includes("status: superseded by 0002"), "ADR 0001 marked as superseded by 0002")
-    assert(adr1Content.includes("superseded_by: docs/adr/0002-new-cloud-storage-standard.md"), "ADR 0001 contains superseded_by link")
+    assert(adr1Content.includes("status: Superseded by ADR-0002"), "ADR 0001 status line flipped to Superseded by ADR-0002")
+    // §9.5: the flip touches ONLY the status line — the pre-refactor engine
+    // injected a `superseded_by:` frontmatter key (wholesale frontmatter
+    // rewrite); Phase 1 narrowed it, so the old body stays byte-stable.
+    assert(!adr1Content.includes("superseded_by:"), "ADR 0001 gains NO superseded_by frontmatter (status-line-only flip)")
+    assert(adr1Content.includes("## Decision Outcome"), "ADR 0001 body preserved (Decision Outcome intact)")
 
     const adr2Content = readFileSync(adr2Path, "utf-8")
-    assert(adr2Content.includes("parent: docs/adr/0001-initial-storage-decision.md"), "ADR 0002 references parent ADR 0001")
+    assert(adr2Content.includes("supersedes: ADR-0001"), "ADR 0002 references supersedes: ADR-0001 (ID form)")
 
     const indexPath = join(tmpTestDir, "docs/adr/INDEX.md")
     assert(existsSync(indexPath), "INDEX.md exists")
     const indexContent = readFileSync(indexPath, "utf-8")
     assert(indexContent.includes("Superseded"), "INDEX.md contains Superseded status for 0001")
-    assert(indexContent.includes("Accepted"), "INDEX.md contains Accepted status for 0002")
+    assert(indexContent.includes("Proposed"), "INDEX.md contains Proposed status for 0002 (§6.2: no code path writes accepted)")
 
     // Step 3: Supersede with --empty flag
     thrownError = null
@@ -461,7 +478,477 @@ async function test10_AdrSupersede() {
   }
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+//  11. Strict governance (Phase 6, §11/§13)
+// ═════════════════════════════════════════════════════════════════════════
+// One throwaway project: git repo + adr.governance config, covering the
+// decide flow on madr / nygard / dotted-iteration records, ledger
+// append-only behavior, refusal outside strict, the strict commit gate
+// pass/fail matrix, and governance invariance over parsing/index output.
+
+async function test11_StrictGovernance() {
+  section("11: Strict governance — decide flow, ledger, commit gate")
+  const guard = makeToolGuardHook(fakeClient)
+  const toasts: { message: string; level: string }[] = []
+  const mockClient: any = {
+    app: { log: async () => {} },
+    tui: { showToast: async (args: any) => { toasts.push({ message: String(args?.body?.message ?? ""), level: String(args?.body?.variant ?? "") }) } },
+    session: { prompt: async () => {} },
+  }
+
+  const root = mkdtempSync(join(tmpdir(), "adr-gov-"))
+  const git = (args: string[]) =>
+    spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+      cwd: root,
+      timeout: 10_000,
+    })
+  assert(git(["init", "-q"]).status === 0, "governance sandbox git repo init")
+  writeFileSync(join(root, "README.md"), "t\n")
+  assert(git(["add", "README.md"]).status === 0 && git(["commit", "-qm", "chore: seed"]).status === 0, "governance sandbox seeded")
+
+  setProjectDir(root)
+  try {
+    assert(setAdrConfigFields({ governance: "strict", style: "madr" }), "adr.governance=strict written")
+    assert(getAdrConfig().governance === "strict", "governance reads back strict")
+    const ledgerPath = join(root, DECISIONS_LEDGER_REL)
+
+    async function call(command: string): Promise<string | null> {
+      try {
+        await guard({ tool: "bash" } as any, { args: { command } } as any)
+        return null
+      } catch (err) {
+        return String((err as Error).message)
+      }
+    }
+
+    // ── A. decide flow — madr record, status-line-only flip ──────────
+    const a1 = createAdr({ projectDir: root, title: "Madr Decision" })
+    const before1 = readFileSync(a1.fullPath, "utf-8")
+    assert(before1.includes("status: Proposed"), "madr record scaffolded Proposed (§6.2)")
+    const r1 = decideAdr(root, "ADR-0001", "ratified after review")
+    assert(r1.id === "ADR-0001", "decide resolves canonical ADR-0001")
+    const after1 = readFileSync(a1.fullPath, "utf-8")
+    const beforeLines = before1.split(/\r?\n/)
+    const afterLines = after1.split(/\r?\n/)
+    assert(beforeLines.length === afterLines.length, "decide changes NO line count (§9.5 byte-stability)")
+    const changed = afterLines.filter((l, i) => l !== beforeLines[i])
+    assert(changed.length === 1 && /^status:\s*Accepted/.test(changed[0] ?? ""), "decide flips ONLY the status line")
+    assert(existsSync(ledgerPath), "ledger created at .ocp/adr-decisions.log")
+    const ledger1 = readFileSync(ledgerPath, "utf-8").trimEnd().split(/\r?\n/)
+    assert(ledger1.length === 1, "ledger holds exactly one line after first decide")
+    const cols1 = (ledger1[0] ?? "").split("\t")
+    assert(cols1[1] === "ADR-0001" && cols1[2] === a1.relPath && cols1[3] === "ratified after review", "ledger line: canonical ID + relPath + note")
+    const indexAfterDecide = readFileSync(join(root, "docs/adr/INDEX.md"), "utf-8")
+    assert(indexAfterDecide.includes("Accepted"), "index regenerated with Accepted badge")
+    let threw = false
+    try { decideAdr(root, "ADR-0001") } catch { threw = true }
+    assert(threw, "deciding an already-accepted ADR refuses")
+
+    // ── B. nygard record via bare/unpadded ref, ledger stays append-only ──
+    const a2 = createAdr({ projectDir: root, title: "Nygard Decision", style: "nygard" })
+    const firstLedgerLine = readFileSync(ledgerPath, "utf-8").split(/\r?\n/)[0]
+    const r2 = decideAdr(root, "2") // bare unpadded numeric — normalized to ADR-0002
+    assert(r2.id === "ADR-0002", "decide normalizes bare '2' to ADR-0002 (nygard record)")
+    const ledger2 = readFileSync(ledgerPath, "utf-8").split(/\r?\n/)
+    assert(ledger2[0] === firstLedgerLine, "append-only: first ledger line byte-unchanged after second decide")
+
+    // ── C. dotted iteration ID — no four-digit assumption anywhere ────
+    const a3 = createAdr({ projectDir: root, title: "Iteration Decision", numbering: "iteration", baseline: "0.2", iteration: "54" })
+    assert(a3.id === "0.2.54.01", "dotted record allocated 0.2.54.01")
+    const r3 = decideAdr(root, "0.2.54.01")
+    assert(r3.id === "ADR-0.2.54.01", "decide canonicalizes dotted ID to ADR-0.2.54.01")
+    const decided = readDecidedIds(root)
+    assert(decided.has("ADR-0001") && decided.has("ADR-0002") && decided.has("ADR-0.2.54.01"), "readDecidedIds holds all three canonical IDs")
+    writeFileSync(ledgerPath, "garbage line\n", { flag: "a" })
+    assert(readDecidedIds(root).size === 3, "malformed ledger lines skipped, never fatal")
+
+    // ── D. superseded records are archive — decide refuses ────────────
+    const a4 = createAdr({ projectDir: root, title: "To Be Superseded" })
+    assert(a4.id === "0003", "sequential allocation reaches 0003 (dotted IDs never counted)")
+    supersedeAdr(root, "3", "Replacement Decision")
+    threw = false
+    try { decideAdr(root, "ADR-0003") } catch (e) { threw = String(e).includes("only proposed") }
+    assert(threw, "deciding a superseded record refuses (archive stays archive)")
+
+    // ── E. /adr decide refuses outside strict; command surface ───────
+    assert(setAdrConfigFields({ governance: "none" }), "governance flipped to none")
+    const ledgerBeforeNoneRefuse = readFileSync(ledgerPath, "utf-8")
+    const a5 = createAdr({ projectDir: root, title: "Convention Mode Decision" })
+    threw = false
+    try { decideAdr(root, "ADR-0005") } catch (e) { threw = String(e).includes("only available in strict") }
+    assert(threw, "decideAdr refuses in none mode with a clear message")
+    assert(readFileSync(ledgerPath, "utf-8") === ledgerBeforeNoneRefuse, "refused decide in none mode appends NO ledger line")
+    assert(setAdrConfigFields({ governance: "review" }), "governance flipped to review")
+    threw = false
+    try { decideAdr(root, "ADR-0005") } catch (e) { threw = String(e).includes("only available in strict") }
+    assert(threw, "decideAdr refuses in review mode (protocol-only)")
+    assert(readFileSync(ledgerPath, "utf-8") === ledgerBeforeNoneRefuse, "refused decides append NO ledger lines")
+    assert(setAdrConfigFields({ governance: "strict" }), "governance restored to strict")
+
+    // Command surface: /adr decide via the plugin command hook
+    const plugin = (await AdrGuardPlugin({ client: mockClient, directory: root } as any)) as any
+    const cmdHook = plugin["command.execute.before"]
+    toasts.length = 0
+    let handledThrown: any = null
+    try {
+      await cmdHook({ command: "adr", arguments: "decide ADR-0005 \"note via command\"", sessionID: "g-1" })
+    } catch (e) { handledThrown = e }
+    assert(handledThrown !== null, "/adr decide is handled (204)")
+    assert(toasts.some((t) => t.message.includes("ADR-0005")), "/adr decide announces the decided ID (locale-independent)")
+    assert(readFileSync(ledgerPath, "utf-8").includes("ADR-0005") && readFileSync(ledgerPath, "utf-8").includes("note via command"), "command-path decide appends ledger line with note")
+    toasts.length = 0
+    assert(setAdrConfigFields({ governance: "none" }), "governance flipped to none for command refusal")
+    const a6 = createAdr({ projectDir: root, title: "Second Convention Decision" })
+    void a6
+    try { await cmdHook({ command: "adr", arguments: "decide ADR-0006", sessionID: "g-2" }) } catch { /* handled() throws 204 */ }
+    assert(toasts.some((t) => t.message.includes("only available in strict")), "command /adr decide announces refusal outside strict")
+    assert(setAdrConfigFields({ governance: "strict" }), "governance restored to strict for gate tests")
+
+    // ── F. strict commit gate pass/fail matrix (staged diff based) ────
+    // F1: feat commit with NO decided flip staged → blocked
+    let blocked = await call(`git commit -m "feat: add new api"`)
+    assert(blocked !== null && blocked.includes("[ADR-GOVERNANCE]"), "strict gate blocks feat commit without a decided flip")
+
+    // F2: hand-edited accept flip (no ledger) staged → blocked on EVERY type
+    const a7 = createAdr({ projectDir: root, title: "Hand Edited Decision" })
+    const a7Content = readFileSync(a7.fullPath, "utf-8")
+    writeFileSync(a7.fullPath, a7Content.replace(/^status:\s*[^\r\n]+/im, "status: accepted"), "utf-8")
+    assert(git(["add", "docs/adr"]).status === 0, "hand-edited flip staged")
+    blocked = await call(`git commit -m "fix: bug"`)
+    assert(blocked !== null && blocked.includes("ADR-0007") && blocked.includes("decision record"), "undecided flip blocks even a fix commit")
+    assert(stagedAcceptFlips(root, "docs/adr").some((f) => f.id === "ADR-0007"), "stagedAcceptFlips detects the normalized ID")
+    // restore: back to proposed, unstage
+    writeFileSync(a7.fullPath, a7Content, "utf-8")
+    git(["reset", "-q"])
+
+    // F3: proper flow — /adr decide then stage → feat commit passes
+    decideAdr(root, "ADR-0007", "decided then shipped")
+    assert(git(["add", "-A"]).status === 0, "decided flip + code staged")
+    blocked = await call(`git commit -m "feat: add new api"`)
+    assert(blocked === null, "feat commit ships when it carries a ledger-backed decided flip")
+    assert(git(["commit", "-qm", "feat: add new api"]).status === 0, "feat commit EXECUTED after gate pass (guard only intercepts)")
+
+    // F4: dotted iteration undecided flip → blocked, dotted ID named (no four-digit assumption)
+    const a8 = createAdr({ projectDir: root, title: "Iteration Hand Edit", numbering: "iteration", baseline: "0.2", iteration: "54" })
+    const a8Content = readFileSync(a8.fullPath, "utf-8")
+    writeFileSync(a8.fullPath, a8Content.replace(/^status:\s*[^\r\n]+/im, "status: accepted"), "utf-8")
+    git(["add", "docs/adr"])
+    blocked = await call(`git commit -m "feat: dotted flip"`)
+    assert(blocked !== null && blocked.includes("ADR-0.2.54.02"), "dotted iteration undecided flip blocked, dotted ID named")
+    writeFileSync(a8.fullPath, a8Content, "utf-8")
+    git(["reset", "-q"])
+
+    // F5: review mode — no mechanical gate at all
+    assert(setAdrConfigFields({ governance: "review" }), "governance flipped to review for gate check")
+    let reviewBlocked: string | null = null
+    try {
+      await guard({ tool: "bash" } as any, { args: { command: `git commit -m "feat: free"` } } as any)
+    } catch (e) { reviewBlocked = String((e as Error).message) }
+    assert(reviewBlocked === null, "review mode: feat commit NOT mechanically gated (protocol-only, §11)")
+    assert(setAdrConfigFields({ governance: "strict" }), "governance restored to strict")
+
+    // F6: --amend stays exempt under strict
+    let amendBlocked: string | null = null
+    try {
+      await guard({ tool: "bash" } as any, { args: { command: `git commit --amend -m "chore: seed v2"` } } as any)
+    } catch (e) { amendBlocked = String((e as Error).message) }
+    assert(amendBlocked === null, "--amend exempt from the strict gate")
+
+    // ── F7. --amend never launders an undecided flip (MAJOR 1 + MINOR 4) ──
+    // The amend exemption applies ONLY to the positive decision check; the
+    // undecided-flip audit must run for EVERY commit invocation. The
+    // hand-flip also uses the quoted YAML form to prove quoted detection.
+    const a10 = createAdr({ projectDir: root, title: "Amend Launder Attempt" })
+    const a10Content = readFileSync(a10.fullPath, "utf-8")
+    writeFileSync(a10.fullPath, a10Content.replace(/^status:\s*[^\r\n]+/im, 'status: "accepted"'), "utf-8")
+    git(["add", "docs/adr"])
+    blocked = await call(`git commit --amend --no-edit`)
+    assert(
+      blocked !== null && blocked.includes(`ADR-${a10.id}`) && blocked.includes("decision record"),
+      "--amend with a staged undecided flip is BLOCKED (amend exempts only the positive check)",
+    )
+    assert(
+      stagedAcceptFlips(root, "docs/adr").some((f) => f.id === `ADR-${a10.id}`),
+      'quoted status: "accepted" flip detected in the staged diff',
+    )
+    writeFileSync(a10.fullPath, a10Content, "utf-8")
+    git(["reset", "-q"])
+
+    // ── F8. user diff config (diff.noprefix) cannot blind the probe (MAJOR 3) ──
+    assert(git(["config", "diff.noprefix", "true"]).status === 0, "sandbox repo sets diff.noprefix=true")
+    const a11 = createAdr({ projectDir: root, title: "Noprefix Config Decision" })
+    const a11Content = readFileSync(a11.fullPath, "utf-8")
+    writeFileSync(a11.fullPath, a11Content.replace(/^status:\s*[^\r\n]+/im, "status: accepted"), "utf-8")
+    git(["add", "docs/adr"])
+    blocked = await call(`git commit -m "fix: noprefix probe"`)
+    assert(
+      blocked !== null && blocked.includes(`ADR-${a11.id}`),
+      "flips still detected under diff.noprefix=true (forced a/ b/ prefixes)",
+    )
+    writeFileSync(a11.fullPath, a11Content, "utf-8")
+    git(["reset", "-q"])
+    assert(git(["config", "diff.noprefix", "false"]).status === 0, "diff.noprefix reset after probe")
+
+    // ── F9. nested/hierarchical ADR dirs are inside the strict gate (MAJOR 2) ──
+    mkdirSync(join(root, "docs/adr/domains/payments"), { recursive: true })
+    mkdirSync(join(root, "docs/adr/domains/billing"), { recursive: true })
+    const a12 = createAdr({ projectDir: root, title: "Nested Domain Decision" })
+    renameSync(a12.fullPath, join(root, "docs/adr/domains/payments", basename(a12.fullPath)))
+    const a13 = createAdr({ projectDir: root, title: "Nested Iteration Decision", numbering: "iteration", baseline: "0.3", iteration: "1" })
+    renameSync(a13.fullPath, join(root, "docs/adr/domains/billing", basename(a13.fullPath)))
+    const nested = [
+      { adr: a12, dir: "payments" },
+      { adr: a13, dir: "billing" },
+    ].map(({ adr, dir }) => {
+      const path = join(root, "docs/adr/domains", dir, basename(adr.fullPath))
+      const original = readFileSync(path, "utf-8")
+      writeFileSync(path, original.replace(/^status:\s*[^\r\n]+/im, "status: accepted"), "utf-8")
+      return { adr, path, original }
+    })
+    git(["add", "docs/adr"])
+    blocked = await call(`git commit -m "feat: nested flips"`)
+    assert(
+      blocked !== null && blocked.includes(`ADR-${a12.id}`),
+      "nested sequential undecided flip is BLOCKED (nested dirs are gated)",
+    )
+    assert(
+      blocked !== null && blocked.includes(`ADR-${a13.id}`),
+      "nested dotted-iteration undecided flip is BLOCKED (dotted grammar, nested dir)",
+    )
+    for (const n of nested) writeFileSync(n.path, n.original, "utf-8")
+    git(["reset", "-q"])
+    // Decided path: /adr decide resolves nested records; the flips then pass.
+    const d12 = decideAdr(root, `ADR-${a12.id}`)
+    const d13 = decideAdr(root, a13.id)
+    assert(d12.relPath.includes("domains/payments/"), "decide resolves the nested sequential record")
+    assert(d13.id === "ADR-0.3.1.01" && d13.relPath.includes("domains/billing/"), "decide resolves the nested dotted record")
+    assert(git(["add", "-A"]).status === 0, "decided nested flips staged")
+    blocked = await call(`git commit -m "feat: nested decided"`)
+    assert(blocked === null, "feat commit passes once the nested flips are decided (no false block)")
+    assert(git(["commit", "-qm", "feat: nested decided"]).status === 0, "nested decided flips EXECUTED after gate pass")
+
+    // ── F10. pathspec commits cannot satisfy the SAME-commit invariant (MINOR 8) ──
+    const a14 = createAdr({ projectDir: root, title: "Pathspec Bypass Attempt" })
+    decideAdr(root, `ADR-${a14.id}`)
+    writeFileSync(join(root, "src.ts"), "export {}\n")
+    assert(git(["add", "-A"]).status === 0, "decided flip staged alongside code")
+    blocked = await call(`git commit -m "feat: partial" -- src.ts`)
+    assert(
+      blocked !== null && blocked.includes("git commit --"),
+      "pathspec commit BLOCKED with the targeted message (decided flip would ship later)",
+    )
+    assert(git(["commit", "-qm", "feat: pathspec guard case"]).status === 0, "full-index commit ships the decided flip for real")
+
+    // ── F11. decide flips ONLY the frontmatter status line (MINOR 5) ────
+    const a15 = createAdr({ projectDir: root, title: "Fenced Body Status Decision" })
+    const c15 = readFileSync(a15.fullPath, "utf-8")
+      .replace(/^status:\s*[^\r\n]+/im, "status: proposed # awaiting review") +
+      "\n## Appendix\n\n```yaml\n# pipeline example\nstatus: draft\n```\n"
+    writeFileSync(a15.fullPath, c15, "utf-8")
+    decideAdr(root, `ADR-${a15.id}`)
+    const after15 = readFileSync(a15.fullPath, "utf-8")
+    assert(after15.includes("status: Accepted # awaiting review"), "decide preserves the trailing # comment on the flipped line")
+    assert(after15.includes("status: draft"), "fenced body status: line stays untouched")
+    assert(
+      after15.split(/\r?\n/).length === c15.split(/\r?\n/).length,
+      "decide changes NO line count even with a fenced status: line in the body",
+    )
+    const a16 = createAdr({ projectDir: root, title: "Missing Status Frontmatter Decision" })
+    const c16 = readFileSync(a16.fullPath, "utf-8").replace(/^status:\s*[^\r\n]+\r?\n/im, "")
+    writeFileSync(a16.fullPath, c16, "utf-8")
+    decideAdr(root, `ADR-${a16.id}`) // madr adapter defaults a missing status to proposed (§6.2)
+    const fm16 = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(a16.fullPath, "utf-8"))?.[1] ?? ""
+    assert(/^status:\s*accepted/im.test(fm16), "missing frontmatter status → accepted injected INSIDE the frontmatter block")
+    assert(
+      git(["add", "-A"]).status === 0 && git(["commit", "-qm", "docs: governance hardening cases"]).status === 0,
+      "F11 records committed for real (no staged flips left for section H)",
+    )
+
+    // ── F12. /adr init --governance is validated like --style (MINOR 6) ──
+    assert(setAdrConfigFields({ governance: "review" }), "governance set to review for the init guard test")
+    toasts.length = 0
+    try { await cmdHook({ command: "adr", arguments: "init custom --governance strick", sessionID: "g-3" }) } catch { /* handled() throws 204 */ }
+    assert(toasts.some((t) => t.message.includes("strick")), "invalid --governance refused with a warning toast naming the value")
+    assert(getAdrConfig().governance === "review", "refused init writes NOTHING to the config")
+    toasts.length = 0
+    try { await cmdHook({ command: "adr", arguments: "init custom --governance strict", sessionID: "g-4" }) } catch { /* handled() throws 204 */ }
+    assert(getAdrConfig().governance === "strict", "valid --governance strict persists")
+
+    // Equals form must parse identically (P3): --governance=strict /
+    // --governance=<invalid> / --style=<value>.
+    toasts.length = 0
+    try { await cmdHook({ command: "adr", arguments: "init custom --governance=strick", sessionID: "g-5" }) } catch { /* handled() throws 204 */ }
+    assert(toasts.some((t) => t.message.includes("strick")), "invalid --governance=<value> (equals form) refused with a warning toast naming the value")
+    assert(getAdrConfig().governance === "strict", "refused equals-form init writes NOTHING to the config")
+    try { await cmdHook({ command: "adr", arguments: "init custom --governance=review", sessionID: "g-6" }) } catch { /* handled() throws 204 */ }
+    assert(getAdrConfig().governance === "review", "valid --governance=review (equals form) persists")
+    try { await cmdHook({ command: "adr", arguments: "init custom --style=nygard --governance=none", sessionID: "g-7" }) } catch { /* handled() throws 204 */ }
+    assert(getAdrConfig().style === "nygard" && getAdrConfig().governance === "none", "--style=<value> equals form parses alongside --governance=<value>")
+    assert(setAdrConfigFields({ governance: "strict", style: "madr" }), "style + governance restored after equals-form tests")
+
+    // ── F13. `git commit -a` cannot smuggle an UNSTAGED hand-flip (P1) ──
+    // `-a`/`--all` commit tracked unstaged modifications the --cached probe
+    // never sees. The gate must detect the flag token-level and add a
+    // working-diff pass, or `git commit -am "fix: x"` ships an unledgered
+    // flip.
+    assert(segmentCommitsAll(["-am", "msg"]), "token level: cluster -am detected as -a")
+    assert(segmentCommitsAll(["-qa", "msg"]), "token level: cluster -qa detected as -a")
+    assert(segmentCommitsAll(["--all", "-m", "msg"]), "token level: --all detected")
+    assert(segmentCommitsAll(["-a", "--amend", "--no-edit"]), "token level: -a --amend detected (amend stages working tree too)")
+    assert(!segmentCommitsAll(["-m", "msg"]), "token level: plain -m is NOT -a")
+    assert(!segmentCommitsAll(["--amend", "--no-edit"]), "token level: --amend is NOT --all")
+    assert(!segmentCommitsAll(["-mfeat: api"]), "token level: glued -m message is NOT -a (m consumes the rest)")
+
+    const a17 = createAdr({ projectDir: root, title: "Unstaged Launder Attempt" })
+    assert(
+      git(["add", "-A"]).status === 0 && git(["commit", "-qm", "docs: seed a17"]).status === 0,
+      "a17 committed so the hand-flip is a TRACKED unstaged modification (-a territory)",
+    )
+    const a17Content = readFileSync(a17.fullPath, "utf-8")
+    writeFileSync(a17.fullPath, a17Content.replace(/^status:\s*[^\r\n]+/im, "status: accepted"), "utf-8")
+    assert(!stagedAcceptFlips(root, "docs/adr").some((f) => f.id === `ADR-${a17.id}`), "unstaged flip invisible to the cached-only probe (the hole)")
+    blocked = await call(`git commit -am "fix: launder via -a"`)
+    assert(
+      blocked !== null && blocked.includes(`ADR-${a17.id}`) && blocked.includes("decision record"),
+      "unstaged hand-flip + git commit -am is BLOCKED (working diff probed)",
+    )
+    blocked = await call(`git commit --all -m "fix: launder via --all"`)
+    assert(
+      blocked !== null && blocked.includes(`ADR-${a17.id}`),
+      "unstaged hand-flip + git commit --all is BLOCKED too",
+    )
+    writeFileSync(a17.fullPath, a17Content, "utf-8")
+    blocked = await call(`git commit -am "chore: tidy"`)
+    assert(blocked === null, "git commit -am with NO flips passes the audit (chore escapes the positive gate)")
+
+    // ── F14. decideAdr preserves CRLF on both flip paths (P4) ──────────
+    const a18 = createAdr({ projectDir: root, title: "CRLF Inject Decision" })
+    const crlfNoStatus = readFileSync(a18.fullPath, "utf-8")
+      .replace(/^status:\s*[^\r\n]+\r?\n/im, "")
+      .replace(/\n/g, "\r\n")
+    writeFileSync(a18.fullPath, crlfNoStatus, "utf-8")
+    decideAdr(root, `ADR-${a18.id}`)
+    const after18 = readFileSync(a18.fullPath, "utf-8")
+    assert(after18.includes("status: Accepted\r\n"), "injected status line carries CRLF on a CRLF record (inject path)")
+    assert(
+      (after18.match(/\n/g) ?? []).length === (after18.match(/\r\n/g) ?? []).length,
+      "no lone-LF line introduced into the CRLF record (inject path)",
+    )
+    const a19 = createAdr({ projectDir: root, title: "CRLF Replace Decision" })
+    writeFileSync(a19.fullPath, readFileSync(a19.fullPath, "utf-8").replace(/\n/g, "\r\n"), "utf-8")
+    decideAdr(root, `ADR-${a19.id}`)
+    const after19 = readFileSync(a19.fullPath, "utf-8")
+    assert(/^status: Accepted\r$/m.test(after19), "replaced status line keeps CRLF (replace path)")
+    assert(
+      (after19.match(/\n/g) ?? []).length === (after19.match(/\r\n/g) ?? []).length,
+      "no lone-LF line introduced into the CRLF record (replace path)",
+    )
+    assert(
+      git(["add", "-A"]).status === 0 && git(["commit", "-qm", "docs: f13 f14 cases"]).status === 0,
+      "F13/F14 records committed for real (no flips left for later sections)",
+    )
+
+    // ── G. governance invariance: parsing/index identical under all modes ──
+    const snapshot = () => JSON.stringify(getNormalizedAdrs(root)) + "||" + readFileSync(join(root, "docs/adr/INDEX.md"), "utf-8")
+    assert(setAdrConfigFields({ governance: "none" }), "governance none for invariance snapshot")
+    const snapNone = snapshot()
+    assert(setAdrConfigFields({ governance: "review" }), "governance review for invariance snapshot")
+    const snapReview = snapshot()
+    assert(setAdrConfigFields({ governance: "strict" }), "governance strict for invariance snapshot")
+    const snapStrict = snapshot()
+    assert(snapNone === snapReview && snapReview === snapStrict, "normalized records + index bytes IDENTICAL under none/review/strict")
+
+    // ── H. legacy adrGuard independence (§6.4): unchanged behavior ────
+    assert(getAdrConfig().governance === "strict", "sandbox still strict")
+    assert(getState() === "off", "legacy adrGuard off in sandbox (untouched by adr.* writes)")
+    const a9 = createAdr({ projectDir: root, title: "Legacy Independence Decision" })
+    void a9
+    git(["add", "-A"])
+    // legacy off → presence gate does NOT fire even under strict; strict gate
+    // blocks only because no decided flip ships. Turning legacy ON adds its
+    // own block message — proving the two gates are independent layers.
+    setState("on")
+    blocked = await call(`git commit -m "feat: legacy check"`)
+    assert(blocked !== null && blocked.includes("[ADR-GOVERNANCE]"), "strict gate still fires with legacy adrGuard on")
+    assert(!(blocked ?? "").includes("[ADR-GUARD] Blocked: feat/refactor commit without an ADR change"), "legacy presence gate passes (ADR files staged) — layers independent")
+    setState("off")
+
+    // ── I. adrDir override: decide + gate resolve the configured root (P1) ──
+    // Previously decideAdr hard-defaulted getAllAdrs to docs/adr while the
+    // strict gate scanned the configured override dir — every flip there was
+    // flagged undecidable and /adr decide threw "Cannot find existing ADR"
+    // with no fix path. decideAdr must resolve via the same configured
+    // root/layout as the gate.
+    assert(setConfigField("adrDir", "docs/decisions").ok, "adrDir=docs/decisions written to project config")
+    assert(getAdrDir() === "docs/decisions", "getAdrDir reads the override back")
+    mkdirSync(join(root, "docs/decisions"), { recursive: true })
+    // Unique stem (0099) — docs/adr already holds ADR-0001; a collision would
+    // resolve by first sorted path and mask the override-dir resolution.
+    writeFileSync(
+      join(root, "docs/decisions/0099-override-dir-decision.md"),
+      ["---", "status: proposed", "date: 2026-01-01", "---", "", "# Override Dir Decision", ""].join("\n"),
+      "utf-8",
+    )
+    const dOverride = decideAdr(root, "ADR-0099", "override dir record")
+    assert(dOverride.relPath === "docs/decisions/0099-override-dir-decision.md", "decideAdr resolves the record under the adrDir override")
+    assert(readDecidedIds(root).has("ADR-0099"), "the override-dir decision lands in the ledger")
+    assert(git(["add", "-A"]).status === 0, "decided override-dir flip staged")
+    blocked = await call(`git commit -m "feat: override dir decided"`)
+    assert(blocked === null, "strict gate counts the override-dir flip as decided (no false undecided block)")
+    assert(git(["commit", "-qm", "feat: override dir decided"]).status === 0, "override-dir decided flip EXECUTED after gate pass")
+    assert(clearConfigField("adrDir").ok, "adrDir override cleared (sandbox back to default)")
+  } finally {
+    setProjectDir(REPO_ROOT)
+    rmSync(root, { recursive: true, force: true })
+  }
+}
+
 // ─── Main entry ───────────────────────────────────────────────────────────
+
+// Quoted +++ headers (core.quotePath=true, non-ASCII ADR filenames) must not
+// blind flip detection — the staged probe fixture is parsed purely.
+function test12_QuotedDiffHeaders() {
+  section("Test 12: quoted +++ headers (core.quotePath, non-ASCII paths)")
+  // Real git quotes non-ASCII bytes octally (`\303\263` = ó); the literal
+  // accented form covers hosts where quoting only wraps without escaping.
+  const fixture = [
+    'diff --git "a/docs/adr/0001-decisi\\303\\263n.md" "b/docs/adr/0001-decisi\\303\\263n.md"',
+    "new file mode 100644",
+    "index 0000000..1111111",
+    "--- /dev/null",
+    '+++ "b/docs/adr/0001-decisi\\303\\263n.md"',
+    "@@ -0,0 +1,3 @@",
+    "+---",
+    "+status: accepted",
+    "+---",
+    'diff --git a/docs/adr/0002-plain.md b/docs/adr/0002-plain.md',
+    "--- a/docs/adr/0002-plain.md",
+    "+++ b/docs/adr/0002-plain.md",
+    "@@ -1 +1 @@",
+    "-status: proposed",
+    "+status: accepted",
+  ].join("\n")
+  const flips = acceptFlipsFromDiff(fixture)
+  assert(
+    flips.some((f) => f.id === "ADR-0001" && f.relPath === "docs/adr/0001-decisión.md"),
+    "octal-quoted non-ASCII +++ header: flip detected with decoded path",
+  )
+  assert(
+    flips.some((f) => f.id === "ADR-0002" && f.relPath === "docs/adr/0002-plain.md"),
+    "plain ASCII +++ header behavior unchanged",
+  )
+
+  const literalQuoted = [
+    '+++ "b/docs/adr/0001-decisión.md"',
+    "+status: accepted",
+  ].join("\n")
+  const literalFlips = acceptFlipsFromDiff(literalQuoted)
+  assert(
+    literalFlips.length === 1 && literalFlips[0].relPath === "docs/adr/0001-decisión.md",
+    'literal accented quoted header `+++ "b/docs/adr/0001-decisión.md"` detected',
+  )
+  assert(flips.length === 2, "no phantom flips from headers/dev-null noise")
+}
 
 async function main() {
   console.log("╔══════════════════════════════════════════════════════════╗")
@@ -491,6 +978,8 @@ async function main() {
     await test08_ConfigHook()
     await test09_AdrCommandAutoDraft()
     await test10_AdrSupersede()
+    await test11_StrictGovernance()
+    test12_QuotedDiffHeaders()
   } finally {
     if (cfgPreexisting && origCfg !== null) {
       mkdirSync(dirname(cfgFile), { recursive: true })

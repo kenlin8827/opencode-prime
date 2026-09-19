@@ -1,5 +1,10 @@
 import { existsSync } from "node:fs"
-import { OCP_CONFIG_REL, OCP_SWITCH_KEYS, ocpConfigFile, readProjectConfig } from "../shared/opencode-prime"
+import { OCP_CONFIG_REL, OCP_SWITCH_KEYS, ocpConfigFile, readProjectConfig, type OcpSwitchKey } from "../shared/opencode-prime"
+import {
+  normalizeAdrGovernance,
+  normalizeAdrNumbering,
+  normalizeAdrStyle,
+} from "../adr-guard/adr-guard-config"
 import type { ProjectSwitches } from "./project-manager-scaffold"
 
 export const PROJECT_SWITCH_DEFAULTS = {
@@ -10,7 +15,10 @@ export const PROJECT_SWITCH_DEFAULTS = {
   envGuard: "on",
   e2eGuard: "on",
   projectMemory: "on",
-} as const satisfies Required<ProjectSwitches>
+  // Deliberately NOT keyed on the ADL block (adrStyle/adrNumbering/
+  // adrGovernance): those stay absent until the user sets them, so an
+  // unrelated save never materializes default ADL values into the config.
+} as const satisfies Record<OcpSwitchKey, string>
 
 export const PROJECT_SWITCH_OPTIONS = {
   autoAdvisorMode: [
@@ -41,8 +49,6 @@ export const PROJECT_SWITCH_OPTIONS = {
   ],
   adrDir: [
     { value: "docs/adr", label: "📁 docs/adr", description: "Standard docs/adr/ folder" },
-    { value: "docs/decisions", label: "📁 docs/decisions", description: "docs/decisions/ folder" },
-    { value: "architecture/decisions", label: "📁 architecture/decisions", description: "architecture/decisions/ folder" },
   ],
 } as const
 
@@ -88,6 +94,19 @@ export function detectProjectSwitches(rootDir: string): DetectedProjectState {
     if (typeof value === "string") found[key] = value
   }
 
+  // Nested ADL block (ADR 0007 §6): surfaced on the wizard `adr` group.
+  // Validated through adr-guard's own normalizers so the wizard can only
+  // ever echo (and re-save) values the runtime would accept. Absent/invalid
+  // → key stays undefined → the schema `default` drives display, and a save
+  // that never touched ADL settings writes nothing.
+  const adrBlock: Record<string, unknown> =
+    cfg.adr && typeof cfg.adr === "object" && !Array.isArray(cfg.adr)
+      ? (cfg.adr as Record<string, unknown>)
+      : {}
+  const adrStyle = normalizeAdrStyle(adrBlock.style)
+  const adrNumbering = normalizeAdrNumbering(adrBlock.numbering)
+  const adrGovernance = normalizeAdrGovernance(adrBlock.governance)
+
   return {
     exists: true,
     configPath: abs,
@@ -100,6 +119,9 @@ export function detectProjectSwitches(rootDir: string): DetectedProjectState {
       envGuard: switchValue(found.envGuard, PROJECT_SWITCH_OPTIONS.envGuard, PROJECT_SWITCH_DEFAULTS.envGuard),
       e2eGuard: switchValue(found.e2eGuard, PROJECT_SWITCH_OPTIONS.e2eGuard, PROJECT_SWITCH_DEFAULTS.e2eGuard),
       projectMemory: switchValue(found.projectMemory, PROJECT_SWITCH_OPTIONS.projectMemory, PROJECT_SWITCH_DEFAULTS.projectMemory),
+      ...(adrStyle ? { adrStyle } : {}),
+      ...(adrNumbering ? { adrNumbering } : {}),
+      ...(adrGovernance ? { adrGovernance } : {}),
     },
   }
 }

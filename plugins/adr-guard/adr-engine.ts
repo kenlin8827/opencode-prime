@@ -13,10 +13,30 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs"
 import { dirname, join, relative, resolve } from "node:path"
-import { type AdrLayout, getAdrLayout, setAdrLayout } from "./adr-guard-config"
+import { getAdrConfig, type AdrLayout, getAdrLayout, normalizeAdrStyle, resolveAdrStyleForNew, setAdrLayout } from "./adr-guard-config"
+import { groupByIteration, renderIterationIndex, validateEvolutionMetadataShape } from "./adr-evolution"
+import { getAdrStyleAdapter, resolveDocumentAdapter } from "./adr-style-registry"
+import { buildAdrTree, renderAdlIndex, type AdrTreeNode } from "./adr-views"
+import {
+  adrIdFromFilename,
+  adrTextCollator,
+  bareAdrId,
+  extractFrontmatter,
+  normalizeAdrId,
+  type AdrDocument,
+  type AdrHealthIssue,
+  type AdrLayer,
+  type AdrNumbering,
+  type AdrParseContext,
+  type AdrStyle,
+  type NormalizedAdrRecord,
+} from "./adr-types"
 
-export type AdrLayer = "system" | "domain" | "component"
+export type { AdrHealthIssue, AdrLayer } from "./adr-types"
 
+/** @deprecated Legacy per-record shape retained as a compat wrapper for
+ * current callers; new code consumes NormalizedAdrRecord via
+ * getNormalizedAdrs(). Will be removed once all callers migrate. */
 export interface AdrMeta {
   id: string
   slug: string
@@ -32,14 +52,16 @@ export interface AdrMeta {
   scope?: string
   parent?: string
   supersededBy?: string
+  /** Explicit `style` frontmatter; undefined = legacy document (dispatches
+   * to the madr adapter, reported, never silently rewritten). */
+  style?: string
+  created?: string
+  baseline?: string
+  iteration?: string
+  domain?: string
+  /** ID-based successor reference form (§9.5): `supersedes: ADR-XXXX`. */
+  supersedes?: string
   rawContent: string
-}
-
-export interface AdrHealthIssue {
-  type: "broken-parent" | "broken-supersede" | "missing-field" | "index-mismatch" | "duplicate-id"
-  severity: "error" | "warn"
-  file: string
-  message: string
 }
 
 const IGNORED_DIRS = new Set([
@@ -116,13 +138,19 @@ export function discoverAdrDirectories(
 }
 
 /**
- * Parse frontmatter and basic structure of a MADR file.
+ * Parse frontmatter and basic structure of an ADR file (any style —
+ * dispatch happens at the adapter layer; this is the shared discovery
+ * parser producing the legacy AdrMeta shape).
  */
 export function parseAdrFile(fullPath: string, projectDir: string): AdrMeta | null {
   try {
     const rawContent = readFileSync(fullPath, "utf-8")
     const filename = fullPath.replace(/\\/g, "/").split("/").pop() || ""
-    const match = filename.match(/^(\d{4})-(.+)\.md$/)
+    // Accepts sequential (`0001-slug.md`), per-decision dotted iteration
+    // (`0.2.54.01-slug.md`), and container (`0.2.54-slug.md`, ocp style)
+    // stems. The four-segment alternative precedes the three-segment one
+    // so per-decision stems win over the container prefix.
+    const match = filename.match(/^((?:\d{4})|(?:\d+\.\d+\.\d+\.\d+)|(?:\d+\.\d+\.\d+))-(.+)\.md$/)
     if (!match) return null
 
     const id = match[1]
@@ -132,10 +160,16 @@ export function parseAdrFile(fullPath: string, projectDir: string): AdrMeta | nu
 
     let status = "proposed"
     let date = new Date().toISOString().split("T")[0]
+    let created: string | undefined
     let layer: AdrLayer = "system"
     let scope: string | undefined
     let parent: string | undefined
     let supersededBy: string | undefined
+    let supersedes: string | undefined
+    let style: string | undefined
+    let baseline: string | undefined
+    let iteration: string | undefined
+    let domain: string | undefined
 
     // Extract frontmatter
     const fmMatch = rawContent.match(/^---\r?\n([\s\S]*?)\r?\n---/)
@@ -149,10 +183,16 @@ export function parseAdrFile(fullPath: string, projectDir: string): AdrMeta | nu
 
         if (key === "status") status = val.toLowerCase()
         else if (key === "date") date = val
+        else if (key === "created") created = val
+        else if (key === "style") style = val.toLowerCase()
+        else if (key === "baseline") baseline = val
+        else if (key === "iteration") iteration = val
+        else if (key === "domain") domain = val
         else if (key === "layer" && (val === "system" || val === "domain" || val === "component")) {
           layer = val as AdrLayer
         } else if (key === "scope") scope = val
         else if (key === "parent") parent = val
+        else if (key === "supersedes") supersedes = val
         else if (key === "superseded_by" || key === "superseded-by") supersededBy = val
       }
     }
@@ -168,9 +208,9 @@ export function parseAdrFile(fullPath: string, projectDir: string): AdrMeta | nu
       }
     }
 
-    // Extract title from `# [NNNN.] <Title>`
+    // Extract title from `# [ADR-NNNN[.]] <Title>`
     let title = slug.replace(/-/g, " ")
-    const titleMatch = rawContent.match(/^#\s+(?:\d{4}\.?\s+)?([^\r\n]+)/m)
+    const titleMatch = rawContent.match(/^#\s+(?:(?:ADR-)?[\d.]+[.)]?\s+)?([^\r\n]+)/im)
     if (titleMatch) {
       title = titleMatch[1].trim()
     }
@@ -189,6 +229,12 @@ export function parseAdrFile(fullPath: string, projectDir: string): AdrMeta | nu
       scope,
       parent,
       supersededBy,
+      style,
+      created,
+      baseline,
+      iteration,
+      domain,
+      supersedes,
       rawContent,
     }
   } catch {
@@ -221,59 +267,184 @@ export function getAllAdrs(projectDir: string, defaultDir = "docs/adr", layout?:
     } catch {}
   }
 
-  return adrs.sort((a, b) => a.relPath.localeCompare(b.relPath) || a.id.localeCompare(b.id))
+  return adrs.sort((a, b) => adrTextCollator.compare(a.relPath, b.relPath) || adrTextCollator.compare(a.id, b.id))
+}
+
+// ─── Normalized records (§8) — the engine's primary output ───────────
+
+/** Legacy AdrMeta → adapter input document. */
+export function toAdrDocument(adr: AdrMeta): AdrDocument {
+  return {
+    fullPath: adr.fullPath,
+    relPath: adr.relPath,
+    filename: adr.filename,
+    rawContent: adr.rawContent,
+    frontmatter: extractFrontmatter(adr.rawContent),
+  }
 }
 
 /**
- * Get next sequential number in a specific directory.
+ * Resolve a `parent` / `superseded_by` / `supersedes` value to a canonical
+ * ADR ID. Both ID forms (`0001`, `ADR-0001`, dotted) and legacy path forms
+ * (relPath, filename) resolve here; relationship fields are normalized IDs,
+ * never paths. Cross-directory duplicate IDs (legal under the old
+ * per-directory engine) resolve by first match — callers that hold a path
+ * SHOULD pass it so resolution is path-scoped.
  */
-export function getNextAdrNumber(projectDir: string, targetRelDir: string): string {
-  const fullDir = join(projectDir, targetRelDir)
-  if (!existsSync(fullDir)) return "0001"
+export function resolveAdrRef(ref: string, adrs: AdrMeta[]): AdrMeta | null {
+  const clean = ref.trim().replace(/^["']|["']$/g, "")
+  if (!clean) return null
+  const byPath = adrs.find((a) => a.relPath === clean || a.filename === clean)
+  if (byPath) return byPath
+  const canonical = normalizeAdrId(clean)
+  if (canonical) {
+    const bare = canonical.replace(/^ADR-/i, "")
+    return adrs.find((a) => a.id === bare) ?? null
+  }
+  return null
+}
 
+/** Parse-context factory: closes over the discovered records so adapters
+ * normalize path references into canonical IDs. */
+export function makeParseContext(adrs: AdrMeta[]): AdrParseContext {
+  return {
+    resolveRef(ref: string): string | null {
+      const clean = ref.trim()
+      const direct = normalizeAdrId(clean)
+      if (direct && adrs.some((a) => normalizeAdrId(a.id) === direct)) return direct
+      const found = resolveAdrRef(clean, adrs)
+      return found ? normalizeAdrId(found.id) : null
+    },
+  }
+}
+
+/** AdrMeta → NormalizedAdrRecord through the style registry. */
+export function toNormalizedRecord(adr: AdrMeta, all: AdrMeta[]): NormalizedAdrRecord {
+  const document = toAdrDocument(adr)
+  const { adapter } = resolveDocumentAdapter(document)
+  return adapter.parse(document, makeParseContext(all))
+}
+
+/**
+ * Discover all ADRs and return normalized records — the primary engine
+ * API. getAllAdrs() above remains as a temporary legacy compat wrapper
+ * for callers still consuming the AdrMeta shape.
+ */
+export function getNormalizedAdrs(projectDir: string, defaultDir = "docs/adr", layout?: AdrLayout): NormalizedAdrRecord[] {
+  const adrs = getAllAdrs(projectDir, defaultDir, layout)
+  return adrs.map((a) => toNormalizedRecord(a, adrs))
+}
+
+/**
+ * Whole-ADL sequential allocation (§6.1): scans EVERY discovered ADR root,
+ * not the creating directory — per-directory counters are unsound (two
+ * nested directories would both mint 0001 and integrity would fail).
+ * Duplicate legacy IDs are absorbed into the max, so a warned ID is never
+ * reused. The targetRelDir parameter is kept for call-site compatibility
+ * and intentionally ignored.
+ */
+export function getNextAdrNumber(projectDir: string, _targetRelDir?: string): string {
+  return allocateAdrSequentialId(projectDir)
+}
+
+function allocateAdrSequentialId(projectDir: string): string {
+  const adrs = getAllAdrs(projectDir, "docs/adr", getAdrLayout())
   let maxNum = 0
-  try {
-    const files = readdirSync(fullDir)
-    for (const f of files) {
-      const m = f.match(/^(\d{4})-/)
-      if (m) {
-        const n = parseInt(m[1], 10)
-        if (n > maxNum) maxNum = n
-      }
+  for (const a of adrs) {
+    if (/^\d{4}$/.test(a.id)) {
+      const n = parseInt(a.id, 10)
+      if (n > maxNum) maxNum = n
     }
-  } catch {}
-
+    // Dotted iteration IDs live in a disjoint grammar — never counted here.
+  }
   return (maxNum + 1).toString().padStart(4, "0")
 }
 
 /**
- * Re-generate INDEX.md in a given ADR directory.
+ * Iteration allocation (§6.1): `baseline.iter.seq` with seq per
+ * (baseline, iteration), e.g. 0.2.54.01 → 0.2.54.02. Dotted IDs are
+ * globally unique by construction. Namespace guard (ADR-0007 §7
+ * amendment): a container record `ADR-<baseline>.<iteration>` reserves
+ * the WHOLE `<baseline>.<iteration>.*` space — per-decision IDs are never
+ * minted under an occupied iteration (append a section instead).
+ */
+export function allocateAdrIterationId(projectDir: string, baseline: string, iteration: string): string {
+  const prefix = `${baseline}.${iteration}.`
+  const containerId = `${baseline}.${iteration}`
+  const adrs = getAllAdrs(projectDir, "docs/adr", getAdrLayout())
+  if (adrs.some((a) => a.id === containerId)) {
+    throw new Error(
+      `iteration ${containerId} is claimed by container ADR-${containerId} — append a section with \`/adr section ADR-${containerId} <title>\` instead of minting a per-decision ID.`,
+    )
+  }
+  let maxSeq = 0
+  for (const a of adrs) {
+    if (!a.id.startsWith(prefix)) continue
+    const seq = parseInt(a.id.slice(prefix.length), 10)
+    if (!isNaN(seq) && seq > maxSeq) maxSeq = seq
+  }
+  return `${prefix}${String(maxSeq + 1).padStart(2, "0")}`
+}
+
+/**
+ * Re-generate the directory-mirroring INDEX.md tree (§9.3): the ADL root
+ * index plus a local index in every directory that contains ADR source
+ * documents. Local indexes list only their own records + child-scope
+ * summaries (never flattened descendants); the root index puts its own
+ * (global/system) records first, then child scope links. Regeneration is
+ * deterministic — an unchanged ADL yields byte-identical files.
+ * Returns the written INDEX.md paths (POSIX, relative to projectDir).
+ */
+export function regenerateAdlIndexes(projectDir: string, defaultDir = "docs/adr", layout?: AdrLayout): string[] {
+  const rootRel = defaultDir.replace(/\\/g, "/").replace(/\/+$/, "")
+  const records = getNormalizedAdrs(projectDir, rootRel, layout)
+  const forest = buildAdrTree(records, rootRel)
+
+  const written: string[] = []
+  const writeNode = (node: AdrTreeNode): void => {
+    const relPath = `${node.relDir}/INDEX.md`
+    writeFileSync(join(projectDir, relPath), renderAdlIndex(node), "utf-8")
+    written.push(relPath)
+    for (const child of node.children) {
+      writeNode(child)
+    }
+  }
+  for (const node of forest) {
+    // A node with neither records nor children has nothing to index;
+    // never create an index file in a directory that does not exist.
+    if (node.records.length === 0 && node.children.length === 0 && !existsSync(join(projectDir, node.relDir))) continue
+    writeNode(node)
+  }
+  return written
+}
+
+/**
+ * Re-generate INDEX.md for a given ADR directory. §9.3: indexes mirror
+ * the whole ADL tree, so this regenerates every directory index (the
+ * targetRelDir parameter is kept for call-site compatibility and
+ * intentionally ignored — a single-directory refresh would let child
+ * summaries and parent links drift).
  */
 export function updateAdrIndex(projectDir: string, targetRelDir: string): void {
-  const fullDir = join(projectDir, targetRelDir)
-  if (!existsSync(fullDir)) return
+  regenerateAdlIndexes(projectDir, targetRelDir)
+}
 
-  const files = readdirSync(fullDir)
-  const adrs: AdrMeta[] = []
-  for (const f of files) {
-    if (!f.endsWith(".md") || f.toUpperCase() === "INDEX.MD") continue
-    const parsed = parseAdrFile(join(fullDir, f), projectDir)
-    if (parsed) adrs.push(parsed)
-  }
-
-  adrs.sort((a, b) => a.id.localeCompare(b.id))
-
-  let indexContent = `# Architecture Decision Log\n\n`
-  indexContent += `*Directory: \`${targetRelDir}\`*\n\n`
-  indexContent += `| ID | Decision Title | Layer | Status | Date |\n`
-  indexContent += `| :--- | :--- | :--- | :--- | :--- |\n`
-
-  for (const adr of adrs) {
-    const badge = statusBadge(adr.status)
-    indexContent += `| [${adr.id}](./${adr.filename}) | ${adr.title} | \`${adr.layer}\` | ${badge} | ${adr.date} |\n`
-  }
-
-  writeFileSync(join(fullDir, "INDEX.md"), indexContent, "utf-8")
+/**
+ * Re-generate INDEX.by-iteration.md at the ADL root from the shared
+ * `iteration` frontmatter metadata (§7.3 requirement 2 — a generated
+ * view can never drift from the records it summarizes; it is never
+ * hand-maintained). Grouping uses the metadata field, never ID-string
+ * parsing (§6.1 rule 6). Writes nothing and returns null when no
+ * record carries iteration metadata. The filename never matches the
+ * ADR stem grammar, so discovery never picks it up as a record.
+ */
+export function regenerateIterationIndex(projectDir: string, defaultDir = "docs/adr", layout?: AdrLayout): string | null {
+  const rootRel = defaultDir.replace(/\\/g, "/").replace(/\/+$/, "")
+  const records = getNormalizedAdrs(projectDir, rootRel, layout)
+  if (groupByIteration(records).length === 0) return null
+  const relPath = `${rootRel}/INDEX.by-iteration.md`
+  writeFileSync(join(projectDir, relPath), renderIterationIndex(records, rootRel), "utf-8")
+  return relPath
 }
 
 function statusBadge(status: string): string {
@@ -294,23 +465,39 @@ export interface CreateAdrOptions {
   layer?: AdrLayer
   scope?: string
   targetDir?: string
+  /** parent reference — ID form (ADR-0001) or legacy path form; both
+   * resolve into the normalized model. */
   parent?: string
+  /** superseded record reference — ID form (§9.5) or legacy path form. */
+  supersedes?: string
   status?: string
   layout?: AdrLayout
+  /** Explicit style for the new record; falls back to adr.style >
+   * madr (§6). Both `nygard` and `madr` are registered (Phase 2). */
+  style?: AdrStyle
+  numbering?: AdrNumbering
+  baseline?: string
+  iteration?: string
+  domain?: string
 }
 
 /**
- * Scaffold a new ADR file and update its index.
+ * Scaffold a new ADR file and update its index. New records are scaffolded
+ * through their style adapter with explicit `style` frontmatter and
+ * `created` (immutable) alongside `date`. Default status is `proposed` in
+ * every governance mode (§6.2 — no code path ever writes `accepted`).
  */
-export function createAdr(options: CreateAdrOptions): { relPath: string; fullPath: string; id: string } {
+export function createAdr(options: CreateAdrOptions): { relPath: string; fullPath: string; id: string; warnings: string[] } {
   const currentLayout = options.layout ?? getAdrLayout()
+  const warnings: string[] = []
   let {
     projectDir,
     title,
     layer = "system",
     scope,
     parent,
-    status = "accepted",
+    supersedes,
+    status = "proposed",
   } = options
 
   // In flat mode, force single root docs/adr target
@@ -327,100 +514,264 @@ export function createAdr(options: CreateAdrOptions): { relPath: string; fullPat
   }
   targetRelDir = targetRelDir.replace(/\\/g, "/").replace(/\/+$/, "")
 
-
   const fullDir = join(projectDir, targetRelDir)
   if (!existsSync(fullDir)) {
     mkdirSync(fullDir, { recursive: true })
   }
 
-  const id = getNextAdrNumber(projectDir, targetRelDir)
+  // Numbering (§6.1): iteration requires explicit --baseline/--iteration;
+  // otherwise fall back to sequential with a visible warning — never invent
+  // or guess iteration values.
+  const numbering = options.numbering ?? getAdrConfig().numbering
+  let id: string
+  if (numbering === "iteration") {
+    if (options.baseline && options.iteration) {
+      id = allocateAdrIterationId(projectDir, options.baseline, options.iteration)
+    } else {
+      warnings.push(
+        `adr.numbering is 'iteration' but --baseline/--iteration were not given — fell back to sequential numbering for this record.`,
+      )
+      id = allocateAdrSequentialId(projectDir)
+    }
+  } else {
+    id = allocateAdrSequentialId(projectDir)
+  }
+
   const slug = slugify(title) || "decision"
   const filename = `${id}-${slug}.md`
   const fullPath = join(fullDir, filename)
   const relPath = `${targetRelDir}/${filename}`
   const today = new Date().toISOString().split("T")[0]
 
-  let content = `---\n`
-  content += `status: ${status}\n`
-  content += `date: ${today}\n`
-  content += `layer: ${layer}\n`
-  if (scope) content += `scope: ${scope}\n`
-  if (parent) content += `parent: ${parent}\n`
-  content += `---\n\n`
-
-  content += `# ${id}. ${title}\n\n`
-
-  if (layer === "system") {
-    content += `## Context and Problem Statement\n\n<Describe the architectural context, system-level problem, and constraints.>\n\n`
-    content += `## Decision Drivers\n\n- Driver 1 (e.g. scalability, security, maintainability)\n- Driver 2\n\n`
-    content += `## Considered Options\n\n- **Option 1**: <Description>\n- **Option 2**: <Description>\n\n`
-    content += `## Decision Outcome\n\nChosen option: **Option 1**, because <rationales and trade-offs>.\n\n`
-    content += `### Consequences\n\n- **Positive**: <Good impacts>\n- **Negative / Risks**: <Trade-offs & mitigations>\n`
-  } else {
-    content += `## Context and Problem Statement\n\n<Describe the situation, module context, and requirement.>\n\n`
-    content += `## Decision Outcome\n\nChosen option: <what was decided>, because <why>.\n`
+  const style = resolveAdrStyleForNew(options.style)
+  if (style === "ocp") {
+    throw new Error(
+      "style 'ocp' is a container style — use createAdrContainer (`/adr new --style ocp --baseline <b> --iteration <i> <title>`) instead of per-record creation; containers always need baseline+iteration.",
+    )
   }
+  const adapter = getAdrStyleAdapter(style)
+  const content = adapter.scaffold({
+    id,
+    title,
+    status,
+    date: today,
+    created: today,
+    layer,
+    scope,
+    domain: options.domain,
+    baseline: options.baseline,
+    iteration: options.iteration,
+    parent,
+    supersedes,
+  })
 
   writeFileSync(fullPath, content, "utf-8")
   updateAdrIndex(projectDir, targetRelDir)
 
-  return { relPath, fullPath, id }
+  return { relPath, fullPath, id, warnings }
+}
+
+// ─── OCP container records (ADR-0007 §7 amendment) ────────────────────
+
+/**
+ * Container namespace guard: `ADR-<baseline>.<iteration>` reserves the
+ * whole `<baseline>.<iteration>.*` sub-ID space the moment the container
+ * is created — a container never claims an iteration that already holds
+ * per-decision records, and per-decision allocation refuses an occupied
+ * iteration (see allocateAdrIterationId). This is what keeps ONE grammar
+ * collision-free while both record shapes coexist.
+ */
+function assertContainerNamespaceFree(adrs: AdrMeta[], baseline: string, iteration: string): void {
+  const bare = `${baseline}.${iteration}`
+  if (adrs.some((a) => a.id === bare)) {
+    throw new Error(
+      `ADR-${bare} already exists as a container — append a section with \`/adr section ADR-${bare} <title>\` instead.`,
+    )
+  }
+  const occupied = adrs.filter((a) => a.id.startsWith(`${bare}.`))
+  if (occupied.length > 0) {
+    throw new Error(
+      `iteration ${bare} already has per-decision records (${occupied
+        .map((a) => `ADR-${a.id}`)
+        .join(", ")}) — a container cannot claim it.`,
+    )
+  }
+}
+
+export interface CreateAdrContainerOptions {
+  projectDir: string
+  title: string
+  /** Both or neither: given → ITERATION container (`ADR-<b>.<i>`, the
+   * baijiu-shop shape, reserves the iteration namespace); omitted →
+   * SEQUENTIAL container (`ADR-NNNN`, shares the sequential allocator
+   * with per-decision records — numbering is orthogonal to the
+   * container style, §6). */
+  baseline?: string
+  iteration?: string
+  domain?: string
+  targetDir?: string
+  status?: string
 }
 
 /**
- * Mark an old ADR as superseded and scaffold a new replacement ADR.
+ * Scaffold one `ocp` container record. Same lifecycle rule as createAdr:
+ * scaffolded `proposed` in every governance mode — no code path writes
+ * `accepted`. Sections are appended afterwards via appendAdrSection.
+ */
+export function createAdrContainer(
+  options: CreateAdrContainerOptions,
+): { relPath: string; fullPath: string; id: string; warnings: string[] } {
+  const { projectDir, title, baseline, iteration } = options
+  const warnings: string[] = []
+  if ((baseline && !iteration) || (!baseline && iteration)) {
+    throw new Error(
+      "--baseline and --iteration must be given TOGETHER (iteration container) or omitted TOGETHER (sequential container) — the missing half is never invented (§6.1).",
+    )
+  }
+
+  const targetRelDir = (options.targetDir ?? "docs/adr").replace(/\\/g, "/").replace(/\/+$/, "")
+  const fullDir = join(projectDir, targetRelDir)
+  if (!existsSync(fullDir)) {
+    mkdirSync(fullDir, { recursive: true })
+  }
+
+  const slug = slugify(title) || "batch"
+  let id: string
+  let filename: string
+  if (baseline && iteration) {
+    if (!/^\d+(\.\d+)*$/.test(baseline) || !/^\d+$/.test(iteration)) {
+      throw new Error(`invalid baseline/iteration shape: '${baseline}' / '${iteration}' (dotted numeric, e.g. 0.2 / 54).`)
+    }
+    const adrs = getAllAdrs(projectDir, "docs/adr", getAdrLayout())
+    assertContainerNamespaceFree(adrs, baseline, iteration)
+    const bare = `${baseline}.${iteration}`
+    id = normalizeAdrId(bare) ?? `ADR-${bare}`
+    filename = `${bare}-${slug}.md`
+  } else {
+    const seq = allocateAdrSequentialId(projectDir)
+    id = `ADR-${seq}`
+    filename = `${seq}-${slug}.md`
+  }
+
+  const fullPath = join(fullDir, filename)
+  const relPath = `${targetRelDir}/${filename}`
+  const today = new Date().toISOString().split("T")[0]
+
+  const adapter = getAdrStyleAdapter("ocp")
+  const content = adapter.scaffold({
+    id: bareAdrId(id),
+    title,
+    status: options.status ?? "proposed",
+    date: today,
+    created: today,
+    layer: "system",
+    domain: options.domain,
+    baseline,
+    iteration,
+  })
+
+  writeFileSync(fullPath, content, "utf-8")
+  updateAdrIndex(projectDir, targetRelDir)
+
+  return { relPath, fullPath, id, warnings }
+}
+
+/**
+ * Append one section to an existing ocp container. Sequence allocation scans
+ * the container's parsed sections (never ID-string guessing across
+ * files); the new block renders through the adapter's scaffoldSection.
+ * Appending a section is NOT a status change — `date` stays untouched.
+ */
+export function appendAdrSection(
+  projectDir: string,
+  containerRef: string,
+  title: string,
+): { relPath: string; fullPath: string; id: string } {
+  const cleanRef = containerRef.trim().replace(/^["']|["']$/g, "")
+  const adrs = getAllAdrs(projectDir, "docs/adr", getAdrLayout())
+  const container = resolveAdrRef(cleanRef, adrs)
+  if (!container) {
+    throw new Error(`Cannot find container ADR matching '${containerRef}'.`)
+  }
+  const canonical = normalizeAdrId(container.id)
+  const bareId = canonical?.replace(/^ADR-/, "") ?? ""
+  if (!/^\d{4}$/.test(bareId) && !/^\d+\.\d+\.\d+$/.test(bareId)) {
+    throw new Error(
+      `'${cleanRef}' is not a container (expected ADR-NNNN or ADR-<baseline>.<iteration>) — /adr section appends sections to ocp container records only.`,
+    )
+  }
+
+  const adapter = getAdrStyleAdapter("ocp")
+  const record = adapter.parse(toAdrDocument(container), makeParseContext(adrs))
+  const seqs = (record.sections ?? []).map((s) => parseInt(s.seq, 10)).filter((n) => !isNaN(n))
+  const next = (seqs.length > 0 ? Math.max(...seqs) : 0) + 1
+  const seq = String(next).padStart(2, "0")
+  const id = `${canonical}#${seq}`
+
+  const scaffoldSection = adapter.scaffoldSection
+  if (!scaffoldSection) {
+    throw new Error(`style '${adapter.style}' does not support section appends.`)
+  }
+  const block = scaffoldSection({ id, title })
+
+  const content = readFileSync(container.fullPath, "utf-8").replace(/\s+$/, "")
+  writeFileSync(container.fullPath, `${content}\n\n${block}`, "utf-8")
+
+  return { relPath: container.relPath, fullPath: container.fullPath, id }
+}
+
+/**
+ * Supersession (§9.5) — a uniform document-level operation:
+ *   1. creates a NEW file with `supersedes: ADR-<old-ID>` (ID-based form)
+ *   2. flips ONLY the old file's status line to `superseded by ADR-<new-ID>`
+ *      — a status change, never a semantic edit; the old body stays
+ *      byte-stable. (The pre-refactor engine rewrote the old frontmatter
+ *      wholesale; Phase 1 narrowed it to the status line.)
+ *   3. indexes are regenerated by createAdr / the flip below.
  */
 export function supersedeAdr(
   projectDir: string,
   oldRef: string,
   newTitle: string,
   newOptions: Partial<CreateAdrOptions> = {},
-): { newAdr: { relPath: string; fullPath: string; id: string }; oldAdr: AdrMeta } {
+): { newAdr: { relPath: string; fullPath: string; id: string; warnings: string[] }; oldAdr: AdrMeta } {
   const cleanRef = oldRef.trim().replace(/^["']|["']$/g, "")
-  const num = /^\d+$/.test(cleanRef) ? parseInt(cleanRef, 10) : NaN
-  const paddedId = !isNaN(num) ? String(num).padStart(4, "0") : null
 
   const adrs = getAllAdrs(projectDir)
-  const oldAdr = adrs.find(
-    (a) =>
-      a.id === cleanRef ||
-      (paddedId !== null && a.id === paddedId) ||
-      a.relPath === cleanRef ||
-      a.filename === cleanRef ||
-      a.filename.startsWith(`${cleanRef}-`) ||
-      (paddedId !== null && a.filename.startsWith(`${paddedId}-`)),
-  )
+  const oldAdr = resolveAdrRef(cleanRef, adrs)
 
   if (!oldAdr) {
     throw new Error(`Cannot find existing ADR matching '${oldRef}' to supersede.`)
   }
 
-  // Create new ADR in same directory or target dir
+  // Create new ADR in same directory or target dir; the successor carries
+  // the normalized ID reference to the record it replaces. Successor
+  // style: explicit override wins; otherwise inherit the old record's
+  // per-decision style. A container successor would need a
+  // baseline/iteration that must never be invented (§6.1), so a
+  // superseded container's successor uses the safe per-decision style.
   const targetDir = newOptions.targetDir || oldAdr.dir
+  const oldStyle = normalizeAdrStyle(oldAdr.style)
+  const requestedStyle = newOptions.style ?? (oldStyle && oldStyle !== "ocp" ? oldStyle : undefined)
+  const effectiveStyle = requestedStyle ?? getAdrConfig().style
+  const successorStyle: AdrStyle | undefined = effectiveStyle === "ocp" ? "madr" : requestedStyle
   const created = createAdr({
     projectDir,
     title: newTitle,
     layer: newOptions.layer || oldAdr.layer,
     scope: newOptions.scope || oldAdr.scope,
     targetDir,
-    parent: oldAdr.relPath,
-    status: "accepted",
+    style: successorStyle,
+    supersedes: `ADR-${oldAdr.id}`,
+    status: "proposed",
   })
 
-  // Update old ADR file
+  // Flip ONLY the old file's status line. Old IDs stay frozen forever.
   let oldContent = oldAdr.rawContent
   if (/status:\s*[^\r\n]+/i.test(oldContent)) {
-    oldContent = oldContent.replace(
-      /status:\s*[^\r\n]+/i,
-      `status: superseded by ${created.id}`,
-    )
+    oldContent = oldContent.replace(/status:\s*[^\r\n]+/i, `status: Superseded by ADR-${created.id}`)
   } else {
-    oldContent = `---\nstatus: superseded by ${created.id}\n---\n\n` + oldContent
-  }
-
-  // Append superseded note if not present
-  if (!oldContent.includes("superseded_by:")) {
-    oldContent = oldContent.replace(/^---\r?\n/m, `---\nsuperseded_by: ${created.relPath}\n`)
+    oldContent = `---\nstatus: Superseded by ADR-${created.id}\n---\n\n` + oldContent
   }
 
   writeFileSync(oldAdr.fullPath, oldContent, "utf-8")
@@ -498,21 +849,21 @@ export function generateDecisionMap(projectDir: string, layout?: AdrLayout): str
     output += `  ${nodeId}[${nodeLabel}]\n`
 
     if (adr.parent) {
-      const parentMatch = adr.parent.match(/(\d{4})/)
-      if (parentMatch) {
-        output += `  ADR_${parentMatch[1]} -->|constrains| ${nodeId}\n`
+      const parentId = refToBareId(adr.parent)
+      if (parentId) {
+        output += `  ADR_${parentId} -->|constrains| ${nodeId}\n`
       }
     }
 
     if (adr.supersededBy) {
-      const supMatch = adr.supersededBy.match(/(\d{4})/)
-      if (supMatch) {
-        output += `  ${nodeId} -.->|superseded by| ADR_${supMatch[1]}\n`
+      const supId = refToBareId(adr.supersededBy)
+      if (supId) {
+        output += `  ${nodeId} -.->|superseded by| ADR_${supId}\n`
       }
     } else if (adr.status.includes("superseded by")) {
-      const supMatch = adr.status.match(/superseded by\s+(\d{4})/i)
-      if (supMatch) {
-        output += `  ${nodeId} -.->|superseded by| ADR_${supMatch[1]}\n`
+      const supId = refToBareId(adr.status)
+      if (supId) {
+        output += `  ${nodeId} -.->|superseded by| ADR_${supId}\n`
       }
     }
   }
@@ -522,8 +873,22 @@ export function generateDecisionMap(projectDir: string, layout?: AdrLayout): str
   return output
 }
 
+/** Extract a bare ADR ID (`0001`, `0.2.54.01`) from a reference string
+ * that may be an ID form (ADR-0001), a legacy path, or a status line. */
+function refToBareId(ref: string): string | null {
+  const canonical = normalizeAdrId(ref)
+  if (canonical) return canonical.replace(/^ADR-/, "")
+  const m = ref.match(/ADR-(\d{4}(?:\.\d+\.\d+\.\d+)?)/i) ?? ref.match(/(\d{4}(?:\.\d+\.\d+\.\d+)?)/)
+  return m?.[1] ?? null
+}
+
 /**
- * Integrity & Health checker.
+ * Integrity & Health checker. Global-ID uniqueness across the whole ADL:
+ * same-directory duplicates are errors; cross-directory duplicate
+ * sequential IDs (legal under the old per-directory engine) are tolerated
+ * as warnings — ID resolution falls back to path-scoped lookup and new
+ * allocations never reuse a warned ID (§6.1 rule 3). Dotted iteration IDs
+ * are a disjoint grammar and always fail validation on collision.
  */
 export function checkAdrIntegrity(projectDir: string): AdrHealthIssue[] {
   const adrs = getAllAdrs(projectDir)
@@ -545,12 +910,9 @@ export function checkAdrIntegrity(projectDir: string): AdrHealthIssue[] {
       })
     }
 
-    // Check parent links
+    // Check parent links — ID form and legacy path form both resolve
     if (adr.parent) {
-      const parentFound = adrs.some(
-        (a) => a.relPath === adr.parent || a.filename === adr.parent || a.id === adr.parent,
-      )
-      if (!parentFound) {
+      if (!resolveAdrRef(adr.parent, adrs)) {
         issues.push({
           type: "broken-parent",
           severity: "error",
@@ -560,24 +922,34 @@ export function checkAdrIntegrity(projectDir: string): AdrHealthIssue[] {
       }
     }
 
-    // Check supersede links
+    // Check supersede links (status line and/or superseded_by frontmatter)
+    const supersedeRefs: string[] = []
     if (adr.status.includes("superseded by")) {
-      const supId = adr.status.match(/superseded by\s+(\d{4})/i)?.[1]
-      if (supId) {
-        const targetFound = adrs.some((a) => a.id === supId)
-        if (!targetFound) {
-          issues.push({
-            type: "broken-supersede",
-            severity: "error",
-            file: adr.relPath,
-            message: `Superseded target ID '${supId}' does not exist in workspace`,
-          })
-        }
+      const supId = refToBareId(adr.status)
+      if (supId) supersedeRefs.push(supId)
+    }
+    if (adr.supersededBy) supersedeRefs.push(adr.supersededBy)
+    if (adr.supersedes && !resolveAdrRef(adr.supersedes, adrs)) {
+      issues.push({
+        type: "broken-supersede",
+        severity: "error",
+        file: adr.relPath,
+        message: `Supersedes target '${adr.supersedes}' does not exist in workspace`,
+      })
+    }
+    for (const ref of supersedeRefs) {
+      if (!resolveAdrRef(ref, adrs)) {
+        issues.push({
+          type: "broken-supersede",
+          severity: "error",
+          file: adr.relPath,
+          message: `Superseded target '${ref}' does not exist in workspace`,
+        })
       }
     }
   }
 
-  // Check duplicate IDs within same directory
+  // Duplicate IDs: same directory → error; cross-directory → legacy warning
   for (const [id, list] of idMap.entries()) {
     const dirGroups = new Map<string, AdrMeta[]>()
     for (const item of list) {
@@ -595,7 +967,32 @@ export function checkAdrIntegrity(projectDir: string): AdrHealthIssue[] {
         })
       }
     }
+    if (dirGroups.size > 1) {
+      issues.push({
+        type: "duplicate-id",
+        severity: "warn",
+        file: list.map((x) => x.relPath).join(", "),
+        message: `Cross-directory duplicate ADR ID '${id}' tolerated as legacy (pre-global allocation): ${list
+          .map((x) => x.relPath)
+          .join(", ")}. ID resolution falls back to path-scoped lookup; new allocations never reuse this ID.`,
+      })
+    }
   }
+
+  // Style-structural validation (§7.4 strict style isolation): every
+  // document is validated ONLY by its own adapter's canonical template —
+  // a malformed Nygard file reports Nygard sections, a malformed MADR
+  // file reports MADR sections, never cross-talk. Records are parsed
+  // once and shared with the evolution-metadata shape check below.
+  const records = adrs.map((a) => toNormalizedRecord(a, adrs))
+  for (let i = 0; i < adrs.length; i++) {
+    const document = toAdrDocument(adrs[i])
+    const { adapter } = resolveDocumentAdapter(document)
+    issues.push(...adapter.validate(document, records[i]))
+  }
+
+  // Evolution metadata shape sanity (§7.3) — universal, any style.
+  issues.push(...validateEvolutionMetadataShape(records))
 
   return issues
 }

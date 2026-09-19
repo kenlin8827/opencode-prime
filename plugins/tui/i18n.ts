@@ -157,7 +157,7 @@ export function localeName(locale: Locale): string {
 // Keys are namespaced: "common.xxx", "profile.xxx", "provider.xxx",
 // "project.xxx", "queue.xxx", "usage.xxx".  Placeholders use {name} syntax.
 
-const STRINGS = {
+export const STRINGS = {
   // ════════════════════════════════════════════════════════════════
   // ── Common (shared across all wizards) ───────────────────────────
   // ════════════════════════════════════════════════════════════════
@@ -498,6 +498,8 @@ const STRINGS = {
   "project.maintainHeader": { en: "Maintenance", "zh-CN": "维护" },
   "project.advisorHeader": { en: "Advisor", "zh-CN": "顾问" },
   "project.guardsHeader": { en: "Quality Guards", "zh-CN": "质量护栏" },
+  "project.adrConfigHeader": { en: "ADR Config", "zh-CN": "ADR 配置" },
+  "project.suiteHeader": { en: "ADR Suite", "zh-CN": "ADR 套件" },
   "project.actionsHeader": { en: "Actions", "zh-CN": "操作" },
   "project.skeletonHeader": { en: "🏗 Skeleton", "zh-CN": "🏗 骨架" },
   "project.conventionsHeader": { en: "📋 Conventions", "zh-CN": "📋 规范" },
@@ -600,8 +602,6 @@ const STRINGS = {
 
   "project.pickAdrDir": { en: "Select ADR Directory (adrDir)", "zh-CN": "选择 ADR 目录 (adrDir)" },
   "project.valueAdrDirDocsAdr": { en: "Standard docs/adr/ folder", "zh-CN": "标准 docs/adr/ 目录" },
-  "project.valueAdrDirDocsDecisions": { en: "docs/decisions/ folder", "zh-CN": "docs/decisions/ 目录" },
-  "project.valueAdrDirArchitecture": { en: "architecture/decisions/ folder", "zh-CN": "architecture/decisions/ 目录" },
   "project.valueAdrDirCustom": { en: "✍️ Custom Path...", "zh-CN": "✍️ 自定义路径..." },
   "project.valueAdrDirCustomDesc": { en: "Type custom directory path", "zh-CN": "输入自定义目录路径" },
   "project.promptAdrDirTitle": { en: "Custom ADR Directory", "zh-CN": "自定义 ADR 目录" },
@@ -613,6 +613,20 @@ const STRINGS = {
   "project.switchAdrGuard": { en: "Enforce ADR on feat/refactor", "zh-CN": "对 feat / refactor 启用 ADR 守护" },
   "project.switchAdrDir": { en: "ADR markdown folder path", "zh-CN": "ADR Markdown 目录路径" },
   "project.switchAdrLayout": { en: "ADR structure (auto/flat/hierarchy)", "zh-CN": "ADR 结构 (auto / flat / hierarchy)" },
+  "project.switchAdrStyle": { en: "ADR document style for NEW records (persists as adr.style)", "zh-CN": "新建 ADR 的文档样式（持久化为 adr.style）" },
+  "project.valueAdrStyleMadr": { en: "MADR — lightweight, status + context/options/decision", "zh-CN": "MADR —— 轻量模板，含状态与 背景/选项/决策" },
+  "project.valueAdrStyleNygard": { en: "Nygard — classic, context/decision/consequences", "zh-CN": "Nygard —— 经典格式，含 背景/决策/后果" },
+  "project.valueAdrStyleOcp": { en: "ocp container — one record per decision batch (iteration form with --baseline/--iteration, sequential ADR-NNNN otherwise)", "zh-CN": "ocp 容器 —— 一批决策一条记录（带 --baseline/--iteration 为迭代容器，否则顺序 ADR-NNNN）" },
+  "project.switchAdrNumbering": { en: "ADR ID numbering (adr.numbering)", "zh-CN": "ADR 编号方式 (adr.numbering)" },
+  "project.valueAdrNumberingSequential": { en: "Sequential — 0001, 0002, ... (ADR log)", "zh-CN": "顺序编号 —— 0001、0002……（决策日志）" },
+  "project.valueAdrNumberingIteration": { en: "Per-iteration — baseline/iteration based IDs", "zh-CN": "按迭代编号 —— 基于 baseline / iteration 的 ID" },
+  "project.switchAdrGovernance": { en: "ADR governance mode (adr.governance)", "zh-CN": "ADR 治理模式 (adr.governance)" },
+  "project.valueAdrGovernanceNone": { en: "None — propose freely, no acceptance gate", "zh-CN": "无 —— 自由提议，无采纳门控" },
+  "project.valueAdrGovernanceReview": { en: "Review — accepted only after recorded review", "zh-CN": "评审 —— 记录评审后才可 accepted" },
+  "project.valueAdrGovernanceStrict": { en: "Strict — user-only /adr decide ratification", "zh-CN": "严格 —— 仅用户可通过 /adr decide 拍板" },
+  "project.adrSuiteStandardDesc": { en: "Plain ADR log — madr · sequential · auto layout · no governance", "zh-CN": "纯决策日志 —— madr · 顺序编号 · auto 布局 · 无治理" },
+  "project.adrSuiteEvolutionDesc": { en: "Decisions per iteration — madr · iteration numbering · hierarchical layout · review governance", "zh-CN": "按迭代跟踪决策 —— madr · 迭代编号 · 层级布局 · review 治理" },
+  "project.adrSuiteOcpDesc": { en: "Container record per iteration (baijiu-shop discipline) — ocp · iteration numbering · hierarchical layout · review governance; every /adr new needs --baseline/--iteration", "zh-CN": "每迭代一条容器记录（baijiu-shop 纪律）—— ocp · 迭代编号 · 层级布局 · review 治理；每次 /adr new 须带 --baseline/--iteration" },
   "project.switchEnvGuard": { en: "Protect secret .env file reads", "zh-CN": "保护 .env 密钥文件读取" },
   "project.switchE2eGuard": { en: "Assess E2E before test execution", "zh-CN": "测试执行前评估 E2E 影响" },
   "project.switchProjectMemory": { en: "Inject curated project memory into context (.ocp/memory/public.md inside the project, committed)", "zh-CN": "将整理后的项目记忆注入上下文(项目内 .ocp/memory/public.md,进 git)" },
@@ -809,8 +823,8 @@ const STRINGS = {
   "guard.adr.announceOff": { en: "[adr-guard] OFF — no ADR enforcement. /adr-guard on to enable the iron law for this project.", "zh-CN": "[adr-guard] OFF —— 不做 ADR 强制。用 /adr-guard on 为本项目启用铁律。" },
   "guard.adr.statusMsg": { en: "[adr-guard] Status: {state} | ADR dir: {dir}/ | switch: /adr-guard on|off (project-level, stored in .ocp/ocp.json)", "zh-CN": "[adr-guard] Status: {state} | ADR 目录：{dir}/ | 开关：/adr-guard on|off（项目级，存于 .ocp/ocp.json）" },
   "guard.adr.help": {
-    en: "### 🏛️ Architecture Decision Records (/adr)\n\nCurrent Layout: **`{mode}`**\n\nCommands:\n- `/adr [new] [layer/scope] <title> [--empty]` — Create and auto-draft a new ADR (use --empty for template only)\n- `/adr supersede <old-id> <new-title> [--empty]` — Supersede an old decision & auto-draft replacement\n- `/adr tree` — Visualize hierarchical decision tree & Mermaid DAG\n- `/adr check` — Verify ADR integrity, links, and complexity advice\n- `/adr layout [auto|flat|hierarchical]` — Configure ADR layout\n- `/adr migrate [flat|hierarchical] [--confirm]` — Plan and restructure ADR architecture\n- `/adr-guard on|off|status` — Toggle commit guard enforcement",
-    "zh-CN": "### 🏛️ 架构决策记录 (/adr)\n\n当前布局：**`{mode}`**\n\n命令：\n- `/adr [new] [层级/范围] <标题> [--empty]` — 新建并自动起草 ADR（--empty 仅生成模板）\n- `/adr supersede <旧id> <新标题> [--empty]` — 取代旧决策并自动起草替代文档\n- `/adr tree` — 展示层级决策树 & Mermaid DAG\n- `/adr check` — 校验 ADR 完整性、链接并给出复杂度建议\n- `/adr layout [auto|flat|hierarchical]` — 配置 ADR 布局\n- `/adr migrate [flat|hierarchical] [--confirm]` — 规划并重组 ADR 架构\n- `/adr-guard on|off|status` — 切换提交护栏强制检查",
+    en: "### 🏛️ Architecture Decision Records (/adr)\n\nCurrent Layout: **`{mode}`**\n\nCommands:\n- `/adr [new] [layer/scope] <title> [--empty] [--style madr|nygard|ocp] [--numbering sequential|iteration --baseline B --iteration I]` — Create and auto-draft a new ADR (use --empty for template only); --style ocp scaffolds a CONTAINER (iteration form with --baseline/--iteration, sequential otherwise)\n- `/adr section <ADR-x.y.z> <title>` — Append one section (🟡 pending) to an ocp container; fill the five-part skeleton\n- `/adr decide <ADR-ID> [note]` — User-only accept: flip proposed → accepted with a ledger entry (strict governance only; the agent never self-accepts)\n- `/adr init [standard|evolution|custom]` — Detect project shape, pick a suite, persist adr.* config (detection pre-selects, never applies silently)\n- `/adr supersede <old-id> <new-title> [--empty]` — Supersede an old decision & auto-draft replacement\n- `/adr tree` — Visualize hierarchical decision tree & Mermaid DAG\n- `/adr tree --by path|layer|domain|iteration` — Deterministic logical views over normalized records\n- `/adr history <ADR-ID>` — Traverse the supersession chain (predecessors + successors, cross-style safe)\n- `/adr check` — Verify ADR integrity, links, and complexity advice\n- `/adr check --report-style` — List each document's resolved style (legacy flag included); report-only\n- `/adr check --profile evolution` — Add opt-in discipline: rejected alternatives with cons, good/bad consequences, Confirmation for `risk: high` records\n- `/adr context <ADR-ID>` / `--domain <slug>` / `--iteration <id>` — Bounded context bundle (selected records + direct relations only, retrieval path reported)\n- `/adr layout [auto|flat|hierarchical]` — Configure ADR layout\n- `/adr migrate [flat|hierarchical] [--confirm]` — Plan and restructure ADR architecture\n- `/adr migrate --to nygard|madr [--dry-run|--confirm]` — Explicit style conversion (dry-run default; warns about dropped MADR-only content)\n- `/adr-guard on|off|status` — Toggle commit guard enforcement",
+    "zh-CN": "### 🏛️ 架构决策记录 (/adr)\n\n当前布局：**`{mode}`**\n\n命令：\n- `/adr [new] [层级/范围] <标题> [--empty] [--style madr|nygard|ocp] [--numbering sequential|iteration --baseline B --iteration I]` — 新建并自动起草 ADR（--empty 仅生成模板）；--style ocp 生成容器（带 --baseline/--iteration 为迭代形态，否则顺序编号）\n- `/adr section <ADR-x.y.z> <标题>` —— 向 ocp 容器追加一个板块（🟡 待拍板），补全五段骨架\n- `/adr decide <ADR-ID> [附言]` —— 仅用户可拍板：proposed → accepted 并留账本（仅 strict 治理模式；智能体无权自我采纳）\n- `/adr init [standard|evolution|custom]` — 侦测项目形态、选择套件并持久化 adr.* 配置（侦测仅预选，绝不静默套用）\n- `/adr supersede <旧id> <新标题> [--empty]` — 取代旧决策并自动起草替代文档\n- `/adr tree` — 展示层级决策树 & Mermaid DAG\n- `/adr tree --by path|layer|domain|iteration` — 基于规范化记录的确定性逻辑视图\n- `/adr history <ADR-ID>` — 遍历取代链（前驱 + 后继，跨样式安全）\n- `/adr check` — 校验 ADR 完整性、链接并给出复杂度建议\n- `/adr check --report-style` — 列出每份文档的解析样式（含 legacy 标记）；仅报告\n- `/adr check --profile evolution` — 追加可选纪律：带 cons 的备选方案、好坏后果拆分、`risk: high` 记录需 Confirmation\n- `/adr context <ADR-ID>` / `--domain <slug>` / `--iteration <id>` — 有界上下文包（仅选中记录 + 直接关系，报告检索路径）\n- `/adr layout [auto|flat|hierarchical]` — 配置 ADR 布局\n- `/adr migrate [flat|hierarchical] [--confirm]` — 规划并重组 ADR 架构\n- `/adr migrate --to nygard|madr [--dry-run|--confirm]` — 显式样式转换（默认 dry-run；对 MADR 独有内容丢失给出警告）\n- `/adr-guard on|off|status` — 切换提交护栏强制检查",
   },
   "guard.adr.layoutCurrent": { en: "🏛️ ADR Layout is currently set to: **`{mode}`** (in project .ocp/ocp.json)\nOptions: `/adr layout auto`, `/adr layout flat`, `/adr layout hierarchical`", "zh-CN": "🏛️ ADR 布局当前为：**`{mode}`**（项目 .ocp/ocp.json）\n可选：`/adr layout auto`、`/adr layout flat`、`/adr layout hierarchical`" },
   "guard.adr.layoutInvalid": { en: "❌ Invalid ADR layout `{rest}`. Valid values are: `auto`, `flat`, `hierarchical`.", "zh-CN": "❌ 无效的 ADR 布局 `{rest}`。可选：`auto`、`flat`、`hierarchical`。" },
@@ -834,7 +848,60 @@ const STRINGS = {
   "guard.adr.supDoneScaffold": { en: "🔄 **Superseded ADR [{old}] $\\to$ [{new}] [Scaffold Only]**\n\n- Old ADR: `{oldPath}` (marked as superseded)\n- New ADR: `{newPath}` (accepted)\n- Indexes updated.", "zh-CN": "🔄 **已取代 ADR [{old}] → [{new}] [仅骨架]**\n\n- 旧 ADR：`{oldPath}`（已标记为被取代）\n- 新 ADR：`{newPath}`（已采纳）\n- 索引已更新。" },
   "guard.adr.supDone": { en: "🔄 **Superseded ADR [{old}] $\\to$ [{new}]**\n\n- Old ADR: `{oldPath}` (marked as superseded)\n- New ADR: `{newPath}` (accepted)\n- 🤖 *Agent is analyzing codebase context and auto-drafting replacement decision...*\n- 💡 *SDD Lifecycle: After drafting this ADR, proceed to `/plan` or jump directly to `/impl`.*", "zh-CN": "🔄 **已取代 ADR [{old}] → [{new}]**\n\n- 旧 ADR：`{oldPath}`（已标记为被取代）\n- 新 ADR：`{newPath}`（已采纳）\n- 🤖 *智能体正在分析代码库上下文并自动起草替代决策...*\n- 💡 *SDD 生命周期：起草本 ADR 后，进入 `/plan` 或直接跳到 `/impl`。*" },
   "guard.adr.supFail": { en: "❌ Failed to supersede ADR: {err}", "zh-CN": "❌ 取代 ADR 失败：{err}" },
+  "guard.adr.sectionUsage": { en: "❌ Usage: `/adr section <container> <title>` — e.g. `/adr section ADR-0.2.54 \"calcMode dual mode\"`", "zh-CN": "❌ 用法：`/adr section <容器> <标题>` —— 示例：`/adr section ADR-0.2.54 \"calcMode 双模式\"`" },
+  "guard.adr.sectionMissingTitle": { en: "❌ Missing section title. Usage: `/adr section <container> <title>`", "zh-CN": "❌ 缺少板块标题。用法：`/adr section <容器> <标题>`" },
+  "guard.adr.sectionDone": { en: "✅ Section [{id}] appended to `{file}` — fill the five-part skeleton (background/decision/rationale/rejected/impact); it stays 🟡 pending until a human flips the status line.", "zh-CN": "✅ 板块 [{id}] 已追加到 `{file}` —— 补全五段骨架（背景/决策/理由/反例/影响范围）；🟡 待拍板，须由人改状态行。" },
+  "guard.adr.sectionFail": { en: "❌ Failed to append section: {err}", "zh-CN": "❌ 追加板块失败：{err}" },
+  "guard.adr.decideUsage": { en: "❌ Usage: `/adr decide <ADR-ID> [note]` (strict governance only)\nExample: `/adr decide ADR-0007 \"ratified after review\"`", "zh-CN": "❌ 用法：`/adr decide <ADR-ID> [附言]`（仅 strict 治理模式可用）\n示例：`/adr decide ADR-0007 \"评审后拍板\"`" },
+  "guard.adr.decided": { en: "✅ **Decided ADR [{id}]** (proposed → accepted)\n\n- File: `{file}`\n- Decision recorded in the append-only ledger (`.ocp/adr-decisions.log`).\n- The ADR is now binding — commits may ship it.", "zh-CN": "✅ **已拍板 ADR [{id}]**（proposed → accepted）\n\n- 文件：`{file}`\n- 拍板已记入只追加账本（`.ocp/adr-decisions.log`）。\n- 该 ADR 现已生效 —— 提交可随代码一并落地。" },
+  "guard.adr.decideFail": { en: "❌ Failed to decide ADR: {err}", "zh-CN": "❌ 拍板失败：{err}" },
+  "guard.adr.governanceUnknownWarning": { en: "[adr-guard] Unknown adr.governance value '{value}' — falling back to 'none'. Valid values: none | review | strict.", "zh-CN": "[adr-guard] 未知的 adr.governance 值 '{value}' —— 回退为 'none'。可选值：none | review | strict。" },
+  "guard.adr.governanceInvalid": { en: "❌ Invalid ADR governance `{value}`. Valid values: `none`, `review`, `strict`. Nothing was written.", "zh-CN": "❌ 无效的 ADR 治理值 `{value}`。可选值：`none`、`review`、`strict`。未写入任何配置。" },
+  "guard.adr.pathspecBlock": { en: "[ADR-GOVERNANCE] Blocked: `git commit -- <path>` pathspec commits bypass the staged-index gate.\nThe gate validates the whole staged index, but a pathspec commit ships only the named paths — a decided ADR flip would land in a LATER non-gated commit, breaking the SAME-commit invariant.\nFix: stage the ADR flip together with the code and commit the full index (`git commit -m \"...\"`), never a pathspec.", "zh-CN": "[ADR-GOVERNANCE] 已阻止：`git commit -- <path>` 路径提交会绕过暂存区闸门。\n闸门校验的是整个暂存索引，但路径提交只提交指定路径 —— 已拍板的 ADR 翻转将落在后续不受闸门约束的提交中，破坏「同一提交」不变量。\n修复：将 ADR 翻转与代码一起暂存，并提交完整索引（`git commit -m \"...\"`），切勿使用路径提交。" },
   "guard.adr.unknown": { en: "Unknown subcommand `{sub}`. Run `/adr help` for available commands.", "zh-CN": "未知子命令 `{sub}`。运行 `/adr help` 查看可用命令。" },
+  "guard.adr.styleUnavailable": { en: "❌ ADR style `{style}` is not available — supported styles: `nygard`, `madr`. Check the spelling or upgrade the adr-guard plugin.", "zh-CN": "❌ ADR 样式 `{style}` 不可用 —— 支持的样式：`nygard`、`madr`。请检查拼写或升级 adr-guard 插件。" },
+  "guard.adr.initRecommend": { en: "🔍 **ADR Init — codebase reconnaissance**:\n- Agent config (.opencode/): {agent} | packages: {pkgs} | migrations/: {migrations}\n- Recommended suite: **`{suite}`** (pre-selected, NOT applied — detection never applies silently)\n\nRun one of:\n- `/adr init standard` — plain ADR log; madr, sequential, auto layout, no governance\n- `/adr init evolution` — decisions per iteration; madr, iteration numbering, hierarchical, review governance\n- `/adr init custom --style <s> --numbering <n> --layout <l> --governance <g>` — choose each option individually", "zh-CN": "🔍 **ADR 初始化 —— 代码库侦测**：\n- 智能体配置（.opencode/）：{agent} | 包数量：{pkgs} | migrations/：{migrations}\n- 推荐套件：**`{suite}`**（仅预选，未应用 —— 侦测绝不会静默套用）\n\n运行以下之一：\n- `/adr init standard` —— 纯 ADR 日志；madr、顺序编号、auto 布局、无治理\n- `/adr init evolution` —— 按迭代跟踪决策；madr、迭代编号、层级布局、review 治理\n- `/adr init custom --style <s> --numbering <n> --layout <l> --governance <g>` —— 逐项自选" },
+  "guard.adr.initCustomFlags": { en: "ℹ️ **Custom suite** needs explicit options — nothing written. Example:\n`/adr init custom --style madr --numbering sequential --layout auto --governance none`", "zh-CN": "ℹ️ **自定义套件**需要显式选项 —— 未写入任何配置。示例：\n`/adr init custom --style madr --numbering sequential --layout auto --governance none`" },
+  "guard.adr.initApplied": { en: "✅ **ADR Init — suite `{suite}` applied** (written={ok}):\n\n| Option | Value |\n| :--- | :--- |\n| adr.style | `{style}` |\n| adr.numbering | `{numbering}` |\n| adr.layout | `{layout}` |\n| adr.governance | `{governance}` |\n| adr.suite (informational label) | `{suite}` |\n\nIndividual options stay overridable at any time; the label never re-enforces anything. Legacy keys (adrGuard/adrDir/adrLayout) untouched. Re-running with the same selection is a no-op.", "zh-CN": "✅ **ADR 初始化 —— 已应用套件 `{suite}`**（写入={ok}）：\n\n| 选项 | 值 |\n| :--- | :--- |\n| adr.style | `{style}` |\n| adr.numbering | `{numbering}` |\n| adr.layout | `{layout}` |\n| adr.governance | `{governance}` |\n| adr.suite（信息性标签） | `{suite}` |\n\n各选项随时可单独覆盖；该标签不会强制执行任何内容。旧版键（adrGuard/adrDir/adrLayout）不受影响。用相同选择重复运行是空操作。" },
+  "guard.adr.legacyKeyWarning": { en: "[adr-guard] Deprecated ADR config key(s) detected: {keys}. Legacy keys still work today but will be REMOVED in v1.0 — migrate to the `adr.*` config block (see `/adr init`).", "zh-CN": "[adr-guard] 检测到已弃用的 ADR 配置键：{keys}。旧键目前仍生效，但将在 v1.0 移除 —— 请迁移到 `adr.*` 配置块（参见 `/adr init`）。" },
+  "guard.adr.contextUsage": { en: "❌ Usage: `/adr context <ADR-ID>` · `/adr context --domain <slug>` · `/adr context --iteration <id>`\nBundles the target's records with direct parents, supersession chains, and same-iteration records — bounded, never the full corpus, with a reported retrieval path.\nExample: `/adr context ADR-0003`", "zh-CN": "❌ 用法：`/adr context <ADR-ID>` · `/adr context --domain <slug>` · `/adr context --iteration <id>`\n打包目标记录及其直接父决策、取代链与同迭代记录 —— 有界输出，绝不倾倒全量语料，并报告检索路径。\n示例：`/adr context ADR-0003`" },
+  "guard.adr.contextNotFound": { en: "❌ No records carry iteration `{iteration}`.\nChecked the `iteration` frontmatter metadata (including the `baseline.iteration` composite form) across the whole ADL.", "zh-CN": "❌ 没有任何记录携带迭代 `{iteration}`。\n已检查整个 ADL 的记录 `iteration` frontmatter 元数据（含 `baseline.iteration` 组合形式）。" },
+  "guard.adr.checkProfileIssues": { en: "🧬 **Evolution profile findings ({count})** — opt-in discipline; default `/adr check` does not apply these:\n\n", "zh-CN": "🧬 **evolution 配置文件发现（{count}）** —— 可选纪律；默认 `/adr check` 不应用这些规则：\n\n" },
+  "guard.adr.checkProfilePass": { en: "🧬 **Evolution profile**: all discipline checks passed.\n", "zh-CN": "🧬 **evolution 配置文件**：所有纪律检查通过。\n" },
+  "guard.adr.profileUnknown": { en: "❌ Unknown validation profile `{profile}`. Available profiles: `evolution`.", "zh-CN": "❌ 未知的校验配置文件 `{profile}`。可用配置文件：`evolution`。" },
+
+  "guard.adr.treeByInvalid": { en: "❌ Unknown tree view `{by}`. Available views: `path`, `layer`, `domain`, `iteration`.", "zh-CN": "❌ 未知的树视图 `{by}`。可用视图：`path`、`layer`、`domain`、`iteration`。" },
+
+  // ── Style migration & audit (Phase 5, §13/§6.2) ──
+  "guard.adr.migrateStyleInvalid": { en: "❌ Unknown ADR style `{style}`. Available styles: `nygard`, `madr`, `ocp`.", "zh-CN": "❌ 未知的 ADR 样式 `{style}`。可用样式：`nygard`、`madr`、`ocp`。" },
+  "guard.adr.migrateStyleOcp": { en: "❌ `ocp` is a container style — it cannot be reached by per-file style conversion. Create a container instead: `/adr new --style ocp <title>` (add --baseline/--iteration for the iteration form).", "zh-CN": "❌ `ocp` 是容器样式 —— 无法通过逐文件样式转换到达。请直接创建容器：`/adr new --style ocp <标题>`（加 --baseline/--iteration 则为迭代形态）。" },
+  "guard.adr.migrateStyleNone": { en: "ℹ️ **Style Migration ({to})**: nothing to convert — {count} document(s) already declare `style: {to}`.", "zh-CN": "ℹ️ **样式迁移（{to}）**：无需转换 —— {count} 份文档已声明 `style: {to}`。" },
+  "guard.adr.migrateStylePreviewHead": { en: "📋 **Style Migration Preview — target `{to}`** (**{count}** record(s), dry-run — no files written):\n\n", "zh-CN": "📋 **样式迁移预览 —— 目标 `{to}`**（**{count}** 条记录，dry-run —— 未写入任何文件）：\n\n" },
+  "guard.adr.migrateStyleDoneHead": { en: "🎉 **Style Migration Completed — target `{to}`**\n\nConverted **{count}** document(s) in place (IDs unchanged):\n\n", "zh-CN": "🎉 **样式迁移完成 —— 目标 `{to}`**\n\n已就地转换 **{count}** 份文档（ID 不变）：\n\n" },
+  "guard.adr.migrateStyleVerifyFail": { en: "\n⚠️ **Post-migration verification failed ({count} issue(s))**:\n", "zh-CN": "\n⚠️ **迁移后校验失败（{count} 个问题）**：\n" },
+  "guard.adr.migStyleSummary": { en: "Records to convert: **{count}** · already `{to}`: **{skipped}**", "zh-CN": "待转换记录：**{count}** · 已是 `{to}`：**{skipped}**" },
+  "guard.adr.migStyleRecordHead": { en: "### {id} — {title}", "zh-CN": "### {id} — {title}" },
+  "guard.adr.migStyleSource": { en: "- Source: `{path}`", "zh-CN": "- 源路径：`{path}`" },
+  "guard.adr.migStyleDest": { en: "- Destination: `{path}`{note}", "zh-CN": "- 目标路径：`{path}`{note}" },
+  "guard.adr.migStyleDestSame": { en: " (filename unchanged — IDs are frozen, §9.5 rule 3)", "zh-CN": "（文件名不变 —— ID 永久冻结，§9.5 规则 3）" },
+  "guard.adr.migStyleId": { en: "- Record ID: `{id}` (unchanged)", "zh-CN": "- 记录 ID：`{id}`（不变）" },
+  "guard.adr.migStyleLinksNone": { en: "- Link rewrites: none", "zh-CN": "- 链接重写：无" },
+  "guard.adr.migStyleLinksHead": { en: "- Link rewrites:", "zh-CN": "- 链接重写：" },
+  "guard.adr.migStyleLinksRow": { en: "  - `{field}`: `{from}` → `{to}`", "zh-CN": "  - `{field}`：`{from}` → `{to}`" },
+  "guard.adr.migStyleWarnNone": { en: "- Unconvertible content warnings: none", "zh-CN": "- 不可转换内容警告：无" },
+  "guard.adr.migStyleWarnHead": { en: "- Unconvertible content warnings:", "zh-CN": "- 不可转换内容警告：" },
+  "guard.adr.migStyleWarnDropped": { en: "  - ⚠️ Section `{section}` has no `{to}` equivalent — its content would be **dropped** on conversion", "zh-CN": "  - ⚠️ 章节 `{section}` 在 `{to}` 中无对应位置 —— 其内容将在转换时被**丢弃**" },
+  "guard.adr.migStyleWarnAdded": { en: "  - ℹ️ `{to}` adds empty section(s) {sections}; no source content is lost", "zh-CN": "  - ℹ️ `{to}` 会新增空章节 {sections}；源内容无任何丢失" },
+  "guard.adr.migStyleWarnMissing": { en: "  - ⚠️ Source section `{section}` is missing or empty — the target section will be a placeholder", "zh-CN": "  - ⚠️ 源章节 `{section}` 缺失或为空 —— 目标章节将为占位符" },
+  "guard.adr.reportStyleHead": { en: "🔍 **ADR Style Report** ({count} document(s), {legacy} legacy without `style` frontmatter):\n\n", "zh-CN": "🔍 **ADR 样式报告**（{count} 份文档，{legacy} 份缺少 `style` frontmatter 的 legacy 文档）：\n\n" },
+  "guard.adr.reportStyleTableHead": { en: "| Document | Resolved Style | Legacy |\n| :--- | :--- | :--- |\n", "zh-CN": "| 文档 | 解析样式 | Legacy |\n| :--- | :--- | :--- |\n" },
+  "guard.adr.reportStyleYes": { en: "yes — run `/adr migrate --to madr --confirm` to declare", "zh-CN": "是 —— 运行 `/adr migrate --to madr --confirm` 声明样式" },
+
+  "guard.adr.historyUsage": { en: "❌ Usage: `/adr history <ADR-ID>` — traverse the supersession chain (predecessors + successors, cross-style safe).\nExample: `/adr history ADR-0.2.54.01`", "zh-CN": "❌ 用法：`/adr history <ADR-ID>` —— 遍历取代链（前驱 + 后继，跨样式安全）。\n示例：`/adr history ADR-0.2.54.01`" },
+
+  "guard.adr.historyNotFound": { en: "❌ No ADR matches `{ref}`.\nAccepted forms: `0001`, `ADR-0001`, `0.2.54.01`, or a source path.", "zh-CN": "❌ 没有任何 ADR 匹配 `{ref}`。\n可用形式：`0001`、`ADR-0001`、`0.2.54.01` 或源文件路径。" },
+
+  "guard.adr.contextNoMatch": { en: "❌ No records match `{target}`.\nChecked normalized record IDs, source paths, and `domain` frontmatter metadata across the whole ADL.", "zh-CN": "❌ 没有任何记录匹配 `{target}`。\n已检查整个 ADL 的规范化记录 ID、源路径与 `domain` frontmatter 元数据。" },
 
   // ── project-manager (/project) ──
   "guard.pm.help": {

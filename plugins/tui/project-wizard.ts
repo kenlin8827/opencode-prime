@@ -9,7 +9,9 @@
  *   - Phase 1B refactor (2026-09-11): "git-workflow" group renamed and split into
  *     three meaningful units:
  *       - `projectGuards`→ sub-dialog (envGuard + e2eGuard, on/off guards)
- *       - `adr`          → sub-dialog (adrGuard + adrDir + adrLayout)
+ *       - `adr`          → sub-dialog (suite quick-pick at top: standard /
+ *                          evolution, then adrDir + adrLayout + ADL fields:
+ *                          adrStyle / adrNumbering / adrGovernance)
  *       - `autoAdvisor`  → inline row on the main menu (1 field, single value)
  *   - Phase 1C refactor (2026-09-11): responsibility separation + UX scaling.
  *     1. Single-field groups (`projectMemory`, `autoAdvisor`) stay as
@@ -49,8 +51,15 @@
 /// <reference types="bun" />
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { migrateLegacyProjectArtifacts, type MigrationReport } from "../shared/opencode-prime"
-import { tr, initI18n, languageOption, switchLanguage, SWITCH_LANG, type DialogOption } from "./i18n"
+import { tr, initI18n, languageOption, switchLanguage, SWITCH_LANG, type DialogOption, type StringKey } from "./i18n"
 import { CONFIG_REL, getProjectDir, setProjectDir } from "../project-manager/project-manager-config"
+import {
+  ADR_SUITES,
+  normalizeAdrGovernance,
+  normalizeAdrLayout,
+  normalizeAdrNumbering,
+  normalizeAdrStyle,
+} from "../adr-guard/adr-guard-config"
 import { indexProject, initProject, syncProject, updateSwitches } from "../project-manager/project-manager-operations"
 import { planDprintSetup, setupDprint } from "../project-manager/project-manager-dprint"
 import { PROJECT_SWITCH_OPTIONS } from "../project-manager/project-manager-options"
@@ -106,6 +115,49 @@ export function cycleAdvisorMode(
   const values = PROJECT_SWITCH_OPTIONS.autoAdvisorMode.map((option) => option.value)
   const index = values.indexOf(current ?? "lite")
   return values[(index + 1) % values.length]
+}
+
+/**
+ * Apply an `/adr init` suite bundle onto the wizard switch state — style +
+ * numbering + governance + layout in one pick, mirroring `ADR_SUITES`
+ * (which is data-driven from adr-suites.json). The suite's layout maps to
+ * the LEGACY root `adrLayout` key: the wizard's layout field writes that
+ * key and adr-guard gives it precedence over `adr.layout`, so the root key
+ * is the authoritative surface here. Values pass through adr-guard's
+ * normalizers (fail-closed). Unknown suite names are a no-op.
+ */
+export function applyAdrSuiteToSwitches(
+  switches: ProjectSwitches,
+  suite: string,
+): ProjectSwitches {
+  const row = ADR_SUITES[suite]
+  if (!row) return switches
+  const fields = row.fields
+  const style = normalizeAdrStyle(fields.style)
+  if (style) switches.adrStyle = style
+  const numbering = normalizeAdrNumbering(fields.numbering)
+  if (numbering) switches.adrNumbering = numbering
+  const governance = normalizeAdrGovernance(fields.governance)
+  if (governance) switches.adrGovernance = governance
+  const layout = normalizeAdrLayout(fields.layout)
+  if (layout) switches.adrLayout = layout
+  return switches
+}
+
+/** Reverse of `applyAdrSuiteToSwitches` for the dialog's current-marker:
+ * which suite (if any) does the current switch state match exactly? Layout
+ * is compared against the LEGACY root `adrLayout` key (the surface suites
+ * write). Returns null for custom / partially-configured states. */
+export function detectAdrSuite(switches: ProjectSwitches): string | null {
+  for (const name of Object.keys(ADR_SUITES)) {
+    const fields = ADR_SUITES[name].fields
+    if (normalizeAdrStyle(fields.style) !== (switches.adrStyle ?? null)) continue
+    if (normalizeAdrNumbering(fields.numbering) !== (switches.adrNumbering ?? null)) continue
+    if (normalizeAdrGovernance(fields.governance) !== (switches.adrGovernance ?? null)) continue
+    if (normalizeAdrLayout(fields.layout) !== (switches.adrLayout ?? null)) continue
+    return name
+  }
+  return null
 }
 
 /** Detect initial switch values from existing project config or defaults. */
@@ -169,7 +221,7 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
   // the main menu. Built inline (no i18n template) — these are compact
   // status snapshots, not user-facing messages.
   const projectGuardsSummary = `env:${current.envGuard ?? "def"} · e2e:${current.e2eGuard ?? "def"} · adr:${current.adrGuard ?? "def"}`
-  const adrSummary = `layout:${current.adrLayout ?? "def"}`
+  const adrSummary = `layout:${current.adrLayout ?? "def"} · style:${current.adrStyle ?? "def"} · gov:${current.adrGovernance ?? "def"}`
 
   const dprintPlan = planDprintSetup(projectRoot(api))
   const toolingSummary = dprintPlan.status === "eligible"
@@ -428,7 +480,9 @@ function showSchemaGroup(
   const activeSelection = state.currentSelection ?? `__field_${firstFieldKey}`
 
   const guardsCat = tr("project.guardsHeader")
+  const adrCat = tr("project.adrConfigHeader")
   const advisorCat = tr("project.advisorHeader")
+  const suiteCat = tr("project.suiteHeader")
   const actionsCat = tr("project.actionsHeader")
   const navCat = tr("project.navigationHeader")
 
@@ -438,9 +492,29 @@ function showSchemaGroup(
       title: `${field.icon} ${displayName}:${" ".repeat(Math.max(1, 15 - displayName.length))} ${badgeFor(field, current[field.key as keyof ProjectSwitches] as string | undefined)}`,
       value: `__field_${field.key}`,
       description: tr(field.descriptionKey),
-      category: field.badgeKind === "advisor" ? advisorCat : guardsCat,
+      // Style/numbering/governance are configuration, not guards — the adr
+      // group gets its own category header; guardsHeader stays for the
+      // projectGuards group.
+      category: groupId === "adr" ? adrCat : field.badgeKind === "advisor" ? advisorCat : guardsCat,
     }
   })
+
+  // Suite quick-pick (adr group only): own category at the TOP of the
+  // dialog, bundles listed directly — selecting one applies AND saves
+  // immediately (saveAdrSuite), no 💾 Save round-trip. Cross-field logic is
+  // deliberately outside the schema-driven renderer (Phase 1 scope,
+  // schema-driven.ts); the current suite gets a marker.
+  if (groupId === "adr") {
+    const currentSuite = detectAdrSuite(current)
+    items.unshift(
+      ...ADR_SUITE_ROWS.map((row) => ({
+        title: `${row.icon} ${row.value}${currentSuite === row.value ? tr("project.currentMarker") : ""}`,
+        value: `__adr_suite_${row.value}__`,
+        description: tr(row.descKey),
+        category: suiteCat,
+      })),
+    )
+  }
   items.push(
     {
       title: tr("project.saveApply"),
@@ -473,6 +547,15 @@ function showSchemaGroup(
             await runSaveSwitches(api, state, rootDir, isExisting, groupId, schema)
             return
           }
+          if (option.value.startsWith("__adr_suite_")) {
+            const suite = option.value.slice("__adr_suite_".length, -"__".length)
+            if (suite in ADR_SUITES) {
+              saveAdrSuite(api, state, rootDir, suite, groupId, schema).catch(() => {
+                // saveAdrSuite already surfaced the error alert.
+              })
+            }
+            return
+          }
           if (option.value === "__switch_back__") {
             showGroupMenu(api, { ...state, currentSelection: groupSelectionValue })
             return
@@ -503,6 +586,70 @@ function showSchemaGroup(
         )
     },
   )
+}
+
+// ─── ADR suite quick-pick (inside the adr sub-dialog) ────────────────
+
+/** Suite rows rendered at the TOP of the adr sub-dialog (own category).
+ * Derived from ADR_SUITES (adr-suites.json) — adding a suite is a JSON row,
+ * never a wizard code change. */
+const ADR_SUITE_ROWS: ReadonlyArray<{ value: string; icon: string; descKey: StringKey }> = Object.values(ADR_SUITES).map(
+  (row) => ({ value: row.name, icon: row.icon, descKey: row.descKey as StringKey }),
+)
+
+/**
+ * Confirming a suite row applies the bundle to the switch state and
+ * auto-saves ONLY the four suite-owned fields (style/numbering/governance/
+ * layout) — select-to-confirm, no 💾 Save round-trip. On success the four fields
+ * are refreshed from disk (B1 lesson: UI shows the persisted truth, not the
+ * optimistic in-memory value); unconfirmed sibling edits in this sub-dialog
+ * are kept in memory, never flushed. On failure the in-memory mutation is
+ * reverted and the error is surfaced.
+ */
+async function saveAdrSuite(
+  api: TuiPluginApi,
+  state: WizardState,
+  rootDir: string,
+  suite: string,
+  groupId: WizardGroupId,
+  schema: WizardGroupSchema,
+): Promise<void> {
+  const prev: Pick<ProjectSwitches, "adrStyle" | "adrNumbering" | "adrGovernance" | "adrLayout"> = {
+    adrStyle: state.switches.adrStyle,
+    adrNumbering: state.switches.adrNumbering,
+    adrGovernance: state.switches.adrGovernance,
+    adrLayout: state.switches.adrLayout,
+  }
+  applyAdrSuiteToSwitches(state.switches, suite)
+  const switches: ProjectSwitches = {
+    adrStyle: state.switches.adrStyle,
+    adrNumbering: state.switches.adrNumbering,
+    adrGovernance: state.switches.adrGovernance,
+    adrLayout: state.switches.adrLayout,
+  }
+  try {
+    const result = await updateSwitches({ root: rootDir, switches })
+    // Refresh ONLY the suite-owned keys from disk: re-detecting the whole
+    // state would clobber unconfirmed sibling edits sitting in memory.
+    const detected = detectCurrentSwitches(rootDir)
+    state.switches.adrStyle = detected.switches.adrStyle
+    state.switches.adrNumbering = detected.switches.adrNumbering
+    state.switches.adrGovernance = detected.switches.adrGovernance
+    state.switches.adrLayout = detected.switches.adrLayout
+    toast(
+      api,
+      tr("project.configSavedToast") + migrationSuffix(result.migration).trim().replace(/\n+/g, " "),
+      "success",
+    )
+    showSchemaGroup(api, { ...state, exists: true, currentSelection: `__adr_suite_${suite}__` }, groupId, schema)
+  } catch (err) {
+    Object.assign(state.switches, prev)
+    showAlertModal(api, {
+      title: tr("project.saveFailed"),
+      message: tr("project.saveFailedMsg", { err: (err as Error).message }),
+      onDismiss: () => showSchemaGroup(api, { ...state, currentSelection: "__save_switches__" }, groupId, schema),
+    })
+  }
 }
 
 // ─── Group: Project tooling ──────────────────────────────────────────

@@ -919,11 +919,83 @@ function test16_OpenMigrateThenDetect() {
   setProjectDir(projectDir)
 }
 
+// ═════════════════════════════════════════════════════════════════════
+// 17. Wizard ADL block (ADR 0007 §6) — adr.* nested object write/read
+// ═════════════════════════════════════════════════════════════════════
+
+function test17_WizardAdlBlock() {
+  section("17: wizard ADL block — adr.* nested object round-trip")
+  const parses = (s: string): boolean => { try { JSON.parse(s); return true } catch { return false } }
+
+  // (a) applySwitchesToConfigContent routes ADL switches into the nested
+  //     block, never to root keys; legacy root keys coexist untouched.
+  const base = '{\n  "adrLayout": "flat",\n  "envGuard": "on"\n}\n'
+  const applied = applySwitchesToConfigContent(base, {
+    adrStyle: "nygard",
+    adrNumbering: "iteration",
+    adrGovernance: "strict",
+  })
+  assert(parses(applied), "(a) result is strict JSON")
+  const parsed = JSON.parse(applied) as Record<string, unknown>
+  assert(parsed.adrLayout === "flat" && parsed.envGuard === "on", "(a) legacy root keys untouched")
+  assert((parsed.adr as Record<string, unknown>).style === "nygard"
+    && (parsed.adr as Record<string, unknown>).numbering === "iteration"
+    && (parsed.adr as Record<string, unknown>).governance === "strict",
+    "(a) ADL switches land in the nested adr block (style/numbering/governance)")
+  assert(!("adrStyle" in parsed) && !("adrNumbering" in parsed) && !("adrGovernance" in parsed),
+    "(a) ADL switches are NEVER written as root keys")
+
+  // (b) in-place re-upsert: block exists → values replaced, no duplicate.
+  const reApplied = applySwitchesToConfigContent(applied, { adrStyle: "madr" })
+  assert(parses(reApplied), "(b) re-upsert stays strict JSON")
+  const reParsed = JSON.parse(reApplied) as Record<string, unknown>
+  assert((reParsed.adr as Record<string, unknown>).style === "madr"
+    && (reParsed.adr as Record<string, unknown>).numbering === "iteration",
+    "(b) style replaced in place, untouched siblings survive")
+
+  // (c) absent ADL switches → block NOT materialized (no default-persistence).
+  const untouched = applySwitchesToConfigContent(base, { envGuard: "off" })
+  assert(parses(untouched) && !("adr" in JSON.parse(untouched)), "(c) unrelated save writes no adr block")
+
+  // (d) updateSwitchesOnly: file status reflects the ADL write even when
+  //     root switches are unchanged.
+  const dir = mkdtempSync(join(tmpdir(), "pm-adl-"))
+  setProjectDir(dir)
+  updateSwitchesOnly({ envGuard: "on" } as const)
+  const r1 = updateSwitchesOnly({ adrStyle: "nygard", adrGovernance: "review" } as const)
+  assert(r1.file.status === "updated", "(d) ADL-only change reports 'updated'")
+  const onDisk = JSON.parse(readFileSync(join(dir, ".ocp", "ocp.json"), "utf-8")) as Record<string, unknown>
+  assert((onDisk.adr as Record<string, unknown>).style === "nygard"
+    && (onDisk.adr as Record<string, unknown>).governance === "review",
+    "(d) ADL block persisted to .ocp/ocp.json")
+  const r2 = updateSwitchesOnly({ adrStyle: "nygard", adrGovernance: "review" } as const)
+  assert(r2.file.status === "skipped", "(d) identical re-save is a no-op")
+
+  // (e) detectProjectSwitches: block values surface on the wizard state;
+  //     absent/invalid values stay undefined (schema default drives display).
+  const det = detectProjectSwitches(dir)
+  assert(det.switches.adrStyle === "nygard"
+    && det.switches.adrNumbering === undefined
+    && det.switches.adrGovernance === "review",
+    "(e) detect echoes valid block values, omits absent ones")
+  writeFileSync(
+    join(dir, ".ocp", "ocp.json"),
+    '{\n  "adr": {\n    "style": "bogus",\n    "numbering": "iteration"\n  }\n}\n',
+    "utf-8",
+  )
+  const detBad = detectProjectSwitches(dir)
+  assert(detBad.switches.adrStyle === undefined && detBad.switches.adrNumbering === "iteration",
+    "(e) invalid style dropped by the normalizer, valid sibling survives")
+  rmSync(dir, { recursive: true, force: true })
+  setProjectDir(projectDir)
+}
+
 test12_TgrepGitignore()
 test13_Shellwords()
 test14_StrictJsonSurgery()
 test15_OcpProjectDirEnv()
 test16_OpenMigrateThenDetect()
+test17_WizardAdlBlock()
 
 rmSync(projectDir, { recursive: true, force: true })
 

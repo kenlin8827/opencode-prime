@@ -8,3 +8,4 @@
 | 0004 | OCP path contract: `.opencode/` → `.ocp/`, `ocp.jsonc` → `ocp.json`  | accepted |
 | 0005 | tgrep probe-first search contract                                    | accepted |
 | 0006 | OmniRoute gateway profile                                            | accepted |
+| 0007 | Multi-style ADL with a universal protocol layer                      | proposed |

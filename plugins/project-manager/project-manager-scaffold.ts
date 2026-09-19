@@ -31,6 +31,13 @@ import {
   type MigrationReport,
 } from "../shared/opencode-prime"
 import { CONFIG_REL, getProjectDir, resolveTarget, type ScaffoldTarget } from "./project-manager-config"
+import {
+  normalizeAdrGovernance,
+  normalizeAdrNumbering,
+  normalizeAdrStyle,
+  upsertAdrBlock,
+} from "../adr-guard/adr-guard-config"
+import type { AdrGovernance, AdrNumbering, AdrStyle } from "../adr-guard/adr-types"
 
 // ─── Templates ───────────────────────────────────────────────────────
 
@@ -185,6 +192,31 @@ export interface ProjectSwitches {
   envGuard?: "on" | "off"
   e2eGuard?: "on" | "off"
   projectMemory?: "on" | "off"
+  // Multi-style ADL block (wizard `adr` group, ADR 0007 §6). These map to
+  // the NESTED `adr.*` object in `.ocp/ocp.json`, NOT to root-level keys —
+  // `applySwitchesToConfigContent` routes them through `upsertAdrBlock`.
+  // Optional on purpose: absent = runtime default, so a save that never
+  // touched the ADL settings never materializes the block. (`adrStyle`
+  // persists as `adr.style` — it only styles NEW documents.)
+  adrStyle?: AdrStyle
+  adrNumbering?: AdrNumbering
+  adrGovernance?: AdrGovernance
+}
+
+/**
+ * Map the wizard's ADL switch keys onto the nested `adr.*` block fields.
+ * Values failing adr-guard's normalizers are dropped (never persisted) —
+ * same fail-closed posture as `/adr init custom` validation.
+ */
+function adrBlockFieldsFromSwitches(switches: ProjectSwitches): Record<string, string> {
+  const fields: Record<string, string> = {}
+  const style = switches.adrStyle === undefined ? null : normalizeAdrStyle(switches.adrStyle)
+  if (style) fields.style = style
+  const numbering = switches.adrNumbering === undefined ? null : normalizeAdrNumbering(switches.adrNumbering)
+  if (numbering) fields.numbering = numbering
+  const governance = switches.adrGovernance === undefined ? null : normalizeAdrGovernance(switches.adrGovernance)
+  if (governance) fields.governance = governance
+  return fields
 }
 
 /**
@@ -194,6 +226,12 @@ export interface ProjectSwitches {
  * place, or appends into the root object keeping the result STRICT-JSON
  * valid (P1-2: no trailing comma on the last member). Undefined entries are
  * skipped (absent keys = defaults). Comments and unrelated lines survive.
+ *
+ * ADL switches (`adrStyle`/`adrNumbering`/`adrGovernance`) take a
+ * second pass through `upsertAdrBlock` into the nested `"adr"` object —
+ * they are never written as root keys. Legacy root keys (adrGuard/adrDir/
+ * adrLayout) keep working unchanged and keep precedence where adr-guard
+ * defines it.
  */
 export function applySwitchesToConfigContent(
   content: string,
@@ -205,6 +243,8 @@ export function applySwitchesToConfigContent(
     if (value === undefined) continue
     result = upsertConfigField(result, key, value)
   }
+  const adrFields = adrBlockFieldsFromSwitches(switches)
+  if (Object.keys(adrFields).length > 0) result = upsertAdrBlock(result, adrFields)
   return result
 }
 

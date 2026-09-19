@@ -28,43 +28,45 @@ Specification-Driven Development (SDD) provides a structured, specification-firs
 
 ---
 
-## 🏛️ Why ADR is the Critical Keystone of SDD
+## 🏛️ ADR: Recording Architecturally Significant Decisions
 
-Across the entire SDD lifecycle (`PRD` → `ADR` → `PLAN` → `IMPL`), **ADR (Architecture Decision Record) serves as the indispensable structural keystone**, anchored by four critical engineering imperatives:
+Across the SDD lifecycle (`PRD` → `ADR` → `PLAN` → `IMPL`), **ADR (Architecture Decision Record) anchors the decisions that are expensive to get wrong** — it is an adaptive stage, not a mandatory gate for every change:
 
 ```
-               ┌──────────────────────────────┐
-               │     PRD: Defines the "WHAT"   │
-               │   Business Goals · User Stories  │
-               └──────────────┬───────────────┘
-                              │
-               ┌──────────────▼───────────────┐
-               │ ⭐ ADR: Defines the "HOW"     │ ◄───【Critical Keystone: Architecture Defense & Contracts】
-               │ Tech Choices · Models · APIs │
-               └──────────────┬───────────────┘
-                              │
-               ┌──────────────▼───────────────┐
-               │    PLAN: Defines the "WHEN"   │
-               │ Atomic Tasks · Order · Paths │
-               └──────────────┬───────────────┘
-                              │
-               ┌──────────────▼───────────────┐
-               │    IMPL: Writes the "CODE"    │
-               │ Test-Driven · Verification   │
-               └──────────────────────────────┘
+Architecture baseline / ADL
+          ↕
+PRD or requirement
+          ↓
+ADR record(s), only for architecturally significant decisions
+          ↓
+Plan / tasks → implementation → tests → release/observation
+          ↓
+New ADR, amendment, or supersession in the next evolution
 ```
 
-1. **The Only Bridge Between Business Intent and Code Execution**:
-   - `PRD` addresses user needs; `Plan` and `Impl` manipulate files and functions.
-   - Without an `ADR`, jumping straight from requirements into code risks architectural decay and local optimizations that break global system design. **ADR is the sole converter translating business ambition into durable engineering architecture**.
-2. **Defensive Governance for Irreversible Decisions**:
+**When to write an ADR** — trigger one for significant changes to:
+
+- **Structure**: modules, layers, service boundaries, ownership
+- **Quality attributes**: performance, scalability, reliability, observability
+- **Dependencies**: frameworks, platforms, core third-party libraries
+- **Interfaces**: APIs, protocols, event contracts, data schemas
+- **Data**: storage engines, migration strategy, retention, consistency models
+- **Security**: authentication, authorization, secrets handling
+- **Financial/business rules**: pricing, commission, ledger invariants
+- **Hard-to-reverse choices**: anything costly to undo after shipping
+
+Trivial changes (copy edits, isolated bug fixes, local refactors with no architectural footprint) skip the ADR stage and flow directly from requirement to plan/implementation.
+
+Why the stage matters when it applies:
+
+1. **Defense for Irreversible Decisions**:
    - UI text or isolated logic can be changed cheaply, but **data schemas, communication protocols, dependency choices, and authentication mechanisms carry high rework costs**.
    - ADR forces upfront evaluation of trade-offs (Pros/Cons), alternatives, and blast radiuses before a single line of production code is written.
-3. **Living Ledger of "Why" and Rejected Alternatives**:
+2. **Living Ledger of "Why" and Rejected Alternatives**:
    - Code shows *how* something is implemented; PRD shows *what* was desired.
-   - **Only ADR documents *why* alternatives were rejected**, giving future maintainers and automated agents the exact context needed during refactoring or replacement (`/adr supersede`).
-4. **Hard Engineering Guardrails & Git Gating**:
-   - Among all specification phases, ADR is the only one connected to an automated Git commit gate (`/adr-guard on`), guaranteeing that architectural decisions never get bypassed during major features (`feat:`) or refactoring (`refactor:`).
+   - **ADR documents *why* alternatives were rejected**, giving future maintainers and automated agents the exact context needed during refactoring or replacement (`/adr supersede`).
+3. **Optional Hard Guardrails**:
+   - Projects that opt in (`/adr-guard on`) attach a Git commit gate so architecturally significant `feat:`/`refactor:` changes cannot land unrecorded. The gate is a per-project switch, not a built-in assumption of the SDD flow.
 
 ---
 

@@ -2,7 +2,7 @@
   "$schema": "../../docs/design/wizard-schema.schema.json",
   "id": "adr",
   "i18nKey": "project.adr.title",
-  "description": "ADR structure settings (layout first, then directory). The adrGuard on/off switch lives in the Project guards group (project-guards.json). Schema-driven; new entries only require a JSON row, no wizard code change.",
+  "description": "ADR structure settings (layout first, then directory), plus the multi-style ADL block (style / numbering / governance, ADR 0007 §6 — persisted to the nested `adr` object, not root keys). The adrGuard on/off switch lives in the Project guards group (project-guards.json). Schema-driven; new enum rows only require a JSON row + i18n keys, no wizard code change.",
   "fields": [
     {
       "key": "adrLayout",
@@ -26,14 +26,53 @@
       "badgeKind": "string",
       "icon": "📁",
       "values": [
-        { "value": "docs/adr", "labelKey": "project.valueAdrDirDocsAdr" },
-        { "value": "docs/decisions", "labelKey": "project.valueAdrDirDocsDecisions" },
-        { "value": "architecture/decisions", "labelKey": "project.valueAdrDirArchitecture" }
+        { "value": "docs/adr", "labelKey": "project.valueAdrDirDocsAdr" }
       ],
       "allowCustom": true,
       "customPromptKey": "project.promptAdrDirTitle",
       "customPlaceholderKey": "project.promptAdrDirPlaceholder",
       "default": "docs/adr"
+    },
+    {
+      "key": "adrStyle",
+      "type": "enum",
+      "labelKey": "project.switchAdrStyle",
+      "descriptionKey": "project.switchAdrStyle",
+      "badgeKind": "string",
+      "icon": "🎨",
+      "values": [
+        { "value": "madr", "labelKey": "project.valueAdrStyleMadr" },
+        { "value": "nygard", "labelKey": "project.valueAdrStyleNygard" },
+        { "value": "ocp", "labelKey": "project.valueAdrStyleOcp" }
+      ],
+      "default": "madr"
+    },
+    {
+      "key": "adrNumbering",
+      "type": "enum",
+      "labelKey": "project.switchAdrNumbering",
+      "descriptionKey": "project.switchAdrNumbering",
+      "badgeKind": "string",
+      "icon": "🔢",
+      "values": [
+        { "value": "sequential", "labelKey": "project.valueAdrNumberingSequential" },
+        { "value": "iteration", "labelKey": "project.valueAdrNumberingIteration" }
+      ],
+      "default": "sequential"
+    },
+    {
+      "key": "adrGovernance",
+      "type": "enum",
+      "labelKey": "project.switchAdrGovernance",
+      "descriptionKey": "project.switchAdrGovernance",
+      "badgeKind": "string",
+      "icon": "⚖️",
+      "values": [
+        { "value": "none", "labelKey": "project.valueAdrGovernanceNone" },
+        { "value": "review", "labelKey": "project.valueAdrGovernanceReview" },
+        { "value": "strict", "labelKey": "project.valueAdrGovernanceStrict" }
+      ],
+      "default": "none"
     }
   ]
 }

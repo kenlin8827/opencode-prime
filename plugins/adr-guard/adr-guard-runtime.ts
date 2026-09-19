@@ -146,6 +146,23 @@ export function hasAmendFlag(command: string): boolean {
   return gitCommitSegments(command).some((seg) => seg.includes("--amend"))
 }
 
+/** True when a commit segment stages tracked working-tree modifications:
+ *  `-a`, `--all`, or a combined short-flag cluster containing `a` (`-am`,
+ *  `-qa`). The cluster scan stops at `m` — `-m` consumes the rest of the
+ *  token as its message value, so `-mfeat` is a glued message, NOT -m -f
+ *  -e -a -t. Long flags (`--amend`) never match: they start with `--`. */
+export function segmentCommitsAll(seg: string[]): boolean {
+  for (const t of seg) {
+    if (t === "--all") return true
+    if (t.startsWith("--") || !/^-[a-zA-Z]/.test(t)) continue
+    const cluster = t.slice(1)
+    const mIdx = cluster.indexOf("m")
+    const flagPart = mIdx === -1 ? cluster : cluster.slice(0, mIdx)
+    if (flagPart.includes("a")) return true
+  }
+  return false
+}
+
 // ─── Commit message extraction ───────────────────────────────────────
 // Supports the forms agents actually emit:
 //   -m "msg"   -m 'msg'   -m msg   -m=msg   --message "msg"   --message=msg

@@ -88,9 +88,11 @@ function runTests() {
     assert(content1.includes("layer: system"), "contains system layer frontmatter")
     assert(content1.includes("## Considered Options"), "L1 template includes considered options")
 
-    // Check next number in root vs subsystem
+    // Check next number in root vs subsystem — §6.1: allocation scans the
+    // WHOLE ADL, not the creating directory (per-directory counters would
+    // both mint 0001 and integrity would fail).
     assert(getNextAdrNumber(sandbox, "docs/adr") === "0002", "next root ADR is 0002")
-    assert(getNextAdrNumber(sandbox, "packages/payment/docs/adr") === "0001", "subsystem starts at 0001")
+    assert(getNextAdrNumber(sandbox, "packages/payment/docs/adr") === "0002", "subsystem shares the global counter (0002)")
 
     // 4. Create L2 Subsystem ADR
     const adr2 = createAdr({
@@ -102,7 +104,7 @@ function runTests() {
       parent: adr1.relPath,
     })
 
-    assert(adr2.id === "0001", "created subsystem ADR-0001")
+    assert(adr2.id === "0002", "created subsystem ADR-0002 (whole-ADL allocation)")
     const content2 = readFileSync(adr2.fullPath, "utf-8")
     assert(content2.includes("layer: domain"), "contains domain layer frontmatter")
     assert(content2.includes(`parent: ${adr1.relPath}`), "contains parent link")
@@ -113,7 +115,8 @@ function runTests() {
     const parsed1 = parseAdrFile(adr1.fullPath, sandbox)
     assert(parsed1?.title === "Global Modular Monolith", "parsed ADR-0001 title correctly")
 
-    // 6. Test Supersede Lifecycle
+    // 6. Test Supersede Lifecycle (§9.5: successor with `supersedes: ADR-XXXX`,
+    //    old file flips ONLY its status line)
     const { newAdr, oldAdr } = supersedeAdr(
       sandbox,
       "0001",
@@ -121,11 +124,11 @@ function runTests() {
       { targetDir: "docs/adr" },
     )
 
-    assert(newAdr.id === "0002", "new superseding ADR has id 0002")
+    assert(newAdr.id === "0003", "new superseding ADR has id 0003 (global counter)")
     const updatedOldContent = readFileSync(oldAdr.fullPath, "utf-8")
     assert(
-      updatedOldContent.includes("status: superseded by 0002"),
-      "old ADR marked as superseded by 0002",
+      updatedOldContent.includes("status: Superseded by ADR-0003"),
+      "old ADR status line flipped to Superseded by ADR-0003",
     )
 
     // 7. Test Decision Map & DAG Generation
@@ -134,7 +137,7 @@ function runTests() {
     assert(map.includes("L1: System & Macro Decisions"), "includes L1 section")
     assert(map.includes("L2: Domain & Subsystem Decisions"), "includes L2 section")
     assert(map.includes("mermaid"), "includes Mermaid diagram")
-    assert(map.includes("ADR_0001 -.->|superseded by| ADR_0002"), "Mermaid includes superseded edge")
+    assert(map.includes("ADR_0001 -.->|superseded by| ADR_0003"), "Mermaid includes superseded edge")
 
     // 8. Integrity Checker (Clean state)
     let issues = checkAdrIntegrity(sandbox)

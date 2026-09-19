@@ -1,0 +1,22 @@
+{
+  "suites": [
+    {
+      "name": "standard",
+      "icon": "📋",
+      "descKey": "project.adrSuiteStandardDesc",
+      "fields": { "style": "madr", "numbering": "sequential", "layout": "auto", "governance": "none" }
+    },
+    {
+      "name": "evolution",
+      "icon": "🧬",
+      "descKey": "project.adrSuiteEvolutionDesc",
+      "fields": { "style": "madr", "numbering": "iteration", "layout": "hierarchical", "governance": "review" }
+    },
+    {
+      "name": "ocp",
+      "icon": "📦",
+      "descKey": "project.adrSuiteOcpDesc",
+      "fields": { "style": "ocp", "numbering": "iteration", "layout": "hierarchical", "governance": "review" }
+    }
+  ]
+}
