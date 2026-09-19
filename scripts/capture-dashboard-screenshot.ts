@@ -292,7 +292,7 @@ function getTerminalHtml(lang: 'zh' | 'en', version: string): string {
       <div class="section-title green">■ ${texts.pluginSection}</div>
       <div class="row" style="padding-left: 14px;">
         <span class="badge badge-on">[ ${texts.on} ]</span>
-        <span class="label" style="min-width: 130px;">adr-guard</span>
+        <span class="label" style="min-width: 130px;">adr</span>
         <span class="dim">${texts.adrHint}</span>
       </div>
       <div class="row" style="padding-left: 14px;">

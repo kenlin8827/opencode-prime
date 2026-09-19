@@ -13,7 +13,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs"
 import { dirname, join, relative, resolve } from "node:path"
-import { getAdrConfig, type AdrLayout, getAdrLayout, normalizeAdrStyle, resolveAdrStyleForNew, setAdrLayout } from "./adr-guard-config"
+import { getAdrConfig, type AdrLayout, getAdrLayout, normalizeAdrStyle, resolveAdrStyleForNew, setAdrLayout } from "./adr-config"
 import { groupByIteration, renderIterationIndex, validateEvolutionMetadataShape } from "./adr-evolution"
 import { getAdrStyleAdapter, resolveDocumentAdapter } from "./adr-style-registry"
 import { buildAdrTree, renderAdlIndex, type AdrTreeNode, type IndexColumn as AdrIndexColumn } from "./adr-views"

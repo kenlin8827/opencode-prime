@@ -31,7 +31,7 @@ This repository follows [Conventional Commits](https://www.conventionalcommits.o
 
 - Summary line ≤ 72 characters, imperative mood ("add", not "added").
 - `feat` / `refactor` commits should carry an ADR when a decision was made
-  (see docs/adr/ when adr-guard is on).
+  (see docs/adr/ when the ADR guard is on).
 - Breaking changes: `!` after the type/scope + `BREAKING CHANGE:` footer.
 - One logical change per commit.
 

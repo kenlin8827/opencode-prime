@@ -28,7 +28,7 @@
  *
  * The iron-law switch `adrGuard` no longer affects prompt content —
  * it still controls the `tool.execute.before` commit guard
- * (`adr-guard-tool-guard.ts`), but ON/OFF state is no longer surfaced
+ * (`adr-tool-guard.ts`), but ON/OFF state is no longer surfaced
  * in the system prompt. Users discover the switch via `/adr help` or
  * the hint's command list.
  */
@@ -41,8 +41,8 @@ import {
   getGuardHintPrompt,
   MARKER_CONFIG,
   MARKER_HINT,
-} from "./adr-guard-instructions"
-import { makeLogger } from "./adr-guard-runtime"
+} from "./adr-instructions"
+import { makeLogger } from "./adr-runtime"
 
 type Log = ReturnType<typeof makeLogger>
 
@@ -95,11 +95,11 @@ function stripAllMarkers(system: Array<unknown>): { hint: boolean; config: boole
 }
 
 export function makeSystemHook(client: PluginInput["client"]) {
-  const log: Log = makeLogger(client, "adr-guard")
+  const log: Log = makeLogger(client, "adr")
 
   return async (input: { sessionID?: string } | undefined, output: { system: string[] }) => {
     // Lite mode: bare-prompt contract — no iron-law protocol for @lite.
-    if (!await scoped(input, output.system, "adr-guard", client)) return
+    if (!await scoped(input, output.system, "adr", client)) return
 
     // Defensive strip — correct under Scenario B (hypothetical
     // prompt-persistence), no-op under Scenario A (verified current

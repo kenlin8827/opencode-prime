@@ -30,9 +30,9 @@ import {
   planAdrMigration,
   slugify,
   supersedeAdr,
-} from "../plugins/adr-guard/adr-engine"
-import { normalizeAdrLayout, setProjectDir } from "../plugins/adr-guard/adr-guard-config"
-import { hasAdrChanges } from "../plugins/adr-guard/adr-guard-runtime"
+} from "../plugins/adr/adr-engine"
+import { normalizeAdrLayout, setProjectDir } from "../plugins/adr/adr-config"
+import { hasAdrChanges } from "../plugins/adr/adr-runtime"
 
 let passed = 0
 let failed = 0

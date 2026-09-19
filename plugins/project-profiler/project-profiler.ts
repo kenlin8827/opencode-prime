@@ -25,7 +25,7 @@
  * changes the key and forces a re-render.
  *
  * Same fragment-cache + always-inject pattern as auto-advisor /
- * adr-guard / e2e-guard / project-manager.
+ * adr / e2e-guard / project-manager.
  */
 
 import { createHash } from "node:crypto"

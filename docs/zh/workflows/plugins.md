@@ -15,7 +15,7 @@
 | `auto-format.ts` | 文件编辑后自动运行项目选择的 dprint/Biome/Prettier/ESLint/Ruff/gofmt/rustfmt；dprint 与 Biome 均要求配置文件和项目本地二进制 |
 | `auto-advisor-mode.ts` | `/auto-advisor` 命令、协议注入、模式门控、red-team 抑制 |
 | `deepseek-anchor.ts` | `/deepseek-anchor` 命令 —— 基于锚点的推理协议与 DeepSeek 模型集成 |
-| `adr-guard.ts` | `/adr-guard` 命令 —— 按项目的 ADR 强制 |
+| `adr.ts` | `/adr` 命令族 —— ADR 工作台 + 按项目提交门禁（`/adr guard`） |
 | `env-guard.ts` | 按项目的密钥文件门控 |
 | `e2e-guard.ts` | `/e2e-guard` 命令 —— 按项目门控：E2E 运行需用户确认 |
 | `project-manager.ts` | `/project` 命令 + 提交纪律 |
@@ -29,11 +29,11 @@
 
 ---
 
-## ADR 铁律与活化架构治理（`adr-guard` 与 `/adr`）
+## ADR 铁律与活化架构治理（`adr` 与 `/adr`）
 
 企业级架构决策记录（ADR）治理体系，由两大互补能力构成：
 
-1. **提交铁律门禁（`/adr-guard`）** — 软/硬双层护栏，杜绝在 `feat`/`refactor` 提交中出现未记录的架构漂移。
+1. **提交铁律门禁（`/adr guard`）** — 软/硬双层护栏，杜绝在 `feat`/`refactor` 提交中出现未记录的架构漂移。
 2. **分层活化架构引擎（`/adr`）** — 极简脚手架、决策生命周期流转、多层级拓扑与 Mermaid DAG 可视化。
 
 ### 开关与治理布局
@@ -41,9 +41,9 @@
 提交门禁开关为**项目级**（存储于 `.ocp/ocp.json`）：
 
 ```text
-/adr-guard on       # 对本项目启用提交门禁拦截
-/adr-guard off      # 关闭提交门禁
-/adr-guard          # 状态报告（开关 + ADR 目录）
+/adr guard on       # 对本项目启用提交门禁拦截
+/adr guard off      # 关闭提交门禁
+/adr guard          # 状态报告（开关 + ADR 目录）
 ```
 
 分层治理布局通过 `/adr layout` 进行配置：

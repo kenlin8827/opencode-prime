@@ -66,17 +66,17 @@ Why the stage matters when it applies:
    - Code shows *how* something is implemented; PRD shows *what* was desired.
    - **ADR documents *why* alternatives were rejected**, giving future maintainers and automated agents the exact context needed during refactoring or replacement (`/adr supersede`).
 3. **Optional Hard Guardrails**:
-   - Projects that opt in (`/adr-guard on`) attach a Git commit gate so architecturally significant `feat:`/`refactor:` changes cannot land unrecorded. The gate is a per-project switch, not a built-in assumption of the SDD flow.
+   - Projects that opt in (`/adr guard on`) attach a Git commit gate so architecturally significant `feat:`/`refactor:` changes cannot land unrecorded. The gate is a per-project switch, not a built-in assumption of the SDD flow.
 
 ---
 
-## Relationship with Standalone ADR Governance (`adr-guard`)
+## Relationship with Standalone ADR Governance (`adr`)
 
 ADR plays a dual role in the engineering configuration:
-1. **Standalone Architecture Governance Tool (`adr-guard`)**: Operates independently with `/adr new`, `/adr supersede`, `/adr tree/map`, `/adr check/lint`, flat/hierarchical directory modes, and the Git commit gate (`/adr-guard on`).
+1. **Standalone Architecture Governance Tool (`adr`)**: Operates independently with `/adr new`, `/adr supersede`, `/adr tree/map`, `/adr check/lint`, flat/hierarchical directory modes, and the Git commit gate (`/adr guard on`).
 2. **SDD Architectural Phase (`/adr`)**: Serves as the architecture design phase in the SDD lifecycle, automatically inheriting requirements from `/prd` and feeding decisions into `/plan`.
 
-SDD acts as the **Lifecycle Orchestrator** while `adr-guard` serves as the **Specialized Architecture Engine**. Developers can use `/adr` standalone without doing a full SDD cycle, or seamlessly flow through SDD where `/adr` provides architectural grounding.
+SDD acts as the **Lifecycle Orchestrator** while `adr` serves as the **Specialized Architecture Engine**. Developers can use `/adr` standalone without doing a full SDD cycle, or seamlessly flow through SDD where `/adr` provides architectural grounding.
 
 ---
 

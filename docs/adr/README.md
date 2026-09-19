@@ -60,7 +60,7 @@ append a section when the decision belongs to the current delivery scope.
 - Do not invent a baseline or iteration number. Use the release/version plan
   or an existing container; ask the user when neither is authoritative.
 
-The hard `adr-guard` commit gate remains narrower: when enabled it enforces
+The hard `adr` commit gate (`/adr guard`) remains narrower: when enabled it enforces
 ADR coverage for `feat` and `refactor` commits. That gate is not the iteration
 classifier and does not replace architectural judgment.
 

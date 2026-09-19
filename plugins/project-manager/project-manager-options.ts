@@ -4,7 +4,7 @@ import {
   normalizeAdrGovernance,
   normalizeAdrNumbering,
   normalizeAdrStyle,
-} from "../adr-guard/adr-guard-config"
+} from "../adr/adr-config"
 import type { ProjectSwitches } from "./project-manager-scaffold"
 
 export const PROJECT_SWITCH_DEFAULTS = {
@@ -95,7 +95,7 @@ export function detectProjectSwitches(rootDir: string): DetectedProjectState {
   }
 
   // Nested ADL block (ADR 0007 §6): surfaced on the wizard `adr` group.
-  // Validated through adr-guard's own normalizers so the wizard can only
+  // Validated through the adr plugin's own normalizers so the wizard can only
   // ever echo (and re-save) values the runtime would accept. Absent/invalid
   // → key stays undefined → the schema `default` drives display, and a save
   // that never touched ADL settings writes nothing.

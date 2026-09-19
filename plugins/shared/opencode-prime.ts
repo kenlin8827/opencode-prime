@@ -1,7 +1,7 @@
 /**
  * Shared OCP path contract + project-level ocp.json field IO.
  *
- * Several plugins (adr-guard, env-guard, auto-advisor) store a per-project
+ * Several plugins (adr, env-guard, auto-advisor) store a per-project
  * switch as a top-level field of the project's OCP config. They all need
  * the same plumbing: resolving the project directory, locating the config
  * file, parsing JSONC, and upserting/removing a single field without

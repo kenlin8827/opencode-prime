@@ -37,14 +37,14 @@ import {
   setProjectDir,
   clearState,
   setState,
-} from "../plugins/adr-guard/adr-guard-config"
+} from "../plugins/adr/adr-config"
 import {
   appendExtraSections,
   createAdr,
   regenerateAdlIndexes,
   renderAdrFilename,
   slugify,
-} from "../plugins/adr-guard/adr-engine"
+} from "../plugins/adr/adr-engine"
 import {
   getAdrConfigRuntimeFragment,
   getGuardHintPrompt,
@@ -52,9 +52,9 @@ import {
   MARKER_HINT,
   PROTOCOL_SKILL_REF,
   resetAdrLastGoodFragment,
-} from "../plugins/adr-guard/adr-guard-instructions"
-import { renderAdlIndex, renderUnifiedIndexRow, type IndexColumn } from "../plugins/adr-guard/adr-views"
-import type { NormalizedAdrRecord } from "../plugins/adr-guard/adr-types"
+} from "../plugins/adr/adr-instructions"
+import { renderAdlIndex, renderUnifiedIndexRow, type IndexColumn } from "../plugins/adr/adr-views"
+import type { NormalizedAdrRecord } from "../plugins/adr/adr-types"
 
 let passed = 0
 let failed = 0
@@ -416,7 +416,7 @@ function test16_RuntimeConfigFragment(): void {
     assert(!hintPrompt.includes("ADR Iron Law"), "hint does NOT inline the protocol body (Phase 7.8)")
     assert(hintPrompt.includes("adr-protocol"), "hint points at the adr-protocol skill")
     assert(hintPrompt.includes("/adr config"), "hint advertises /adr config")
-    assert(hintPrompt.includes("/adr-guard on"), "hint advertises how to enable the gate")
+    assert(hintPrompt.includes("/adr guard on"), "hint advertises how to enable the gate")
     assert(!defFragment.includes("ADR Iron Law"), "config fragment does NOT inline the protocol body")
     assert(hintPrompt.length < defFragment.length, "hint is smaller than the config fragment")
 

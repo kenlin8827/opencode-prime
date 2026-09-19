@@ -36,8 +36,8 @@ import {
   normalizeAdrNumbering,
   normalizeAdrStyle,
   upsertAdrBlock,
-} from "../adr-guard/adr-guard-config"
-import type { AdrGovernance, AdrNumbering, AdrStyle } from "../adr-guard/adr-types"
+} from "../adr/adr-config"
+import type { AdrGovernance, AdrNumbering, AdrStyle } from "../adr/adr-types"
 
 // ─── Templates ───────────────────────────────────────────────────────
 
@@ -205,7 +205,7 @@ export interface ProjectSwitches {
 
 /**
  * Map the wizard's ADL switch keys onto the nested `adr.*` block fields.
- * Values failing adr-guard's normalizers are dropped (never persisted) —
+ * Values failing the adr plugin's normalizers are dropped (never persisted) —
  * same fail-closed posture as `/adr init custom` validation.
  */
 function adrBlockFieldsFromSwitches(switches: ProjectSwitches): Record<string, string> {
@@ -230,7 +230,7 @@ function adrBlockFieldsFromSwitches(switches: ProjectSwitches): Record<string, s
  * ADL switches (`adrStyle`/`adrNumbering`/`adrGovernance`) take a
  * second pass through `upsertAdrBlock` into the nested `"adr"` object —
  * they are never written as root keys. Legacy root keys (adrGuard/adrDir/
- * adrLayout) keep working unchanged and keep precedence where adr-guard
+ * adrLayout) keep working unchanged and keep precedence where adr
  * defines it.
  */
 export function applySwitchesToConfigContent(

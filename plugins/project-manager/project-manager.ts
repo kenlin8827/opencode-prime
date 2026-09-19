@@ -21,7 +21,7 @@
  *                    `gitnexus analyze` when the index is stale (a first
  *                    index is init's job, never created here).
  *
- * File layout: one entry + one job per file (same pattern as adr-guard).
+ * File layout: one entry + one job per file (same pattern as adr).
  *   project-manager-config.ts        — command name, project dir, target list
  *   project-manager-scaffold.ts      — exists-check-then-write init; template
  *                                      bodies live in templates/ (read once)

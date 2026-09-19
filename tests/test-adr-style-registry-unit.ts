@@ -36,7 +36,7 @@ import {
   setProjectDir,
   stripJsonc,
   upsertAdrBlock,
-} from "../plugins/adr-guard/adr-guard-config"
+} from "../plugins/adr/adr-config"
 import {
   allocateAdrIterationId,
   appendAdrSection,
@@ -49,22 +49,22 @@ import {
   resolveAdrRef,
   supersedeAdr,
   toNormalizedRecord,
-} from "../plugins/adr-guard/adr-engine"
+} from "../plugins/adr/adr-engine"
 import {
   getAdrStyleAdapter,
   listAdrStyles,
   resolveDocumentAdapter,
-} from "../plugins/adr-guard/adr-style-registry"
+} from "../plugins/adr/adr-style-registry"
 import {
   adrIdFromFilename,
   bareAdrId,
   normalizeAdrId,
   type AdrDocument,
   type AdrStyle,
-} from "../plugins/adr-guard/adr-types"
-import { madrAdapter } from "../plugins/adr-guard/styles/madr"
-import { nygardAdapter } from "../plugins/adr-guard/styles/nygard"
-import { ocpAdapter } from "../plugins/adr-guard/styles/ocp"
+} from "../plugins/adr/adr-types"
+import { madrAdapter } from "../plugins/adr/styles/madr"
+import { nygardAdapter } from "../plugins/adr/styles/nygard"
+import { ocpAdapter } from "../plugins/adr/styles/ocp"
 
 let passed = 0
 let failed = 0

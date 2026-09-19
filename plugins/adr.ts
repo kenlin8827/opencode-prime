@@ -5,6 +5,6 @@
  * for `.ts` files. Each file is loaded as a module and its exported plugin
  * functions are registered. This thin file ensures OpenCode picks it up.
  *
- * See: plugins/adr-guard/adr-guard.ts
+ * See: plugins/adr/adr.ts
  */
-export { AdrGuardPlugin } from "./adr-guard/adr-guard"
+export { AdrPlugin } from "./adr/adr"

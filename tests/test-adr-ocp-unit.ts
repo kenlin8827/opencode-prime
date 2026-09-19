@@ -20,7 +20,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:f
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { setProjectDir } from "../plugins/adr-guard/adr-guard-config"
+import { setProjectDir } from "../plugins/adr/adr-config"
 import {
   allocateAdrIterationId,
   appendAdrSection,
@@ -29,12 +29,12 @@ import {
   createAdrContainer,
   getNormalizedAdrs,
   supersedeAdr,
-} from "../plugins/adr-guard/adr-engine"
-import { getAdrStyleAdapter, listAdrStyles, resolveDocumentAdapter } from "../plugins/adr-guard/adr-style-registry"
-import type { AdrDocument } from "../plugins/adr-guard/adr-types"
-import { adrIdFromFilename, normalizeAdrId } from "../plugins/adr-guard/adr-types"
-import { buildAdrHistory, buildSectionEdges, renderAdrHistory, resolveRecordByRef } from "../plugins/adr-guard/adr-views"
-import { ocpAdapter } from "../plugins/adr-guard/styles/ocp"
+} from "../plugins/adr/adr-engine"
+import { getAdrStyleAdapter, listAdrStyles, resolveDocumentAdapter } from "../plugins/adr/adr-style-registry"
+import type { AdrDocument } from "../plugins/adr/adr-types"
+import { adrIdFromFilename, normalizeAdrId } from "../plugins/adr/adr-types"
+import { buildAdrHistory, buildSectionEdges, renderAdrHistory, resolveRecordByRef } from "../plugins/adr/adr-views"
+import { ocpAdapter } from "../plugins/adr/styles/ocp"
 
 let passed = 0
 let failed = 0

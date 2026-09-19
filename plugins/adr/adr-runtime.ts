@@ -1,5 +1,5 @@
 /**
- * Shared adr-guard runtime — log helper, bash command parsing,
+ * Shared adr runtime — log helper, bash command parsing,
  * conventional-commit type detection, and git working-tree ADR detection.
  * Single source of truth for utilities every hook reuses.
  */
@@ -87,7 +87,7 @@ export function isGitCommit(command: string): boolean {
 // `|`, …) or glued to the END of a token (`--amend&&`, `push;`). Leading-glued
 // forms (`done&&git`) and shell wrappers (`bash -c '...'`, `$(...)`) are NOT
 // split by the tokenizer; such commits escape the mechanical gate and are
-// covered by protocol discipline instead (see adr-guard-protocol.md).
+// covered by protocol discipline instead (see `skills/adr-protocol/SKILL.md`).
 const BOUNDARY_RE = /^(?:&&|\|\||[;|&])+/
 const TRAILING_BOUNDARY_RE = /(?:&&|\|\||[;|&])+$/
 

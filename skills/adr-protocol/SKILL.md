@@ -1,7 +1,7 @@
 ---
 name: adr-protocol
 description: |
-  ADR (Architecture Decision Record) protocol for the OCP adr-guard engine —
+  ADR (Architecture Decision Record) protocol for the OCP adr engine —
   iron law, governance modes, hierarchical model, slash commands, project-level
   overrides, natural-language triggers, commit checklist, per-style output
   protocol (madr / nygard / ocp), prose language rule, frontmatter semantics,
@@ -76,7 +76,7 @@ In complex codebases, ADRs are structured into three distinct layers:
 - `/adr tree` — Visualizes the full hierarchical decision map and Mermaid DAG.
 - `/adr check` — Validates links, frontmatter integrity, and index synchronization.
 - `/adr config [key] [value]` — Read or set a single project-level ADR config key (see §7). Keys: `style`, `numbering`, `layout`, `governance`, `filenamePattern`, `slugStyle`, `extraSections`, `indexColumns`. Use `/adr config reset <key>` to revert one key to its default.
-- `/adr-guard on|off|status` — Toggles the hard commit guard.
+- `/adr guard on|off|status` — Toggles the hard commit guard (alias: `/adr-guard`).
 
 ## §7. Project-level overrides (Phase 7)
 
@@ -144,7 +144,7 @@ intent and run the matching slash command. Common phrasings:
 | "看一下跟 ADR-0007 相关的所有决策 / context bundle" | `/adr context 0007` |
 | "把 ADR 目录打开严格治理 / turn on strict governance" | `/adr config governance strict` |
 | "我们的 ADR 用什么格式" / "what's our ADR config" | `/adr config` |
-| "开启 / 关闭 提交闸门 / enable / disable commit gate" | `/adr-guard on\|off` |
+| "开启 / 关闭 提交闸门 / enable / disable commit gate" | `/adr guard on\|off` |
 | "把 ADR 文件名加 ADR- 前缀" | `/adr config filenamePattern "ADR-{id}-{slug}"` |
 | "再加一个 Risks section 到所有 MADR" | `/adr config extraSections "## Risks"` |
 
@@ -199,7 +199,7 @@ multiple containers.
 
 ## Slash Command & Natural Language Auto-Drafting Protocol
 When `/adr`, `/adr new`, `/adr supersede`, or a natural language ADR request is received:
-1. **Scaffold Discovery**: The local TypeScript engine has already created the new `docs/adr/NNNN-slug.md` file (and updated `INDEX.md`). Find the latest ADR file in `docs/adr/` (or target layer directory). The ocp scaffold (`plugins/adr-guard/styles/ocp.ts`) emits the structured placeholders — fill the structure, do not rewrite it as a prose essay.
+1. **Scaffold Discovery**: The local TypeScript engine has already created the new `docs/adr/NNNN-slug.md` file (and updated `INDEX.md`). Find the latest ADR file in `docs/adr/` (or target layer directory). The ocp scaffold (`plugins/adr/styles/ocp.ts`) emits the structured placeholders — fill the structure, do not rewrite it as a prose essay.
 2. **Context Research**: Use tools (`read_file`, `grep_search`, `find_by_name`) to research the workspace context, current technical architecture, dependencies, and requirements.
 3. **Write the record** per the chosen style, **following the OCP output protocol** at `docs/adr/README.md` §OCP output protocol. The rules are the same for every style:
    - For `ocp`: numbered Cheatsheet (1–6, ≤ 60 chars each, ADR ref suffix) → mermaid `flowchart LR` + table Quick view (`≤ 2` figures) → sections with `**Background**` (≤ 3 sentences) → `**Decision**` as `| # | Point | Content |` table → `**Rationale**` ≥ 2 bullets, bold-keyword led → `**Rejected**` as `| Option | Reason rejected |` table → `**Impact**` layered bullets (Plugins / Runtime / Dispatcher / Installer / Tests / Docs) → optional `**Future extensions**`.
@@ -296,7 +296,7 @@ Frontmatter: `style/status/created/date` (+ `baseline/iteration` on the iteratio
 each ≤ 60 chars, ADR ref suffix, team language — the reader's primary entry)
 → `## Quick view` (diagrams/tables restate prose; mermaid `flowchart LR`
 preferred; ≤ 2 figures; tables fill the rest) → `---` → sections. **The
-scaffold from `plugins/adr-guard/styles/ocp.ts` emits the structured
+scaffold from `plugins/adr/styles/ocp.ts` emits the structured
 placeholders below; fill them, do not rewrite them as a prose essay.**
 Full rules: `docs/adr/README.md` §OCP output protocol.
 

@@ -29,19 +29,19 @@
  *     skill's job.
  *   - It no longer has an on/off branch — the iron-law switch
  *     `adrGuard` still exists in the config and gates the
- *     `tool.execute.before` commit guard (see `adr-guard-tool-guard.ts`),
+ *     `tool.execute.before` commit guard (see `adr-tool-guard.ts`),
  *     but it no longer toggles prompt content. The hint always
- *     advertises `/adr-guard on|off` so the user can enable the
+ *     advertises `/adr guard on|off` so the user can enable the
  *     mechanical gate when ready.
  */
 
 import { existsSync, readFileSync } from "node:fs"
 import { ocpConfigFile, stripJsonc } from "../shared/opencode-prime"
-import { getAdrConfig, getAdrDir } from "./adr-guard-config"
+import { getAdrConfig, getAdrDir } from "./adr-config"
 
 // ─── Markers ────────────────────────────────────────────────────────────
 // One marker per fragment — independent strip / re-inject.
-export const MARKER_HINT = "[ADR-GUARD]"
+export const MARKER_HINT = "[ADR]"
 export const MARKER_CONFIG = "[ADR-CONFIG-RUNTIME]"
 
 export const PROTOCOL_SKILL_REF = "`skills/adr-protocol/SKILL.md`"
@@ -63,7 +63,7 @@ export function getGuardHintPrompt(): string {
     `ADRs live under \`${getAdrDir()}/\`. Full protocol: load the\n` +
     `\`adr-protocol\` skill when an ADR intent arises. Commands:\n` +
     `\`/adr help\` · \`/adr new <title>\` · \`/adr config\` ·\n` +
-    `\`/adr-guard on|off\` (commit gate; currently a documentation-only\n` +
+    `\`/adr guard on|off\` (commit gate; currently a documentation-only\n` +
     `setup unless enabled).\n`
   )
 }

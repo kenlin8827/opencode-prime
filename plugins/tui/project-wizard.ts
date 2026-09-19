@@ -59,7 +59,7 @@ import {
   normalizeAdrLayout,
   normalizeAdrNumbering,
   normalizeAdrStyle,
-} from "../adr-guard/adr-guard-config"
+} from "../adr/adr-config"
 import { indexProject, initProject, syncProject, updateSwitches } from "../project-manager/project-manager-operations"
 import { planDprintSetup, setupDprint } from "../project-manager/project-manager-dprint"
 import { PROJECT_SWITCH_OPTIONS } from "../project-manager/project-manager-options"
@@ -122,8 +122,8 @@ export function cycleAdvisorMode(
  * numbering + governance + layout in one pick, mirroring `ADR_SUITES`
  * (which is data-driven from adr-suites.json). The suite's layout maps to
  * the LEGACY root `adrLayout` key: the wizard's layout field writes that
- * key and adr-guard gives it precedence over `adr.layout`, so the root key
- * is the authoritative surface here. Values pass through adr-guard's
+ * key and the adr plugin gives it precedence over `adr.layout`, so the root key
+ * is the authoritative surface here. Values pass through the adr plugin's
  * normalizers (fail-closed). Unknown suite names are a no-op.
  */
 export function applyAdrSuiteToSwitches(

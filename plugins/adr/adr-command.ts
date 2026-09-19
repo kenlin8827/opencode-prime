@@ -1,8 +1,9 @@
 /**
- * Hook: command.execute.before — handle `/adr-guard <state>` and `/adr <subcommand>`.
+ * Hook: command.execute.before — handle `/adr <subcommand>` (plus the
+ * `/adr-guard <state>` alias for the iron-law switch).
  *
  * Supported commands:
- *   /adr-guard on | off | reset | status
+ *   /adr guard on | off | reset | status   (alias: /adr-guard <state>)
  *   /adr new [layer|scope] <title>
  *   /adr decide <ADR-ID> [note]        (strict governance only)
  *   /adr supersede <old-id> <new-title>
@@ -49,7 +50,7 @@ import {
   renderTreeView,
   type AdrTreeGroupBy,
 } from "./adr-views"
-import { announce, announceStatus, announceSwitch } from "./adr-guard-announce"
+import { announce, announceStatus, announceSwitch } from "./adr-announce"
 import {
   ADR_COMMAND,
   clearAdrConfigKey,
@@ -78,9 +79,9 @@ import {
   setAdrLayout,
   setState,
   type AdrConfigKey,
-} from "./adr-guard-config"
+} from "./adr-config"
 import { readProjectConfig } from "../shared/opencode-prime"
-import { makeLogger } from "./adr-guard-runtime"
+import { makeLogger } from "./adr-runtime"
 
 type Log = ReturnType<typeof makeLogger>
 
@@ -108,34 +109,12 @@ function migrationLabels(): AdrStyleMigrationLabels {
 }
 
 export function makeCommandHook(client: PluginInput["client"], handled: () => never) {
-  const log: Log = makeLogger(client, "adr-guard")
+  const log: Log = makeLogger(client, "adr")
 
   return async (input: { command?: string; arguments?: string; sessionID?: string }) => {
+    // `/adr-guard` remains a first-class alias of `/adr guard <state>`.
     if (input.command === COMMAND_NAME) {
-      if (parseResetArg(input.arguments)) {
-        const cleared = clearState()
-        await log(
-          cleared ? "info" : "warn",
-          cleared
-            ? "adrGuard field removed — reverted to default off"
-            : "reset failed — project config not writable",
-        )
-        await announceStatus(client, input.sessionID)
-      } else {
-        const state = parseStateArg(input.arguments)
-        if (state) {
-          const written = setState(state)
-          await log(
-            written ? "info" : "warn",
-            written
-              ? `state=${state.toUpperCase()} — project .ocp/ocp.json written`
-              : `state=${state.toUpperCase()} — project config write failed (not writable)`,
-          )
-          await announceSwitch(client, state, input.sessionID)
-        } else {
-          await announceStatus(client, input.sessionID)
-        }
-      }
+      await handleGuardCommand(client, input.arguments || "", input.sessionID, log)
       return handled()
     }
 
@@ -145,6 +124,42 @@ export function makeCommandHook(client: PluginInput["client"], handled: () => ne
         return handled()
       }
       return
+    }
+  }
+}
+
+/** Iron-law commit-guard switch — shared by `/adr guard <state>` and the
+ * `/adr-guard` alias. `on|off` writes the project-level `adrGuard` field,
+ * `reset` removes it (back to default off); bare or unrecognized args
+ * print the status report. */
+async function handleGuardCommand(
+  client: PluginInput["client"],
+  rawArgs: string | undefined,
+  sessionID: string | undefined,
+  log: Log,
+): Promise<void> {
+  if (parseResetArg(rawArgs)) {
+    const cleared = clearState()
+    await log(
+      cleared ? "info" : "warn",
+      cleared
+        ? "adrGuard field removed — reverted to default off"
+        : "reset failed — project config not writable",
+    )
+    await announceStatus(client, sessionID)
+  } else {
+    const state = parseStateArg(rawArgs)
+    if (state) {
+      const written = setState(state)
+      await log(
+        written ? "info" : "warn",
+        written
+          ? `state=${state.toUpperCase()} — project .ocp/ocp.json written`
+          : `state=${state.toUpperCase()} — project config write failed (not writable)`,
+      )
+      await announceSwitch(client, state, sessionID)
+    } else {
+      await announceStatus(client, sessionID)
     }
   }
 }
@@ -167,6 +182,11 @@ async function handleAdrCommand(
   const parts = trimmed.split(/\s+/)
   const sub = parts[0].toLowerCase()
   const rest = trimmed.slice(parts[0].length).trim()
+
+  if (sub === "guard") {
+    await handleGuardCommand(client, rest, sessionID, log)
+    return { handled: true }
+  }
 
   if (sub === "layout") {
     if (!rest) {
@@ -523,7 +543,7 @@ async function handleAdrCommand(
     return { handled: true }
   }
 
-  if (sub === "new" || !["layout", "migrate", "refactor", "tree", "map", "check", "lint", "context", "history", "supersede", "init", "decide", "section"].includes(sub)) {
+  if (sub === "new" || !["layout", "config", "migrate", "refactor", "tree", "map", "check", "lint", "context", "history", "supersede", "init", "decide", "section", "guard"].includes(sub)) {
     const rawDecisionText = sub === "new" ? rest : trimmed
     const emptyFlagRegex = /(?:^|\s)(--empty|--scaffold|--no-draft)(?:\s|$)/i
     const isEmptyOnly = emptyFlagRegex.test(rawDecisionText)

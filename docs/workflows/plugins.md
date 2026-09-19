@@ -15,7 +15,7 @@ Plugins provide runtime enforcement and workflows that prompts alone cannot achi
 | `auto-format.ts` | Auto-runs the project-selected dprint/Biome/Prettier/ESLint/Ruff/gofmt/rustfmt after file edits; dprint and Biome require their config and project-local binary |
 | `auto-advisor-mode.ts` | `/auto-advisor` command, protocol injection, mode gating, red-team suppression |
 | `deepseek-anchor.ts` | `/deepseek-anchor` command — anchor-based reasoning protocols with DeepSeek models |
-| `adr-guard.ts` | `/adr-guard` command — per-project ADR enforcement |
+| `adr.ts` | `/adr` command suite — ADR workbench + per-project commit guard (`/adr guard`) |
 | `env-guard.ts` | Per-project secret-file gate |
 | `e2e-guard.ts` | `/e2e-guard` command — per-project gate: E2E runs need user confirmation |
 | `project-manager.ts` | `/project` command + commit discipline |
@@ -29,11 +29,11 @@ Plugins provide runtime enforcement and workflows that prompts alone cannot achi
 
 ---
 
-## ADR Iron Law & Living Architecture (`adr-guard` & `/adr`)
+## ADR Iron Law & Living Architecture (`adr` & `/adr`)
 
 Enterprise-grade Architecture Decision Record governance. Operates in two complementary modes:
 
-1. **Commit Iron Law (`/adr-guard`)** — Hard/soft guardrails preventing unrecorded architecture drift on `feat`/`refactor` commits.
+1. **Commit Iron Law (`/adr guard`)** — Hard/soft guardrails preventing unrecorded architecture drift on `feat`/`refactor` commits.
 2. **Hierarchical Living Architecture (`/adr`)** — Frictionless authoring, decision lifecycle management, multi-level hierarchy, and interactive DAG visualization.
 
 ### Switch & Configuration
@@ -41,9 +41,9 @@ Enterprise-grade Architecture Decision Record governance. Operates in two comple
 The commit guard switch is **project-level** (stored in `.ocp/ocp.json`):
 
 ```text
-/adr-guard on       # enable commit gate for this project
-/adr-guard off      # disable commit gate
-/adr-guard          # status report (state + ADR dir)
+/adr guard on       # enable commit gate for this project
+/adr guard off      # disable commit gate
+/adr guard          # status report (state + ADR dir)
 ```
 
 The ADR hierarchy layout is configured via `/adr layout`:

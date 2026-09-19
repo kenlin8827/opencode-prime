@@ -8,7 +8,7 @@
  *
  * The session.created announce was replaced by the TUI sidebar-status slot
  * plugin (plugins/sidebar-status.ts) which shows a persistent badge.
- * This file now only provides toast feedback for /adr-guard switches and
+ * This file now only provides toast feedback for /adr guard switches (and its /adr-guard alias) and
  * status reports.
  *
  * Toast-only strategy:
@@ -19,8 +19,8 @@
 
 import type { PluginInput } from "@opencode-ai/plugin"
 import { refreshLocale, tr } from "../tui/i18n"
-import { getAdrDir, getState, type GuardState } from "./adr-guard-config"
-import { makeLogger } from "./adr-guard-runtime"
+import { getAdrDir, getState, type GuardState } from "./adr-config"
+import { makeLogger } from "./adr-runtime"
 
 type Client = PluginInput["client"]
 
@@ -32,7 +32,7 @@ export function announceMessage(state: GuardState): string {
     : tr("guard.adr.announceOff")
 }
 
-/** Read-only status report for `/adr-guard` without a state argument. */
+/** Read-only status report for `/adr guard` without a state argument. */
 export function statusMessage(): string {
   refreshLocale()
   return tr("guard.adr.statusMsg", { state: getState().toUpperCase(), dir: getAdrDir() })
@@ -44,7 +44,7 @@ export function statusMessage(): string {
  * session start or a switch.
  */
 async function showToast(client: Client, message: string, variant: "warning" | "info"): Promise<void> {
-  const log = makeLogger(client, "adr-guard")
+  const log = makeLogger(client, "adr")
   try {
     await client.tui.showToast({ body: { message, variant } })
     await log("info", `announce: toast shown — ${message}`)
@@ -67,7 +67,7 @@ export async function announce(
   await showToast(client, message, variant)
 }
 
-/** Immediate user-visible confirmation for `/adr-guard on|off` switches. */
+/** Immediate user-visible confirmation for `/adr guard on|off` switches. */
 export async function announceSwitch(
   client: Client,
   state: GuardState,
@@ -76,7 +76,7 @@ export async function announceSwitch(
   await announce(client, announceMessage(state), state === "on" ? "warning" : "info", sessionID)
 }
 
-/** Immediate user-visible status report for bare `/adr-guard`. */
+/** Immediate user-visible status report for bare `/adr guard`. */
 export async function announceStatus(client: Client, sessionID?: string): Promise<void> {
   await announce(client, statusMessage(), "info", sessionID)
 }

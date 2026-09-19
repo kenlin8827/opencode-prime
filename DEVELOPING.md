@@ -374,7 +374,7 @@ Match the LLM-native mechanism to **what the content IS**, not what's most conve
 |---|---|---|
 | `project-profiler` | `[PROJECT CAPABILITIES]` block with backend state | Capability advertisement — declarative state the model reads per turn. Track changes via content-keyed cache (ADR 0002) so a stable profile does not re-inject. |
 | `auto-advisor` | `[AUTO-ADVISOR MODE: ...]` + `auto-advisor-protocol.md` | Imperative policy — protocol body cannot live in a tool description. Track mode in project config (`autoAdvisorMode`); the system-inject hook re-renders on mode change. |
-| `adr-guard` / `e2e-guard` / `env-guard` | `[GUARD: ...]` block + protocol markdown | Imperative rulebook. Switches share `plugins/shared/plugin-switch.ts`. |
+| `adr` / `e2e-guard` / `env-guard` | `[GUARD: ...]` block + protocol markdown | Imperative rulebook. Switches share `plugins/shared/plugin-switch.ts`. |
 | `deepseek-anchor` | `[DEEPSEEK REASONING ANCHOR]` + HARD RULE | One-shot tactical directive — must be in the prompt for the first turn, then lifted. In-memory session tracking, not config-driven. |
 | `lite-mode` | (no injection — strips only) | The strip gates every other injector; runs early in the hook chain. |
 | `project-manager` | `[PROJECT COMMIT CONVENTION]` block pointer | Progressive disclosure pointer — names the doc the model should read for the rule; not a workflow step in itself. |
@@ -399,7 +399,7 @@ OpenCode plugin hooks provide runtime guarantees that prompts alone cannot achie
 - **TUI plugins**: registered explicitly in `tui.template.jsonc:plugin` (`provider-wizard.ts`, `profile-wizard.ts`, `queue-manager.ts`, `sidebar-status.ts`, `usage.ts`) — TUI-only, no headless equivalent. `provider-wizard.ts` and `profile-wizard.ts` are dual-hosted: opencode loads them for the `/provider` and `/profile` slash commands, and the standalone OpenTUI app behind `ocp provider` / `ocp profile` loads the SAME modules through a `TuiPluginApi`-compatible host (`install/src/ui/app.tsx` + `tui-host.ts`). One wizard, two hosts — never re-implement wizard flows in `install/src/`.
 - **npm plugins**: the default `opencode.template.jsonc:plugin` array is empty — OCP does not ship any default npm plugin. Optional plugins (`opencode-qoder-bridge`, `opencode-mem@2.24.3`) remain opt-in via `install/options.jsonc` and are dynamically injected/pre-installed on install when enabled. `@dietrichgebert/ponytail` was removed entirely (ADR-0003).
 - **User-level plugin config**: `~/.config/opencode/ocp.json` (`plugins/shared/ocp-config.ts`) — one JSON file for cross-session user preferences shared by all ocp plugins (currently `language`, written by i18n). Plugins add their own namespaced keys via `readOcpField`/`writeOcpField`; unknown keys survive every write. Writes are pure JSON; reads are JSONC-tolerant (hand-edited comments keep working). `OCP_CONFIG_PATH` overrides the location (tests). The legacy `ocp.jsonc` rename is a one-shot performed by the installer (ADR 0004).
-- **Shared plumbing**: `plugins/shared/opencode-prime.ts` — project-dir resolution, JSONC parsing, field upsert, never-throw writes; used by auto-advisor, adr-guard, env-guard, e2e-guard, project-manager. `plugins/shared/plugin-scope.ts` — the runtime injection gate: every `system.transform` protocol injector awaits `scoped(input, output.system, "<plugin-id>", client)` before injecting; policy lives in `plugin-scope.json` (repo root, shipped) as `identifiers` (text detection) plus per-plugin `deny`/`allow` lists with scope grammar `x` / `x:*`; the `"*"` entry is the inherited default (deny `lite`, `utility`, `subagent:*`). Fail-open. `plugins/shared/system-block.ts` — shared `appendBlock` / `stripBlockByLine` / `escapeRegExp` for `system.transform` injectors: append lands on the last string entry OR pushes a fresh entry when the runtime shape is empty / all-object (the fix for the 2026-09-11 silent-drop regression in opencode versions that pass non-string arrays); strip uses a line-start regex derived from the marker via `escapeRegExp`, so a marker rename stays single-source. Used by project-profiler, project-manager, auto-advisor. `plugins/shared/plugin-switch.ts` — shared project-level on/off state machine (`createPluginSwitch` factory + `normalizeSwitchState` helper): a plugin declares its field name, alias table, default state, and which canonical states count as "on"; the helper handles read-from-config / write-to-config / clear-to-default plumbing via `opencode-prime.ts`. Used by auto-advisor (`off`/`lite`/`full`), adr-guard, env-guard, e2e-guard, project-memory (`on`/`off`). Pure-function core (`normalizeSwitchState`) is exported for unit tests.
+- **Shared plumbing**: `plugins/shared/opencode-prime.ts` — project-dir resolution, JSONC parsing, field upsert, never-throw writes; used by auto-advisor, adr, env-guard, e2e-guard, project-manager. `plugins/shared/plugin-scope.ts` — the runtime injection gate: every `system.transform` protocol injector awaits `scoped(input, output.system, "<plugin-id>", client)` before injecting; policy lives in `plugin-scope.json` (repo root, shipped) as `identifiers` (text detection) plus per-plugin `deny`/`allow` lists with scope grammar `x` / `x:*`; the `"*"` entry is the inherited default (deny `lite`, `utility`, `subagent:*`). Fail-open. `plugins/shared/system-block.ts` — shared `appendBlock` / `stripBlockByLine` / `escapeRegExp` for `system.transform` injectors: append lands on the last string entry OR pushes a fresh entry when the runtime shape is empty / all-object (the fix for the 2026-09-11 silent-drop regression in opencode versions that pass non-string arrays); strip uses a line-start regex derived from the marker via `escapeRegExp`, so a marker rename stays single-source. Used by project-profiler, project-manager, auto-advisor. `plugins/shared/plugin-switch.ts` — shared project-level on/off state machine (`createPluginSwitch` factory + `normalizeSwitchState` helper): a plugin declares its field name, alias table, default state, and which canonical states count as "on"; the helper handles read-from-config / write-to-config / clear-to-default plumbing via `opencode-prime.ts`. Used by auto-advisor (`off`/`lite`/`full`), adr, env-guard, e2e-guard, project-memory (`on`/`off`). Pure-function core (`normalizeSwitchState`) is exported for unit tests.
 
 ### Hook inventory
 
@@ -414,7 +414,7 @@ OpenCode plugin hooks provide runtime guarantees that prompts alone cannot achie
 | `rtk-write.ts` (+ `plugins/rtk-write/`) | command rewrite | Vendored rtk integration: rewrites shell commands through the rtk compression proxy transparently. |
 | `auto-advisor-mode.ts` (+ `plugins/auto-advisor/`) | 5 hooks — see below | Advisor modes off/lite/full; protocol injection; full-mode auto-execute; red-team suppression. |
 | `deepseek-anchor.ts` (+ `plugins/deepseek-anchor/`) | `config` + `command.execute.before` + `system.transform` | `/deepseek-anchor` command; anchor-based reasoning protocols with DeepSeek models. |
-| `adr-guard.ts` (+ `plugins/adr-guard/`) | `config` + `command.execute.before` + `system.transform` + `tool.execute.before` + `event: session.created` | `/adr-guard` command; ADR iron-law protocol injection; hard-blocks `feat`/`refactor` commits without an ADR in the change set. |
+| `adr.ts` (+ `plugins/adr/`) | `config` + `command.execute.before` + `system.transform` + `tool.execute.before` | `/adr` command suite (guard switch `/adr guard`, alias `/adr-guard`); ADR iron-law protocol injection; hard-blocks `feat`/`refactor` commits without an ADR in the change set. |
 | `env-guard.ts` (+ `plugins/env-guard/`) | `tool.execute.before` | Secret-file gate: blocks reads/copies of secret-bearing `.env*` files. |
 | `e2e-guard.ts` (+ `plugins/e2e-guard/`) | `config` + `command.execute.before` + `system.transform` | `/e2e-guard on|off|status` command; system prompt E2E protocol injection; guides LLM to evaluate E2E impact on `feat`/`fix` tasks, flag test gaps, and interactively confirm with the user via `ask` before running (scoped to primary agents). |
 | `project-manager.ts` (+ `plugins/project-manager/`) | `config` + `command.execute.before` + `system.transform` + `tool.execute.before` + `event: session.created` | `/project init|index|sync` commands; init runs the one-shot legacy migration (`.opencode/` OCP state → `.ocp/`, ADR 0004) then creates missing baseline files (`.ocp/ocp.json`, `docs/git-commits.md`, `AGENTS.md`, never overwrites); sync re-runs the migration on demand; file-as-switch commit discipline; one-time `/project init` suggestion. |
@@ -532,7 +532,7 @@ $env:LLM_ROUTER_API_KEY  = "<your-api-key>"
 | Decision strategy | Two-tier decision strategy, subagent no-ask rule, blocking markers |
 | Advisor e2e | `/auto-advisor off/lite/full` state writes, invalid-arg no-op, off-mode soft guard (no auto-dispatch, manual @ allowed), cross-process persistence |
 | Profiles | Every profile applies cleanly to a fresh template (agent refs, root model, untouched tiers) |
-| Plugin units | adr-guard commit gating, env-guard blocking matrix, e2e-guard state & prompt injection, project-manager gates, queue-manager behavior, deepseek-anchor protocol |
+| Plugin units | adr guard commit gating, env-guard blocking matrix, e2e-guard state & prompt injection, project-manager gates, queue-manager behavior, deepseek-anchor protocol |
 | build.md / plan.md | Routing table, team table, workflow templates, identity, read-only rule |
 
 ---
@@ -634,8 +634,8 @@ plugins/
 ├── shared/provider-creds.ts      # Credential single source of truth (auth store + config apiKeys; used by the wizard's disconnect flows)
 ├── auto-advisor-mode.ts           # Barrel: advisor mode guard (5 hooks)
 ├── auto-advisor/                  # Mode config, runtime, protocol, per-hook helpers
-├── adr-guard.ts                   # Barrel: ADR iron-law plugin
-├── adr-guard/                     # Config, runtime, guards, protocol, per-hook helpers
+├── adr.ts                         # Barrel: ADR workbench + iron-law guard
+├── adr/                           # Engine, config, runtime, guard submodules, styles
 ├── env-guard.ts                   # Barrel: secret-file gate
 ├── env-guard/                     # Config, runtime, tool guard
 ├── e2e-guard.ts                   # Barrel: E2E guard plugin
@@ -669,7 +669,7 @@ tests/
 ├── test-all.ps1              # Main test runner (structural + prompt tests)
 ├── test-profiles.ps1         # Profile stress test
 ├── test-advisor-e2e.ps1      # Advisor-mode end-to-end (needs opencode CLI)
-├── test-*-unit.ts            # Bun unit tests (adr-guard, env-guard, e2e-guard,
+├── test-*-unit.ts            # Bun unit tests (adr, env-guard, e2e-guard,
 │                             #   project-manager, queue-manager, anchor)
 ├── test-build/plan/subagent/ # Prompt dispatch tests
 ├── test-decisions.ps1        # Decision strategy checks

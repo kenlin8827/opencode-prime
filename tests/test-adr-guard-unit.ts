@@ -22,7 +22,7 @@
  * Run: bun run tests/test-adr-guard-unit.ts   (or: npx tsx tests/test-adr-guard-unit.ts)
  */
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, renameSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join, dirname, basename } from "node:path"
@@ -40,9 +40,9 @@ import {
   setAdrConfigFields,
   stripJsonc,
   COMMAND_NAME,
-} from "../plugins/adr-guard/adr-guard-config"
-import { createAdr, getNormalizedAdrs, supersedeAdr } from "../plugins/adr-guard/adr-engine"
-import { decideAdr, DECISIONS_LEDGER_REL, readDecidedIds, stagedAcceptFlips, acceptFlipsFromDiff } from "../plugins/adr-guard/adr-governance"
+} from "../plugins/adr/adr-config"
+import { createAdr, getNormalizedAdrs, supersedeAdr } from "../plugins/adr/adr-engine"
+import { decideAdr, DECISIONS_LEDGER_REL, readDecidedIds, stagedAcceptFlips, acceptFlipsFromDiff } from "../plugins/adr/adr-governance"
 import { setConfigField, clearConfigField } from "../plugins/shared/opencode-prime"
 import {
   tokenize,
@@ -52,10 +52,10 @@ import {
   requiresAdr,
   segmentCommitsAll,
   segmentCommitsNamedPaths,
-} from "../plugins/adr-guard/adr-guard-runtime"
-import { makeSystemHook } from "../plugins/adr-guard/adr-guard-system-inject"
-import { makeToolGuardHook } from "../plugins/adr-guard/adr-guard-tool-guard"
-import { AdrGuardPlugin } from "../plugins/adr-guard/adr-guard"
+} from "../plugins/adr/adr-runtime"
+import { makeSystemHook } from "../plugins/adr/adr-system-inject"
+import { makeToolGuardHook } from "../plugins/adr/adr-tool-guard"
+import { AdrPlugin } from "../plugins/adr/adr"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(__dirname, "..")
@@ -222,6 +222,67 @@ function test05_StateParsing() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════
+//  5b. /adr guard routing + /adr-guard alias equivalence
+// ═════════════════════════════════════════════════════════════════════════
+
+async function test05b_GuardCommandRouting() {
+  section("05b: /adr guard routing + /adr-guard alias")
+  const toasts: { message: string; level: string }[] = []
+  const mockClient: any = {
+    app: { log: async () => {} },
+    tui: { showToast: async (args: any) => { toasts.push({ message: String(args?.body?.message ?? ""), level: String(args?.body?.variant ?? "") }) } },
+    session: { prompt: async () => {} },
+  }
+  const tmp = mkdtempSync(join(tmpdir(), "adr-guard-route-"))
+  try {
+    const plugin = (await AdrPlugin({ client: mockClient, directory: tmp } as any)) as any
+    const cmdHook = plugin["command.execute.before"]
+
+    // `/adr guard on` — routed subcommand: handled (204) + switch flipped
+    toasts.length = 0
+    let threw: any = null
+    try { await cmdHook({ command: "adr", arguments: "guard on", sessionID: "r-1" }) } catch (e) { threw = e }
+    assert(threw !== null, "/adr guard on is handled (204)")
+    assert(getState() === "on", "/adr guard on flips the switch")
+    assert(toasts.some((t) => t.message.includes("ON")), "/adr guard on announces ON")
+
+    // alias parity: /adr-guard off
+    toasts.length = 0
+    threw = null
+    try { await cmdHook({ command: "adr-guard", arguments: "off", sessionID: "r-2" }) } catch (e) { threw = e }
+    assert(threw !== null, "/adr-guard off alias still handled (204)")
+    assert(getState() === "off", "/adr-guard off flips the switch back")
+    assert(toasts.some((t) => t.message.includes("OFF")), "alias announces OFF")
+
+    // status: /adr guard status → status report, switch untouched
+    toasts.length = 0
+    threw = null
+    try { await cmdHook({ command: "adr", arguments: "guard status", sessionID: "r-3" }) } catch (e) { threw = e }
+    assert(threw !== null, "/adr guard status is handled (204)")
+    assert(toasts.some((t) => t.message.toUpperCase().includes("STATUS")), "/adr guard status announces state")
+
+    // reset: removes the adrGuard field (back to default off)
+    try { await cmdHook({ command: "adr", arguments: "guard on", sessionID: "r-4" }) } catch { /* 204 */ }
+    assert(getState() === "on", "pre-reset state on")
+    toasts.length = 0
+    threw = null
+    try { await cmdHook({ command: "adr", arguments: "guard reset", sessionID: "r-5" }) } catch (e) { threw = e }
+    assert(threw !== null, "/adr guard reset is handled (204)")
+    assert(getState() === "off", "/adr guard reset reverts to default off")
+
+    // bare `/adr guard` must NOT fall through to the new-decision branch
+    const adrDir = join(tmp, "docs", "adr")
+    const before = existsSync(adrDir) ? readdirSync(adrDir).length : 0
+    try { await cmdHook({ command: "adr", arguments: "guard", sessionID: "r-6" }) } catch { /* 204 */ }
+    const after = existsSync(adrDir) ? readdirSync(adrDir).length : 0
+    assert(before === after, "bare /adr guard creates NO ADR (no fall-through to new)")
+  } finally {
+    setProjectDir(REPO_ROOT)
+    rmSync(tmp, { recursive: true, force: true })
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
 //  6. System hook — inject when on, idempotent, strip when off
 // ═════════════════════════════════════════════════════════════════════════
 
@@ -235,7 +296,7 @@ async function test06_SystemHook() {
   setState("on")
   const out1 = { system: ["base prompt"] }
   await hook({}, out1 as any)
-  assert(out1.system[0].includes("[ADR-GUARD]"), "hint marker injected (state=on)")
+  assert(out1.system[0].includes("[ADR]"), "hint marker injected (state=on)")
   assert(out1.system[0].includes("[ADR-CONFIG-RUNTIME]"), "config marker injected (state=on)")
   assert(!out1.system[0].includes("ADR Iron Law"), "protocol body NEVER inlined (skill-based, Phase 7.8)")
   assert(out1.system[0].includes("adrDir"), "runtime adrDir field present in config table")
@@ -252,13 +313,13 @@ async function test06_SystemHook() {
   // longer toggles prompt content); no protocol body appears either way.
   setState("off")
   await hook({}, out1 as any)
-  assert(out1.system[0].includes("[ADR-GUARD]"), "hint marker still injected (state=off)")
+  assert(out1.system[0].includes("[ADR]"), "hint marker still injected (state=off)")
   assert(out1.system[0].includes("[ADR-CONFIG-RUNTIME]"), "config marker still injected (state=off)")
   assert(!out1.system[0].includes("ADR Iron Law"), "no protocol body in off state either")
 
   const out2 = { system: ["base prompt"] }
   await hook({}, out2 as any)
-  assert(out2.system[0].includes("[ADR-GUARD]"), "fresh prompt → hint injected")
+  assert(out2.system[0].includes("[ADR]"), "fresh prompt → hint injected")
   assert(out2.system[0].includes("[ADR-CONFIG-RUNTIME]"), "fresh prompt → config injected")
   assert(out2.system[0].includes("/adr config"), "hint advertises /adr config")
 
@@ -267,9 +328,9 @@ async function test06_SystemHook() {
   const out3 = { system: ["entry A", "entry B"] }
   await hook({}, out3 as any)
   assert(out3.system[0] === "entry A", "multi-entry: first entry untouched")
-  assert(out3.system[1].includes("[ADR-GUARD]"), "hint marker present in last entry only")
+  assert(out3.system[1].includes("[ADR]"), "hint marker present in last entry only")
   assert(out3.system[1].includes("[ADR-CONFIG-RUNTIME]"), "config marker present in last entry only")
-  assert(out3.system.filter((s) => s.includes("[ADR-GUARD]")).length === 1, "hint marker appears exactly once across entries")
+  assert(out3.system.filter((s) => s.includes("[ADR]")).length === 1, "hint marker appears exactly once across entries")
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -348,7 +409,7 @@ async function test07_ToolGuard() {
 
 async function test08_ConfigHook() {
   section("08: Config hook — command registration")
-  const plugin = (await AdrGuardPlugin({ client: fakeClient, directory: REPO_ROOT } as any)) as any
+  const plugin = (await AdrPlugin({ client: fakeClient, directory: REPO_ROOT } as any)) as any
   const cfg: any = {}
   await plugin["config"](cfg)
   assert(!!cfg.command, "cfg.command created")
@@ -374,7 +435,7 @@ async function test09_AdrCommandAutoDraft() {
 
   const tmpTestDir = mkdtempSync(join(tmpdir(), "adr-test-draft-"))
   try {
-    const plugin = (await AdrGuardPlugin({ client: mockClient, directory: tmpTestDir } as any)) as any
+    const plugin = (await AdrPlugin({ client: mockClient, directory: tmpTestDir } as any)) as any
     const cmdHook = plugin["command.execute.before"]
 
     // Test 1: /adr new with default auto-drafting
@@ -437,7 +498,7 @@ async function test10_AdrSupersede() {
 
   const tmpTestDir = mkdtempSync(join(tmpdir(), "adr-test-super-"))
   try {
-    const plugin = (await AdrGuardPlugin({ client: mockClient, directory: tmpTestDir } as any)) as any
+    const plugin = (await AdrPlugin({ client: mockClient, directory: tmpTestDir } as any)) as any
     const cmdHook = plugin["command.execute.before"]
 
     // Step 1: Create initial ADR 0001
@@ -601,7 +662,7 @@ async function test11_StrictGovernance() {
     assert(setAdrConfigFields({ governance: "strict" }), "governance restored to strict")
 
     // Command surface: /adr decide via the plugin command hook
-    const plugin = (await AdrGuardPlugin({ client: mockClient, directory: root } as any)) as any
+    const plugin = (await AdrPlugin({ client: mockClient, directory: root } as any)) as any
     const cmdHook = plugin["command.execute.before"]
     toasts.length = 0
     let handledThrown: any = null
@@ -1017,6 +1078,7 @@ async function main() {
     test04_TypeGate()
     test04b_StripJsonc()
     test05_StateParsing()
+    await test05b_GuardCommandRouting()
     await test06_SystemHook()
     await test07_ToolGuard()
     await test08_ConfigHook()

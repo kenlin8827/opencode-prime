@@ -1,10 +1,10 @@
 /**
- * Shared adr-guard config — project .ocp/ocp.json switch field + ADR
+ * Shared adr config — project .ocp/ocp.json switch field + ADR
  * directory + ADR layout. Single source of truth for reading,
  * writing, and normalizing each.
  *
  * State is PROJECT-LEVEL and lives in:
- *   - `adrGuard` — the on/off switch (default off; `/adr-guard on|off`)
+ *   - `adrGuard` — the on/off switch (default off; `/adr guard on|off`, alias `/adr-guard`)
  *   - `adrDir` — ADR directory (default "docs/adr")
  *   - `adrLayout` — hierarchy mode (auto / flat / hierarchical, default auto)
  *
@@ -12,9 +12,9 @@
  * ADR-directory and hierarchy-mode helpers below are plugin-specific
  * (no other plugin shares them).
  *
- * /adr-guard on|off writes the field into the project-level config
+ * /adr guard on|off (alias /adr-guard) writes the field into the project-level config
  * only (targeted upsert via ../shared/opencode-prime — comments and
- * unrelated fields survive); /adr-guard reset removes the field,
+ * unrelated fields survive); /adr guard reset removes the field,
  * reverting to the default off.
  *
  * The project directory is injected by the plugin entry via
@@ -69,7 +69,7 @@ export function getState(): GuardState {
   return adrSwitch.getState()
 }
 
-/** Where the current state came from (shown in `/adr-guard` status). */
+/** Where the current state came from (shown in `/adr guard` status). */
 export function getStateSource(): GuardStateSource {
   return adrSwitch.getStateSource()
 }
@@ -82,7 +82,7 @@ export function setState(state: GuardState): boolean {
 }
 
 /** Remove the `adrGuard` field from the project config so the state
- * reverts to the default off. Used by `/adr-guard reset`. */
+ * reverts to the default off. Used by `/adr guard reset`. */
 export function clearState(): boolean {
   return adrSwitch.clear()
 }
@@ -465,7 +465,7 @@ function readProjectOverrides(block: Record<string, unknown>): Pick<
  * throw. Suites resolve through ADR_SUITES (style/numbering/layout/
  * governance bundles), so the `--style`
  * override path is the one to guard — symmetric with the `/adr new` guard
- * in adr-guard-command.
+ * in adr-command.
  */
 export function isAdrStyleAvailable(style: unknown): boolean {
   const normalized = normalizeAdrStyle(style)
@@ -966,13 +966,13 @@ export const COMMAND_NAME = "adr-guard"
 export const ADR_COMMAND = "adr"
 
 /**
- * Parse the first argument of an `/adr-guard <state>` call. Returns
- * null if the argument is missing or not a valid state (caller treats
- * null as status).
+ * Parse the first argument of a `/adr guard <state>` (or `/adr-guard <state>`
+ * alias) call. Returns null if the argument is missing or not a valid state
+ * (caller treats null as status).
  *
- *   /adr-guard      → null (status)
- *   /adr-guard on   → "on"
- *   /adr-guard off  → "off"
+ *   /adr guard      → null (status)
+ *   /adr guard on   → "on"
+ *   /adr guard off  → "off"
  */
 export function parseStateArg(args: unknown): GuardState | null {
   return adrSwitch.parseArg(args)

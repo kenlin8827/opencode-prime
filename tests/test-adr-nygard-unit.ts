@@ -20,18 +20,18 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { setProjectDir } from "../plugins/adr-guard/adr-guard-config"
+import { setProjectDir } from "../plugins/adr/adr-config"
 import {
   checkAdrIntegrity,
   createAdr,
   generateDecisionMap,
   getNormalizedAdrs,
   supersedeAdr,
-} from "../plugins/adr-guard/adr-engine"
-import { getAdrStyleAdapter, resolveDocumentAdapter } from "../plugins/adr-guard/adr-style-registry"
-import type { AdrDocument } from "../plugins/adr-guard/adr-types"
-import { madrAdapter } from "../plugins/adr-guard/styles/madr"
-import { nygardAdapter } from "../plugins/adr-guard/styles/nygard"
+} from "../plugins/adr/adr-engine"
+import { getAdrStyleAdapter, resolveDocumentAdapter } from "../plugins/adr/adr-style-registry"
+import type { AdrDocument } from "../plugins/adr/adr-types"
+import { madrAdapter } from "../plugins/adr/styles/madr"
+import { nygardAdapter } from "../plugins/adr/styles/nygard"
 
 let passed = 0
 let failed = 0

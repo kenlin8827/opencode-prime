@@ -41,7 +41,7 @@
 
 import type { PluginInput } from "@opencode-ai/plugin"
 import { refreshLocale, tr } from "../tui/i18n"
-import { getAdrConfig, getAdrDir, getAdrLayout, getProjectDir, isEnabled } from "./adr-guard-config"
+import { getAdrConfig, getAdrDir, getAdrLayout, getProjectDir, isEnabled } from "./adr-config"
 import { discoverAdrDirectories } from "./adr-engine"
 import { readDecidedIds, stagedAcceptFlips } from "./adr-governance"
 import {
@@ -53,7 +53,7 @@ import {
   requiresAdr,
   segmentCommitsAll,
   segmentCommitsNamedPaths,
-} from "./adr-guard-runtime"
+} from "./adr-runtime"
 
 type Log = ReturnType<typeof makeLogger>
 
@@ -112,7 +112,7 @@ function strictGateMessage(): string {
 }
 
 export function makeToolGuardHook(client: PluginInput["client"]) {
-  const log: Log = makeLogger(client, "adr-guard")
+  const log: Log = makeLogger(client, "adr")
 
   // NOT wrapped in safeHook — intentional throws must propagate to block
   // tool execution. safeHook would swallow them and defeat the guard.

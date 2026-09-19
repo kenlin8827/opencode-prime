@@ -27,8 +27,8 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { setProjectDir } from "../plugins/adr-guard/adr-guard-config"
-import { makeCommandHook } from "../plugins/adr-guard/adr-guard-command"
+import { setProjectDir } from "../plugins/adr/adr-config"
+import { makeCommandHook } from "../plugins/adr/adr-command"
 import {
   checkAdrIntegrity,
   createAdr,
@@ -36,7 +36,7 @@ import {
   getNormalizedAdrs,
   regenerateIterationIndex,
   resolveAdrRef,
-} from "../plugins/adr-guard/adr-engine"
+} from "../plugins/adr/adr-engine"
 import {
   buildIterationContext,
   byCreatedThenPath,
@@ -48,9 +48,9 @@ import {
   EVOLUTION_RISK_FLAG_KEY,
   EVOLUTION_RISK_FLAG_VALUE,
   type IterationContext,
-} from "../plugins/adr-guard/adr-evolution"
-import { renderTreeView } from "../plugins/adr-guard/adr-views"
-import type { NormalizedAdrRecord } from "../plugins/adr-guard/adr-types"
+} from "../plugins/adr/adr-evolution"
+import { renderTreeView } from "../plugins/adr/adr-views"
+import type { NormalizedAdrRecord } from "../plugins/adr/adr-types"
 
 const FIXTURE_DIR = join(import.meta.dir, "fixtures", "adr", "evolution")
 

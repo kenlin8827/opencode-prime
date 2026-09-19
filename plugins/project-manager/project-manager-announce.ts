@@ -7,7 +7,7 @@
  * suggestion — a project can legitimately opt out of them; they only refine
  * the message (e.g. "codegraph CLI installed but not indexed").
  *
- * Toast-only strategy (same as adr-guard-announce):
+ * Toast-only strategy (same as adr-announce):
  *   - session.created → top-level sessions only (subagent sessions carry
  *     parentID); fires ONCE per plugin instance (in-memory flag) so opening
  *     several sessions in one server run never nags repeatedly.

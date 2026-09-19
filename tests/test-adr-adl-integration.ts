@@ -24,7 +24,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { setProjectDir } from "../plugins/adr-guard/adr-guard-config"
+import { setProjectDir } from "../plugins/adr/adr-config"
 import {
   checkAdrIntegrity,
   createAdr,
@@ -32,8 +32,8 @@ import {
   getNormalizedAdrs,
   regenerateAdlIndexes,
   updateAdrIndex,
-} from "../plugins/adr-guard/adr-engine"
-import type { NormalizedAdrRecord } from "../plugins/adr-guard/adr-types"
+} from "../plugins/adr/adr-engine"
+import type { NormalizedAdrRecord } from "../plugins/adr/adr-types"
 import {
   ADR_TREE_GROUP_BY,
   buildAdrContext,
@@ -41,8 +41,8 @@ import {
   renderAdrContext,
   renderAdrHistory,
   renderTreeView,
-} from "../plugins/adr-guard/adr-views"
-import { makeCommandHook } from "../plugins/adr-guard/adr-guard-command"
+} from "../plugins/adr/adr-views"
+import { makeCommandHook } from "../plugins/adr/adr-command"
 
 const FIXTURE_DIR = join(import.meta.dir, "fixtures", "adr", "mixed-adl")
 

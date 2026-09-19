@@ -50,7 +50,7 @@ check("detectAgent returns null for empty/undefined input", detectAgent(undefine
 
 // --- Gate: text-identified contexts ---------------------------------------------
 check("scoped blocks injection for lite sessions", (await scoped(undefined, liteSystem, "sdd")) === false)
-check("scoped blocks injection for utility calls", (await scoped(undefined, utilitySystem, "adr-guard")) === false)
+check("scoped blocks injection for utility calls", (await scoped(undefined, utilitySystem, "adr")) === false)
 check("scoped allows injection for normal chat steps", (await scoped(undefined, normalSystem, "sdd")) === true)
 check("scoped allows when the system is empty/undefined", (await scoped(undefined, undefined, "sdd")) === true && (await scoped(undefined, [], "sdd")) === true)
 check("scoped treats non-string entries safely", (await scoped(undefined, [42, null], "sdd")) === true)

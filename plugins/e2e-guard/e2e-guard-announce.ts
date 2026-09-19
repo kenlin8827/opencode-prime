@@ -26,7 +26,7 @@ import type { PluginInput } from "@opencode-ai/plugin"
 import { refreshLocale, tr } from "../tui/i18n"
 import { getState, type GuardState } from "./e2e-guard-config"
 import { revokeApproval } from "./e2e-guard-runtime"
-import { makeLogger } from "../adr-guard/adr-guard-runtime"
+import { makeLogger } from "../adr/adr-runtime"
 
 type Client = PluginInput["client"]
 

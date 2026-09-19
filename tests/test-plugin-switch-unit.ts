@@ -86,7 +86,7 @@ const guardSwitch: PluginSwitch<"on" | "off"> = createPluginSwitch({
 })
 
 check(guardSwitch.spec.field === "testGuardField",
-  "createPluginSwitch: exposes the spec for callers that need it (e.g. adr-guard-command)")
+  "createPluginSwitch: exposes the spec for callers that need it (e.g. adr-command)")
 check(guardSwitch.getState() === "off",
   "createPluginSwitch: defaultState returned when config absent")
 check(guardSwitch.getStateSource() === "default",

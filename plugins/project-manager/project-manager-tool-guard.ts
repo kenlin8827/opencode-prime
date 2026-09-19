@@ -14,7 +14,7 @@
  * an actionable error when the message violates the structural rules.
  *
  * Exemptions / fail-open (never block on ambiguity, same stance as
- * adr-guard):
+ * adr):
  *   - `--amend` re-commits (rewriting history, not new work) — per invocation
  *   - Merge/revert/fixup/squash messages (git-generated forms)
  *   - No inline message (editor/heredoc commit) → allow; the injected
@@ -31,7 +31,7 @@ import {
   extractBashCommand,
   gitCommitSegments,
   makeLogger,
-} from "../adr-guard/adr-guard-runtime"
+} from "../adr/adr-runtime"
 import { GIT_COMMITS_REL, hasConventionFile } from "./project-manager-config"
 
 // Structural subset of Conventional Commits the gate can check mechanically.

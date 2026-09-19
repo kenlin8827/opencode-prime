@@ -1,12 +1,14 @@
 /**
- * ADR Iron Law (adr-guard) — project-level switch enforcing ADRs on feat/refactor commits.
- * `adr-guard` is the enforcement mechanism; the rule it enforces is still
- * called the ADR iron law in the protocol.
+ * ADR (adr) — the full ADR lifecycle workbench: creation, supersession,
+ * multi-style ADL (Nygard / MADR / OCP), migration, governance, evolution,
+ * views — plus the iron-law guard, the enforcement submodule that makes
+ * ADRs non-optional for feat/refactor commits.
  *
+ * Iron law (the guard submodule, off by default):
  *   on  — every feat/refactor commit MUST include a new or updated ADR
  *         (hard-blocked at git commit) + protocol injected into the system
  *         prompt so agents write the ADR proactively.
- *   off — default; the plugin is a complete no-op.
+ *   off — default; the guard is a complete no-op and `/adr` keeps working.
  *
  * ADRs follow the industry-standard MADR template, exactly as defined:
  * frontmatter `status` + `date`, then Context/Decision Outcome sections.
@@ -15,32 +17,30 @@
  * history, never in the number.
  *
  * File layout: one entry + one job per file.
- *   adr-guard-config.ts        — state normalize, project .ocp/ocp.json field IO,
+ *   adr-config.ts              — state normalize, project .ocp/ocp.json field IO,
  *                                  ADR dir resolution
- *   adr-guard-runtime.ts       — log, bash tokenizer, commit message/type
+ *   adr-runtime.ts             — log, bash tokenizer, commit message/type
  *                                  parsing, git working-tree ADR detection
- *   adr-guard-protocol.md      — iron-law protocol body (markdown, read
- *                                  once + cached)
- *   adr-guard-instructions.ts  — prompt fragment builder (marker + live
+ *   adr-command.ts             — command hook (/adr … incl. `guard`;
+ *                                  /adr-guard kept as a switch alias)
+ *   adr-instructions.ts  — prompt fragment builder (marker + live
  *                                  ADR dir)
- *   adr-guard-system-inject.ts — system-transform hook (injects protocol
+ *   adr-system-inject.ts — system-transform hook (injects protocol
  *                                  when on, strips stale block when off)
- *   adr-guard-tool-guard.ts    — tool.before hook: blocks feat/refactor
+ *   adr-tool-guard.ts    — tool.before hook: blocks feat/refactor
  *                                  git commit with no ADR change
- *   adr-guard-command.ts       — command hook (/adr-guard on|off|status)
- *   adr-guard-announce.ts      — toast feedback for /adr-guard
- *                                  on|off|status (switch confirmations
- *                                  and status reports)
+ *   adr-announce.ts      — toast feedback for the guard switch
+ *                                  (confirmations and status reports)
  *
  * Switch: `adrGuard` field in the project-level .ocp/ocp.json (no state file).
  */
 
 import type { Plugin } from "@opencode-ai/plugin"
 import { HttpServerResponse } from "effect/unstable/http"
-import { makeCommandHook } from "./adr-guard-command"
-import { ADR_COMMAND, COMMAND_NAME, setProjectDir } from "./adr-guard-config"
-import { makeSystemHook } from "./adr-guard-system-inject"
-import { makeToolGuardHook } from "./adr-guard-tool-guard"
+import { makeCommandHook } from "./adr-command"
+import { ADR_COMMAND, COMMAND_NAME, setProjectDir } from "./adr-config"
+import { makeSystemHook } from "./adr-system-inject"
+import { makeToolGuardHook } from "./adr-tool-guard"
 
 // OpenCode's command hook has no cancel/noReply output. Throwing a raw
 // Effect response is handled by OpenCode's HTTP layer as an empty
@@ -49,7 +49,7 @@ const handled = (): never => {
   throw HttpServerResponse.empty({ status: 204 })
 }
 
-export const AdrGuardPlugin: Plugin = async ({ client, directory }) => {
+export const AdrPlugin: Plugin = async ({ client, directory }) => {
   // Switch is project-level: pin state/config paths to this project's directory.
   setProjectDir(directory)
   return {
@@ -58,12 +58,12 @@ export const AdrGuardPlugin: Plugin = async ({ client, directory }) => {
       cfg.command[COMMAND_NAME] = {
         template: "",
         description:
-          "Toggle the ADR iron law for this project — every feat/refactor commit requires a new/updated ADR (on | off | status)",
+          "Alias of /adr guard — toggle the ADR iron law for this project — every feat/refactor commit requires a new/updated ADR (on | off | reset | status)",
       }
       cfg.command[ADR_COMMAND] = {
         template: "/adr $ARGUMENTS",
         description:
-          "Manage Architecture Decision Records (new | supersede | tree | check | help)",
+          "Manage Architecture Decision Records and the commit guard (new | supersede | tree | check | guard | help)",
       }
     },
     "command.execute.before": makeCommandHook(client, handled),

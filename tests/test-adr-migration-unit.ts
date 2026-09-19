@@ -22,8 +22,8 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, stat
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { setProjectDir } from "../plugins/adr-guard/adr-guard-config"
-import { checkAdrIntegrity, getAllAdrs } from "../plugins/adr-guard/adr-engine"
+import { setProjectDir } from "../plugins/adr/adr-config"
+import { checkAdrIntegrity, getAllAdrs } from "../plugins/adr/adr-engine"
 import {
   auditAdrStyles,
   EN_MIGRATION_LABELS,
@@ -31,10 +31,10 @@ import {
   planAdrStyleMigration,
   renderMigrationReport,
   rewriteStyleFrontmatter,
-} from "../plugins/adr-guard/adr-migration"
-import { resolveDocumentAdapter } from "../plugins/adr-guard/adr-style-registry"
-import { extractFrontmatter } from "../plugins/adr-guard/adr-types"
-import { makeCommandHook } from "../plugins/adr-guard/adr-guard-command"
+} from "../plugins/adr/adr-migration"
+import { resolveDocumentAdapter } from "../plugins/adr/adr-style-registry"
+import { extractFrontmatter } from "../plugins/adr/adr-types"
+import { makeCommandHook } from "../plugins/adr/adr-command"
 
 const FIXTURES = join(import.meta.dir, "fixtures", "adr")
 const LEGACY_FIXTURE = join(FIXTURES, "legacy")

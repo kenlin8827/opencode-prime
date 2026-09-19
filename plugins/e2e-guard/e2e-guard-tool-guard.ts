@@ -29,7 +29,7 @@
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
-import { extractBashCommand, makeLogger } from "../adr-guard/adr-guard-runtime"
+import { extractBashCommand, makeLogger } from "../adr/adr-runtime"
 import { isEnabled } from "./e2e-guard-config"
 import {
   blockMessageFull,

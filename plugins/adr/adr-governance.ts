@@ -25,7 +25,7 @@
 import { spawnSync } from "node:child_process"
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { basename, dirname, join } from "node:path"
-import { getAdrConfig, getAdrDir, getAdrLayout } from "./adr-guard-config"
+import { getAdrConfig, getAdrDir, getAdrLayout } from "./adr-config"
 import { getAllAdrs, resolveAdrRef, updateAdrIndex, type AdrMeta } from "./adr-engine"
 import { adrIdFromFilename, normalizeAdrId } from "./adr-types"
 
@@ -251,7 +251,7 @@ export function stagedAcceptFlips(
       // but never fail SILENTLY either, or a blind tripwire would pass
       // undecided flips while looking healthy.
       console.warn(
-        "[adr-guard] staged ADR diff probe failed (git error) — strict gate failed OPEN for this commit; " +
+        "[adr] staged ADR diff probe failed (git error) — strict gate failed OPEN for this commit; " +
           "undecided accept flips are NOT being checked. Investigate the git setup.",
       )
       return []

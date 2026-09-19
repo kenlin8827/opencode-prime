@@ -3,7 +3,7 @@
  * Sidebar Status — TUI slot plugin that renders two vertical status groups
  * inside the OpenCode right sidebar:
  *   "OCP"         — agent behavior/policy switches (independent of project):
- *                   adr-guard, e2e-guard, auto-advisor, deepseek-anchor,
+ *                   adr, e2e-guard, auto-advisor, deepseek-anchor,
  *                   plus the active profile.
  *   "OCP project" — current-directory OCP project state and capabilities:
  *                   scaffold (init state), memory (curated lessons for this
@@ -498,7 +498,7 @@ export async function fetchLatestVersion(lifecycleSignal?: AbortSignal): Promise
 // ─── Badge builders ─────────────────────────────────────────────────
 // Two semantic groups, rendered as two sidebar sections:
 //   "OCP"         — agent behavior/policy switches (profile + guards):
-//                   profile, adr-guard, e2e-guard, auto-advisor,
+//                   profile, adr, e2e-guard, auto-advisor,
 //                   deepseek-anchor. These change how the agent behaves
 //                   regardless of which project is open.
 //   "OCP project" — current-directory OCP project state + capabilities:
@@ -526,7 +526,7 @@ export function buildGuardBadges(projectDir: string, currentModelId?: string): B
   // Bare ON → success (green). OFF → info. State with a qualifier (e.g.
   // memory `ON · N`, `ON · empty`) → info — the qualifier IS the signal.
   const adr = resolveAdrGuard(projectDir)
-  badges.push({ label: "adr-guard", state: adr.toUpperCase(), variant: adr === "on" ? "success" : "info" })
+  badges.push({ label: "adr", state: adr.toUpperCase(), variant: adr === "on" ? "success" : "info" })
 
   const e2e = resolveE2eGuard(projectDir)
   badges.push({ label: "e2e-guard", state: e2e.toUpperCase(), variant: e2e === "on" ? "success" : "info" })
@@ -701,7 +701,7 @@ export function buildProjectBadges(
  * textMuted in title case — colour lives on the dot only):
  *   ─ OCP v0.30.0 ─────────────┐
  *   │ • profile  zhipuai-coding │
- *   │ • adr-guard  Off          │
+ *   \�\�\�\ \�\�\�\ adr\ \ Off\ \ \ \ \ \ \ \ \ \ \�\�\�
  *   │ • e2e-guard  Off          │
  *   │ • auto-advisor  Off       │
  *   │ • deepseek-anchor  Off    │

@@ -23,7 +23,7 @@ $env:LLM_ROUTER_API_KEY = "<your-api-key>"
 | `test-subagent.ps1` | Subagent dispatched by build agent follows Output Protocol |
 | `test-default.ps1` | Default build agent (no custom prompt) — baseline |
 | `test-sdd-unit.ts` | SDD (Specification-Driven Development) unit tests (no API, 49 assertions) — PRD/ADR/Plan scaffolding, Unicode slugs, fuzzy matching, /sdd handoff |
-| `test-adr-guard-unit.ts` | ADR Guard unit tests (no API, 212 assertions) — MADR generation, auto-drafting, index sync, supersede (§9.5 status-line flip), check, Git gate |
+| `test-adr-guard-unit.ts` | ADR plugin + guard unit tests (no API, 246 assertions) — MADR generation, auto-drafting, index sync, supersede (§9.5 status-line flip), check, Git gate, `/adr guard` routing + `/adr-guard` alias |
 | `test-adr-hierarchical-unit.ts` | Hierarchical ADR unit tests (no API, 46 assertions) — 3-layer architecture, whole-ADL global ID allocation, migrate flat/hierarchical, auto detection |
 | `test-adr-style-registry-unit.ts` | Multi-style ADL foundation tests (no API, 179 assertions) — normalizeAdrId grammar, madr adapter, style registry dispatch, duplicate-ID tolerance, ID+path ref resolution, §9.5 supersession, adr.* config + init suites, iteration numbering |
 | `test-adr-evolution-unit.ts` | Evolution metadata tests (no API, 90 assertions) — baseline/iteration/domain frontmatter on any style, generated INDEX.by-iteration.md, cross-style ID references, duplicate dotted-ID integrity, iteration context bundling, `evolution` validation profile vs default check |
