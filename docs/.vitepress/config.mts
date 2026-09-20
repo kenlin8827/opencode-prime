@@ -85,6 +85,7 @@ export default withMermaid(
                 { text: 'Auto-Advisor Mode', link: '/workflows/auto-advisor' },
                 { text: 'Plugins & Project Guardrails', link: '/workflows/plugins' },
                 { text: 'Hierarchical ADR Upgrade Guide', link: '/workflows/adr-upgrade-guide' },
+                { text: 'ADR Compaction & Retrieval', link: '/workflows/adr-compaction' },
               ]
             },
             {
@@ -93,6 +94,8 @@ export default withMermaid(
                 { text: 'Installation & Options', link: '/maintenance/options' },
                 { text: 'OCP CLI Reference', link: '/maintenance/ocp-cli' },
                 { text: 'Troubleshooting & FAQ', link: '/maintenance/faq' },
+                { text: 'ADR Compaction: Delivery & Release', link: '/maintenance/adr-compaction-delivery' },
+                { text: 'ADR Compaction: Verification & Cost', link: '/maintenance/adr-compaction-verification' },
               ]
             }
           ],
@@ -148,6 +151,7 @@ export default withMermaid(
                   { text: 'Auto-advisor 模式', link: '/zh/workflows/auto-advisor' },
                   { text: '插件系统与项目护栏', link: '/zh/workflows/plugins' },
                   { text: '分层 ADR 体系升级指南', link: '/zh/workflows/adr-upgrade-guide' },
+                  { text: 'ADR 压缩与检索', link: '/zh/workflows/adr-compaction' },
                 ]
               },
               {
@@ -156,6 +160,8 @@ export default withMermaid(
                   { text: '安装器进阶与选项', link: '/zh/maintenance/options' },
                   { text: 'OCP 命令行参考', link: '/zh/maintenance/ocp-cli' },
                   { text: '常见问题与排查 FAQ', link: '/zh/maintenance/faq' },
+                  { text: 'ADR 压缩：交付与发布', link: '/zh/maintenance/adr-compaction-delivery' },
+                  { text: 'ADR 压缩：验证与成本', link: '/zh/maintenance/adr-compaction-verification' },
                 ]
               }
             ]

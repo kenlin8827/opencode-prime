@@ -414,7 +414,7 @@ OpenCode plugin hooks provide runtime guarantees that prompts alone cannot achie
 | `rtk-write.ts` (+ `plugins/rtk-write/`) | command rewrite | Vendored rtk integration: rewrites shell commands through the rtk compression proxy transparently. |
 | `auto-advisor-mode.ts` (+ `plugins/auto-advisor/`) | 5 hooks — see below | Advisor modes off/lite/full; protocol injection; full-mode auto-execute; red-team suppression. |
 | `deepseek-anchor.ts` (+ `plugins/deepseek-anchor/`) | `config` + `command.execute.before` + `system.transform` | `/deepseek-anchor` command; anchor-based reasoning protocols with DeepSeek models. |
-| `adr.ts` (+ `plugins/adr/`) | `config` + `command.execute.before` + `system.transform` + `tool.execute.before` | `/adr` command suite (guard switch `/adr guard`, alias `/adr-guard`); ADR iron-law protocol injection; hard-blocks `feat`/`refactor` commits without an ADR in the change set. |
+| `adr.ts` (+ `plugins/adr/`) | `config` + `command.execute.before` + `system.transform` + `tool.execute.before` | `/adr` command suite (guard switch `/adr guard`, alias `/adr-guard`); ADR iron-law protocol injection; hard-blocks `feat`/`refactor` commits without an ADR in the change set. Also registers the `adr_context` / `adr_compaction` tools and `/adr compaction` maintenance flow (bounded retrieval, reviewed consolidation, reversible archive): only the verified user channel can authorize writes (`adr-compaction.ts` / `adr-compaction-runtime.ts`); storage, publication, archive moves and the finite read guard live in `adr-storage.ts` / `adr-publication.ts` / `adr-archive.ts` / `adr-read-guard.ts`. |
 | `env-guard.ts` (+ `plugins/env-guard/`) | `tool.execute.before` | Secret-file gate: blocks reads/copies of secret-bearing `.env*` files. |
 | `e2e-guard.ts` (+ `plugins/e2e-guard/`) | `config` + `command.execute.before` + `system.transform` | `/e2e-guard on|off|status` command; system prompt E2E protocol injection; guides LLM to evaluate E2E impact on `feat`/`fix` tasks, flag test gaps, and interactively confirm with the user via `ask` before running (scoped to primary agents). |
 | `project-manager.ts` (+ `plugins/project-manager/`) | `config` + `command.execute.before` + `system.transform` + `tool.execute.before` + `event: session.created` | `/project init|index|sync` commands; init runs the one-shot legacy migration (`.opencode/` OCP state → `.ocp/`, ADR 0004) then creates missing baseline files (`.ocp/ocp.json`, `docs/git-commits.md`, `AGENTS.md`, never overwrites); sync re-runs the migration on demand; file-as-switch commit discipline; one-time `/project init` suggestion. |
@@ -627,6 +627,8 @@ skills/                       # L2 workflow protocols — metadata resident, bod
 ├── git-pull/SKILL.md           # /git-pull protocol — ff-first sync; diverged → guard backup + delegate to git-merge (--rebase → git-rebase) (added in v0.24.0)
 ├── goal/ · handoff/ · grill-me/ · grill-with-docs/ · improve-loop/
 ├── review-fix-loop/ · clean-dead-code/
+├── adr-compaction/                   # /adr compaction protocol — analysis, batched drafting, native review Ask, archive/restore
+├── adr-context/                      # Bounded retrieval protocol for adr_context (evidence-first, no gratuitous archive recursion)
 └── sdd-workflow/             # Merged SDD protocol (/sdd /prd /plan /impl)
 
 plugins/
@@ -636,6 +638,9 @@ plugins/
 ├── auto-advisor/                  # Mode config, runtime, protocol, per-hook helpers
 ├── adr.ts                         # Barrel: ADR workbench + iron-law guard
 ├── adr/                           # Engine, config, runtime, guard submodules, styles
+│                                  #   + maintenance: compaction plans/apply, bounded
+│                                  #     retrieval, journaled storage, view publication,
+│                                  #     reversible archive moves, finite read guard
 ├── env-guard.ts                   # Barrel: secret-file gate
 ├── env-guard/                     # Config, runtime, tool guard
 ├── e2e-guard.ts                   # Barrel: E2E guard plugin
@@ -669,8 +674,10 @@ tests/
 ├── test-all.ps1              # Main test runner (structural + prompt tests)
 ├── test-profiles.ps1         # Profile stress test
 ├── test-advisor-e2e.ps1      # Advisor-mode end-to-end (needs opencode CLI)
-├── test-*-unit.ts            # Bun unit tests (adr, env-guard, e2e-guard,
+├── test-*-unit.ts            # Bun unit tests (adr, adr-compaction, env-guard, e2e-guard,
 │                             #   project-manager, queue-manager, anchor)
+├── test-adr-compaction-*.ts  # Compaction services, 14-boundary crash matrix, native
+│                             #   runtime/restart, release-package and installed-tree delivery
 ├── test-build/plan/subagent/ # Prompt dispatch tests
 ├── test-decisions.ps1        # Decision strategy checks
 └── README.md                 # Test documentation
@@ -681,7 +688,7 @@ tests/
 ## Release workflow
 
 1. Bump `version` in `install/version.json` (e.g. `0.7.0`) and sync `package.json` `version` + `install/README.md` title to match.
-2. Regenerate the manifest: `bun run manifest:generate` — the manifest is **always overwritten**, so ensure `SHIPPED_DIRS` / `SHIPPED_FILES` in `install/src/manifest.ts` include every new file (see `AGENTS.md` §4). **Never hand-edit a generated manifest.**
+2. Regenerate the manifest: `bun run manifest:generate` — the manifest is **always overwritten**, so ensure `SHIPPED_DIRS` / `SHIPPED_FILES` in `install/src/manifest.ts` include every new file (see `AGENTS.md` §4). **Never hand-edit a generated manifest.** `pack.sh` / `pack.ps1` resolve the shipped-file inventory through `scripts/check-package-manifest.ts`, which refuses to build when the current-version manifest disagrees with what actually ships (a stale manifest silently omits files from the archive).
 3. Run structural tests: `pwsh -ExecutionPolicy Bypass -File tests/test-all.ps1 -StructuralOnly`.
 4. Type-check plugins: `bun install && bunx tsc --noEmit`.
 5. Commit and push to `main`.
