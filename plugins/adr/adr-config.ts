@@ -131,8 +131,8 @@ export function resetLegacyAdrKeyWarnings(): void {
 
 export const DEFAULT_ADR_DIR = "docs/adr"
 
-export function getAdrDir(): string {
-  const cfg = readProjectConfig()
+export function getAdrDir(project?: string): string {
+  const cfg = readProjectConfig(project)
   warnLegacyAdrKeys(detectLegacyAdrKeys(cfg))
   const v = cfg?.adrDir
   if (typeof v === "string" && v.trim() !== "") {
@@ -184,8 +184,8 @@ export function normalizeAdrLayout(layout: unknown): AdrLayout | null {
   return LAYOUT_ALIASES[s] ?? null
 }
 
-export function getAdrLayout(): AdrLayout {
-  const cfg = readProjectConfig()
+export function getAdrLayout(project?: string): AdrLayout {
+  const cfg = readProjectConfig(project)
   warnLegacyAdrKeys(detectLegacyAdrKeys(cfg))
   // Legacy `adrLayout` keeps authority when present; the new `adr.layout`
   // is the fallback for projects configured only via the adr.* block.
@@ -228,6 +228,7 @@ export interface AdrConfig {
   style: AdrStyle // "madr" fallback (zero-config behavior unchanged)
   numbering: AdrNumbering // "sequential" default
   layout: AdrLayout | null // null → legacy adrLayout / default governs
+  readGuard: "off" | "warn" | "guard"
   governance: AdrGovernance // "none" default
   suite: string | null // informational init-time label; never re-enforces
   // ── Project-level overrides (Phase 7 — all OPT-IN, defaults preserve
@@ -292,6 +293,11 @@ export function normalizeAdrNumbering(numbering: unknown): AdrNumbering | null {
   return VALID_NUMBERINGS.has(s) ? (s as AdrNumbering) : null
 }
 
+export function normalizeAdrReadGuard(value: unknown): "off" | "warn" | "guard" | null {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : ""
+  return normalized === "off" || normalized === "warn" || normalized === "guard" ? normalized : null
+}
+
 export function normalizeAdrGovernance(governance: unknown): AdrGovernance | null {
   if (typeof governance !== "string") return null
   const s = governance.trim().toLowerCase()
@@ -322,8 +328,8 @@ function readAdrBlock(cfg: Record<string, unknown> | null): Record<string, unkno
   return block && typeof block === "object" && !Array.isArray(block) ? (block as Record<string, unknown>) : {}
 }
 
-export function getAdrConfig(): AdrConfig {
-  const block = readAdrBlock(readProjectConfig())
+export function getAdrConfig(project?: string): AdrConfig {
+  const block = readAdrBlock(readProjectConfig(project))
   const governance = normalizeAdrGovernance(block.governance)
   if (governance === null && block.governance !== undefined) {
     warnUnknownGovernance(block.governance)
@@ -333,6 +339,7 @@ export function getAdrConfig(): AdrConfig {
     numbering: normalizeAdrNumbering(block.numbering) ?? "sequential",
     layout: normalizeAdrLayout(block.layout),
     governance: governance ?? "none",
+    readGuard: normalizeAdrReadGuard(block.readGuard) ?? "off",
     suite: typeof block.suite === "string" && block.suite.trim() !== "" ? block.suite.trim() : null,
     ...readProjectOverrides(block),
   }
@@ -353,6 +360,7 @@ export function getAdrConfigFromParsed(parsed: Record<string, unknown> | null): 
     numbering: normalizeAdrNumbering(block.numbering) ?? "sequential",
     layout: normalizeAdrLayout(block.layout),
     governance: governance ?? "none",
+    readGuard: normalizeAdrReadGuard(block.readGuard) ?? "off",
     suite: typeof block.suite === "string" && block.suite.trim() !== "" ? block.suite.trim() : null,
     ...readProjectOverrides(block),
   }
@@ -702,6 +710,8 @@ function parseAdrConfigKeyValue(key: AdrConfigKey, value: string): string | stri
       return normalizeAdrLayout(value)
     case "governance":
       return normalizeAdrGovernance(value)
+    case "readGuard":
+      return normalizeAdrReadGuard(value)
   }
 }
 
@@ -821,6 +831,7 @@ function removeKeyFromAdrBlock(raw: string, key: string): string | null {
  *  comment-preserving upsert path so a user can set/clear any key
  *  uniformly. */
 export type AdrConfigKey =
+  | "readGuard"
   | "filenamePattern"
   | "slugStyle"
   | "extraSections"

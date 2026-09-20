@@ -46,7 +46,8 @@ New records are always scaffolded `proposed` in EVERY mode — no code path
 writes `accepted`. In `none` mode a human flips the status line by hand when
 they decide; the flip IS the human act. In `strict` mode the ONLY
 proposed → accepted path is the user-run `/adr decide <ADR-ID> [note]`: it
-flips ONLY the status line (§9.5 byte-stability) and appends one ledger line
+update status and append a ledger line (compaction also applies explicitly reviewed
+replacement relationships; ordinary decide changes only the frontmatter status)
 (timestamp, ADR ID, source path, note). The commit gate then blocks any
 staged accept flip whose ID has no ledger entry, and requires every
 feat/fix/refactor commit to ship a decided flip. `strict` subsumes the legacy
@@ -332,7 +333,7 @@ Canonical section IDs derive from the container namespace
 - `Rejected` — decided against; keep it as a negative record so the idea is not raised again unknowingly.
 - `Deprecated` — no longer applies but not replaced by another ADR.
 - `Superseded by NNNN` — fully replaced; the successor ADR **MUST** cross-reference back.
-- An Accepted ADR is immutable: only its frontmatter `status` may change. Any change to the decision itself **MUST** be a new superseding ADR.
+- Accepted decision substance is immutable. Reviewed lifecycle metadata/status and mechanical relocation links may change; a changed decision **MUST** be an explicitly accepted successor. New OCP sections are proposed units, not edits to accepted sections.
 
 ## If the guard blocks your commit
 
@@ -345,3 +346,11 @@ Known ceiling (strict gate): `git commit -F msg.txt` carries no inline `-m`
 message, so the positive feat/fix/refactor decision check cannot see its type
 and the commit passes that check — the undecided-flip audit still holds on
 every commit regardless of message form.
+
+## Controlled reading and compaction
+
+Use `adr_context` for architectural evidence; load `adr-context` for retrieval
+rules. `/adr compaction` defaults to read-only analysis; explicit modes invoke
+the `adr-compaction` skill. Only a verified user Ask or user confirmation command
+may accept and publish a reviewed candidate. Compaction never enables read guards
+automatically. Archive is optional and remains part of the full decision log.

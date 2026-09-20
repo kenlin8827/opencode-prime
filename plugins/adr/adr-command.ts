@@ -737,8 +737,8 @@ async function handleAdrConfigCommand(
   const first = parts[0].toLowerCase()
 
   if (first === "reset") {
-    const key = (parts[1] ?? "").toLowerCase() as AdrConfigKey
-    if (!isAdrConfigKey(key)) {
+    const key = [...ADR_CONFIG_KEYS].find(k => k.toLowerCase() === (parts[1] ?? "").toLowerCase())
+    if (!key) {
       await announce(client, tr("guard.adr.configUsage"), "warning", sessionID)
       return { handled: true }
     }
@@ -747,8 +747,8 @@ async function handleAdrConfigCommand(
     return { handled: true }
   }
 
-  const key = first as AdrConfigKey
-  if (!isAdrConfigKey(key)) {
+  const key = [...ADR_CONFIG_KEYS].find(k => k.toLowerCase() === first)
+  if (!key) {
     await announce(client, tr("guard.adr.configUnknownKey", { key: first }), "warning", sessionID)
     return { handled: true }
   }
@@ -770,6 +770,7 @@ async function handleAdrConfigCommand(
 }
 
 const ADR_CONFIG_KEYS: ReadonlySet<AdrConfigKey> = new Set([
+  "readGuard",
   "filenamePattern",
   "slugStyle",
   "extraSections",
@@ -804,6 +805,8 @@ function renderAdrConfigList(): string {
     layoutSrc: src("layout"),
     governance: cfg.governance,
     governanceSrc: src("governance"),
+    readGuard: cfg.readGuard,
+    readGuardSrc: src("readGuard"),
     filenamePattern: cfg.filenamePattern,
     filenamePatternSrc: src("filenamePattern"),
     slugStyle: cfg.slugStyle,
@@ -834,7 +837,7 @@ function renderAdrConfigKeyDetail(key: AdrConfigKey): string {
                 ? cfg.numbering
                 : key === "layout"
                   ? (cfg.layout ?? "(inherit from adrLayout)")
-                  : cfg.governance
+                  : key === "readGuard" ? cfg.readGuard : cfg.governance
   return [
     `**adr.${key}** = ${value}`,
     `source: ${isInAdrBlock(key) ? "config" : "default"}`,

@@ -11,10 +11,10 @@
  * (§9.5 byte-stability — the record body stays untouched).
  *
  *   strict mechanics:
- *     - `/adr decide <ADR-ID> [note]` is the ONLY proposed→accepted path;
+ *     - `/adr decide <ADR-ID> [note]` and verified compaction approval are user acceptance paths;
  *       it flips the status line and appends one ledger line.
- *     - `.ocp/adr-decisions.log` is append-only (flag "a" writes only);
- *       history is never rewritten.
+ *     - `.ocp/adr-decisions.log` is logically append-only: decide appends;
+ *       compaction journals a prefix-preserving replacement for crash recovery.
  *     - the tool gate blocks (a) any staged accept flip whose ID has no
  *       ledger entry, and (b) feat/fix/refactor commits that ship no
  *       decided flip — agents can never self-accept.
@@ -24,9 +24,10 @@
 
 import { spawnSync } from "node:child_process"
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { basename, dirname, join } from "node:path"
+import { basename, dirname, join, relative } from "node:path"
 import { getAdrConfig, getAdrDir, getAdrLayout } from "./adr-config"
 import { getAllAdrs, resolveAdrRef, updateAdrIndex, type AdrMeta } from "./adr-engine"
+import { ocpArtifactPath } from "../shared/opencode-prime"
 import { adrIdFromFilename, normalizeAdrId } from "./adr-types"
 
 /** Append-only audit ledger, relative to the project root.
@@ -34,6 +35,7 @@ import { adrIdFromFilename, normalizeAdrId } from "./adr-types"
  *  not a security boundary — an agent with raw bash access could forge a
  *  ledger line. Upgrade path: hook-side signing/HMAC of each entry. */
 export const DECISIONS_LEDGER_REL = ".ocp/adr-decisions.log"
+export const decisionsLedgerRelative = (project: string): string => relative(project, ocpArtifactPath("adr-decisions.log", project)).replace(/\\/g, "/")
 
 export interface DecideResult {
   adr: AdrMeta
@@ -93,7 +95,19 @@ export function decideAdr(projectDir: string, ref: string, note = ""): DecideRes
   // `# comment` on the status line is preserved. Missing frontmatter
   // status → inject right after the opening fence (hand-rolled docs); no
   // frontmatter at all keeps the historical no-op fallback.
-  let content = adr.rawContent
+  const content = acceptedAdrContent(adr.rawContent)
+  writeFileSync(adr.fullPath, content, "utf-8")
+
+  appendLedgerLine(projectDir, id, adr.relPath, note)
+  updateAdrIndex(projectDir, adr.dir)
+
+  return { adr, id, relPath: adr.relPath, note }
+}
+
+/** Shared byte-preserving acceptance transformation used by decide and the
+ * verified compaction executor. Calling this pure helper is not authorization. */
+export function acceptedAdrContent(rawContent: string): string {
+  let content = rawContent
   // §9.5 byte-stability extends to line endings: an injected status line
   // must carry the file's dominant EOL, else a CRLF record gains a lone-LF
   // line. (The replace path below needs no EOL handling: `[^\r\n]+` stops
@@ -116,20 +130,20 @@ export function decideAdr(projectDir: string, ref: string, note = ""): DecideRes
   } else {
     content = content.replace(/^---\r?\n/, `---${eol}status: Accepted${eol}`)
   }
-  writeFileSync(adr.fullPath, content, "utf-8")
+  return content
+}
 
-  appendLedgerLine(projectDir, id, adr.relPath, note)
-  updateAdrIndex(projectDir, adr.dir)
-
-  return { adr, id, relPath: adr.relPath, note }
+/** Shared ledger serialization; authorizing entry points must supply a user receipt. */
+export function decisionLedgerEntry(id: string, relPath: string, note: string, at = new Date().toISOString()): string {
+  return `${at}\t${id}\t${relPath}\t${note.replace(/[\t\r\n]+/g, " ")}\n`
 }
 
 /** One append-only ledger line: ISO timestamp, canonical ID, source path,
  *  actor note (tab/newline-sanitized). History is never rewritten. */
 export function appendLedgerLine(projectDir: string, id: string, relPath: string, note: string): void {
-  const ledgerPath = join(projectDir, DECISIONS_LEDGER_REL)
+  const ledgerPath = join(projectDir, decisionsLedgerRelative(projectDir))
   mkdirSync(dirname(ledgerPath), { recursive: true })
-  const entry = `${new Date().toISOString()}\t${id}\t${relPath}\t${note.replace(/[\t\r\n]+/g, " ")}\n`
+  const entry = decisionLedgerEntry(id, relPath, note)
   writeFileSync(ledgerPath, entry, { encoding: "utf-8", flag: "a" })
 }
 
@@ -137,7 +151,7 @@ export function appendLedgerLine(projectDir: string, id: string, relPath: string
  *  cross-check surface. Malformed lines are skipped, never fatal. */
 export function readDecidedIds(projectDir: string): Set<string> {
   try {
-    const raw = readFileSync(join(projectDir, DECISIONS_LEDGER_REL), "utf-8")
+    const raw = readFileSync(join(projectDir, decisionsLedgerRelative(projectDir)), "utf-8")
     const ids = new Set<string>()
     for (const line of raw.split(/\r?\n/)) {
       const cols = line.split("\t")
@@ -221,7 +235,7 @@ export function acceptFlipsFromDiff(diff: string): StagedAcceptFlip[] {
  * `accepted` — the strict gate's detection surface. Only the staged diff
  * matters for a plain commit: the guard runs before `git commit`, so the
  * staged content is exactly what the commit would ship. A flip is
- * "undecided" when its ID has no ledger entry (only `/adr decide` writes
+ * "undecided" when its ID has no ledger entry (user decide / verified compaction write
  * accepted + ledger).
  *
  * `includeWorkingTree` closes the `git commit -a` hole: `-a`/`--all` also

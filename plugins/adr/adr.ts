@@ -41,6 +41,8 @@ import { makeCommandHook } from "./adr-command"
 import { ADR_COMMAND, COMMAND_NAME, setProjectDir } from "./adr-config"
 import { makeSystemHook } from "./adr-system-inject"
 import { makeToolGuardHook } from "./adr-tool-guard"
+import { createCompactionRuntime } from "./adr-compaction-runtime"
+import { createReadGuard } from "./adr-read-guard"
 
 // OpenCode's command hook has no cancel/noReply output. Throwing a raw
 // Effect response is handled by OpenCode's HTTP layer as an empty
@@ -52,7 +54,13 @@ const handled = (): never => {
 export const AdrPlugin: Plugin = async ({ client, directory }) => {
   // Switch is project-level: pin state/config paths to this project's directory.
   setProjectDir(directory)
+  const maintenance = createCompactionRuntime(directory, client)
+  const command = makeCommandHook(client, handled)
+  const commitGuard = makeToolGuardHook(client)
+  const readGuard = createReadGuard(directory, client)
   return {
+    tool: maintenance.tools,
+    event: async ({ event }) => { await maintenance.event(event) },
     config: async (cfg) => {
       cfg.command ??= {}
       cfg.command[COMMAND_NAME] = {
@@ -63,11 +71,21 @@ export const AdrPlugin: Plugin = async ({ client, directory }) => {
       cfg.command[ADR_COMMAND] = {
         template: "/adr $ARGUMENTS",
         description:
-          "Manage Architecture Decision Records and the commit guard (new | supersede | tree | check | guard | help)",
+          "Manage Architecture Decision Records and the commit guard (new | supersede | context | compaction | tree | check | guard | help)",
       }
     },
-    "command.execute.before": makeCommandHook(client, handled),
+    "command.execute.before": async (input, output) => {
+      const result = await maintenance.command(input, output)
+      if (result === "handled") return handled()
+      if (result === "continue") return
+      await command(input)
+    },
     "experimental.chat.system.transform": makeSystemHook(client),
-    "tool.execute.before": makeToolGuardHook(client),
+    "tool.execute.before": async (input, output) => {
+      await maintenance.before(input, output)
+      await readGuard(input, output)
+      await commitGuard(input, output)
+    },
+    "tool.execute.after": maintenance.after,
   }
 }

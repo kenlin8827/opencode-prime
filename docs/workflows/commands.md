@@ -10,6 +10,7 @@ OpenCode Multi-Agent ships with a suite of high-leverage workflow slash commands
 |---|---|---|
 | **`/prd <topic>`** | SDD Lifecycle | Scaffold & draft Product Requirements Document in `docs/prd/` |
 | **`/adr [new\|supersede\|tree\|check\|migrate\|mode]`** | Architecture | Architecture Decision Record management: automated drafting, supersede lifecycle, DAG graph, link audits, bidirectional migrations & hierarchy mode switches |
+| **`/adr compaction` · `/adr context` · `/adr check --compaction`** | ADR | Read-only analysis; explicit summary/consolidation with native cost/review Ask, bounded retrieval and optional archive/restore. See [ADR compaction](adr-compaction.md). |
 | **`/plan <topic>`** | SDD Lifecycle | Scaffold & draft phased Implementation Plan in `docs/plan/` with automatic PRD & ADR linking |
 | **`/impl [task]`** | SDD Lifecycle | Execute test-driven code implementation & verification adhering to specifications |
 | **`/sdd [status\|handoff\|help]`** | SDD Lifecycle | Specification-Driven Development lifecycle navigator & session handoff (`/sdd handoff`) |

@@ -11,7 +11,7 @@
  *   - Integrity & health verification (link validation, gap detection, index sync)
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, lstatSync, statSync, unlinkSync, writeFileSync } from "node:fs"
 import { dirname, join, relative, resolve } from "node:path"
 import { getAdrConfig, type AdrLayout, getAdrLayout, normalizeAdrStyle, resolveAdrStyleForNew, setAdrLayout } from "./adr-config"
 import { groupByIteration, renderIterationIndex, validateEvolutionMetadataShape } from "./adr-evolution"
@@ -142,7 +142,7 @@ export function discoverAdrDirectories(
 
   // In flat mode, strictly return only the single configured/default ADR directory
   if (currentLayout === "flat") {
-    return [normalizedDefault]
+    return [normalizedDefault, ...(existsSync(join(projectDir, normalizedDefault, "archive")) ? [`${normalizedDefault}/archive`] : [])]
   }
 
   const adrDirs = new Set<string>()
@@ -168,12 +168,12 @@ export function discoverAdrDirectories(
       if (IGNORED_DIRS.has(entry)) continue
       const fullPath = join(dir, entry)
       try {
-        const stat = statSync(fullPath)
-        if (!stat.isDirectory()) continue
+        const stat = lstatSync(fullPath)
+        if (!stat.isDirectory() || stat.isSymbolicLink()) continue
 
         const rel = relative(projectDir, fullPath).replace(/\\/g, "/")
-        if (rel === localizedMirrorRoot || rel.startsWith(`${localizedMirrorRoot}/`)) continue
-        if (rel.endsWith("/docs/adr") || rel === "docs/adr" || rel.includes("/adr/")) {
+        if (rel === localizedMirrorRoot || rel.startsWith(`${localizedMirrorRoot}/`) || /\/adr\/(?:zh|current)(?:\/|$)/.test(rel) || rel === `${normalizedDefault}/current` || rel.startsWith(`${normalizedDefault}/current/`)) continue
+        if (rel.startsWith(`${normalizedDefault}/`) || rel.endsWith("/docs/adr") || rel === "docs/adr" || rel.includes("/adr/")) {
           adrDirs.add(rel)
         }
         scan(fullPath, depth + 1)
@@ -182,6 +182,12 @@ export function discoverAdrDirectories(
   }
 
   scan(projectDir, 0)
+  // A source discovered at the depth boundary must not disappear when moved
+  // one level into its archive. Preserve that archive independently of the scan.
+  for (const dir of [...adrDirs]) {
+    const archive = join(projectDir, dir, "archive")
+    if (existsSync(archive) && lstatSync(archive).isDirectory() && !lstatSync(archive).isSymbolicLink()) adrDirs.add(`${dir}/archive`)
+  }
   return Array.from(adrDirs)
 }
 
@@ -307,6 +313,7 @@ export function getAllAdrs(projectDir: string, defaultDir = "docs/adr", layout?:
           continue
         }
         const fullPath = join(fullDir, file)
+        if (lstatSync(fullPath).isSymbolicLink()) continue
         const adr = parseAdrFile(fullPath, projectDir)
         if (adr) {
           adrs.push(adr)
@@ -481,7 +488,7 @@ export function regenerateAdlIndexes(
   const rootRel = defaultDir.replace(/\\/g, "/").replace(/\/+$/, "")
   const records = getNormalizedAdrs(projectDir, rootRel, layout)
   const forest = buildAdrTree(records, rootRel)
-  const cols = columns ?? getAdrConfig().indexColumns
+  const cols = columns ?? getAdrConfig(projectDir).indexColumns
 
   const written: string[] = []
   const writeNode = (node: AdrTreeNode): void => {
@@ -1232,6 +1239,7 @@ export function analyzeAdrComplexity(projectDir: string): ComplexityAnalysis {
 export function planAdrMigration(projectDir: string, targetLayout: AdrLayout): MigrationPlan {
   const currentLayout = getAdrLayout()
   const allAdrs = getAllAdrs(projectDir, "docs/adr", "auto")
+  if (allAdrs.some(a => a.relPath.includes("/archive/"))) throw new Error("Layout migration with archived ADRs requires restoring archive locations first.")
   const moves: AdrMovePlan[] = []
   const packages = discoverWorkspacePackages(projectDir)
 

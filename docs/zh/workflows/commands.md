@@ -10,6 +10,7 @@ OpenCode 多智能体配置自带一系列生产级工作流斜杠命令。
 |---|---|---|
 | **`/prd <topic>`** | SDD 规范驱动 | 在 `docs/prd/` 中脚手架生成并起草需求规格说明书 (PRD) |
 | **`/adr [new\|supersede\|tree\|check\|migrate\|mode]`** | 架构治理 | 架构决策记录（ADR）治理：自动起草、生命周期替代、DAG 拓扑树、完整性体检、双向分层重构与模式切换 |
+| **`/adr compaction` · `/adr context` · `/adr check --compaction`** | ADR | 默认只读分析；显式摘要／整合使用原生成本和评审 Ask，提供有界检索及可选归档／恢复。参见 [ADR 压缩](adr-compaction.md)。 |
 | **`/plan <topic>`** | SDD 规范驱动 | 在 `docs/plan/` 中脚手架生成并起草分阶段实施计划 (PLAN)，自动关联 PRD 与 ADR |
 | **`/impl [task]`** | SDD 规范驱动 | 依照 PRD/ADR/Plan 规范执行测试驱动编码实现与质量验证 |
 | **`/sdd [status\|handoff\|help]`** | SDD 规范驱动 | 规范驱动开发导航、制品状态检查与专属跨会话暂存交接（`/sdd handoff`） |

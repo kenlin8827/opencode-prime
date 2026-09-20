@@ -69,6 +69,7 @@ export function getGuardHintPrompt(): string {
     `ADRs live under \`${getAdrDir()}/\`. Full protocol: load the\n` +
     `\`adr-protocol\` skill when an ADR intent arises. Commands:\n` +
     `\`/adr help\` · \`/adr new <title>\` · \`/adr config\` ·\n` +
+    `For architecture evidence, use \`adr_context\` before reading ADR bodies.\n` +
     `\`/adr guard on|off\` (commit gate; currently a documentation-only\n` +
     `setup unless enabled).\n`
   )
