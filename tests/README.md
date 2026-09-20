@@ -142,3 +142,38 @@ pwsh -ExecutionPolicy Bypass -File tests/test-anchor-benchmark.ps1
 # Quick benchmark (2 prompts only)
 pwsh -ExecutionPolicy Bypass -File tests/test-anchor-benchmark.ps1 -Quick
 ```
+
+### ADR compaction and native approval
+
+```bash
+bun tests/test-adr-compaction-unit.ts
+bun tests/test-adr-compaction-faults.ts
+bun tests/test-adr-compaction-runtime.ts
+bun tests/test-adr-compaction-recovery-runtime.ts
+bun tests/test-adr-compaction-package.ts  # Bun + bash/zip/unzip/tar/hash utilities
+bun tests/test-adr-compaction-install.ts  # OpenCode + registry access; real installer, real server
+```
+
+The service and 14-boundary process-death suites are part of `test-all.ps1`. Set `OCP_TEST_NATIVE_ADR=1` to
+include both native suites, `OCP_TEST_PACKAGE_ADR=1` for the release-package smoke
+test (POSIX shell tooling) and `OCP_TEST_INSTALL_ADR=1` for the installed-tree
+delivery test. The native suites require OpenCode on
+PATH and uses temporary authenticated servers plus a deterministic local model;
+it makes no paid provider calls. It tests cost approval, actual skill loading,
+named batch submission, all four review outcomes and pre-output archive-read
+cancellation. The restart fixture kills OpenCode after writing an accepted
+successor, verifies exact recovery in a fresh server, then separately approves
+inverse archival. It removes a lock only after its recorded owner exits.
+Fixture-only filesystem interception is not a production fault-injection API.
+The packaging smoke test uses a disposable version/manifest, verifies both
+archives file-by-file, asserts that a drifted release manifest is refused instead
+of packing an incomplete archive, and never changes the real repository version or
+historical manifests. The delivery test runs the production installer into a
+sandboxed HOME, confirms the installed toolchain performs read-only analysis, then
+boots a real OpenCode server from that tree and asserts the ADR tools and command
+are registered through native auto-discovery (no fixture plugin path).
+
+The dev-only tokenizer benchmark is `scripts/benchmark-adr-compaction.py` (Bun
+plus Python `tiktoken==0.12.0`). See
+[`docs/maintenance/adr-compaction-verification.md`](../docs/maintenance/adr-compaction-verification.md)
+for methodology, results and enforcement limits.

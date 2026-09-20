@@ -954,6 +954,30 @@ Write-Host "Unit Tests: SDD & Plugin Ecosystem" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 & bun "$PSScriptRoot\test-sdd-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-adr-compaction-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-adr-compaction-faults.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+# Native runtime tests are explicit/optional: require OpenCode and start local servers.
+if ($env:OCP_TEST_NATIVE_ADR -eq "1") {
+    & bun "$PSScriptRoot\test-adr-compaction-runtime.ts"
+    if ($LASTEXITCODE -ne 0) { $fail++ }
+    & bun "$PSScriptRoot\test-adr-compaction-recovery-runtime.ts"
+    if ($LASTEXITCODE -ne 0) { $fail++ }
+}
+# Release-package smoke test needs POSIX tooling (bash, zip, unzip, tar) — opt-in
+# so the Windows runner does not fail for a missing shell utility.
+if ($env:OCP_TEST_PACKAGE_ADR -eq "1") {
+    & bun "$PSScriptRoot\test-adr-compaction-package.ts"
+    if ($LASTEXITCODE -ne 0) { $fail++ }
+}
+# Installed-tree delivery test runs the real installer and a real OpenCode
+# server: needs OpenCode on PATH plus registry access for OpenCode's own
+# @opencode-ai/plugin dependency install.
+if ($env:OCP_TEST_INSTALL_ADR -eq "1") {
+    & bun "$PSScriptRoot\test-adr-compaction-install.ts"
+    if ($LASTEXITCODE -ne 0) { $fail++ }
+}
 & bun "$PSScriptRoot\test-adr-guard-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-adr-hierarchical-unit.ts"
