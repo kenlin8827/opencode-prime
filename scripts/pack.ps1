@@ -76,29 +76,25 @@ function Read-Manifest([string]$path) {
         Where-Object { $_ -ne '' }
 }
 
-# --- generate manifest if missing ----------------------------------------
+# --- manifest ------------------------------------------------------------
+#
+# The shipped-file inventory has exactly one implementation
+# (install/src/manifest.ts). pack.ps1 must not keep a second allowlist that can
+# drift from the installer, otherwise the archive and every installed tree
+# disagree about what ships. check-package-manifest.ts generates a missing
+# manifest and refuses to pack a drifted one; an existing manifest (including
+# historical version records) is never rewritten.
 
-$includePrefixes = @('commands/', 'plugins/', 'instructions/', 'opencode.template.jsonc', 'tui.template.jsonc', 'tiers.json', 'profiles/', 'prompts/', 'providers/', 'scripts/')
-$excludePatterns = @('^scripts/pack\.', '^scripts/verify\.')
-
-function Generate-Manifest([string]$ver) {
-    $out = Join-Path $InstDir "$ver.manifest.txt"
-    $lines = @()
-    Get-ChildItem -Path $RepoRoot -Recurse -File -Force | ForEach-Object {
-        $rel = $_.FullName.Substring($RepoRoot.Length).TrimStart('\','/') -replace '\\','/'
-        $include = $false
-        foreach ($p in $includePrefixes) {
-            if ($rel -eq $p.TrimEnd('/') -or $rel.StartsWith($p)) { $include = $true; break }
+function Test-PackageManifest([string]$ver) {
+    if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
+        if (-not (Test-Path $manifestPath)) {
+            throw "bun is required to generate the missing manifest $manifestPath"
         }
-        if ($include) {
-            foreach ($ex in $excludePatterns) {
-                if ($rel -match $ex) { $include = $false; break }
-            }
-        }
-        if ($include) { $lines += $rel }
+        Write-Warning "bun not found — packing with the existing manifest; drift is not verified"
+        return
     }
-    $lines | Sort-Object | Set-Content -Path $out -Encoding UTF8
-    Write-Host ("wrote install/versions/{0}.manifest.txt ({1} files)" -f $ver, $lines.Count)
+    & bun (Join-Path $RepoRoot 'scripts/check-package-manifest.ts') $ver
+    if ($LASTEXITCODE -ne 0) { throw "packaging manifest check failed (exit $LASTEXITCODE)" }
 }
 
 # --- main ----------------------------------------------------------------
@@ -106,12 +102,8 @@ function Generate-Manifest([string]$ver) {
 $ver = Read-Version
 $manifestPath = Join-Path $InstDir "$ver.manifest.txt"
 
-# Ensure manifest exists
-if (-not (Test-Path $manifestPath)) {
-    Write-Host "manifest missing for version $ver, generating..."
-    if (-not (Test-Path $InstDir)) { New-Item -ItemType Directory -Path $InstDir -Force | Out-Null }
-    Generate-Manifest $ver
-}
+# Resolve the manifest through the single shipped-file inventory.
+Test-PackageManifest $ver
 
 if (-not $OutDir) { $OutDir = Join-Path $RepoRoot 'dist' }
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
