@@ -171,6 +171,37 @@ If `rtk` is not on PATH, the installer downloads the pinned release into `~/.loc
 
 To opt out: set `"rtk": false` in `install/options.jsonc` and re-run install.
 
+### Keeping the model out of rewrite loops
+
+Compression is lossy, so a model that needs elided data can re-run the same
+command forever and never see the full output. The hook degrades gracefully:
+
+- **Elision-aware breaker** — once a command's output was elided (RTK's
+  `[see remaining: ...]` marker), that command runs unmodified for the rest of
+  the session. This is the precise loop signal, and it leaves compression on
+  for commands that merely repeat for legitimate reasons (re-checking after
+  edits).
+- **Repeat threshold** — a fallback for lossy-but-unmarked output: after
+  `loopThreshold` runs of the same command (default `3`), it also runs
+  unmodified.
+- **Escape hatch** — prefix any command with `RTK_RAW=1 ` to bypass rewriting
+  entirely, e.g. `RTK_RAW=1 git status`.
+- **Recovery hint** — when RTK elides output, the hook appends a one-line hint
+  naming the exact rerun command.
+
+Tune via `tools.rtkWrite` in `~/.config/opencode/options.jsonc` (all keys
+optional; defaults shown):
+
+```jsonc
+"tools": {
+  "rtkWrite": {
+    "enabled": true,          // master switch (default true)
+    "loopThreshold": 3,       // same command Nth run passes through raw (0 = never)
+    "blocklist": ["git diff"] // command prefixes that are never rewritten
+  }
+}
+```
+
 ---
 
 ## Workspace-wrapped TUI (`ocp tui`)

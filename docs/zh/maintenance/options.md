@@ -161,6 +161,27 @@ watcher 负责日常增量更新。将 `tools.tgrep` 设为 `false` 可完全退
 
 若不需要：在 `install/options.jsonc` 中设 `"rtk": false` 后重新安装即可。
 
+### 防止模型陷入重写循环
+
+压缩是有损的：当模型需要被省略的数据时，可能反复重跑同一条命令却始终拿不到完整输出。钩子因此做了柔性降级：
+
+- **省略感知熔断** —— 一旦某条命令的输出被省略（RTK 的 `[see remaining: ...]` 标记），该命令在本会话后续运行中原样放行。这是最精准的循环信号，同时保留了对"因编辑后复查等正常原因重复"的命令的压缩。
+- **重复次数兜底** —— 针对有损但无标记的输出：同一条命令运行满 `loopThreshold` 次后（默认 `3`）也原样放行。
+- **逃生舱** —— 命令加 `RTK_RAW=1 ` 前缀即可完全绕过重写，例如 `RTK_RAW=1 git status`。
+- **恢复提示** —— 当 RTK 省略了输出时，钩子会追加一行提示，给出可直接复制的重跑命令。
+
+可在 `~/.config/opencode/options.jsonc` 的 `tools.rtkWrite` 中调整（所有键可选，下列为默认值）：
+
+```jsonc
+"tools": {
+  "rtkWrite": {
+    "enabled": true,          // 总开关（默认 true）
+    "loopThreshold": 3,       // 同命令第 N 次直通原始输出（0 = 从不熔断）
+    "blocklist": ["git diff"] // 永不重写的命令前缀
+  }
+}
+```
+
 ---
 
 ## 工作区包装 TUI（`ocp tui`）
