@@ -9,11 +9,12 @@
  *   /adr supersede <old-id> <new-title>
  *   /adr tree | map
  *   /adr check | lint
+ *   /adr glossary [locale]
  *   /adr help
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
-import { refreshLocale, tr } from "../tui/i18n"
+import { refreshLocale, tr, getLocale } from "../tui/i18n"
 import {
   analyzeAdrComplexity,
   appendAdrSection,
@@ -47,6 +48,7 @@ import {
   buildSectionEdges,
   renderAdrContext,
   renderAdrHistory,
+  renderLabelGlossaryLocalized,
   renderTreeView,
   type AdrTreeGroupBy,
 } from "./adr-views"
@@ -376,6 +378,16 @@ async function handleAdrCommand(
     const chainIds = new Set(history.entries.map((e) => e.record.id))
     const sectionEdges = buildSectionEdges(records).filter((e) => chainIds.has(e.toContainer))
     await announce(client, renderAdrHistory(history, sectionEdges), "info", sessionID)
+    return { handled: true }
+  }
+
+  if (sub === "glossary") {
+    // `/adr glossary [locale]` — one-time decoding of the fixed English
+    // grammar labels in the reader's language (8 world locales; default:
+    // session language). TUI-only surface: generated INDEX files stay
+    // English-only (byte-stable contract, §13 Phase 5 / §15).
+    const requested = rest.replace(/^["']|["']$/g, "").trim() || getLocale()
+    await announce(client, renderLabelGlossaryLocalized(requested), "info", sessionID)
     return { handled: true }
   }
 

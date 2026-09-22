@@ -23,6 +23,42 @@ document is never required to carry MADR-only sections (strict style
 isolation). Shared tooling consumes a normalized record model, so indexes,
 trees, history, and integrity checks behave identically for both.
 
+## Label glossary (one-time decoding)
+
+Grammar labels are fixed English across every style; prose follows the
+working language (ADR-0.40.0#02). This table decodes the labels once —
+first-time readers should not need it again. The plugin ships the same
+decoding in 8 locales (`/adr glossary [locale]` — en, zh-CN, es, fr, ru,
+ar, pt, ja); generated INDEX files render the English column only. The zh
+mirror keeps a translated glossary at [`zh/README.md`](./zh/README.md).
+Parsers tolerate a display-only language parenthetical after a heading
+(`## Context (…)`) but per-label parentheticals are not recommended — they
+drift across files (protocol, Prose language rule).
+
+| Label | Style | Meaning |
+| --- | --- | --- |
+| `## Context` | nygard | Forces at play: technical, business, project context |
+| `## Decision` | nygard | The decision made in response to the context |
+| `## Consequences` | nygard, madr | Resulting context: what becomes easier or harder |
+| `## Context and Problem Statement` | madr | Architectural context, the problem, and constraints |
+| `## Decision Drivers` | madr (optional) | Forces driving the decision (scalability, security, …) |
+| `## Considered Options` | madr (optional) | Alternatives evaluated, each with pros/cons |
+| `## Decision Outcome` | madr | The chosen option and rationale (`Chosen option: …, because …`) |
+| `## Pros and Cons of the Options` | madr (optional) | Per-option advantage/disadvantage detail |
+| `### Confirmation` | madr (optional) | How the decision's outcomes will be verified |
+| `## More Information` | madr (optional) | Supplementary material and references |
+| `**Positive**` / `**Negative / Risks**` | madr | Good impacts / trade-offs and mitigations |
+| `## Cheatsheet` / `## Quick view` | ocp | Reader's primary entry / restatement layer (graphs + tables) |
+| `**Status**` | ocp | Section status line: emoji + fixed token (`✅ accepted`, …) |
+| `**Background**` | ocp | Situation and pain, ≤ 3 sentences |
+| `**Decision**` | ocp | Decision points as a `# / Point / Content` table |
+| `**Rationale**` | ocp | Why — bold-keyword-led bullets |
+| `**Rejected**` | ocp | Alternatives not taken, as an `Option / Reason rejected` table |
+| `**Impact**` | ocp | Layered change list (plugins / runtime / tests / docs / …) |
+| `**Future extensions**` | ocp | Deliberately deferred follow-ups |
+| status enum | frontmatter | `proposed` → `accepted` or `rejected`; `superseded`, `deprecated` |
+| metadata keys | frontmatter | `style` `status` `created` `date` `layer` `scope` `baseline` `iteration` `domain` `parent` `supersedes` `superseded_by` — machine-read, never localized |
+
 ## Style selection
 
 - `/adr init` persists the default style for new records (`adr.style`);

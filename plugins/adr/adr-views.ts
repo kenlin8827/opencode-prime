@@ -15,6 +15,7 @@
 import { adrTextCollator, normalizeAdrId, type NormalizedAdrRecord } from "./adr-types"
 import { byCreatedThenPath, groupByIteration, matchesIteration } from "./adr-evolution"
 import { getAdrStyleAdapter } from "./adr-style-registry"
+import { ADR_GLOSSARY, LOCALES, type GlossaryLocale, type Locale } from "../tui/i18n"
 
 // ─── Directory tree (§9.3 — indexes mirror the ADR tree) ─────────────
 
@@ -193,6 +194,66 @@ export function renderAdlIndex(node: AdrTreeNode, columns: readonly IndexColumn[
     }
   }
 
+  // Root index only: the one-time label glossary (ADR-0.40.0#02 protocol
+  // landing). Child indexes stay lean — the glossary is reference material,
+  // not navigation, and repeating it per directory would be drift bait.
+  if (!node.parent) {
+    out += renderLabelGlossary()
+  }
+
+  return out
+}
+
+/**
+ * One-time label glossary for the ADL root index. Grammar labels are fixed
+ * English in every record (ADR-0.40.0#02 — parser stability + interop), and
+ * generated files are byte-stable (§13 Phase 5 / §15): this section renders
+ * the ENGLISH meanings only. Locale-following decoding is a TUI concern
+ * (`renderLabelGlossaryLocalized`, `/adr glossary [locale]`); the 8-locale
+ * meanings live in the ADR_GLOSSARY i18n catalog. Pure + deterministic.
+ */
+function renderLabelGlossary(): string {
+  let out = `\n## Label glossary\n\n`
+  out += `Grammar labels are fixed English in every record — prose follows the team's\n`
+  out += `working language (ADR-0.40.0#02). One-time decoding below; the labels\n`
+  out += `themselves are never localized. Translations ship in the plugin\n`
+  out += `(\`/adr glossary\` — 8 locales); generated files stay English-only.\n\n`
+  out += `| Label | Style | Meaning |\n`
+  out += `| :--- | :--- | :--- |\n`
+  for (const row of ADR_GLOSSARY) {
+    out += `| ${row.label} | ${row.style} | ${row.meanings.en} |\n`
+  }
+  return out
+}
+
+/**
+ * Locale-following glossary view for the TUI (`/adr glossary [locale]`).
+ * Ephemeral command output ONLY — never written into generated files, whose
+ * byte-stability contract (§13 Phase 5 / §15) forbids locale-following
+ * content. Locale resolution: exact registry code → same base language
+ * (`pt-BR` → `pt`, `zh-TW` → `zh-CN`) → English fallback with a note.
+ */
+export function renderLabelGlossaryLocalized(requested: Locale): string {
+  const req = requested.trim()
+  const base = req.toLowerCase().split("-")[0]
+  const resolved =
+    LOCALES.find((l) => l.code === req) ??
+    LOCALES.find((l) => l.code.split("-")[0] === base)
+  const meaning = (m: Record<GlossaryLocale, string>): string =>
+    (resolved && m[resolved.code]) || m.en
+
+  let out = `## Label glossary — ${resolved?.name ?? "English"}\n\n`
+  if (req && !resolved) {
+    out += `> Locale \`${req}\` is not available — showing English.\n\n`
+  }
+  out += `Grammar labels are fixed English in every record — prose follows the team's\n`
+  out += `working language (ADR-0.40.0#02). Locale-following TUI view; generated\n`
+  out += `INDEX files stay English-only and byte-stable.\n\n`
+  out += `| Label | Style | Meaning |\n`
+  out += `| :--- | :--- | :--- |\n`
+  for (const row of ADR_GLOSSARY) {
+    out += `| ${row.label} | ${row.style} | ${meaning(row.meanings)} |\n`
+  }
   return out
 }
 

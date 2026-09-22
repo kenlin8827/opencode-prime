@@ -48,6 +48,14 @@ All source code, agent prompts, instructions, plugin protocols, and contributor 
 
 User docs are strictly bilingual: `README.md` + `docs/**` (outside `docs/zh/`) = English; `README.zh-CN.md` + `docs/zh/**` = Chinese. Never mix.
 
+### Generated-view i18n — ADR glossary (8 world languages)
+
+- **Grammar labels stay English forever** (ADR-0.40.0#02): never localized, never per-label parenthesized in records.
+- **Generated files are byte-stable and English-only** (`INDEX.md`, …): locale-following content is forbidden in anything regenerated — it flips bytes per generating session. Locale-following rendering is allowed ONLY in ephemeral TUI output (`/adr glossary [locale]`).
+- **Single source of truth for translations**: `ADR_GLOSSARY` in `plugins/tui/i18n.ts`, complete across all 8 registered locales (en, zh-CN, es, fr, ru, ar, pt, ja). Never hand-copy translation tables into docs, records, or code.
+- **Adding a locale**: register it in `LOCALES` (`i18n.ts`, `as const`) and fill every `ADR_GLOSSARY` meaning — `GlossaryLocale` derives from the registry, so a missing meaning is a compile error; the unit test enforces non-empty values. UI strings (`STRINGS`) may fall back to English via `tr()`; glossary meanings may not.
+- **Repo docs stay strictly bilingual** (rule above): the 8-locale support is plugin runtime content, never a `docs/`-tree expansion.
+
 ---
 
 ## 2. Token Budget — Prompt Compression

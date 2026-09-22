@@ -53,7 +53,8 @@ import {
   PROTOCOL_SKILL_REF,
   resetAdrLastGoodFragment,
 } from "../plugins/adr/adr-instructions"
-import { renderAdlIndex, renderUnifiedIndexRow, type IndexColumn } from "../plugins/adr/adr-views"
+import { renderAdlIndex, renderLabelGlossaryLocalized, renderUnifiedIndexRow, type IndexColumn } from "../plugins/adr/adr-views"
+import { ADR_GLOSSARY, LOCALES, type GlossaryLocale } from "../plugins/tui/i18n"
 import type { NormalizedAdrRecord } from "../plugins/adr/adr-types"
 
 let passed = 0
@@ -746,6 +747,69 @@ function test12_BackwardCompat_NoOverrides(): void {
   }
 }
 
+// ─── Root index label glossary ─────────────────────────────────────────
+
+function test20_RootIndexLabelGlossary(): void {
+  section("Root INDEX label glossary — root only, English-only, deterministic")
+
+  const r = record({ id: "ADR-0001", sourcePath: "docs/adr/0001-x.md", title: "Test" })
+
+  // Root index carries the glossary — English-only (byte-stable contract:
+  // generated files never carry locale-following content).
+  const root = renderAdlIndex({ relDir: "docs/adr", parent: null, records: [r], children: [] })
+  assert(root.includes("## Label glossary"), "root index carries the label glossary")
+  assert(root.includes("| Label | Style | Meaning |"), "glossary table is the 3-column English shape")
+  assert(!root.includes("Meaning (zh-CN)"), "generated glossary has no locale columns")
+  assert(root.includes("`## Decision Outcome`"), "madr labels present")
+  assert(root.includes("`**Rejected**`"), "ocp labels present")
+  assert(!/[\u4e00-\u9fff]/.test(root), "generated glossary stays English-only (no CJK meanings)")
+
+  // …and regeneration is byte-stable (no locale input).
+  const again = renderAdlIndex({ relDir: "docs/adr", parent: null, records: [r], children: [] })
+  assert(root === again, "glossary rendering is deterministic (byte-stable regeneration)")
+
+  // Child indexes stay lean — glossary is root-only.
+  const child = renderAdlIndex({
+    relDir: "docs/adr/domains/billing",
+    parent: { relDir: "docs/adr", parent: null, records: [], children: [] },
+    records: [r],
+    children: [],
+  })
+  assert(!child.includes("## Label glossary"), "child index has no glossary")
+}
+
+// ─── Glossary 8-locale catalog + TUI locale view ──────────────────────
+
+function test21_GlossaryEightLocales(): void {
+  section("ADR glossary — 8 world locales, complete catalog, TUI locale view")
+
+  const codes = LOCALES.map((l) => l.code)
+  assert(codes.length === 8, "8 major world languages registered")
+  assert(codes.includes("en") && codes.includes("zh-CN"), "en + zh-CN remain registered")
+
+  // Every meaning cell is filled in every locale (compile-time shape via
+  // Record<GlossaryLocale, string>; runtime values enforced here).
+  for (const row of ADR_GLOSSARY) {
+    for (const code of codes) {
+      const text = row.meanings[code as GlossaryLocale]
+      assert(typeof text === "string" && text.length > 0, `meaning filled: ${row.label} × ${code}`)
+    }
+  }
+
+  // Locale-following TUI view: exact code, base-language match, fallback.
+  const fr = renderLabelGlossaryLocalized("fr")
+  assert(fr.includes("Alternatives évaluées"), "fr view renders French meanings")
+  const ptBr = renderLabelGlossaryLocalized("pt-BR")
+  assert(ptBr.includes("Forças em jogo"), "pt-BR resolves to pt (base-language match)")
+  const zhTw = renderLabelGlossaryLocalized("zh-TW")
+  assert(zhTw.includes("背景与问题陈述"), "zh-TW resolves to zh-CN (base-language match)")
+  const unknown = renderLabelGlossaryLocalized("klingon")
+  assert(unknown.includes("Forces at play"), "unknown locale falls back to English")
+  assert(unknown.includes("not available"), "fallback carries a visibility note")
+  const en = renderLabelGlossaryLocalized("en")
+  assert(!/[\u4e00-\u9fff]/.test(en), "en view contains no CJK")
+}
+
 // ─── regenerateAdlIndexes honors columns arg ───────────────────────────
 
 function test13_RegenerateIndexes_HonorsColumns(): void {
@@ -827,6 +891,8 @@ function main(): void {
   test11_IndexColumnProjection()
   test12_BackwardCompat_NoOverrides()
   test13_RegenerateIndexes_HonorsColumns()
+  test20_RootIndexLabelGlossary()
+  test21_GlossaryEightLocales()
 
   console.log(`\n${"═".repeat(60)}`)
   console.log(`  Result: ${passed} passed / ${failed} failed`)
