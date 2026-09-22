@@ -2,7 +2,7 @@
   "$schema": "../../docs/design/wizard-schema.schema.json",
   "id": "projectGuards",
   "i18nKey": "project.projectGuards.title",
-  "description": "On/off project guards (env, E2E, ADR commit law). Project memory is a top-level inline control (project-memory.json); ADR structure (dir + mode) lives in the ADR Settings group (adr.json). Schema-driven; new entries only require a JSON row, no wizard code change. nameKey = localized row display name.",
+  "description": "On/off project guards (env, ADR commit law). Project memory is a top-level inline control (project-memory.json); ADR structure (dir + mode) lives in the ADR Settings group (adr.json). Schema-driven; new entries only require a JSON row, no wizard code change. nameKey = localized row display name.",
   "fields": [
     {
       "key": "envGuard",
@@ -15,20 +15,6 @@
       "values": [
         { "value": "on", "labelKey": "project.valueGuardEnvOn" },
         { "value": "off", "labelKey": "project.valueGuardEnvOff" }
-      ],
-      "default": "on"
-    },
-    {
-      "key": "e2eGuard",
-      "type": "enum",
-      "labelKey": "project.switchE2eGuard",
-      "descriptionKey": "project.switchE2eGuard",
-      "nameKey": "project.nameE2eGuard",
-      "badgeKind": "guard",
-      "icon": "🧪",
-      "values": [
-        { "value": "on", "labelKey": "project.valueGuardE2eOn" },
-        { "value": "off", "labelKey": "project.valueGuardE2eOff" }
       ],
       "default": "on"
     },

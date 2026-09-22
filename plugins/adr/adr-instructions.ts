@@ -98,7 +98,7 @@ export function getGuardHintPrompt(): string {
 //
 // Shared implementation: the Map and `isProjectConfigCorrupt` live in
 // `plugins/shared/last-good.ts` so other plugins (auto-advisor,
-// e2e-guard, …) can reuse the same per-project last-good contract
+// env-guard, …) can reuse the same per-project last-good contract
 // without duplicating corrupt-check / history-fallback logic. This file
 // re-exports that contract for tests and keeps ADR-specific rendering
 // single-IO (one file read shared by corrupt-check + render).

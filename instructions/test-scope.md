@@ -42,7 +42,7 @@ A bug fix with zero tests is not a real bug fix. Default to at least the 2–5-f
 ## Skip rules (when NOT to run a higher tier)
 
 - **E2E**: last resort — slow, flaky, expensive. Only when explicitly requested OR diff touches critical user journey / auth / payment / data-mutation. Confirm with user before executing.
-  - **e2eGuard** (`/e2e-guard on`): when on, agent MUST assess E2E impact on all `feat`/`fix` tasks, flag missing specs (test gaps), and interactively ask user (targeted specs / full suite / supplement / skip) before proceeding.
+  - **Project red-line doc** (`docs/e2e-redline.md`, adopted via `/e2e-adopt`): when present, it is the project's authoritative E2E policy — follow its tier table, confirmation loop, and coverage mandate; it wins over this generic policy on conflict.
 - **Full suite**: only when requested, on release branches, or when the change is genuinely cross-cutting and module-scoped tests give no confidence.
 
 ## Transparency rule

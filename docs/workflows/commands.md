@@ -32,7 +32,7 @@ OpenCode Multi-Agent ships with a suite of high-leverage workflow slash commands
 | **`/goal [text]`** | Goal Execution | Structured goal execution protocol with audit-friendly checklists and mechanically checkable stop conditions |
 | **`/handoff [focus]`** | Session State | Compacts current session state into a git-safe handoff bundle (`.ocp/handoffs/`) and outputs a paste-ready opener for a fresh session |
 | **`/adr guard [on\|off\|reset\|status]`**（别名 `/adr-guard`） | Quality Gate | Project-level ADR commit gate: enforces architecture decision records on `feat:` and `refactor:` commits |
-| **`/e2e-guard [on\|off\|status]`** | Quality Gate | Project-level E2E testing gate: requires end-to-end coverage verification on features and bug fixes |
+| **`/e2e-adopt [dry\|status]`** | Quality Governance | Adopts the E2E red-line policy into project docs (`docs/e2e-redline.md` + AGENTS.md section): risk-graded tiers, ask-before-E2E confirmation loop, coverage mandate — docs governance, no runtime gate |
 | **`/env-guard [on\|off\|status]`** | Security Gate | Project-level secret leak prevention: blocks reading or leaking `.env` files to external tools |
 | **`/deepseek-anchor [on\|off\|status]`** | Model Engine | DeepSeek V4/Pro reasoning depth anchor: prevents reasoning degradation and gates tools during deliberation |
 | **`/auto-advisor [off\|lite\|full]`** | Intelligence | Toggle auto-advisor mode (`off`, `lite` recommendations, `full` factual auto-answers) |

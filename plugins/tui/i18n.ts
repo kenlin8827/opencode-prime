@@ -606,11 +606,6 @@ export const STRINGS = {
   "project.valueGuardEnvOff": { en: "Allow unrestricted access to env files", "zh-CN": "允许对 .env 文件的无限制访问" },
   "project.toastEnvGuard": { en: "envGuard -> {value}", "zh-CN": "envGuard -> {value}" },
 
-  "project.pickE2eGuard": { en: "Select e2eGuard", "zh-CN": "选择 e2eGuard" },
-  "project.valueGuardE2eOn": { en: "Assess E2E impact & prompt user", "zh-CN": "评估 E2E 影响并提示用户" },
-  "project.valueGuardE2eOff": { en: "Skip E2E assessment check", "zh-CN": "跳过 E2E 评估检查" },
-  "project.toastE2eGuard": { en: "e2eGuard -> {value}", "zh-CN": "e2eGuard -> {value}" },
-
   "project.valueGuardMemoryOn": { en: "Inject curated project-memory lessons", "zh-CN": "注入已整理的项目记忆经验" },
   "project.valueGuardMemoryOff": { en: "Never inject project memory", "zh-CN": "从不注入项目记忆" },
   "project.toastGuard": { en: "{key} -> {value}", "zh-CN": "{key} -> {value}" },
@@ -649,10 +644,8 @@ export const STRINGS = {
   "project.adrSuiteEvolutionDesc": { en: "Decisions per iteration — madr · iteration numbering · hierarchical layout · review governance", "zh-CN": "按迭代跟踪决策 —— madr · 迭代编号 · 层级布局 · review 治理" },
   "project.adrSuiteOcpDesc": { en: "Container record per iteration (OCP discipline) — ocp · iteration numbering · hierarchical layout · review governance; every /adr new needs --baseline/--iteration", "zh-CN": "每迭代一条容器记录（OCP 纪律）—— ocp · 迭代编号 · 层级布局 · review 治理；每次 /adr new 须带 --baseline/--iteration" },
   "project.switchEnvGuard": { en: "Protect secret .env file reads", "zh-CN": "保护 .env 密钥文件读取" },
-  "project.switchE2eGuard": { en: "Assess E2E before test execution", "zh-CN": "测试执行前评估 E2E 影响" },
   "project.switchProjectMemory": { en: "Inject curated project memory into context (.ocp/memory/public.md inside the project, committed)", "zh-CN": "将整理后的项目记忆注入上下文(项目内 .ocp/memory/public.md,进 git)" },
   "project.nameEnvGuard": { en: "envGuard", "zh-CN": "环境护栏" },
-  "project.nameE2eGuard": { en: "e2eGuard", "zh-CN": "E2E 护栏" },
   "project.nameAdrGuard": { en: "adrGuard", "zh-CN": "ADR 护栏" },
   "project.nameProjectMemory": { en: "projectMemory", "zh-CN": "项目记忆" },
 
@@ -824,20 +817,21 @@ export const STRINGS = {
   "guard.memory.showPaths": { en: "Files:\n  public:  {public}\n  private: {private}", "zh-CN": "文件路径：\n  公开：  {public}\n  私人：{private}" },
   "guard.memory.showEmpty": { en: "[project-memory] No memory captured yet — nothing injected.\nNote with /memory note \"<lesson>\" (public) or /memory note --private \"<note>\" (private).\nFiles:\n  public:  {public}\n  private: {private}", "zh-CN": "[project-memory] 暂无任何记录——当前无注入内容。\n用 /memory note \"<经验>\"（公开）或 /memory note --private \"<笔记>\"（私人）写入第一条。\n文件路径：\n  公开：  {public}\n  私人：{private}" },
 
-  // ── e2e-guard (/e2e-guard) ──
-  "guard.e2e.help": {
-    en: "[e2e-guard] E2E Red-Line Guard — project switch controls.\nUsage:\n/e2e-guard status   → check current guard status (on / off)\n/e2e-guard on | off → flip the project gate in .ocp/ocp.json (persisted)",
-    "zh-CN": "[e2e-guard] E2E 红线护栏 —— 项目开关控制。\n用法：\n/e2e-guard status   → 查看当前护栏状态 (on / off)\n/e2e-guard on | off → 翻转 .ocp/ocp.json 中的项目开关（持久化）",
+  // ── e2e-adopt (/e2e-adopt) ──
+  "guard.e2eadopt.help": {
+    en: "[e2e-adopt] Adopt the E2E red-line policy into project docs (baijiu-shop-style documentation governance — no runtime switch).\nUsage:\n/e2e-adopt        → detect E2E setup, write docs/e2e-redline.md + insert the red-line section into AGENTS.md\n/e2e-adopt dry    → preview detection + placeholders, write nothing\n/e2e-adopt status → report whether the policy is adopted\nUninstall: delete docs/e2e-redline.md and the <!-- e2e-redline --> section in AGENTS.md.",
+    "zh-CN": "[e2e-adopt] 将 E2E 红线政策落进项目文档（baijiu-shop 式文档治理——无运行时开关）。\n用法：\n/e2e-adopt        → 检测 E2E 环境，写入 docs/e2e-redline.md 并在 AGENTS.md 插入红线小节\n/e2e-adopt dry    → 仅预览检测结果与待填占位符，不写任何文件\n/e2e-adopt status → 报告政策是否已采纳\n卸载：删除 docs/e2e-redline.md 和 AGENTS.md 中的 <!-- e2e-redline --> 小节。",
   },
-  "guard.e2e.status": { en: "[e2e-guard] gate: {gate}. (Protocol injection is {flag})", "zh-CN": "[e2e-guard] gate: {gate}。（协议注入 {flag}）" },
-  "guard.e2e.set": { en: "[e2e-guard] Gate {STATE} — wrote \"e2eGuard\": \"{state}\" to {path}.", "zh-CN": "[e2e-guard] 护栏已{zhState} —— 已把 \"e2eGuard\": \"{state}\" 写入 {path}。" },
-  "guard.e2e.setFail": { en: "[e2e-guard] Failed to write the project config — edit the \"e2eGuard\" field of .ocp/ocp.json by hand.", "zh-CN": "[e2e-guard] 写入项目配置失败 —— 请手工编辑 .ocp/ocp.json 的 \"e2eGuard\" 字段。" },
-  "guard.e2e.unknown": { en: "[e2e-guard] Unknown subcommand \"{sub}\".", "zh-CN": "[e2e-guard] 未知子命令 \"{sub}\"。" },
-  "guard.e2e.announceOn": { en: "[e2e-guard] ON — E2E runs are blocked until the user confirms and /e2e-guard allow grants a one-shot pass. /e2e-guard off to disable.", "zh-CN": "[e2e-guard] ON —— E2E 运行会被拦截，直到用户确认并由 /e2e-guard allow 发放一次性放行。用 /e2e-guard off 关闭。" },
-  "guard.e2e.announceOff": { en: "[e2e-guard] OFF — no E2E gating. /e2e-guard on to require user confirmation before E2E runs in this project.", "zh-CN": "[e2e-guard] OFF —— 不做 E2E 门控。用 /e2e-guard on 要求本项目 E2E 运行前先经用户确认。" },
-  "guard.e2e.statusMsg": { en: "[e2e-guard] Status: {state} | switch: /e2e-guard on|off (project-level, stored in .ocp/ocp.json) | allow: /e2e-guard allow (one full-suite pass) | allow targeted: unlock affected-spec re-runs only, full suites stay gated", "zh-CN": "[e2e-guard] Status: {state} | 开关：/e2e-guard on|off（项目级，存于 .ocp/ocp.json）| 放行：/e2e-guard allow（一次整套运行）| targeted 放行：仅解锁受影响 spec 的重跑，整套运行仍需门控" },
-  "guard.e2e.allowFull": { en: "[e2e-guard] Approved — the next FULL-suite run passes (one-shot). Targeted single-spec re-runs stay unlocked for the rest of this session; each later FULL-suite run needs a fresh user confirmation.", "zh-CN": "[e2e-guard] Approved —— 下一次整套（FULL）运行放行（一次性）。本会话后续受影响 spec 的定向重跑保持解锁；每次整套运行仍需用户重新确认。" },
-  "guard.e2e.allowTargeted": { en: "[e2e-guard] Approved (TARGETED only) — targeted spec re-runs now pass for the rest of this session. Full-suite runs stay gated and still need a fresh confirmation + /e2e-guard allow.", "zh-CN": "[e2e-guard] Approved（仅 TARGETED）—— 本会话内定向 spec 重跑现已放行。整套运行仍然门控，需要新的确认 + /e2e-guard allow。" },
+  "guard.e2eadopt.detect": { en: "Detection: e2e-dir={dir} · runner-config={runner} · command=to be filled (stack-agnostic by design)", "zh-CN": "检测结果：e2e 目录={dir} · runner 配置={runner} · 命令=待填（按设计不猜测技术栈）" },
+  "guard.e2eadopt.fillHint": { en: "⚠ {{E2E_COMMAND}} is intentionally not guessed — ask the agent to inspect the repo's build/test setup and fill it (plus {{E2E_DIR}} / {{CRITICAL_JOURNEYS}} if empty) in docs/e2e-redline.md, or edit by hand.", "zh-CN": "⚠ {{E2E_COMMAND}} 按设计不做猜测 —— 请让 agent 检查仓库的构建/测试配置后代填（含 {{E2E_DIR}} / {{CRITICAL_JOURNEYS}} 如为空），或手工编辑 docs/e2e-redline.md。" },
+  "guard.e2eadopt.applied": { en: "[e2e-adopt] Adopted — E2E red-line policy written into project docs:", "zh-CN": "[e2e-adopt] 已采纳 —— E2E 红线政策已写入项目文档：" },
+  "guard.e2eadopt.dry": { en: "[e2e-adopt] Dry run — nothing written.", "zh-CN": "[e2e-adopt] 预览模式 —— 未写入任何文件。" },
+  "guard.e2eadopt.status": { en: "[e2e-adopt] Adoption status — doc: {doc} · AGENTS.md section: {section}", "zh-CN": "[e2e-adopt] 采纳状态 —— 文档：{doc} · AGENTS.md 小节：{section}" },
+  "guard.e2eadopt.placeholders": { en: "⚠ Unfilled placeholders: {list} — fill them in docs/e2e-redline.md.", "zh-CN": "⚠ 待填占位符：{list} —— 请在 docs/e2e-redline.md 中补全。" },
+  "guard.e2eadopt.agentsMissing": { en: "AGENTS.md not found — section NOT written (a minimal AGENTS.md would make /project init skip its full baseline). Run /project init or create AGENTS.md, then re-run /e2e-adopt.", "zh-CN": "未找到 AGENTS.md —— 未写入小节（最小化的 AGENTS.md 会让 /project init 跳过完整基线）。请先运行 /project init 或创建 AGENTS.md，再重跑 /e2e-adopt。" },
+  "guard.e2eadopt.agentsMalformed": { en: "⚠ AGENTS.md e2e-redline markers are malformed (crossed or duplicated) — nothing written. Clean up the markers by hand, then re-run /e2e-adopt.", "zh-CN": "⚠ AGENTS.md 的 e2e-redline 标记形态异常（交叉或重复）—— 未写入任何内容。请手工整理标记后重跑 /e2e-adopt。" },
+  "guard.e2eadopt.writeFail": { en: "[e2e-adopt] Write failed: {error}", "zh-CN": "[e2e-adopt] 写入失败：{error}" },
+  "guard.e2eadopt.uninstall": { en: "Uninstall: delete docs/e2e-redline.md and the <!-- e2e-redline --> section in AGENTS.md.", "zh-CN": "卸载：删除 docs/e2e-redline.md 和 AGENTS.md 中的 <!-- e2e-redline --> 小节。" },
 
   // ── adr plugin (/adr; guard submodule + /adr-guard alias) ──
   "guard.adr.announceOn": { en: "[adr] guard ON — every feat/refactor commit requires a new/updated ADR ({dir}/). /adr guard off to disable.", "zh-CN": "[adr] guard ON —— 每个 feat/refactor 提交都需要新增/更新 ADR（{dir}/）。用 /adr guard off 关闭。" },

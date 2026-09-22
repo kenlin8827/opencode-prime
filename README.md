@@ -19,7 +19,7 @@
 ## Features
 
 - **Specialist agent team:** 21 focused agents for frontend, Java, databases, security, QA, DevOps, and more.
-- **Engineering guardrails:** Optional ADR, secret-file, E2E, and commit-discipline gates keep delivery predictable.
+- **Engineering guardrails:** Optional ADR, secret-file, and commit-discipline gates keep delivery predictable; `/e2e-adopt` scaffolds an E2E red-line policy into project docs.
 - **Layered intelligence:** Configure CodeGraph, GitNexus, Serena LSP, DBHub, and other MCP services from one dashboard.
 - **Model governance:** Map agents to `flash`, `standard`, `pro`, `max`, and `vision` tiers, then switch profiles in one action.
 - **Guided setup:** Use the TUI wizard to configure providers, profiles, project knowledge, and guardrails without hand-editing files.

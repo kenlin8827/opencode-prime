@@ -3,7 +3,7 @@
  * Sidebar Status — TUI slot plugin that renders two vertical status groups
  * inside the OpenCode right sidebar:
  *   "OCP"         — agent behavior/policy switches (independent of project):
- *                   adr, e2e-guard, auto-advisor, deepseek-anchor,
+ *                   adr, auto-advisor, deepseek-anchor,
  *                   plus the active profile.
  *   "OCP project" — current-directory OCP project state and capabilities:
  *                   scaffold (init state), memory (curated lessons for this
@@ -25,7 +25,6 @@
  *
  * State sources (all read-only, same logic as each plugin's config module):
  *   - adrGuard        → project OCP config field (on | off, default off)
- *   - e2eGuard        → project OCP config field (on | off, default off)
  *   - projectMemory   → project OCP config field (on | off, default on —
  *                       advisory; nothing is injected unless a curated
  *                       public.md actually exists)
@@ -131,10 +130,6 @@ interface Badge {
 
 function resolveAdrGuard(projectDir: string): "on" | "off" {
   return normalizeOnOff(readProjectConfig(projectDir)?.adrGuard) ?? "off"
-}
-
-function resolveE2eGuard(projectDir: string): "on" | "off" {
-  return normalizeOnOff(readProjectConfig(projectDir)?.e2eGuard) ?? "off"
 }
 
 function resolveProjectMemory(projectDir: string): "on" | "off" {
@@ -498,7 +493,7 @@ export async function fetchLatestVersion(lifecycleSignal?: AbortSignal): Promise
 // ─── Badge builders ─────────────────────────────────────────────────
 // Two semantic groups, rendered as two sidebar sections:
 //   "OCP"         — agent behavior/policy switches (profile + guards):
-//                   profile, adr, e2e-guard, auto-advisor,
+//                   profile, adr, auto-advisor,
 //                   deepseek-anchor. These change how the agent behaves
 //                   regardless of which project is open.
 //   "OCP project" — current-directory OCP project state + capabilities:
@@ -527,9 +522,6 @@ export function buildGuardBadges(projectDir: string, currentModelId?: string): B
   // memory `ON · N`, `ON · empty`) → info — the qualifier IS the signal.
   const adr = resolveAdrGuard(projectDir)
   badges.push({ label: "adr", state: adr.toUpperCase(), variant: adr === "on" ? "success" : "info" })
-
-  const e2e = resolveE2eGuard(projectDir)
-  badges.push({ label: "e2e-guard", state: e2e.toUpperCase(), variant: e2e === "on" ? "success" : "info" })
 
   const advisor = resolveAutoAdvisor(projectDir)
   badges.push({ label: "auto-advisor", state: advisor.toUpperCase(), variant: advisor === "full" ? "warning" : advisor === "lite" ? "info" : "info" })
@@ -701,8 +693,7 @@ export function buildProjectBadges(
  * textMuted in title case — colour lives on the dot only):
  *   ─ OCP v0.30.0 ─────────────┐
  *   │ • profile  zhipuai-coding │
- *   \�\�\�\ \�\�\�\ adr\ \ Off\ \ \ \ \ \ \ \ \ \ \�\�\�
- *   │ • e2e-guard  Off          │
+ *   \�\�\�\ \�\�\�\ adr\ \ Off\ \ \ \ \ \ \ \ \ \ \�\�\�
  *   │ • auto-advisor  Off       │
  *   │ • deepseek-anchor  Off    │
  *   │ ─ OCP project ────────────│

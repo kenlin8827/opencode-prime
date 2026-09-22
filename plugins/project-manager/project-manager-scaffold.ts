@@ -190,7 +190,6 @@ export interface ProjectSwitches {
   adrDir?: string
   adrLayout?: "auto" | "flat" | "hierarchical"
   envGuard?: "on" | "off"
-  e2eGuard?: "on" | "off"
   projectMemory?: "on" | "off"
   // Multi-style ADL block (wizard `adr` group, ADR 0007 §6). These map to
   // the NESTED `adr.*` object in `.ocp/ocp.json`, NOT to root-level keys —

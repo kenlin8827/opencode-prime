@@ -8,7 +8,7 @@
  *     extracted to `./_wizard-helpers.ts`; not a separate framework directory by design.
  *   - Phase 1B refactor (2026-09-11): "git-workflow" group renamed and split into
  *     three meaningful units:
- *       - `projectGuards`→ sub-dialog (envGuard + e2eGuard, on/off guards)
+ *       - `projectGuards`→ sub-dialog (envGuard + adrGuard, on/off guards)
  *       - `adr`          → sub-dialog (suite quick-pick at top: standard /
  *                          evolution, then adrDir + adrLayout + ADL fields:
  *                          adrStyle / adrNumbering / adrGovernance)
@@ -220,7 +220,7 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
   // Per-group summary hints shown as the description of each group row on
   // the main menu. Built inline (no i18n template) — these are compact
   // status snapshots, not user-facing messages.
-  const projectGuardsSummary = `env:${current.envGuard ?? "def"} · e2e:${current.e2eGuard ?? "def"} · adr:${current.adrGuard ?? "def"}`
+  const projectGuardsSummary = `env:${current.envGuard ?? "def"} · adr:${current.adrGuard ?? "def"}`
   const adrSummary = `layout:${current.adrLayout ?? "def"} · style:${current.adrStyle ?? "def"} · gov:${current.adrGovernance ?? "def"}`
 
   const dprintPlan = planDprintSetup(projectRoot(api))

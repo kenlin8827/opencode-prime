@@ -1,6 +1,6 @@
 /**
  * Unit tests for the fragment-cache + always-inject pattern used by
- * five system-inject plugins: auto-advisor, adr, e2e-guard,
+ * the system-inject plugins: auto-advisor, adr,
  * project-manager, and project-profiler. Each plugin owns one
  * cacheable fragment; this file verifies the common contract across
  * them.
@@ -22,7 +22,6 @@
  * other contracts are exercised via the existing per-plugin unit
  * tests:
  *   tests/test-adr-guard-unit.ts
- *   tests/test-e2e-guard-unit.ts
  *   tests/test-project-manager-unit.ts
  *   tests/test-project-profiler-unit.ts
  * plus the auto-advisor scenario flow in tests/test-decisions.ps1.
@@ -94,11 +93,6 @@ for (const lookup of ["off", "full"] as AdvisorMode[]) {
 //   adr guard (binary on/off):
 //     on  → output.system gets the fragment
 //     off → output.system NOT modified (after the defensive strip)
-//
-//   e2e-guard (binary on/off + primary):
-//     on + primary    → output.system gets the fragment
-//     on + subagent   → output.system NOT modified (after the defensive strip)
-//     off             → output.system NOT modified (after the defensive strip)
 //
 //   project-manager (file present/missing):
 //     file present   → output.system gets the pointer fragment

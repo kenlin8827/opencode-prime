@@ -319,7 +319,7 @@ export function createFragmentLastGoodCache(
 // ─── Switch-state cache (plugin-switch pattern) ─────────────────────
 
 /** Options for a per-project typed switch-state last-good cache (e.g.
- *  `adrGuard` / `autoAdvisorMode` / `e2eGuard`). Caches the last normalized
+ *  `adrGuard` / `autoAdvisorMode`). Caches the last normalized
  *  state value; serves it on corrupt instead of lying with the default. */
 export interface StateLastGoodOptions<TState extends string> {
   field: string

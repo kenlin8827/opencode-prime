@@ -17,7 +17,7 @@
 | `deepseek-anchor.ts` | `/deepseek-anchor` 命令 —— 基于锚点的推理协议与 DeepSeek 模型集成 |
 | `adr.ts` | `/adr` 命令族 —— ADR 工作台 + 按项目提交门禁（`/adr guard`） |
 | `env-guard.ts` | 按项目的密钥文件门控 |
-| `e2e-guard.ts` | `/e2e-guard` 命令 —— 按项目门控：E2E 运行需用户确认 |
+| `e2e-adopt.ts` | `/e2e-adopt` 命令 —— 将 E2E 红线政策采纳进项目文档（`docs/e2e-redline.md` + AGENTS.md 小节）；文档治理，无运行时闸门 |
 | `project-manager.ts` | `/project` 命令 + 提交纪律 |
 | `project-memory.ts` | `/memory` 命令 —— 项目级记忆：在 `.ocp/memory/public.md`（团队）或 `private.md`（gitignored）里记录经验教训，并在每次聊天请求时以 `[PROJECT MEMORY]` 注入。LLM 可通过 `memory_note` 工具主动记录；`/memory-summarize` skill 用于 session 总结 |
 | `queue-manager.ts` | `/queued` 命令 —— 管理会话忙碌时排队的提示 |
@@ -147,19 +147,17 @@ ADR 治理系统支持 **Slash 命令（确定性脚手架 + AI 接力）** 与 
 
 ---
 
-## E2E 门控（`e2e-guard`）
+## E2E 红线采纳（`e2e-adopt`）
 
-按项目可选的门控机制，在运行任何 E2E 测试套件前要求用户明确确认：
+把项目的 E2E 红线政策脚手架进**项目自己的文档** —— baijiu-shop 式文档治理，无运行时开关与闸门（已退役的 `e2e-guard` 插件的继任者）：
 
 ```text
-/e2e-guard on       # 对本项目启用（项目 .ocp/ocp.json 中 "e2eGuard": "on"）
-/e2e-guard off      # 关闭
-/e2e-guard          # 状态报告
+/e2e-adopt        # 检测 E2E 环境 → 写入 docs/e2e-redline.md + AGENTS.md 红线小节
+/e2e-adopt dry    # 仅预览检测结果与待填占位符，不写任何文件
+/e2e-adopt status # 报告政策是否已采纳
 ```
 
-门控按风险分级：
-- **full**：无明确目标的整套运行（`npm run e2e`、裸 `playwright test`）—— 每次运行都需要新的一次性 `/e2e-guard allow` 放行。
-- **targeted**：显式指定 spec/测试文件（`playwright test tests/login.spec.ts`）—— 会话内一旦获得过确认，后续自动放行。
+检测会预填模板（包管理器、e2e 脚本、spec 目录、runner 配置）；检测不到的值保留为 `{{...}}` 占位符，由手工补全。采纳的政策包含四个核心要素：风险分级三档（轻量 / 定向 / 全量）、确认环（任何 E2E 运行前先问用户；当轮明确要求视为已确认；拒绝则暂停提交）、触发纪律（仅在 commit/push 时点考虑 E2E）、覆盖强制（feat/API 改动须有相称的 E2E 覆盖并同批提交）。卸载 = 删除 `docs/e2e-redline.md` 和 AGENTS.md 中的 `<!-- e2e-redline -->` 小节。
 
 ---
 

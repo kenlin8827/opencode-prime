@@ -220,11 +220,10 @@ Check "plugin-scope: default policy denies lite, utility and all subagent steps"
 $injectorFiles = @(
   "plugins\project-profiler\project-profiler.ts",
   "plugins\project-manager\project-manager-system-inject.ts", "plugins\adr\adr-system-inject.ts",
-  "plugins\auto-advisor\auto-advisor-system-inject.ts", "plugins\deepseek-anchor\index.ts",
-  "plugins\e2e-guard\e2e-guard-system-inject.ts"
+  "plugins\auto-advisor\auto-advisor-system-inject.ts", "plugins\deepseek-anchor\index.ts"
 )
 $unregisteredInjectors = @($injectorFiles | Where-Object { (Get-Content "$PSScriptRoot\..\$_" -Raw) -notmatch 'await scoped\(input, output\.system, "' })
-Check "plugin-scope: all 6 protocol injectors gate through scoped()" ($unregisteredInjectors.Count -eq 0)
+Check "plugin-scope: all 5 protocol injectors gate through scoped()" ($unregisteredInjectors.Count -eq 0)
 $pluginScope = Get-Content "$PSScriptRoot\..\plugins\shared\plugin-scope.ts" -Raw
 Check "plugin-scope.ts: reads the policy file and fails open" (($pluginScope -match "plugin-scope\.json") -and ($pluginScope -match "catch"))
 Check "lite-mode.ts: exports pure strip function" ($litePlugin -match "export function stripLiteOverhead")
@@ -306,14 +305,12 @@ $allFiles = @(
     "plugins/env-guard/env-guard-config.ts",
     "plugins/env-guard/env-guard-runtime.ts",
     "plugins/env-guard/env-guard-tool-guard.ts",
-    "plugins/e2e-guard.ts",
-    "plugins/e2e-guard/e2e-guard.ts",
-    "plugins/e2e-guard/e2e-guard-protocol.md",
-    "plugins/e2e-guard/e2e-guard-instructions.ts",
-    "plugins/e2e-guard/e2e-guard-system-inject.ts",
-    "plugins/e2e-guard/e2e-guard-command.ts",
-    "plugins/e2e-guard/e2e-guard-config.ts",
-    "plugins/e2e-guard/README.md",
+    "plugins/e2e-adopt.ts",
+    "plugins/e2e-adopt/e2e-adopt.ts",
+    "plugins/e2e-adopt/e2e-adopt-template.ts",
+    "plugins/e2e-adopt/e2e-adopt-detect.ts",
+    "plugins/e2e-adopt/e2e-adopt-apply.ts",
+    "plugins/e2e-adopt/README.md",
     "plugins/shared/opencode-prime.ts",
     "plugins/shared/package-manager.ts",
     "plugins/project-manager.ts",
@@ -613,7 +610,7 @@ foreach ($preset in @("dev-quick", "dev-plan", "dev-review")) {
 $flashLauncher = Get-Content "$PSScriptRoot\..\commands\dev-flash.md" -Raw
 Check "dev-flash: alias launcher loads the dev skill with dev-quick preset" (($flashLauncher -match "dev skill") -and ($flashLauncher -match "dev-quick preset"))
 
-# Shared project-config plumbing (plugins/shared/opencode-prime.ts — used by adr, env-guard, e2e-guard, auto-advisor)
+# Shared project-config plumbing (plugins/shared/opencode-prime.ts — used by adr, env-guard, auto-advisor)
 $sharedConfig = Get-Content "$PSScriptRoot\..\plugins\shared\opencode-prime.ts" -Raw
 Check "shared/opencode-prime.ts: exports never-throw field writer" ($sharedConfig -match 'export function setConfigField')
 Check "shared/opencode-prime.ts: exports field remover" ($sharedConfig -match 'export function clearConfigField')
@@ -675,31 +672,24 @@ Check "env-guard-tool-guard.ts: reuses adr runtime parsing" ($egGuard -match "ad
 $egBarrel = Get-Content "$PSScriptRoot\..\plugins\env-guard.ts" -Raw
 Check "env-guard.ts: barrel re-exports EnvGuardPlugin" ($egBarrel -match "export.*EnvGuardPlugin")
 
-# E2E guard plugin checks (plugins/e2e-guard/ — project-level switch, prompt-injected protocol)
-$e2ePlugin = Get-Content "$PSScriptRoot\..\plugins\e2e-guard\e2e-guard.ts" -Raw
-$e2eConfig = Get-Content "$PSScriptRoot\..\plugins\e2e-guard\e2e-guard-config.ts" -Raw
-$e2eProtocol = Get-Content "$PSScriptRoot\..\plugins\e2e-guard\e2e-guard-protocol.md" -Raw
-$e2eInstr = Get-Content "$PSScriptRoot\..\plugins\e2e-guard\e2e-guard-instructions.ts" -Raw
-$e2eInject = Get-Content "$PSScriptRoot\..\plugins\e2e-guard\e2e-guard-system-inject.ts" -Raw
-Check "e2e-guard.ts: imports Plugin type" ($e2ePlugin -match "import type.*Plugin.*from.*@opencode-ai/plugin")
-Check "e2e-guard.ts: registers the command via config hook" ($e2ePlugin -match "config:" -and $e2ePlugin -match "COMMAND_NAME" -and $e2ePlugin -match '"command\.execute\.before"')
-Check "e2e-guard.ts: has system.transform hook" ($e2ePlugin -match "experimental\.chat\.system\.transform")
-Check "e2e-guard.ts: injects project directory" ($e2ePlugin -match "setProjectDir\(directory\)")
-Check "e2e-guard-config.ts: switch stored in project .ocp/ocp.json (no state file)" ($e2eConfig -match 'shared/opencode-prime' -and $e2eConfig -match 'e2eGuard')
-Check "e2e-guard-config.ts: default state is off" ($e2eConfig -match 'defaultState: "off"')
-Check "e2e-guard-protocol.md: specifies feat and fix triggers" ($e2eProtocol -match "feat" -and $e2eProtocol -match "fix")
-Check "e2e-guard-protocol.md: includes test gap / case supplement check" ($e2eProtocol -match "Test Gap" -or $e2eProtocol -match "Supplement")
-Check "e2e-guard-protocol.md: requires interactive ask with user" ($e2eProtocol -match "ask" -or $e2eProtocol -match "Interactive")
-Check "e2e-guard-instructions.ts: exports marker and prompt builder" ($e2eInstr -match "MARKER_ON" -and $e2eInstr -match "getGuardPrompt")
-Check "e2e-guard-system-inject.ts: transforms system prompt on/off" ($e2eInject -match "stripMarker" -and $e2eInject -match "appendBlock")
+# E2E adopt plugin checks (plugins/e2e-adopt/ — docs-governance scaffold, retired e2e-guard's successor)
+$e2eAdoptPlugin = Get-Content "$PSScriptRoot\..\plugins\e2e-adopt\e2e-adopt.ts" -Raw
+$e2eAdoptTemplate = Get-Content "$PSScriptRoot\..\plugins\e2e-adopt\e2e-adopt-template.ts" -Raw
+$e2eAdoptDetect = Get-Content "$PSScriptRoot\..\plugins\e2e-adopt\e2e-adopt-detect.ts" -Raw
+$e2eAdoptApply = Get-Content "$PSScriptRoot\..\plugins\e2e-adopt\e2e-adopt-apply.ts" -Raw
+Check "e2e-adopt.ts: registers the command via config hook" ($e2eAdoptPlugin -match "config:" -and $e2eAdoptPlugin -match "E2E_ADOPT_COMMAND" -and $e2eAdoptPlugin -match '"command\.execute\.before"')
+Check "e2e-adopt.ts: NO system.transform hook (docs governance, not prompt injection)" ($e2eAdoptPlugin -notmatch "system\.transform")
+Check "e2e-adopt.ts: NO tool gate (no runtime enforcement by design)" ($e2eAdoptPlugin -notmatch "tool\.execute\.before")
+Check "e2e-adopt.ts: injects project directory" ($e2eAdoptPlugin -match "setProjectDir\(directory\)")
+Check "e2e-adopt-template.ts: carries the baijiu-shop four elements" (($e2eAdoptTemplate -match "Risk-graded") -and ($e2eAdoptTemplate -match "Confirmation loop") -and ($e2eAdoptTemplate -match "Trigger discipline") -and ($e2eAdoptTemplate -match "Coverage mandate"))
+Check "e2e-adopt-template.ts: confirmation loop has the this-turn exemption + refusal pause" (($e2eAdoptTemplate -match "current turn") -and ($e2eAdoptTemplate -match "pause the commit"))
+Check "e2e-adopt-template.ts: AGENTS.md section is marker-framed for idempotent adopt" (($e2eAdoptTemplate -match "e2e-redline:start") -and ($e2eAdoptTemplate -match "e2e-redline:end"))
+Check "e2e-adopt-detect.ts: read-only detection, never writes" (($e2eAdoptDetect -match "detectE2eSetup") -and ($e2eAdoptDetect -notmatch "writeFileSync"))
+Check "e2e-adopt-apply.ts: doc is create-only, never overwrites" ($e2eAdoptApply -match "docSkippedExisting")
+Check "e2e-adopt-apply.ts: missing AGENTS.md refuses the section" ($e2eAdoptApply -match "agentsMissing")
 
-$e2eCmd = Get-Content "$PSScriptRoot\..\plugins\e2e-guard\e2e-guard-command.ts" -Raw
-Check "e2e-guard-command.ts: status subcommand" ($e2eCmd -match "SUBCOMMAND_STATUS" -and $e2eCmd -match "statusText")
-Check "e2e-guard-command.ts: on/off writes the project switch" ($e2eCmd -match "SUBCOMMAND_ON" -and $e2eCmd -match "SUBCOMMAND_OFF" -and $e2eCmd -match "setState")
-Check "e2e-guard-command.ts: visible response via output.parts" ($e2eCmd -match "output\.parts =")
-
-$e2eBarrel = Get-Content "$PSScriptRoot\..\plugins\e2e-guard.ts" -Raw
-Check "e2e-guard.ts: barrel re-exports E2eGuardPlugin" ($e2eBarrel -match "export.*E2eGuardPlugin")
+$e2eAdoptBarrel = Get-Content "$PSScriptRoot\..\plugins\e2e-adopt.ts" -Raw
+Check "e2e-adopt.ts: barrel re-exports E2eAdoptPlugin" ($e2eAdoptBarrel -match "export.*E2eAdoptPlugin")
 
 # Project manager plugin checks (plugins/project-manager/ — file-as-switch commit discipline)
 $pmPlugin = Get-Content "$PSScriptRoot\..\plugins\project-manager\project-manager.ts" -Raw

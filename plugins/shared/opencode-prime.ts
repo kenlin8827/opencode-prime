@@ -503,7 +503,6 @@ export const OCP_SWITCH_KEYS = [
   "adrLayout",
   "adrDir",
   "envGuard",
-  "e2eGuard",
   "projectMemory",
 ] as const
 export type OcpSwitchKey = (typeof OCP_SWITCH_KEYS)[number]

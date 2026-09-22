@@ -21,7 +21,7 @@ function getTerminalHtml(lang: 'zh' | 'en', version: string): string {
     pluginSection: '项目工程护栏与扩展插件',
     adrHint: '架构决策记录 (ADR) 强制门禁，防止架构漂移',
     envHint: '敏感凭证与 .env 配置文件防泄漏门控',
-    e2eHint: '端到端 (E2E) 集成测试与验证门控',
+    e2eHint: 'E2E 红线政策文档采纳 (/e2e-adopt)',
     pmHint: '项目规范管理与规范驱动开发 (SDD) 闭环',
     tiersSection: '智能体模型梯队分配 (Agent Tier Governance)',
     tierHint: '(空格键循环调整模型梯队)',
@@ -52,7 +52,7 @@ function getTerminalHtml(lang: 'zh' | 'en', version: string): string {
     pluginSection: 'Engineering Guardrails & Plugins',
     adrHint: 'Architecture Decision Record (ADR) enforcement gate',
     envHint: 'Secret & .env sensitive credential leak prevention',
-    e2eHint: 'End-to-End (E2E) verification test gate',
+    e2eHint: 'E2E red-line policy adoption into project docs (/e2e-adopt)',
     pmHint: 'Project discipline & Spec-Driven Development (SDD)',
     tiersSection: 'Agent Model Tier Governance',
     tierHint: '(Space to cycle tier: flash ➔ standard ➔ pro ➔ max ➔ vision)',
@@ -302,7 +302,7 @@ function getTerminalHtml(lang: 'zh' | 'en', version: string): string {
       </div>
       <div class="row" style="padding-left: 14px;">
         <span class="badge badge-on">[ ${texts.on} ]</span>
-        <span class="label" style="min-width: 130px;">e2e-guard</span>
+        <span class="label" style="min-width: 130px;">e2e-adopt</span>
         <span class="dim">${texts.e2eHint}</span>
       </div>
       <div class="row" style="padding-left: 14px;">

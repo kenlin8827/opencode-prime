@@ -17,7 +17,7 @@ Plugins provide runtime enforcement and workflows that prompts alone cannot achi
 | `deepseek-anchor.ts` | `/deepseek-anchor` command — anchor-based reasoning protocols with DeepSeek models |
 | `adr.ts` | `/adr` command suite — ADR workbench + per-project commit guard (`/adr guard`) |
 | `env-guard.ts` | Per-project secret-file gate |
-| `e2e-guard.ts` | `/e2e-guard` command — per-project gate: E2E runs need user confirmation |
+| `e2e-adopt.ts` | `/e2e-adopt` command — adopts the E2E red-line policy into project docs (`docs/e2e-redline.md` + AGENTS.md section); docs governance, no runtime gate |
 | `project-manager.ts` | `/project` command + commit discipline |
 | `project-memory.ts` | `/memory` command — project-level memory: note lessons to `.ocp/memory/public.md` (team) or `private.md` (gitignored), inject under `[PROJECT MEMORY]` on each chat request. `memory_note` tool for LLM-initiated capture; `/memory-summarize` skill for session summaries. |
 | `queue-manager.ts` | `/queued` command — manage prompts queued while the session is busy |
@@ -143,19 +143,27 @@ When on, agent access is blocked before execution for file tools targeting `.env
 
 ---
 
-## E2E gate (`e2e-guard`)
+## E2E red-line adoption (`e2e-adopt`)
 
-Optional per-project gate requiring explicit user confirmation before any E2E suite runs:
+Scaffolds the project's E2E red-line policy into its **own documentation** —
+baijiu-shop-style docs governance, no runtime switch or gate (the retired
+`e2e-guard` plugin's successor):
 
 ```text
-/e2e-guard on       # enable for this project ("e2eGuard": "on" in project .ocp/ocp.json)
-/e2e-guard off      # disable
-/e2e-guard          # status report
+/e2e-adopt        # detect E2E setup → write docs/e2e-redline.md + AGENTS.md red-line section
+/e2e-adopt dry    # preview detection + unfilled placeholders, write nothing
+/e2e-adopt status # report whether the policy is adopted
 ```
 
-Gating is graded by risk:
-- **full**: Suite run with no explicit target (`npm run e2e`, bare `playwright test`) — every run needs a fresh one-shot `/e2e-guard allow` pass.
-- **targeted**: Explicit spec/test-file argument (`playwright test tests/login.spec.ts`) — passes automatically once the session has confirmed approval.
+Detection pre-fills the template (package manager, e2e script, spec dir,
+runner config); undetected values stay as `{{...}}` placeholders for manual
+fill-in. The adopted policy carries the four core elements: risk-graded
+tiers (lightweight / targeted / full), a confirmation loop (ask before ANY
+E2E run; explicit request this turn counts as confirmed; refusal pauses the
+commit), trigger discipline (E2E only at commit/push time), and a coverage
+mandate (feat/API changes carry proportionate E2E coverage, same-batch
+commit). Uninstall = delete `docs/e2e-redline.md` + the
+`<!-- e2e-redline -->` section in AGENTS.md.
 
 ---
 

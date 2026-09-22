@@ -122,7 +122,7 @@ Launch with `ocp code` to open the current project in VS Code (also VSCodium, Cu
 | **Code Intelligence & DB (MCP)** | Pre-configured MCP servers (Serena LSP, CodeGraph knowledge graph, GitNexus, DBHub gateway) with automatic CLI provisioning |
 | **Profiles** | `/profile` maps all 5 model tiers to a provider's models in one shot — no per-agent `set model` |
 | **Workflow Slash Commands** | `/dev` compositor · `/dev-quick` · `/dev-plan` · `/dev-review` · `/dev-ultra` dev flows, `/review-fix-loop`, `/improve-loop`, `/goal`, `/handoff`, `/grill-me`, `/advisor` modes, and more |
-| **Optional Guardrails** | Per-project ADR enforcement (`/adr guard`), secret-file gate (`env-guard`), E2E gate (`/e2e-guard`), commit discipline (`/project`) — all default off |
+| **Optional Guardrails** | Per-project ADR enforcement (`/adr guard`), secret-file gate (`env-guard`), E2E red-line adoption into project docs (`/e2e-adopt`), commit discipline (`/project`) — all opt-in |
 | **One-Command Installer** | PowerShell + Bash, manifest-based upgrades; your credentials and model picks survive every reinstall |
 | **Token Savings** | [rtk](https://github.com/rtk-ai/rtk) output compression (60–90%) auto-provisioned on install + `@lite` measured ~2k tok/step system prompt where full-config agents carry 13k+ tok/step of overhead |
 | **Second-Opinion Advisor** | `@advisor` for blocking decisions, with an adversarial red-team stance for design review |

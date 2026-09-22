@@ -13,7 +13,6 @@ export const PROJECT_SWITCH_DEFAULTS = {
   adrLayout: "auto",
   adrDir: "docs/adr",
   envGuard: "on",
-  e2eGuard: "on",
   projectMemory: "on",
   // Deliberately NOT keyed on the ADL block (adrStyle/adrNumbering/
   // adrGovernance): those stay absent until the user sets them, so an
@@ -38,10 +37,6 @@ export const PROJECT_SWITCH_OPTIONS = {
   envGuard: [
     { value: "on", label: "🟢 on", description: "Protect secret .env file reads" },
     { value: "off", label: "🔴 off", description: "Disable env guard check" },
-  ],
-  e2eGuard: [
-    { value: "on", label: "🟢 on", description: "Assess E2E before test execution" },
-    { value: "off", label: "🔴 off", description: "Disable E2E guard check" },
   ],
   projectMemory: [
     { value: "on", label: "🟢 on", description: "Inject curated project memory into context" },
@@ -117,7 +112,6 @@ export function detectProjectSwitches(rootDir: string): DetectedProjectState {
       adrLayout: switchValue(found.adrLayout, PROJECT_SWITCH_OPTIONS.adrLayout, PROJECT_SWITCH_DEFAULTS.adrLayout),
       adrDir: found.adrDir ?? PROJECT_SWITCH_DEFAULTS.adrDir,
       envGuard: switchValue(found.envGuard, PROJECT_SWITCH_OPTIONS.envGuard, PROJECT_SWITCH_DEFAULTS.envGuard),
-      e2eGuard: switchValue(found.e2eGuard, PROJECT_SWITCH_OPTIONS.e2eGuard, PROJECT_SWITCH_DEFAULTS.e2eGuard),
       projectMemory: switchValue(found.projectMemory, PROJECT_SWITCH_OPTIONS.projectMemory, PROJECT_SWITCH_DEFAULTS.projectMemory),
       ...(adrStyle ? { adrStyle } : {}),
       ...(adrNumbering ? { adrNumbering } : {}),

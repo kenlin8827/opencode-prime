@@ -32,7 +32,7 @@ OpenCode 多智能体配置自带一系列生产级工作流斜杠命令。
 | **`/goal [text]`** | 自动化协议 | 结构化目标执行协议，包含审计友好的验收清单和可机械检测的停止条件 |
 | **`/handoff [focus]`** | 状态交接 | 将当前会话状态压缩为轻量交接包（存至 Git 忽略的 `.ocp/handoffs/`），生成新会话一键恢复开场白 |
 | **`/adr guard [on\|off\|reset\|status]`**（别名 `/adr-guard`） | 质量硬门禁 | 项目级 ADR 提交铁律门禁：拦截缺少架构决策记录的 `feat:` 与 `refactor:` 提交 |
-| **`/e2e-guard [on\|off\|status]`** | 质量硬门禁 | 项目级 E2E 测试硬门禁：在功能变更和 Bug 修复时强制进行端到端测试覆盖检查 |
+| **`/e2e-adopt [dry\|status]`** | 质量治理 | 将 E2E 红线政策采纳进项目文档（`docs/e2e-redline.md` + AGENTS.md 小节）：风险分级三档、先问后跑确认环、覆盖强制 —— 文档治理，无运行时闸门 |
 | **`/env-guard [on\|off\|status]`** | 安全护栏 | 项目级敏感信息防泄漏护栏：拦截读取或向 Bash 暴露 `.env` 等凭据的行为 |
 | **`/deepseek-anchor [on\|off\|status]`** | 模型增强 | DeepSeek V4/Pro 深度思考锚定插件：防止思考过程退化，并在推理阶段实施工具阻断 |
 | **`/auto-advisor [off\|lite\|full]`** | 智能决策 | 切换 Advisor 智能决策模式（`off` 关闭 / `lite` 决策建议 / `full` 事实类自动代答） |

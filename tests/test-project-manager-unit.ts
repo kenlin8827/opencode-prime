@@ -579,24 +579,24 @@ function test10_Sync() {
   const legacyPath = join(dirSync, ".opencode", "opencode.jsonc")
   writeFileSync(
     legacyPath,
-    '{\n  "$schema": "https://opencode.ai/config.json", // team note\n  "e2eGuard": "on",\n  "agent": { "build": { "model": "x/y" } }\n}\n',
+    '{\n  "$schema": "https://opencode.ai/config.json", // team note\n  "envGuard": "on",\n  "agent": { "build": { "model": "x/y" } }\n}\n',
     "utf-8",
   )
   const s1 = runSync()
   assert(s1.status === "added", "legacy switch keys → migrated")
-  assert(s1.added.includes("e2eGuard"), "e2eGuard among migrated items")
+  assert(s1.added.includes("envGuard"), "envGuard among migrated items")
   const ocpPath = join(dirSync, ".ocp", "ocp.json")
   assert(existsSync(ocpPath), "migration created .ocp/ocp.json")
   let ocpParsed: Record<string, unknown>
   try {
     ocpParsed = JSON.parse(readFileSync(ocpPath, "utf-8")) as Record<string, unknown>
-    assert(ocpParsed.e2eGuard === "on", "PIN (a): migrated .ocp/ocp.json is STRICT JSON with the value")
+    assert(ocpParsed.envGuard === "on", "PIN (a): migrated .ocp/ocp.json is STRICT JSON with the value")
   } catch {
     assert(false, "PIN (a): migrated .ocp/ocp.json is STRICT JSON with the value")
     ocpParsed = {}
   }
   const legacyAfter = readFileSync(legacyPath, "utf-8")
-  assert(/\/\/\s*"e2eGuard"/.test(legacyAfter), "legacy switch re-commented after durable copy")
+  assert(/\/\/\s*"envGuard"/.test(legacyAfter), "legacy switch re-commented after durable copy")
   assert(legacyAfter.includes('"$schema": "https://opencode.ai/config.json"') && legacyAfter.includes('"agent"'), "platform keys untouched")
 
   // PIN (d): idempotent — second run reports nothing.
@@ -799,7 +799,7 @@ function test14_StrictJsonSurgery() {
   const appended = applySwitchesToConfigContent('{\n  "a": "x"\n}', { adrGuard: "on" })
   assert(parses(appended) && JSON.parse(appended).adrGuard === "on" && JSON.parse(appended).a === "x",
     "(a) append keeps strict JSON, existing member untouched, NO trailing comma")
-  assert(parses(generateConfigContent({ envGuard: "on", e2eGuard: "off" })), "(a) {}-bootstrap full template is strict JSON")
+  assert(parses(generateConfigContent({ envGuard: "on", projectMemory: "off" })), "(a) {}-bootstrap full template is strict JSON")
 
   // (h) delete-mode span excision on compact single-line JSON.
   assert(removeConfigField('{"a":"1","k":"v"}', "k", "delete") === '{"a":"1"}', "(h) minus last member consumes preceding comma")

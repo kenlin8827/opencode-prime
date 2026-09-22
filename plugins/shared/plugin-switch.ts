@@ -2,7 +2,7 @@
  * Project-level plugin switch — shared abstraction over a project
  * OCP config field (`.ocp/ocp.json`) with aliases and a default. Used by every
  * plugin whose "on/off" state is per-project (auto-advisor, adr,
- * e2e-guard, env-guard).
+ * env-guard).
  *
  * Why this lives in `shared/` rather than duplicated per-plugin:
  * each plugin was carrying a near-identical
