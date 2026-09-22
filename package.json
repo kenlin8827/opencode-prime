@@ -1,5 +1,5 @@
 {
-	"version": "0.40.0",
+	"version": "0.40.3",
 	"license": "AGPL-3.0-or-later",
 	"scripts": {
 		"docs:dev": "vitepress dev docs",
