@@ -203,6 +203,15 @@ ocp install -t ~/oc-test    # install into a scratch target
 ocp register -BinDir ~/bin  # shims into a custom directory
 ```
 
+### Major-version lock
+
+`ocp update` and `ocp upgrade` refuse any upgrade that would change the **major** version — for the suite itself and for every companion tool on the lock list. opencode `1.18.32` will not auto-jump to `2.0.0`; OCP `0.45.0` will not auto-jump to `1.0.0`. Blocked updates are listed in the `ocp update` report under a "blocked by the major-version lock" notice instead of being offered for apply.
+
+- **The lock list is the tool registry** `install/tools.jsonc` (`update_policy.lock_major_default: true`): every tool declared there is locked by default, so newly added tools are locked without extra steps. Opt a tool out with `"lock_major": false` inside its `update_check` block.
+- **OCP itself is always locked** (it is not a registry entry).
+- `--force` re-downloads and re-applies, but **never bypasses the major-version lock** — it is enforced at the version probe, the archive overlay, and the installer apply step.
+- To actually jump a major, reinstall fresh from the **latest release**: `ocp init` backs up + clears the target (removing `installed.version`), then run the README quick-install one-liner — `curl -fsSL https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.sh | bash` (POSIX) or `irm https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.ps1 | iex` (Windows). It downloads the newest release directly and the installer itself carries no lock. `ocp upgrade` / `ocp install` alone cannot do the jump — they work from the local repo copy, which is still on the old major (a `git pull` first works too).
+
 ### `register` and `unregister`
 
 `register` now does two things: it writes the three shims into the bin directory, **and** makes sure that directory resolves in new terminals — by appending it to your user `PATH` (Windows registry, via `[Environment]::SetEnvironmentVariable` — never `setx`, so long PATH values are safe) or to your shell profile (`~/.zshrc`, `~/.bashrc` or `~/.profile`, guarded by a managed marker). `unregister` removes the shims; it does not touch your `PATH`.

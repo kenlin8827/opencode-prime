@@ -19,7 +19,17 @@
  * Run: bun run tests/test-updater-unit.ts
  */
 
-import { shouldSkipUpgradeDownload } from "../install/src/updater"
+import { isCrossMajorVersion, majorOf } from "../install/src/manifest"
+import {
+  isBlockedMajorUpgrade,
+  majorLockEnabled,
+  partitionUpdates,
+  policyDefaultFromRegistry,
+  shouldOverlayRelease,
+  shouldSkipUpgradeDownload,
+  type ComponentCheck,
+} from "../install/src/updater"
+import type { ToolRegistry } from "../install/src/installer"
 
 let passed = 0
 let failed = 0
@@ -93,8 +103,84 @@ assert(
 //    mocking fs/fetch, but the symbol is small and stable: any change
 //    to the flag list should require an explicit test update.
 
-console.log(`\n${passed} passed, ${failed} failed`)
-if (failed > 0) process.exit(1)
+console.log("majorOf / isCrossMajorVersion — version math")
+
+assert(majorOf("1.18.32") === 1, "majorOf(1.18.32) === 1")
+assert(majorOf("0.45.0") === 0, "majorOf(0.45.0) === 0")
+assert(majorOf("v2.0.0") === 2, "majorOf(v2.0.0) === 2 (leading v stripped)")
+assert(Number.isNaN(majorOf("beta")), "majorOf(beta) is NaN (unparseable)")
+assert(Number.isNaN(majorOf("")), "majorOf('') is NaN")
+
+assert(isCrossMajorVersion("1.18.32", "2.0.0") === true, "1.18.32 → 2.0.0 crosses the major boundary")
+assert(isCrossMajorVersion("0.45.0", "1.0.0") === true, "0.45.0 → 1.0.0 crosses the major boundary")
+assert(isCrossMajorVersion("1.18.32", "1.19.0") === false, "1.18.32 → 1.19.0 stays in-major")
+assert(isCrossMajorVersion("1.18.32", "1.18.32") === false, "same version never crosses")
+assert(isCrossMajorVersion("2.0.0", "1.0.0") === true, "direction-agnostic: majors differ")
+assert(isCrossMajorVersion("1.0.0", "not.a.version") === false, "unparseable major → not provable, not blocked")
+
+console.log("isBlockedMajorUpgrade — the lock decision")
+
+assert(isBlockedMajorUpgrade("1.18.32", "2.0.0") === true, "opencode 1.18.32 → 2.0.0 is blocked")
+assert(isBlockedMajorUpgrade("0.45.0", "1.0.0") === true, "OCP 0.45.0 → 1.0.0 is blocked")
+assert(isBlockedMajorUpgrade("1.18.32", "1.19.0") === false, "same-major bump is allowed")
+assert(isBlockedMajorUpgrade("1.18.32", "1.18.32") === false, "same version is not an upgrade")
+assert(isBlockedMajorUpgrade("2.0.0", "1.0.0") === false, "older latest is a downgrade, not a blocked upgrade")
+
+console.log("majorLockEnabled — per-tool flag vs registry default")
+
+assert(majorLockEnabled(undefined, true) === true, "no flag + locked default → locked")
+assert(majorLockEnabled(undefined, false) === false, "no flag + unlocked default → unlocked")
+assert(majorLockEnabled(false, true) === false, "explicit opt-out beats locked default")
+assert(majorLockEnabled(true, false) === true, "explicit opt-in beats unlocked default")
+
+console.log("policyDefaultFromRegistry — fail-closed registry default")
+
+assert(policyDefaultFromRegistry(null) === true, "registry load failed → locked (fail-closed)")
+assert(policyDefaultFromRegistry({} as ToolRegistry) === true, "no update_policy block → locked")
+assert(policyDefaultFromRegistry({ update_policy: {} }) === true, "empty policy block → locked")
+assert(policyDefaultFromRegistry({ update_policy: { lock_major_default: true } }) === true, "explicit lock_major_default: true → locked")
+assert(policyDefaultFromRegistry({ update_policy: { lock_major_default: false } }) === false, "explicit lock_major_default: false → unlocked")
+
+console.log("shouldOverlayRelease — archive overlay respects the lock")
+
+assert(shouldOverlayRelease("1.19.0", "1.18.32") === true, "newer same-major release → overlay")
+assert(shouldOverlayRelease("2.0.0", "1.18.32") === false, "newer cross-major release → refuse overlay")
+assert(shouldOverlayRelease("1.18.32", "1.18.32") === false, "same version → no overlay")
+assert(shouldOverlayRelease("0.9.0", "1.0.0") === false, "older release → no overlay")
+
+console.log("partitionUpdates — the ocp update report wiring")
+
+const comp = (over: Partial<ComponentCheck>): ComponentCheck => ({
+  key: "t",
+  label: "t",
+  local: "1.0.0",
+  latest: "1.1.0",
+  status: "",
+  ...over,
+})
+
+// The user-facing examples: opencode 1.18.32 → 2.0.0 and OCP 0.45.0 → 1.0.0.
+const opencodeJump = comp({ key: "opencode", label: "opencode", local: "1.18.32", latest: "2.0.0", majorLocked: true })
+const ocpJump = comp({ key: "ocp", label: "opencode-prime", local: "0.45.0", latest: "1.0.0", majorLocked: true })
+const inMajor = comp({ key: "opencode", label: "opencode", local: "1.18.32", latest: "1.19.0", majorLocked: true })
+const optedOut = comp({ key: "rtk", label: "rtk", local: "0.9.0", latest: "1.0.0", majorLocked: false })
+const external = comp({ key: "rg", label: "rg", local: "14.0.0", latest: "15.0.0", majorLocked: true, external: true })
+const unknownLocal = comp({ key: "x", label: "x", local: null, latest: "2.0.0", majorLocked: true })
+
+{
+  const { pending, blocked } = partitionUpdates([opencodeJump, ocpJump, inMajor, optedOut, external, unknownLocal])
+  assert(blocked.length === 2 && blocked.includes(opencodeJump) && blocked.includes(ocpJump),
+    "locked cross-major rows (opencode 1.18.32→2.0.0, OCP 0.45.0→1.0.0) are blocked")
+  assert(pending.length === 2 && pending.includes(inMajor) && pending.includes(optedOut),
+    "same-major bumps and lock_major:false opt-outs stay pending")
+  assert(!pending.includes(external) && !blocked.includes(external), "externally-managed rows appear in neither list")
+  assert(!pending.includes(unknownLocal) && !blocked.includes(unknownLocal), "rows without a local version appear in neither list")
+}
+{
+  // Default lock state: majorLocked undefined behaves as locked.
+  const { pending, blocked } = partitionUpdates([comp({ local: "0.45.0", latest: "1.0.0" })])
+  assert(blocked.length === 1 && pending.length === 0, "majorLocked undefined → locked (blocked)")
+}
 
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)

@@ -14,8 +14,9 @@ import {
   rawMirrorUrls,
   resolveInstallCommand,
   runInstallCommand,
+  type ToolRegistry,
 } from './installer';
-import { isNewerVersion, parseVersionPayload } from './manifest';
+import { isCrossMajorVersion, isNewerVersion, parseVersionPayload } from './manifest';
 import { findPackageManager, findPackageManagerForBinary, globalAddCommand } from './package-manager';
 
 const REPO_BASE = 'https://github.com/kenlin8827/opencode-prime';
@@ -49,8 +50,80 @@ export function shouldSkipUpgradeDownload(
   return !force && probed !== null && !isNewerVersion(probed, repoVersion);
 }
 
+/**
+ * Pure decision helper for the major-version upgrade lock: true when
+ * local → latest is an upgrade that crosses the major boundary (e.g.
+ * opencode 1.18.32 → 2.0.0, OCP 0.45.0 → 1.0.0). Such upgrades are refused
+ * by `ocp update` / `ocp upgrade` for every locked component. Downgrades
+ * and same-major bumps are never "blocked major upgrades" — the former are
+ * already refused by isNewerVersion, the latter are exactly what remains
+ * allowed.
+ */
+export function isBlockedMajorUpgrade(local: string, latest: string): boolean {
+  return isNewerVersion(latest, local) && isCrossMajorVersion(local, latest);
+}
+
+/**
+ * Pure decision helper for the registry-wide lock default: locked unless
+ * the policy block explicitly opts out. Fail-closed on purpose — a failed
+ * registry load, a missing update_policy block, or a malformed flag all
+ * leave the lock ON.
+ */
+export function policyDefaultFromRegistry(registry: ToolRegistry | null): boolean {
+  return registry?.update_policy?.lock_major_default !== false;
+}
+
+/**
+ * Resolve the per-tool major-version lock. `lockMajor` is the tool's
+ * update_check.lock_major flag; undefined inherits the registry-wide
+ * update_policy.lock_major_default. Exported for the lock truth table in
+ * tests/test-updater-unit.ts.
+ */
+export function majorLockEnabled(lockMajor: boolean | undefined, policyDefault: boolean): boolean {
+  return typeof lockMajor === 'boolean' ? lockMajor : policyDefault;
+}
+
+/** Registry-wide major-lock default from tools.jsonc update_policy (locked when absent). */
+function majorLockPolicyDefault(repoDir: string): boolean {
+  return policyDefaultFromRegistry(loadToolRegistry(repoDir));
+}
+
+/**
+ * Pure decision helper for the archive-overlay step in `executeUpgrade`:
+ * the downloaded release is applied onto the repo copy only when it is
+ * newer AND stays within the same major version. OCP itself is always
+ * major-locked, so `ocp upgrade` must never jump majors — a cross-major
+ * release aborts the upgrade instead (see executeUpgrade).
+ */
+export function shouldOverlayRelease(remoteVersion: string, repoVersion: string): boolean {
+  return isNewerVersion(remoteVersion, repoVersion) && !isCrossMajorVersion(repoVersion, remoteVersion);
+}
+
+/**
+ * Pure decision helper for the `ocp update` report: partition the probed
+ * components into pending (offered for apply) and blocked (refused by the
+ * major-version lock). Externally-managed rows and rows without a known
+ * local/latest version never appear in either list. Exported so the test
+ * suite can pin the lock wiring without mocking fetch / fs / network.
+ */
+export function partitionUpdates(
+  components: ComponentCheck[],
+): { pending: ComponentCheck[]; blocked: ComponentCheck[] } {
+  const upgradable = components.filter(
+    (c) => !c.external && c.local && c.latest && isNewerVersion(c.latest, c.local),
+  );
+  const blocked = upgradable.filter(
+    (c) => c.majorLocked !== false && c.local && c.latest && isCrossMajorVersion(c.local, c.latest),
+  );
+  // Set membership, not reference-equality includes(): robust if a future
+  // edit clones or maps rows between the two filters.
+  const blockedSet = new Set(blocked);
+  const pending = upgradable.filter((c) => !blockedSet.has(c));
+  return { pending, blocked };
+}
+
 /** A single component covered by the `ocp update` check/upgrade flow. */
-interface ComponentCheck {
+export interface ComponentCheck {
   key: string;
   label: string;
   local: string | null;
@@ -63,6 +136,12 @@ interface ComponentCheck {
    * be offered as a pending update.
    */
   external?: boolean;
+  /**
+   * Major-version upgrade lock (tools.jsonc update_policy / update_check.lock_major).
+   * undefined/true = locked: an upgrade crossing the major boundary is
+   * refused. OCP itself is always locked (set explicitly below).
+   */
+  majorLocked?: boolean;
 }
 
 /** `update_check.source` shape from install/tools.jsonc. */
@@ -88,6 +167,12 @@ interface ToolEntryUpdate {
   upgrade_strategy?: 'smart' | 'static';
   /** Required when upgrade_strategy === "smart": the npm/yarn/etc package to install. */
   upgrade_package?: string;
+  /**
+   * Major-version lock override for this tool (see update_policy in
+   * tools.jsonc). undefined inherits update_policy.lock_major_default
+   * (true = locked); false opts the tool out of the lock.
+   */
+  lock_major?: boolean;
   /** Optional fallback for both strategies when no pm is detected / no per-platform override. */
   upgrade?: unknown; // string | Record<string, string>; resolved via resolveInstallCommand
   /**
@@ -163,6 +248,9 @@ export async function executeUpdate(repoDir: string, passthrough: string[]): Pro
     label: 'opencode-prime',
     local: baseline,
     latest: remoteVersion,
+    // OCP itself is not a registry tool — the major-version lock always
+    // applies to it (0.45.0 must never auto-jump to 1.0.0).
+    majorLocked: true,
     status: installedVersion
       ? `installed in ${targetDir}`
       : `not installed (repo copy at v${repoVersion})`,
@@ -178,11 +266,20 @@ export async function executeUpdate(repoDir: string, passthrough: string[]): Pro
     console.log(`  ${c.label.padEnd(15)} ${fmtVer(c.local).padEnd(11)} latest ${fmtVer(c.latest).padEnd(11)} ${c.status}`);
   }
 
-  const pending = components.filter(
-    (c) => !c.external && c.local && c.latest && isNewerVersion(c.latest, c.local),
-  );
+  // Major-version lock: for locked components an upgrade that would cross
+  // the major boundary is refused — reported below, never offered. The
+  // lock list is the tools.jsonc registry (OCP is always locked); a tool
+  // opts out via update_check.lock_major: false.
+  const { pending, blocked } = partitionUpdates(components);
+  if (blocked.length > 0) {
+    console.log(`\n${blocked.length} major-version update(s) blocked by the major-version lock:`);
+    for (const c of blocked) {
+      console.log(`  ${c.label.padEnd(15)} v${c.local} → v${c.latest} — cross-major upgrades are refused; reinstall fresh to jump majors.`);
+    }
+  }
   if (pending.length === 0) {
-    console.log('\nEverything is up to date.');
+    if (blocked.length === 0) console.log('\nEverything is up to date.');
+    else console.log('\nNo in-major updates available (see the blocked list above).');
     return 0;
   }
 
@@ -220,7 +317,7 @@ export async function executeUpdate(repoDir: string, passthrough: string[]): Pro
     // Pass the user-facing passthrough (incl. `-f`/`--force`) down to
     // executeUpgrade so `ocp update -f` actually forces a re-download.
     // Companion tools ignore passthrough (see applyComponentUpgrade).
-    const code = await applyComponentUpgrade(c.key, repoDir, passthrough);
+    const code = await applyComponentUpgrade(c, repoDir, passthrough);
     if (code === 0) {
       console.log(`✔ ${c.label} upgraded.`);
     } else if (code === 2 && isScriptRefusal(c.key, repoDir)) {
@@ -253,21 +350,54 @@ async function confirmDefaultYes(question: string): Promise<boolean> {
 }
 
 async function applyComponentUpgrade(
-  key: ComponentCheck['key'],
+  c: ComponentCheck,
   repoDir: string,
   passthrough: string[] = [],
 ): Promise<number> {
-  switch (key) {
+  // Defense in depth: the pending list already excludes locked cross-major
+  // upgrades; this guard keeps the applier safe if a future call site
+  // reconstructs its selection differently.
+  if (c.majorLocked !== false && c.local && c.latest && isBlockedMajorUpgrade(c.local, c.latest)) {
+    console.error(`✗ ${c.label}: cross-major upgrade blocked by the major-version lock (v${c.local} → v${c.latest}).`);
+    return 1;
+  }
+  switch (c.key) {
     case 'ocp':
       // Forward passthrough so `ocp update -f` actually reaches
       // executeUpgrade and forces the archive re-download. Companion
       // tools don't take passthrough (their registry entries have no
       // -f semantics — upgrade_tool_from_registry ignores it).
       return executeUpgrade(repoDir, passthrough);
-    default:
+    default: {
       // Everything else comes from install/tools.jsonc via probeToolsFromRegistry.
       // The dispatch (smart vs static) lives inside upgradeToolFromRegistry.
-      return upgradeToolFromRegistry(repoDir, key);
+      const code = await upgradeToolFromRegistry(repoDir, c.key);
+      if (code === 0) verifyPostUpgradeMajor(c, repoDir);
+      return code;
+    }
+  }
+}
+
+/**
+ * TOCTOU guard for companion tools: the lock decision consumed the probe
+ * snapshot, but a tool upgrade runs `pkg@latest` or an official installer —
+ * whatever is newest AT APPLY TIME. A major published inside the
+ * probe→apply window slips past the pending filter, so verify the binary's
+ * major after a successful upgrade and warn loudly on violation.
+ * Detection only: script-based installers cannot be pinned, so rollback is
+ * left to the printed hint.
+ */
+function verifyPostUpgradeMajor(c: ComponentCheck, repoDir: string): void {
+  const def = loadToolRegistry(repoDir)?.tools?.[c.key] as ToolEntry | undefined;
+  const now = def?.binary ? localBinaryVersion(def.binary) : null;
+  if (!now || !c.local || !isCrossMajorVersion(c.local, now)) return;
+  console.error(`⚠ ${c.label}: the upgrade crossed the major boundary (v${c.local} → v${now}).`);
+  console.error('  A new major was published between the version check and the apply — the lock gates the decision, not the installer itself.');
+  const pkg = def?.update_check?.upgrade_package;
+  if (pkg) {
+    console.error(`  To pin the previous version back: npm install -g ${pkg}@${c.local} (or your package manager's equivalent)`);
+  } else {
+    console.error(`  To restore the previous version, reinstall v${c.local} with the tool's own installer.`);
   }
 }
 
@@ -415,13 +545,20 @@ async function probeToolsFromRegistry(repoDir: string): Promise<ComponentCheck[]
   for (const [name, rawDef] of Object.entries(registry.tools)) {
     const def = rawDef as ToolEntry;
     if (!def.update_check?.source) continue;
-    out.push(await probeToolFromRegistry(name, def));
+    out.push(await probeToolFromRegistry(repoDir, name, def));
   }
   return out;
 }
 
-async function probeToolFromRegistry(name: string, def: ToolEntry): Promise<ComponentCheck> {
-  const base = { key: name, label: name };
+async function probeToolFromRegistry(repoDir: string, name: string, def: ToolEntry): Promise<ComponentCheck> {
+  // Major-version lock resolution: per-tool update_check.lock_major wins,
+  // otherwise the registry-wide update_policy.lock_major_default applies
+  // (locked when the policy block is absent — the safe default).
+  const base = {
+    key: name,
+    label: name,
+    majorLocked: majorLockEnabled(def.update_check?.lock_major, majorLockPolicyDefault(repoDir)),
+  };
   const local = localBinaryVersion(def.binary);
 
   if (!local) {
@@ -468,7 +605,11 @@ async function probeToolFromRegistry(name: string, def: ToolEntry): Promise<Comp
       external,
       status: external
         ? `externally managed — update via ${externalUpdateHint(binPath as string, name)}`
-        : isNewerVersion(latest, local) ? 'update available' : 'up to date',
+        : isNewerVersion(latest, local)
+          ? (base.majorLocked && isCrossMajorVersion(local, latest)
+            ? 'cross-major update — blocked by policy'
+            : 'update available')
+          : 'up to date',
     };
   } catch (err) {
     return {
@@ -619,6 +760,12 @@ function resolveTargetDir(passthrough: string[]): string {
  * Set OCP_RELEASE_MIRROR to a ghproxy-style prefix (e.g. https://ghfast.top)
  * when the official GitHub download is blocked or slow; the mirror is tried
  * after the official URL fails. Same version with no force flag → no-op.
+ *
+ * Major-version lock: OCP itself is always locked to its current major —
+ * a release that would change the major version (0.45.0 → 1.0.0) is
+ * refused at the probe, the archive-overlay, and the installer-apply step.
+ * --force never bypasses the lock; the documented escape hatch is a fresh
+ * install (`ocp init` clears the target, removing installed.version).
  */
 export async function executeUpgrade(repoDir: string, passthrough: string[]): Promise<number> {
   const force = passthrough.some((a) => ['-f', '--force', '-Force'].includes(a));
@@ -631,6 +778,15 @@ export async function executeUpgrade(repoDir: string, passthrough: string[]): Pr
   // or return a stale cached value, and to recover from a half-applied
   // overlay where the repo copy is technically current but drift exists.
   const probed = await probeRemoteVersion();
+  // Major-version lock, probe step: OCP itself is always locked, so a
+  // release on a different major (0.45.0 → 1.0.0) is refused before any
+  // download. --force re-downloads and re-applies, but never bypasses this.
+  if (probed && isBlockedMajorUpgrade(repoVersionBeforeDownload, probed)) {
+    console.error(`✗ Cross-major upgrade blocked: latest release v${probed} crosses the major boundary (local v${repoVersionBeforeDownload}).`);
+    console.error('  The major-version lock cannot be bypassed — not even with --force.');
+    console.error('  To jump majors, back up your config and reinstall fresh (see docs/maintenance/ocp-cli.md).');
+    return 1;
+  }
   if (shouldSkipUpgradeDownload(force, probed, repoVersionBeforeDownload)) {
     console.log(`Repository copy is already at v${repoVersionBeforeDownload} (latest release: v${probed}) — no download needed.`);
   } else {
@@ -674,7 +830,7 @@ export async function executeUpgrade(repoDir: string, passthrough: string[]): Pr
         return 1;
       }
       const repoVersion = getCurrentRepoVersion(repoDir);
-      if (isNewerVersion(remoteVersion, repoVersion)) {
+      if (shouldOverlayRelease(remoteVersion, repoVersion)) {
         console.log(`Overlaying v${remoteVersion} onto ${repoDir}...`);
         // Overlay the new package onto the persistent repo directory. Removed
         // files inside the repo dir are harmless — the manifest-driven install
@@ -682,6 +838,14 @@ export async function executeUpgrade(repoDir: string, passthrough: string[]): Pr
         // overwritten by the release copy; back up local edits before
         // upgrading (see the function doc above).
         fs.cpSync(extracted, repoDir, { recursive: true, force: true });
+      } else if (isNewerVersion(remoteVersion, repoVersion)) {
+        // Newer but not overlayable = the release crosses the major
+        // boundary. This is the first place the jump becomes visible when
+        // the probe failed (stale mirror, CN network) and the archive had
+        // to be downloaded blind.
+        console.error(`✗ Cross-major upgrade blocked: the downloaded release is v${remoteVersion} (local v${repoVersion}).`);
+        console.error('  The major-version lock cannot be bypassed — not even with --force.');
+        return 1;
       } else {
         console.log(`Repository copy is already at v${repoVersion} (latest release: v${remoteVersion}) — skipping overlay.`);
       }
@@ -695,6 +859,19 @@ export async function executeUpgrade(repoDir: string, passthrough: string[]): Pr
   const repoVersion = getCurrentRepoVersion(repoDir);
   const targetDir = resolveTargetDir(passthrough);
   const installedVersion = getInstalledVersion(targetDir);
+  // Major-version lock, apply step: the repo copy can only sit on a
+  // different major than the installed one via out-of-band means (git
+  // pull, manual overlay) — the overlay guard above refuses cross-major
+  // releases. Refuse the apply too, in both directions: a cross-major
+  // apply is exactly the jump the lock exists to prevent. (`ocp init`
+  // clears the target, removing installed.version — the documented fresh
+  // install escape hatch.)
+  if (installedVersion !== null && isCrossMajorVersion(installedVersion, repoVersion)) {
+    console.error(`✗ Cross-major apply blocked: installed v${installedVersion} vs repository v${repoVersion}.`);
+    console.error('  The major-version lock cannot be bypassed — not even with --force.');
+    console.error('  To jump majors, back up your config and reinstall fresh (see docs/maintenance/ocp-cli.md).');
+    return 1;
+  }
   if (!force && installedVersion !== null && !isNewerVersion(repoVersion, installedVersion)) {
     console.log(`Already up to date (installed: v${installedVersion}, repository: v${repoVersion}). Add --force to re-apply anyway.`);
     return 0;

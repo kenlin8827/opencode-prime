@@ -84,6 +84,23 @@ export function isNewerVersion(a: string, b: string): boolean {
   return false;
 }
 
+/** Major segment of a semver-ish version string ("v1.2.3" → 1); NaN when unparseable. */
+export function majorOf(version: string): number {
+  return parseInt(version.replace(/^[vV]/, '').split('.', 1)[0] ?? '', 10);
+}
+
+/**
+ * True when `a` and `b` sit on different major versions (e.g. 0.45.0 vs
+ * 1.0.0). Direction-agnostic — callers pair it with isNewerVersion to talk
+ * about upgrades. An unparseable major (NaN) never counts as crossing: the
+ * major-version lock refuses only what it can prove.
+ */
+export function isCrossMajorVersion(a: string, b: string): boolean {
+  const ma = majorOf(a);
+  const mb = majorOf(b);
+  return !Number.isNaN(ma) && !Number.isNaN(mb) && ma !== mb;
+}
+
 export interface VersionInfo {
   version: string;
   minVersion?: string;

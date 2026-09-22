@@ -2,6 +2,16 @@
 // their metadata and platform-aware install/upgrade commands.
 // Resolution: platform-arch -> platform -> default; null skips that platform.
 {
+  // Major-version upgrade lock (enforced by install/src/updater.ts):
+  // `ocp update` / `ocp upgrade` refuse any upgrade that would change the
+  // tool's major version (e.g. opencode 1.18.32 → 2.0.0). This registry IS
+  // the lock list — every tool declared below is locked by default, so a
+  // newly added tool is locked without extra steps. Opt a tool out with
+  // "lock_major": false inside its update_check block. OCP itself is not a
+  // registry entry and is always locked.
+  "update_policy": {
+    "lock_major_default": true
+  },
   // Command values may be "@script:<name>" — resolved by runInstallCommand in
   // install/src/installer.ts to install/scripts/tools/<name>.<platform>[.arch].ps1|sh
   // (platform-specific file, then fallback). Long escape-prone scripts live

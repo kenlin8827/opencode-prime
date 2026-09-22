@@ -863,6 +863,19 @@ export interface PostInstallStep {
 }
 
 export interface ToolRegistry {
+  /**
+   * Suite-wide update policy (the `update_policy` block in tools.jsonc).
+   * Currently carries only the major-version lock default; per-tool
+   * `update_check.lock_major` overrides it.
+   */
+  update_policy?: {
+    /**
+     * Default major-version lock for every tool in the registry
+     * (default true when absent): `ocp update` refuses upgrades that
+     * cross the major version boundary.
+     */
+    lock_major_default?: boolean;
+  };
   tools?: Record<
     string,
     {

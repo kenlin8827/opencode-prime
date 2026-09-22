@@ -222,6 +222,15 @@ ocp install -t ~/oc-test    # 安装到临时目标目录
 ocp register -BinDir ~/bin  # shim 安装到自定义目录
 ```
 
+### 大版本锁
+
+`ocp update` 与 `ocp upgrade` 拒绝一切跨**大版本号**的升级——套件本体与锁清单上的所有配套工具一律如此。opencode `1.18.32` 不会被自动升到 `2.0.0`；OCP `0.45.0` 也不会被自动升到 `1.0.0`。被拦截的更新会在 `ocp update` 报告中以"被大版本锁拦截"（blocked by the major-version lock）的形式列出，而不会进入待应用列表。
+
+- **锁清单就是工具注册表** `install/tools.jsonc`（`update_policy.lock_major_default: true`）：其中声明的每个工具默认全部锁死，新增工具无需额外步骤即被锁定。个别工具如需豁免，在其 `update_check` 块中写 `"lock_major": false`。
+- **OCP 本体恒定锁死**（它不是注册表条目）。
+- `--force` 可以强制重新下载、重新应用，但**绝不能绕过大版本锁**——锁在版本探测、发布包覆盖、安装器应用三个环节独立生效。
+- 确需跨大版本时，请从**最新发布包**全新安装：先 `ocp init` 备份并清空目标目录（同时移除 `installed.version`），再执行 README 的一键安装命令——POSIX：`curl -fsSL https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.sh | bash`；Windows：`irm https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.ps1 | iex`。它直接下载最新发布包，安装器本身不带锁。单独的 `ocp upgrade` / `ocp install` 无法完成跨越——它们基于本地 repo 副本（仍在旧大版本）；先 `git pull` 再安装也可以。
+
 ### `register` 与 `unregister`
 
 `register` 现在做两件事：把三个 shim 写入 bin 目录，**并**确保该目录在新终端中可用 —— Windows 上将其追加进用户 `PATH` 注册表值（通过 `[Environment]::SetEnvironmentVariable`，绝不使用 `setx`，长 PATH 值不会被截断）；POSIX 上向 shell 配置文件（`~/.zshrc`、`~/.bashrc` 或 `~/.profile`，带托管标记守卫）追加 `export PATH` 块。`unregister` 只移除 shim，不会改动你的 `PATH`。
