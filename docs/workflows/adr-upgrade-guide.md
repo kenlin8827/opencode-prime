@@ -94,3 +94,13 @@ bun run tests/test-adr-guard-unit.ts
 ```
 
 **Result**: `108 / 108` unit tests passed (100% Pass Rate).
+
+---
+
+## 📚 Style Samples
+
+Complete example records — one per canonical style, in both manual languages
+(same decisions, different working-language environments, per `ADR-0.40.0#02`):
+
+- [ADR Style Samples (English)](./adr-samples/index.md) — `nygard` · `madr` · `ocp`
+- [ADR 三风格示例(中文)](../zh/workflows/adr-samples/index.md)

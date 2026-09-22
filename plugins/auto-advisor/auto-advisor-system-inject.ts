@@ -17,7 +17,7 @@
  *     every chat. Mode rarely changes, so the cache hits almost
  *     every call.
  *
- * Same pattern as adr-guard / e2e-guard / project-manager (fragment
+ * Same pattern as adr / e2e-guard / project-manager (fragment
  * cache + always-inject when state says inject). The fragment-cache
  * pattern is mirrored after project-profiler's `injectedCwds` cache.
  */
@@ -46,7 +46,7 @@ function hasAnyMarker(system: string[]): boolean {
  * match (not line-start regex) is sufficient because the marker
  * always appears at the start of an injected fragment; a substring
  * match preserves the historical behavior and matches the other
- * three plugins in this round (adr-guard / e2e-guard). */
+ * two plugins in this round (adr / e2e-guard). */
 function stripMarker(system: string[]): boolean {
   let changed = false
   for (let i = 0; i < system.length; i++) {
@@ -91,7 +91,7 @@ export function makeSystemHook(client: PluginInput["client"]) {
 
     // Defensive strip — correct under Scenario B (hypothetical
     // prompt-persistence), no-op under Scenario A (verified current
-    // runtime, see ADR 0002). Mirrors adr-guard / e2e-guard /
+    // runtime, see ADR 0002). Mirrors adr / e2e-guard /
     // project-manager / project-profiler.
     if (hasAnyMarker(output.system)) stripMarker(output.system)
 

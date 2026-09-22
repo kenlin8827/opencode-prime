@@ -22,7 +22,7 @@
  * process.cwd().
  *
  * Config-file plumbing (project dir resolution, single-source config read,
- * JSONC parsing, field upsert, never-throw write) is shared with adr-guard,
+ * JSONC parsing, field upsert, never-throw write) is shared with adr,
  * env-guard and e2e-guard via ../shared/opencode-prime; this file delegates
  * the mode semantics to ../shared/plugin-switch.
  */

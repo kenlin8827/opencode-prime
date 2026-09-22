@@ -15,7 +15,7 @@ Plugins provide runtime enforcement and workflows that prompts alone cannot achi
 | `auto-format.ts` | Auto-runs the project-selected dprint/Biome/Prettier/ESLint/Ruff/gofmt/rustfmt after file edits; dprint and Biome require their config and project-local binary |
 | `auto-advisor-mode.ts` | `/auto-advisor` command, protocol injection, mode gating, red-team suppression |
 | `deepseek-anchor.ts` | `/deepseek-anchor` command — anchor-based reasoning protocols with DeepSeek models |
-| `adr-guard.ts` | `/adr-guard` command — per-project ADR enforcement |
+| `adr.ts` | `/adr` command suite — ADR workbench + per-project commit guard (`/adr guard`) |
 | `env-guard.ts` | Per-project secret-file gate |
 | `e2e-guard.ts` | `/e2e-guard` command — per-project gate: E2E runs need user confirmation |
 | `project-manager.ts` | `/project` command + commit discipline |
@@ -29,11 +29,11 @@ Plugins provide runtime enforcement and workflows that prompts alone cannot achi
 
 ---
 
-## ADR Iron Law & Living Architecture (`adr-guard` & `/adr`)
+## ADR Iron Law & Living Architecture (`adr` & `/adr`)
 
 Enterprise-grade Architecture Decision Record governance. Operates in two complementary modes:
 
-1. **Commit Iron Law (`/adr-guard`)** — Hard/soft guardrails preventing unrecorded architecture drift on `feat`/`refactor` commits.
+1. **Commit Iron Law (`/adr guard`)** — Hard/soft guardrails preventing unrecorded architecture drift on `feat`/`refactor` commits.
 2. **Hierarchical Living Architecture (`/adr`)** — Frictionless authoring, decision lifecycle management, multi-level hierarchy, and interactive DAG visualization.
 
 ### Switch & Configuration
@@ -41,9 +41,9 @@ Enterprise-grade Architecture Decision Record governance. Operates in two comple
 The commit guard switch is **project-level** (stored in `.ocp/ocp.json`):
 
 ```text
-/adr-guard on       # enable commit gate for this project
-/adr-guard off      # disable commit gate
-/adr-guard          # status report (state + ADR dir)
+/adr guard on       # enable commit gate for this project
+/adr guard off      # disable commit gate
+/adr guard          # status report (state + ADR dir)
 ```
 
 The ADR hierarchy layout is configured via `/adr layout`:
@@ -62,8 +62,17 @@ The ADR hierarchy layout is configured via `/adr layout`:
 | `/adr [new] [layer/scope] <title> [--empty]` | Scaffold a sequential MADR template & **auto-initiate AI drafting** (`new` keyword optional, pass `--empty` for template only) | `/adr "Use PostgreSQL as Primary DB"` or `/adr new "Use PostgreSQL as Primary DB"` |
 | `/adr supersede <old-id> <new-title> [--empty]` | Atomically mark old ADR as superseded & **auto-initiate AI drafting** with evolution rationale | `/adr supersede 0001 "Migrate to NATS JetStream"` |
 | `/adr migrate [h\|f\|a] [--confirm]` | Preview or execute bidirectional ADR directory restructuring | `/adr migrate h` |
+| `/adr migrate --to nygard\|madr [--dry-run\|--confirm]` | Explicit style conversion: deterministic dry-run report (source/destination/ID mapping/link rewrites/drop warnings); **never writes without `--confirm`** | `/adr migrate --to nygard` |
 | `/adr tree` / `/adr map` | Render full architecture decision tree & Mermaid DAG diagram | `/adr tree` |
+| `/adr tree --by path\|layer\|domain\|iteration` | Deterministic logical views over normalized records (mixed-style safe) | `/adr tree --by domain` |
+| `/adr history <ADR-ID>` | Traverse the supersession chain (predecessors + successors, cross-style safe) | `/adr history ADR-0.2.54.01` |
+| `/adr context <ADR-ID>` / `--domain <slug>` / `--iteration <id>` | Bounded context bundle: target records + direct parents/supersession/same-iteration relations only, retrieval path disclosed — never the full corpus | `/adr context ADR-0003` |
 | `/adr check` / `/adr lint` | Audit link integrity, parent references, and complexity advice | `/adr check` |
+| `/adr check --report-style` | Style audit: every document's resolved style with a `legacy` flag (style-less files parse as MADR); report-only, never writes | `/adr check --report-style` |
+
+#### Progressive Disclosure: Generated Indexes & Context Recovery
+
+Every ADR directory automatically gets a generated `INDEX.md` that mirrors the directory tree: local indexes list only their own records plus child-scope summaries (with parent links), and the ADL root index puts global/system records first. Regeneration is deterministic (byte-stable) and generated files state they are not hand-edited. Use the index → narrow to relevant rows → deepen into selected bodies — `/adr context` runs the same algorithm programmatically and reports exactly which indexes and records it read.
 
 #### 1. Creating a Decision (`/adr` or `/adr new`)
 * **Standard / Flat Monolith (AI-Assisted Drafting)**:
@@ -96,8 +105,9 @@ Architecture decisions are immutable; evolving solutions should be recorded via 
 4. Prompts AI Agent to review the previous decision and draft the new decision with full trade-off rationale (unless `--empty` is specified).
 
 #### 3. Restructuring & Migration (`/adr migrate`)
-* **Dry-Run Preview**: `/adr migrate h` (or `/adr migrate hierarchical`) outputs the planned file moves without modifying files.
-* **Execution**: `/adr migrate h --confirm` atomically moves files, rewrites frontmatter and mutual references, and updates all directory indexes.
+* **Directory layout (dry-run preview)**: `/adr migrate h` (or `/adr migrate hierarchical`) outputs the planned file moves without modifying files.
+* **Directory layout (execution)**: `/adr migrate h --confirm` atomically moves files, rewrites frontmatter and mutual references, and updates all directory indexes.
+* **Style conversion**: `/adr migrate --to nygard|madr` reports per record — source path, destination path, frozen record-ID mapping, link rewrites, and unconvertible-content warnings (MADR-only sections such as Considered Options have no Nygard home and would be dropped; Nygard → MADR loses nothing). The default is a dry-run; **nothing is written without `--confirm`**, and the converted documents are verified to re-parse as the target style. IDs, `created`, `date`, status, and references are preserved verbatim.
 
 ### Dual-Modal Interaction: Natural Language & Slash Commands
 

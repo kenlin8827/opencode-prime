@@ -15,7 +15,7 @@
 | `auto-format.ts` | 文件编辑后自动运行项目选择的 dprint/Biome/Prettier/ESLint/Ruff/gofmt/rustfmt；dprint 与 Biome 均要求配置文件和项目本地二进制 |
 | `auto-advisor-mode.ts` | `/auto-advisor` 命令、协议注入、模式门控、red-team 抑制 |
 | `deepseek-anchor.ts` | `/deepseek-anchor` 命令 —— 基于锚点的推理协议与 DeepSeek 模型集成 |
-| `adr-guard.ts` | `/adr-guard` 命令 —— 按项目的 ADR 强制 |
+| `adr.ts` | `/adr` 命令族 —— ADR 工作台 + 按项目提交门禁（`/adr guard`） |
 | `env-guard.ts` | 按项目的密钥文件门控 |
 | `e2e-guard.ts` | `/e2e-guard` 命令 —— 按项目门控：E2E 运行需用户确认 |
 | `project-manager.ts` | `/project` 命令 + 提交纪律 |
@@ -29,11 +29,11 @@
 
 ---
 
-## ADR 铁律与活化架构治理（`adr-guard` 与 `/adr`）
+## ADR 铁律与活化架构治理（`adr` 与 `/adr`）
 
 企业级架构决策记录（ADR）治理体系，由两大互补能力构成：
 
-1. **提交铁律门禁（`/adr-guard`）** — 软/硬双层护栏，杜绝在 `feat`/`refactor` 提交中出现未记录的架构漂移。
+1. **提交铁律门禁（`/adr guard`）** — 软/硬双层护栏，杜绝在 `feat`/`refactor` 提交中出现未记录的架构漂移。
 2. **分层活化架构引擎（`/adr`）** — 极简脚手架、决策生命周期流转、多层级拓扑与 Mermaid DAG 可视化。
 
 ### 开关与治理布局
@@ -41,9 +41,9 @@
 提交门禁开关为**项目级**（存储于 `.ocp/ocp.json`）：
 
 ```text
-/adr-guard on       # 对本项目启用提交门禁拦截
-/adr-guard off      # 关闭提交门禁
-/adr-guard          # 状态报告（开关 + ADR 目录）
+/adr guard on       # 对本项目启用提交门禁拦截
+/adr guard off      # 关闭提交门禁
+/adr guard          # 状态报告（开关 + ADR 目录）
 ```
 
 分层治理布局通过 `/adr layout` 进行配置：
@@ -62,8 +62,17 @@
 | `/adr [new] [layer/scope] <title> [--empty]` | 自动计算序号生成 MADR 骨架并**自动唤醒 AI 结合代码库起草正文**（可省略 `new`，加 `--empty` 仅生成空骨架） | `/adr "采用 PostgreSQL 作为主库"` 或 `/adr new "采用 PostgreSQL 作为主库"` |
 | `/adr supersede <old-id> <new-title> [--empty]` | 原子化将旧 ADR 标记为 superseded，生成新决策并**自动唤醒 AI 编写演进论证** | `/adr supersede 0001 "从 RabbitMQ 迁移至 NATS"` |
 | `/adr migrate [h\|f\|a] [--confirm]` | 预览或执行 ADR 架构目录结构双向自动化重构 | `/adr migrate h` |
+| `/adr migrate --to nygard\|madr [--dry-run\|--confirm]` | 显式样式转换：确定性 dry-run 报告（源/目标路径、记录 ID 映射、链接重写、内容丢弃警告）；**未经 `--confirm` 绝不写入** | `/adr migrate --to nygard` |
 | `/adr tree` / `/adr map` | 生成 Markdown 决策层级树与 Mermaid DAG 依赖图 | `/adr tree` |
+| `/adr tree --by path\|layer\|domain\|iteration` | 基于规范化记录的确定性逻辑视图（跨样式安全） | `/adr tree --by domain` |
+| `/adr history <ADR-ID>` | 遍历取代链（前驱 + 后继，跨样式安全） | `/adr history ADR-0.2.54.01` |
+| `/adr context <ADR-ID>` / `--domain <slug>` / `--iteration <id>` | 有界上下文包：仅目标记录 + 直接父决策/取代链/同迭代关系，并披露检索路径 —— 绝不倾倒全量语料 | `/adr context ADR-0003` |
 | `/adr check` / `/adr lint` | 审计引用完整性、父子决策断链及复杂度升级建议 | `/adr check` |
+| `/adr check --report-style` | 样式审计：列出每份文档的解析样式与 `legacy` 标记（无 `style` frontmatter 的文件按 MADR 解析）；仅报告，绝不写入 | `/adr check --report-style` |
+
+#### 渐进式披露：生成索引与上下文恢复
+
+每个 ADR 目录都会自动生成与目录树镜像的 `INDEX.md`：本地索引仅列出本目录记录 + 子目录摘要（含父级链接），ADL 根索引优先展示全局/系统级记录。再生成是确定性的（字节稳定），且生成文件会声明“请勿手改”。使用路径为：读索引 → 筛选相关行 → 深入选中的正文 —— `/adr context` 以同一算法程序化执行，并报告它读取了哪些索引与记录。
 
 #### 1. 创建新决策（`/adr` 或 `/adr new`）
 * **基础用法（自动 AI 起草，支持直接传需求标题）**：
@@ -97,8 +106,9 @@
 
 #### 3. 自动化重构与迁移（`/adr migrate`）
 随着项目规模扩大，随时可以无痛双向重构 ADR 结构：
-* **预览迁移方案（Dry-Run）**：`/adr migrate h`（或 `/adr migrate hierarchical`），输出文件移动映射表，不修改任何文件；
-* **确认执行重构**：`/adr migrate h --confirm`，自动迁移文件、重写 frontmatter 与相互引用，并刷新全仓索引。
+* **目录结构预览（Dry-Run）**：`/adr migrate h`（或 `/adr migrate hierarchical`），输出文件移动映射表，不修改任何文件；
+* **目录结构执行**：`/adr migrate h --confirm`，自动迁移文件、重写 frontmatter 与相互引用，并刷新全仓索引。
+* **样式转换**：`/adr migrate --to nygard|madr` 逐条报告 —— 源路径、目标路径、永久冻结的记录 ID 映射、链接重写清单与不可转换内容警告（MADR 独有的 Considered Options 等章节在 Nygard 中无对应位置，将被丢弃；Nygard → MADR 无任何内容丢失）。默认为 dry-run；**未经 `--confirm` 绝不写入**，转换后的文档会校验其确实可按目标样式重新解析。ID、`created`、`date`、状态与引用均原样保留。
 
 ### 双模交互：自然语言与 Slash 命令
 

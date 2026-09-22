@@ -11,7 +11,7 @@
  * compliance risk here.
  *
  * Opencode runtime note (verified 2026-09-11, see ADR 0002): the
- * runtime rebuilds `output.system` per chat request. See adr-guard
+ * runtime rebuilds `output.system` per chat request. See adr
  * for the full Scenario A / B rationale — same fragment-cache +
  * defensive-strip pattern applies here. Marker match is line-start
  * (rather than substring) to avoid false positives from inline
@@ -35,7 +35,7 @@ export const MARKER = "[PROJECT COMMIT CONVENTION]"
  * names the file, defers reading it to commit time, and warns that the
  * structural rules are mechanically enforced. stripMarker() trims trailing
  * whitespace after cutting at the marker, so the leading \n\n separator
- * restores to a semantically identical prompt (same contract as adr-guard).
+ * restores to a semantically identical prompt (same contract as adr).
  */
 function buildFragment(): string {
   return (
@@ -71,7 +71,7 @@ function appendFragment(system: string[], fragment: string): boolean {
   return appendBlock(system, fragment)
 }
 
-/** Cached rendered fragment. Same rationale as adr-guard's
+/** Cached rendered fragment. Same rationale as the adr plugin's
  * `cachedPrompt` — the fragment text is constant for a given
  * `GIT_COMMITS_REL`. The path is a module-level constant
  * (`plugins/project-manager/project-manager-config.ts`), so the
@@ -86,7 +86,7 @@ export function makeSystemHook(client: PluginInput["client"]) {
     // Lite mode: bare-prompt contract — no convention pointer for @lite.
     if (!await scoped(input, output.system, "project-manager", client)) return
 
-    // Defensive strip — see adr-guard rationale (Scenario A/B).
+    // Defensive strip — see adr rationale (Scenario A/B).
     // Line-start match via the shared helper.
     const stripped = hasMarker(output.system) ? stripMarker(output.system) : false
 

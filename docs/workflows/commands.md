@@ -10,6 +10,7 @@ OpenCode Multi-Agent ships with a suite of high-leverage workflow slash commands
 |---|---|---|
 | **`/prd <topic>`** | SDD Lifecycle | Scaffold & draft Product Requirements Document in `docs/prd/` |
 | **`/adr [new\|supersede\|tree\|check\|migrate\|mode]`** | Architecture | Architecture Decision Record management: automated drafting, supersede lifecycle, DAG graph, link audits, bidirectional migrations & hierarchy mode switches |
+| **`/adr compaction` · `/adr context` · `/adr check --compaction`** | ADR | Read-only analysis; explicit summary/consolidation with native cost/review Ask, bounded retrieval and optional archive/restore. See [ADR compaction](adr-compaction.md). |
 | **`/plan <topic>`** | SDD Lifecycle | Scaffold & draft phased Implementation Plan in `docs/plan/` with automatic PRD & ADR linking |
 | **`/impl [task]`** | SDD Lifecycle | Execute test-driven code implementation & verification adhering to specifications |
 | **`/sdd [status\|handoff\|help]`** | SDD Lifecycle | Specification-Driven Development lifecycle navigator & session handoff (`/sdd handoff`) |
@@ -30,7 +31,7 @@ OpenCode Multi-Agent ships with a suite of high-leverage workflow slash commands
 | **`/improve-loop [subject] [--max-rounds=N] [--target=N]`** | Score Loop | Score-driven improvement loop: score → analyze → fix/refactor → verify → re-score until structural ceiling, stall, or max rounds. Triggers verification-honesty scoring (Rules 5–7) every round |
 | **`/goal [text]`** | Goal Execution | Structured goal execution protocol with audit-friendly checklists and mechanically checkable stop conditions |
 | **`/handoff [focus]`** | Session State | Compacts current session state into a git-safe handoff bundle (`.ocp/handoffs/`) and outputs a paste-ready opener for a fresh session |
-| **`/adr-guard [on\|off\|status]`** | Quality Gate | Project-level ADR commit gate: enforces architecture decision records on `feat:` and `refactor:` commits |
+| **`/adr guard [on\|off\|reset\|status]`**（别名 `/adr-guard`） | Quality Gate | Project-level ADR commit gate: enforces architecture decision records on `feat:` and `refactor:` commits |
 | **`/e2e-guard [on\|off\|status]`** | Quality Gate | Project-level E2E testing gate: requires end-to-end coverage verification on features and bug fixes |
 | **`/env-guard [on\|off\|status]`** | Security Gate | Project-level secret leak prevention: blocks reading or leaking `.env` files to external tools |
 | **`/deepseek-anchor [on\|off\|status]`** | Model Engine | DeepSeek V4/Pro reasoning depth anchor: prevents reasoning degradation and gates tools during deliberation |

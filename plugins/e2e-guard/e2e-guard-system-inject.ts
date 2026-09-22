@@ -9,7 +9,7 @@
  *     so injecting E2E protocol into them would cause noise and context pollution.
  *
  * Opencode runtime note (verified 2026-09-11, see ADR 0002): the
- * runtime rebuilds `output.system` per chat request. See adr-guard
+ * runtime rebuilds `output.system` per chat request. See adr
  * for the full Scenario A / B rationale — same fragment-cache +
  * defensive-strip pattern applies here.
  */
@@ -50,7 +50,7 @@ function stripMarker(system: string[]): boolean {
   return changed
 }
 
-/** Cached rendered fragment. Same rationale as adr-guard's
+/** Cached rendered fragment. Same rationale as the adr plugin's
  * `cachedPrompt` — the protocol body is constant across turns;
  * module-level cache avoids re-concat every chat. */
 let cachedPrompt: string | undefined
@@ -63,7 +63,7 @@ export function makeSystemHook(client: PluginInput["client"]) {
     // Lite mode: bare-prompt contract — no e2e protocol for @lite.
     if (!await scoped(input, output.system, "e2e-guard", client)) return
 
-    // Defensive strip — see adr-guard rationale (Scenario A/B).
+    // Defensive strip — see adr rationale (Scenario A/B).
     const stripped = hasAnyMarker(output.system) ? stripMarker(output.system) : false
 
     if (!isEnabled() || !isPrimaryAgent(input)) {

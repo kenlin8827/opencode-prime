@@ -20,7 +20,7 @@
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
-import { extractBashCommand } from "../adr-guard/adr-guard-runtime"
+import { extractBashCommand } from "../adr/adr-runtime"
 import { isEnabled } from "./env-guard-config"
 import {
   bashLeaksEnv,

@@ -7,7 +7,7 @@
  *
  * deepseek-anchor is a USER preference (model behavior, follows the user)
  * rather than a PROJECT behavior (commit convention, env file protection)
- * — it sits next to `i18n`, not `auto-advisor` / `adr-guard`. Reads and
+ * — it sits next to `i18n`, not `auto-advisor` / `adr`. Reads and
  * writes both target the global `ocp.json` exclusively; the plugin entry
  * no longer pins a project dir and the command never touches
  * `<cwd>/.ocp/ocp.json`.

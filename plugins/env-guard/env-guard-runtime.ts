@@ -4,16 +4,16 @@
  *
  * Design stance: fail-safe on detection (when a sensitive reference is
  * recognized, block), fail-open on ambiguity (unrecognized command shapes
- * pass through). The tokenizer is reused from adr-guard-runtime, so quoted
+ * pass through). The tokenizer is reused from adr-runtime, so quoted
  * arguments survive parsing exactly like the commit gate sees them.
  *
- * Known mechanical boundary (same posture as adr-guard's bash -c note):
+ * Known mechanical boundary (same posture as the adr plugin's bash -c note):
  * shell wrappers (`bash -c '...'`, `$(...)`) and glob references (`*.env`)
  * are not inspected; the guard is a hard wall on the common paths, not a
  * formal sandbox.
  */
 
-import { extractBashCommand, tokenize } from "../adr-guard/adr-guard-runtime"
+import { extractBashCommand, tokenize } from "../adr/adr-runtime"
 
 // ─── Path classification ─────────────────────────────────────────────
 

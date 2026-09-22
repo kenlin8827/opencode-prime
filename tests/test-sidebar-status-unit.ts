@@ -2,7 +2,7 @@
  * Unit smoke test for the sidebar-status project badges — focused on the
  * memory row (the projectMemory switch + entry count display).
  * Memory lives in the "OCP project" group (per-project capability, not a
- * cross-project behavior switch like adr-guard/e2e-guard).
+ * cross-project behavior switch like adr/e2e-guard).
  * Run: bun tests/test-sidebar-status-unit.ts
  */
 import fs from "node:fs"
@@ -47,7 +47,7 @@ check("default (NOT INIT): memory row renders as ON · empty", r1?.state === "ON
 
 // 2. Explicit "off" → row is hidden by the OFF filter (mirrors commit-
 //    discipline OFF: "the project doesn't use this capability" — not worth
-//    taking sidebar space, unlike adr-guard/e2e-guard OFF which stay
+//    taking sidebar space, unlike adr/e2e-guard OFF which stay
 //    visible in the OCP group because they're behavior switches).
 fs.writeFileSync(path.join(tmp, ".ocp", "ocp.json"), JSON.stringify({ projectMemory: "off" }))
 check("explicit off: memory row hidden by OFF filter", row("memory") === undefined)

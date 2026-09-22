@@ -1,10 +1,53 @@
-# ADR Index
+# Architecture Decision Log
 
-| #   | Title                                                                | Status   |
-| --- | -------------------------------------------------------------------- | -------- |
-| 0001 | OCP CLI migration + `ocp ui .` OpenChamber activation                | accepted |
-| 0002 | Project profiler cache: key on profile content hash, not cwd        | accepted |
-| 0003 | `@dietrichgebert/ponytail` flipped to opt-in (default off)           | accepted |
-| 0004 | OCP path contract: `.opencode/` → `.ocp/`, `ocp.jsonc` → `ocp.json`  | accepted |
-| 0005 | tgrep probe-first search contract                                    | accepted |
-| 0006 | OmniRoute gateway profile                                            | accepted |
+> ⚠️ **GENERATED INDEX — DO NOT EDIT BY HAND.** This file is regenerated from the
+> ADR records in this directory and its subtree (§9.3). Any hand edit is overwritten
+> on the next regeneration — change the records instead. It is a navigation aid,
+> never a hand-maintained source of truth.
+
+*Directory: `docs/adr`*
+
+## Records (9)
+
+| ID | Decision Title | Style | Layer | Status | Domain | Iteration | Created |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| [ADR-0.10.0](./0.10.0-cli-and-openchamber-activation.md) | Iteration 0.10.0 · CLI and OpenChamber activation (1 sections) | `ocp` | `system` | 🔵 Proposed | adr-governance | 0 | 2026-08-29 |
+| [ADR-0.34.0](./0.34.0-profiler-cache-and-ponytail-removal.md) | Iteration 0.34.0 · Profiler cache and ponytail removal (2 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 0 | 2026-09-11 |
+| [ADR-0.35.0](./0.35.0-ocp-path-contract.md) | Iteration 0.35.0 · OCP path contract (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 0 | 2026-09-12 |
+| [ADR-0.36.0](./0.36.0-tgrep-probe-first-contract.md) | Iteration 0.36.0 · tgrep probe-first contract (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 0 | 2026-09-14 |
+| [ADR-0.38.0](./0.38.0-omniroute-gateway-profile.md) | Iteration 0.38.0 · OmniRoute gateway profile (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 0 | 2026-09-15 |
+| [ADR-0.40.0](./0.40.0-multi-style-adl-and-prose-language-policy.md) | Iteration 0.40.0 · Multi-style ADL and prose language policy (2 sections) | `ocp` | `system` | 🔵 Proposed | adr-governance | 0 | 2026-09-18 |
+| [ADR-0.40.1](./0.40.1-project-level-adr-overrides.md) | Iteration 0.40.1 · Project-level ADR overrides (4 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 1 | 2026-09-18 |
+| [ADR-0.40.2](./0.40.2-rename-adr-guard-plugin-to-adr.md) | Iteration 0.40.2 · Rename adr-guard plugin to adr (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 2 | 2026-09-19 |
+| [ADR-0.40.3](./0.40.3-appealability-of-accepted-decisions.md) | Iteration 0.40.3 · Appealability of accepted decisions (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 3 | 2026-09-21 |
+
+## Label glossary
+
+Grammar labels are fixed English in every record — prose follows the team's
+working language (ADR-0.40.0#02). One-time decoding below; the labels
+themselves are never localized. Translations ship in the plugin
+(`/adr glossary` — 8 locales); generated files stay English-only.
+
+| Label | Style | Meaning |
+| :--- | :--- | :--- |
+| `## Context` | nygard | Forces at play: technical, business, project context |
+| `## Decision` | nygard | The decision made in response to the context |
+| `## Consequences` | nygard · madr | Resulting context: what becomes easier or harder |
+| `## Context and Problem Statement` | madr | Architectural context, the problem, and constraints |
+| `## Decision Drivers` | madr (optional) | Forces driving the decision (scalability, security, …) |
+| `## Considered Options` | madr (optional) | Alternatives evaluated, each with pros/cons |
+| `## Decision Outcome` | madr | The chosen option and rationale (`Chosen option: …, because …`) |
+| `## Pros and Cons of the Options` | madr (optional) | Per-option advantage/disadvantage detail |
+| `### Confirmation` | madr (optional) | How the decision's outcomes will be verified |
+| `## More Information` | madr (optional) | Supplementary material and references |
+| `**Positive**` / `**Negative / Risks**` | madr | Good impacts / trade-offs and mitigations |
+| `## Cheatsheet` / `## Quick view` | ocp | Reader's primary entry / restatement layer (graphs + tables) |
+| `**Status**` | ocp | Section status line: emoji + fixed token (`✅ accepted`, …) |
+| `**Background**` | ocp | Situation and pain, ≤ 3 sentences |
+| `**Decision**` | ocp | Decision points as a `# / Point / Content` table |
+| `**Rationale**` | ocp | Why — bold-keyword-led bullets |
+| `**Rejected**` | ocp | Alternatives not taken, as an `Option / Reason rejected` table |
+| `**Impact**` | ocp | Layered change list (plugins / runtime / tests / docs / …) |
+| `**Future extensions**` | ocp | Deliberately deferred follow-ups |
+| status enum | frontmatter | `proposed` → `accepted` or `rejected`; `superseded`, `deprecated` |
+| metadata keys | frontmatter | `style` `status` `created` `date` `layer` `scope` `baseline` `iteration` `domain` `parent` `supersedes` `superseded_by` — machine-read, never localized |

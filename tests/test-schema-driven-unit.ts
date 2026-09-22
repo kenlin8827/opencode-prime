@@ -82,7 +82,7 @@ const stringField: SchemaField = {
   icon: "📁",
   values: [
     { value: "docs/adr", labelKey: "project.valueAdrDirDocsAdr" },
-    { value: "docs/decisions", labelKey: "project.valueAdrDirDocsDecisions" },
+    { value: "docs/decisions", labelKey: "project.valueAdrDirDocsAdr" },
   ],
   default: "docs/adr",
 }

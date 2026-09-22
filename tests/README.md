@@ -23,8 +23,14 @@ $env:LLM_ROUTER_API_KEY = "<your-api-key>"
 | `test-subagent.ps1` | Subagent dispatched by build agent follows Output Protocol |
 | `test-default.ps1` | Default build agent (no custom prompt) — baseline |
 | `test-sdd-unit.ts` | SDD (Specification-Driven Development) unit tests (no API, 49 assertions) — PRD/ADR/Plan scaffolding, Unicode slugs, fuzzy matching, /sdd handoff |
-| `test-adr-guard-unit.ts` | ADR Guard unit tests (no API, 96 assertions) — MADR generation, auto-drafting, index sync, supersede, check, Git gate |
-| `test-adr-hierarchical-unit.ts` | Hierarchical ADR unit tests (no API, 46 assertions) — 3-layer architecture, migrate flat/hierarchical, auto detection |
+| `test-adr-guard-unit.ts` | ADR plugin + guard unit tests (no API, 246 assertions) — MADR generation, auto-drafting, index sync, supersede (§9.5 status-line flip), check, Git gate, `/adr guard` routing + `/adr-guard` alias |
+| `test-adr-hierarchical-unit.ts` | Hierarchical ADR unit tests (no API, 46 assertions) — 3-layer architecture, whole-ADL global ID allocation, migrate flat/hierarchical, auto detection |
+| `test-adr-style-registry-unit.ts` | Multi-style ADL foundation tests (no API, 179 assertions) — normalizeAdrId grammar, madr adapter, style registry dispatch, duplicate-ID tolerance, ID+path ref resolution, §9.5 supersession, adr.* config + init suites, iteration numbering |
+| `test-adr-evolution-unit.ts` | Evolution metadata tests (no API, 90 assertions) — baseline/iteration/domain frontmatter on any style, generated INDEX.by-iteration.md, cross-style ID references, duplicate dotted-ID integrity, iteration context bundling, `evolution` validation profile vs default check |
+| `test-adr-adl-integration.ts` | Multi-view ADL integration tests (no API, 138 assertions) — mixed-style fixture ADL, generated INDEX.md tree mirroring directories (byte-stable, no descendant flattening), `tree --by path|layer|domain|iteration`, cross-style history traversal, bounded ID/domain/iteration context bundles with disclosed retrieval path, flat/hierarchical layout independence, fixture style purity |
+| `test-adr-migration-unit.ts` | Style migration & audit tests (no API, 72 assertions) — `/adr check --report-style` legacy flags, deterministic dry-run reports (source/destination/ID mapping/link rewrites/drop warnings), dry-run never writes, `--confirm` writes only declared paths, post-migration re-parse + validation + integrity verification, `date`/`created`/ID preservation |
+| `test-adr-ocp-unit.ts` | OCP container style tests (no API, 95 assertions) — container ID grammar (`ADR-0.2.54`), section parse (five-part fields/emoji status/rejected-reason split/impact bullets), scaffold + scaffoldSection round-trips, namespace reservation guards (container vs per-decision), integrity + supersession flows, section-level refs + annotation edges, # fragment IDs, sequential containers, `createAdrContainer` / `appendAdrSection` engine flows |
+| `test-adr-nygard-unit.ts` | Nygard adapter tests (no API, 102 assertions) — scaffold/detect/parse/validate/format/index, strict style isolation, cross-style supersession, language parentheticals |
 | `test-md-to-docx-unit.ts` | Markdown to Word (.docx) export unit tests (no API, 24 assertions) — Pandoc engine, reference docx, styles |
 | `test-md-to-pdf-unit.ts` | Markdown to PDF export unit tests (no API, 18 assertions) — Puppeteer/Typst engine, offline Mermaid |
 | `test-anchor-unit.ts` | DeepSeek Anchor plugin unit tests (no API, 46 assertions) — verifies anchor injection, idempotency, model detection, tool block/restore |
@@ -136,3 +142,38 @@ pwsh -ExecutionPolicy Bypass -File tests/test-anchor-benchmark.ps1
 # Quick benchmark (2 prompts only)
 pwsh -ExecutionPolicy Bypass -File tests/test-anchor-benchmark.ps1 -Quick
 ```
+
+### ADR compaction and native approval
+
+```bash
+bun tests/test-adr-compaction-unit.ts
+bun tests/test-adr-compaction-faults.ts
+bun tests/test-adr-compaction-runtime.ts
+bun tests/test-adr-compaction-recovery-runtime.ts
+bun tests/test-adr-compaction-package.ts  # Bun + bash/zip/unzip/tar/hash utilities
+bun tests/test-adr-compaction-install.ts  # OpenCode + registry access; real installer, real server
+```
+
+The service and 14-boundary process-death suites are part of `test-all.ps1`. Set `OCP_TEST_NATIVE_ADR=1` to
+include both native suites, `OCP_TEST_PACKAGE_ADR=1` for the release-package smoke
+test (POSIX shell tooling) and `OCP_TEST_INSTALL_ADR=1` for the installed-tree
+delivery test. The native suites require OpenCode on
+PATH and uses temporary authenticated servers plus a deterministic local model;
+it makes no paid provider calls. It tests cost approval, actual skill loading,
+named batch submission, all four review outcomes and pre-output archive-read
+cancellation. The restart fixture kills OpenCode after writing an accepted
+successor, verifies exact recovery in a fresh server, then separately approves
+inverse archival. It removes a lock only after its recorded owner exits.
+Fixture-only filesystem interception is not a production fault-injection API.
+The packaging smoke test uses a disposable version/manifest, verifies both
+archives file-by-file, asserts that a drifted release manifest is refused instead
+of packing an incomplete archive, and never changes the real repository version or
+historical manifests. The delivery test runs the production installer into a
+sandboxed HOME, confirms the installed toolchain performs read-only analysis, then
+boots a real OpenCode server from that tree and asserts the ADR tools and command
+are registered through native auto-discovery (no fixture plugin path).
+
+The dev-only tokenizer benchmark is `scripts/benchmark-adr-compaction.py` (Bun
+plus Python `tiktoken==0.12.0`). See
+[`docs/maintenance/adr-compaction-verification.md`](../docs/maintenance/adr-compaction-verification.md)
+for methodology, results and enforcement limits.

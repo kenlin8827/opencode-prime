@@ -219,7 +219,7 @@ Check "lite and code map explicit review requests to the review agents" `
 Check "plugin-scope: default policy denies lite, utility and all subagent steps" (($scope.plugins.'*'.deny -contains "lite") -and ($scope.plugins.'*'.deny -contains "utility") -and ($scope.plugins.'*'.deny -contains "subagent:*"))
 $injectorFiles = @(
   "plugins\project-profiler\project-profiler.ts",
-  "plugins\project-manager\project-manager-system-inject.ts", "plugins\adr-guard\adr-guard-system-inject.ts",
+  "plugins\project-manager\project-manager-system-inject.ts", "plugins\adr\adr-system-inject.ts",
   "plugins\auto-advisor\auto-advisor-system-inject.ts", "plugins\deepseek-anchor\index.ts",
   "plugins\e2e-guard\e2e-guard-system-inject.ts"
 )
@@ -291,17 +291,16 @@ $allFiles = @(
     "plugins/deepseek-anchor/deepseek-anchor-command.ts",
     "plugins/project-profiler.ts",
     "plugins/project-profiler/project-profiler.ts",
-    "plugins/adr-guard.ts",
-    "plugins/adr-guard/adr-guard.ts",
-    "plugins/adr-guard/adr-guard-config.ts",
-    "plugins/adr-guard/adr-guard-runtime.ts",
-    "plugins/adr-guard/adr-guard-protocol.md",
-    "plugins/adr-guard/adr-guard-instructions.ts",
-    "plugins/adr-guard/adr-guard-system-inject.ts",
-    "plugins/adr-guard/adr-guard-tool-guard.ts",
-    "plugins/adr-guard/adr-guard-command.ts",
-    "plugins/adr-guard/adr-guard-announce.ts",
-    "plugins/adr-guard/adr-engine.ts",
+    "plugins/adr.ts",
+    "plugins/adr/adr.ts",
+    "plugins/adr/adr-config.ts",
+    "plugins/adr/adr-runtime.ts",
+    "plugins/adr/adr-instructions.ts",
+    "plugins/adr/adr-system-inject.ts",
+    "plugins/adr/adr-tool-guard.ts",
+    "plugins/adr/adr-command.ts",
+    "plugins/adr/adr-announce.ts",
+    "plugins/adr/adr-engine.ts",
     "plugins/env-guard.ts",
     "plugins/env-guard/env-guard.ts",
     "plugins/env-guard/env-guard-config.ts",
@@ -614,7 +613,7 @@ foreach ($preset in @("dev-quick", "dev-plan", "dev-review")) {
 $flashLauncher = Get-Content "$PSScriptRoot\..\commands\dev-flash.md" -Raw
 Check "dev-flash: alias launcher loads the dev skill with dev-quick preset" (($flashLauncher -match "dev skill") -and ($flashLauncher -match "dev-quick preset"))
 
-# Shared project-config plumbing (plugins/shared/opencode-prime.ts — used by adr-guard, env-guard, e2e-guard, auto-advisor)
+# Shared project-config plumbing (plugins/shared/opencode-prime.ts — used by adr, env-guard, e2e-guard, auto-advisor)
 $sharedConfig = Get-Content "$PSScriptRoot\..\plugins\shared\opencode-prime.ts" -Raw
 Check "shared/opencode-prime.ts: exports never-throw field writer" ($sharedConfig -match 'export function setConfigField')
 Check "shared/opencode-prime.ts: exports field remover" ($sharedConfig -match 'export function clearConfigField')
@@ -630,29 +629,30 @@ Check "project-wizard.ts: open-time migration runs BEFORE detect (B1 / ADR 0004 
   (($wizardSrc -match "migrateLegacyProjectArtifacts\(rootDir\)") -and `
    ($wizardSrc.IndexOf("migrateLegacyProjectArtifacts(rootDir)") -lt $wizardSrc.IndexOf("detectCurrentSwitches(rootDir)")))
 
-# ADR iron-law plugin checks (plugins/adr-guard/ — project-level switch, hard commit gate)
-$adrPlugin = Get-Content "$PSScriptRoot\..\plugins\adr-guard\adr-guard.ts" -Raw
-$adrProtocol = Get-Content "$PSScriptRoot\..\plugins\adr-guard\adr-guard-protocol.md" -Raw
-$adrGuard = Get-Content "$PSScriptRoot\..\plugins\adr-guard\adr-guard-tool-guard.ts" -Raw
-$adrConfig = Get-Content "$PSScriptRoot\..\plugins\adr-guard\adr-guard-config.ts" -Raw
-Check "adr-guard.ts: imports Plugin type" ($adrPlugin -match "import type.*Plugin.*from.*@opencode-ai/plugin")
-Check "adr-guard.ts: has config hook registering command" ($adrPlugin -match "config:" -and $adrPlugin -match 'COMMAND_NAME')
-Check "adr-guard.ts: has command.execute.before hook" ($adrPlugin -match '"command\.execute\.before"')
-Check "adr-guard.ts: has system.transform hook" ($adrPlugin -match "experimental.chat.system.transform")
-Check "adr-guard.ts: has tool.execute.before hook" ($adrPlugin -match '"tool\.execute\.before"')
-Check "adr-guard.ts: injects project directory" ($adrPlugin -match "setProjectDir\(directory\)")
-Check "adr-guard-config.ts: switch stored in project .ocp/ocp.json (no state file)" ($adrConfig -match 'shared/opencode-prime' -and $adrConfig -match 'adrGuard')
-Check "adr-guard-config.ts: default state is off" ($adrConfig -match 'defaultState: "off"')
-Check "adr-guard-config.ts: default ADR dir docs/adr" ($adrConfig -match 'DEFAULT_ADR_DIR = "docs/adr"')
-Check "adr-guard-tool-guard.ts: gates feat/refactor only" ($adrGuard -match "requiresAdr")
-Check "adr-guard-tool-guard.ts: checks ADR working-tree changes" ($adrGuard -match "hasAdrChanges")
-Check "adr-guard-protocol.md: has iron law" ($adrProtocol -match "iron law")
-Check "adr-guard-protocol.md: has MADR frontmatter" ($adrProtocol -match "status: accepted" -and $adrProtocol -match "date:")
-Check "adr-guard-protocol.md: has sequential numbering" ($adrProtocol -match "NNNN-slug")
-Check "adr-guard-protocol.md: forbids type relabeling bypass" ($adrProtocol -match "MUST NOT" -and $adrProtocol -match "relabeling the commit type")
+# ADR plugin checks (plugins/adr/ — full ADR workbench; iron-law guard = commit-gate submodule)
+$adrPlugin = Get-Content "$PSScriptRoot\..\plugins\adr\adr.ts" -Raw
+$adrProtocol = Get-Content "$PSScriptRoot\..\skills\adr-protocol\SKILL.md" -Raw
+$adrGuard = Get-Content "$PSScriptRoot\..\plugins\adr\adr-tool-guard.ts" -Raw
+$adrConfig = Get-Content "$PSScriptRoot\..\plugins\adr\adr-config.ts" -Raw
+Check "adr.ts: imports Plugin type" ($adrPlugin -match "import type.*Plugin.*from.*@opencode-ai/plugin")
+Check "adr.ts: has config hook registering command" ($adrPlugin -match "config:" -and $adrPlugin -match 'COMMAND_NAME')
+Check "adr.ts: has command.execute.before hook" ($adrPlugin -match '"command\.execute\.before"')
+Check "adr.ts: has system.transform hook" ($adrPlugin -match "experimental.chat.system.transform")
+Check "adr.ts: has tool.execute.before hook" ($adrPlugin -match '"tool\.execute\.before"')
+Check "adr.ts: injects project directory" ($adrPlugin -match "setProjectDir\(directory\)")
+Check "adr.ts: registers /adr-guard as /adr guard alias" ($adrPlugin -match "Alias of /adr guard")
+Check "adr-config.ts: switch stored in project .ocp/ocp.json (no state file)" ($adrConfig -match 'shared/opencode-prime' -and $adrConfig -match 'adrGuard')
+Check "adr-config.ts: default state is off" ($adrConfig -match 'defaultState: "off"')
+Check "adr-config.ts: default ADR dir docs/adr" ($adrConfig -match 'DEFAULT_ADR_DIR = "docs/adr"')
+Check "adr-tool-guard.ts: gates feat/refactor only" ($adrGuard -match "requiresAdr")
+Check "adr-tool-guard.ts: checks ADR working-tree changes" ($adrGuard -match "hasAdrChanges")
+Check "adr-protocol skill: has iron law" ($adrProtocol -match "iron law")
+Check "adr-protocol skill: has MADR frontmatter" ($adrProtocol -match "status: accepted" -and $adrProtocol -match "date:")
+Check "adr-protocol skill: has sequential numbering" ($adrProtocol -match "NNNN-slug")
+Check "adr-protocol skill: forbids type relabeling bypass" ($adrProtocol -match "MUST NOT" -and $adrProtocol -match "relabeling the commit type")
 
-$adrBarrel = Get-Content "$PSScriptRoot\..\plugins\adr-guard.ts" -Raw
-Check "adr-guard.ts: barrel re-exports AdrGuardPlugin" ($adrBarrel -match "export.*AdrGuardPlugin")
+$adrBarrel = Get-Content "$PSScriptRoot\..\plugins\adr.ts" -Raw
+Check "adr.ts: barrel re-exports AdrPlugin" ($adrBarrel -match "export.*AdrPlugin")
 
 # Env guard plugin checks (plugins/env-guard/ — project-level switch, secret-file gate)
 $egPlugin = Get-Content "$PSScriptRoot\..\plugins\env-guard\env-guard.ts" -Raw
@@ -670,7 +670,7 @@ Check "env-guard-runtime.ts: bash leak detection" ($egRuntime -match "bashLeaksE
 Check "env-guard-tool-guard.ts: gates file tools" ($egGuard -match "multiedit")
 Check "env-guard-tool-guard.ts: gates grep tool" ($egGuard -match '"grep"')
 Check "env-guard-tool-guard.ts: gates bash via leak detection" ($egGuard -match "bashLeaksEnv")
-Check "env-guard-tool-guard.ts: reuses adr-guard-runtime parsing" ($egGuard -match "adr-guard/adr-guard-runtime")
+Check "env-guard-tool-guard.ts: reuses adr runtime parsing" ($egGuard -match "adr/adr-runtime")
 
 $egBarrel = Get-Content "$PSScriptRoot\..\plugins\env-guard.ts" -Raw
 Check "env-guard.ts: barrel re-exports EnvGuardPlugin" ($egBarrel -match "export.*EnvGuardPlugin")
@@ -725,7 +725,7 @@ Check "project-manager-system-inject.ts: line-start marker dedup" ($pmInject -ma
 Check "project-manager-system-inject.ts: appends to last entry only" ($pmInject -match "appendBlock")
 Check "project-manager-tool-guard.ts: structural validator" ($pmGuard -match "validateMessage")
 Check "project-manager-tool-guard.ts: 72-char first-line cap" ($pmGuard -match "MAX_FIRST_LINE = 72")
-Check "project-manager-tool-guard.ts: reuses adr-guard-runtime parsing" ($pmGuard -match "adr-guard/adr-guard-runtime")
+Check "project-manager-tool-guard.ts: reuses adr runtime parsing" ($pmGuard -match "adr/adr-runtime")
 Check "project-manager-tool-guard.ts: --amend exempt per invocation" ($pmGuard -match "--amend")
 Check "project-manager-tool-guard.ts: merge/revert/fixup/squash exempt" ($pmGuard -match "Merge.*Revert.*fixup.*squash" -or $pmGuard -match "EXEMPT_PREFIX_RE")
 
@@ -954,6 +954,30 @@ Write-Host "Unit Tests: SDD & Plugin Ecosystem" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 & bun "$PSScriptRoot\test-sdd-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-adr-compaction-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-adr-compaction-faults.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+# Native runtime tests are explicit/optional: require OpenCode and start local servers.
+if ($env:OCP_TEST_NATIVE_ADR -eq "1") {
+    & bun "$PSScriptRoot\test-adr-compaction-runtime.ts"
+    if ($LASTEXITCODE -ne 0) { $fail++ }
+    & bun "$PSScriptRoot\test-adr-compaction-recovery-runtime.ts"
+    if ($LASTEXITCODE -ne 0) { $fail++ }
+}
+# Release-package smoke test needs POSIX tooling (bash, zip, unzip, tar) — opt-in
+# so the Windows runner does not fail for a missing shell utility.
+if ($env:OCP_TEST_PACKAGE_ADR -eq "1") {
+    & bun "$PSScriptRoot\test-adr-compaction-package.ts"
+    if ($LASTEXITCODE -ne 0) { $fail++ }
+}
+# Installed-tree delivery test runs the real installer and a real OpenCode
+# server: needs OpenCode on PATH plus registry access for OpenCode's own
+# @opencode-ai/plugin dependency install.
+if ($env:OCP_TEST_INSTALL_ADR -eq "1") {
+    & bun "$PSScriptRoot\test-adr-compaction-install.ts"
+    if ($LASTEXITCODE -ne 0) { $fail++ }
+}
 & bun "$PSScriptRoot\test-adr-guard-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-adr-hierarchical-unit.ts"

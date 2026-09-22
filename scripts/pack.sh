@@ -54,28 +54,25 @@ read_manifest() {
     grep -v '^\s*#' "$1" | grep -v '^\s*$' | sed 's/\\/\//g' | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
 }
 
-# --- generate manifest if missing (inline, no dependency on install.sh) --
+# --- manifest ------------------------------------------------------------
 
-INCLUDE_PREFIXES=("commands/" "plugins/" "instructions/" "opencode.template.jsonc" "tui.template.jsonc" "tiers.json" "profiles/" "prompts/" "providers/" "scripts/")
-EXCLUDE_PATTERNS=('^scripts/pack\.' '^scripts/verify\.')
+# The shipped-file inventory has exactly one implementation
+# (install/src/manifest.ts). pack.sh must not keep a second allowlist that can
+# drift from the installer, otherwise the archive and every installed tree
+# disagree about what ships. check-package-manifest.ts generates a missing
+# manifest and refuses to pack a drifted one; an existing manifest (including
+# historical version records) is never rewritten.
 
-generate_manifest() {
-    local out="$1"
-    : > "$out"
-    while IFS= read -r -d '' file; do
-        local rel="${file#"$REPO_ROOT"/}"
-        rel="${rel//\\//}"
-        local include=0
-        for p in "${INCLUDE_PREFIXES[@]}"; do
-            [[ "$rel" == "${p%/}" || "$rel" == "$p"* ]] && include=1 && break
-        done
-        if [[ $include -eq 1 ]]; then
-            for ex in "${EXCLUDE_PATTERNS[@]}"; do
-                [[ "$rel" =~ $ex ]] && include=0 && break
-            done
+check_manifest() {
+    if ! command -v bun >/dev/null 2>&1; then
+        if [[ ! -f "$MANIFEST" ]]; then
+            echo "error: bun is required to generate the missing manifest $MANIFEST" >&2
+            exit 1
         fi
-        [[ $include -eq 1 ]] && printf '%s\n' "$rel" >> "$out"
-    done < <(find "$REPO_ROOT" -type f -print0 | sort -z)
+        echo "warning: bun not found — packing with the existing manifest; drift is not verified" >&2
+        return 0
+    fi
+    bun "$REPO_ROOT/scripts/check-package-manifest.ts" "$VERSION"
 }
 
 # --- arg parse -----------------------------------------------------------
@@ -103,14 +100,8 @@ done
 # the staging directory, so a relative --out would break there.
 OUT_DIR="$(mkdir -p "$OUT_DIR" && cd "$OUT_DIR" && pwd)"
 
-# Ensure manifest exists
-if [[ ! -f "$MANIFEST" ]]; then
-    echo "manifest missing for version $VERSION, generating..."
-    mkdir -p "$INST_DIR"
-    generate_manifest "$MANIFEST"
-    manifest_n=$(wc -l < "$MANIFEST" | tr -d ' ')
-    echo "wrote $MANIFEST ($manifest_n files)"
-fi
+# Resolve the manifest through the single shipped-file inventory.
+check_manifest
 
 # Build a staging directory with the exact layout we want in the archive.
 STAGE="$(mktemp -d)"

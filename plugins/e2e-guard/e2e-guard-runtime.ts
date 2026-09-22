@@ -3,10 +3,10 @@
  * approval store. Pure functions + module state only; the tool guard
  * composes them.
  *
- * Design stance (same as adr-guard / env-guard): fail-safe on detection
+ * Design stance (same as adr / env-guard): fail-safe on detection
  * (recognized E2E shapes are blocked), fail-open on ambiguity (unrecognized
  * command shapes pass through). The tokenizer is reused from
- * adr-guard-runtime, so quoted arguments survive parsing exactly like the
+ * adr-runtime, so quoted arguments survive parsing exactly like the
  * other guards see them.
  *
  * Detection is intentionally heuristic, covering the common shapes:
@@ -40,7 +40,7 @@
  * in-memory lifecycle.
  */
 
-import { tokenize } from "../adr-guard/adr-guard-runtime"
+import { tokenize } from "../adr/adr-runtime"
 import { PACKAGE_MANAGERS } from "../shared/package-manager"
 
 // ─── Session approval store (two tiers) ─────────────────────────────
