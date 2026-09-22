@@ -24,7 +24,6 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
-import { fileURLToPath } from "node:url"
 import {
   clearConfigField,
   getProjectDir,
@@ -39,6 +38,7 @@ import { refreshLocale, STRINGS, tr } from "../tui/i18n"
 import { createPluginSwitch, normalizeSwitchState } from "../shared/plugin-switch"
 import { findAdrStyleAdapter } from "./adr-style-registry"
 import type { AdrGovernance, AdrNumbering, AdrStyle } from "./adr-types"
+import adrSuitesData from "./adr-suites.json"
 
 // Re-export the shared plumbing so existing importers (plugin entry, tool
 // guard, tests) keep their current import paths.
@@ -878,17 +878,13 @@ export interface AdrSuiteRow {
   fields: Record<string, string>
 }
 
-const ADR_SUITES_FILE = joinPath(dirname(fileURLToPath(import.meta.url)), "adr-suites.json")
 const SUITE_FIELD_KEYS = ["style", "numbering", "layout", "governance"] as const
 
 function loadAdrSuites(): Record<string, AdrSuiteRow> {
-  let raw: unknown
-  try {
-    raw = JSON.parse(readFileSync(ADR_SUITES_FILE, "utf-8"))
-  } catch (err) {
-    throw new Error(`adr-suites.json is missing or unparseable: ${String(err)}`)
-  }
-  const rows = (raw as { suites?: unknown }).suites
+  // Static JSON import: the bundler inlines the data into install/dist, so
+  // the released bundle never does a runtime file lookup next to index.js
+  // (a readFileSync here crashed every installed CLI with ENOENT at startup).
+  const rows = (adrSuitesData as { suites?: unknown }).suites
   if (!Array.isArray(rows)) throw new Error("adr-suites.json must carry a 'suites' array")
 
   const out: Record<string, AdrSuiteRow> = {}
@@ -927,9 +923,11 @@ function loadAdrSuites(): Record<string, AdrSuiteRow> {
   return out
 }
 
-/** Suite table, loaded once from adr-suites.json. Validation is
- * fail-closed: a bad builtin row throws at load (surfaced by any test that
- * imports this module) instead of silently degrading /adr init. */
+/** Suite table, statically imported from adr-suites.json (the bundler
+ * inlines it into the released install/dist bundle at build time).
+ * Validation is fail-closed: a bad builtin row throws at load (surfaced by
+ * any test that imports this module) instead of silently degrading /adr
+ * init. */
 export const ADR_SUITES: Record<string, AdrSuiteRow> = loadAdrSuites()
 
 /** Suite names are data: any loaded row name, plus the reserved
