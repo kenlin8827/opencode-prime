@@ -14,3 +14,4 @@
 | 0.40.0 | [Multi-style ADL and prose language policy](./0.40.0-multi-style-adl-and-prose-language-policy.md) |
 | 0.40.1 | [Project-level ADR overrides](./0.40.1-project-level-adr-overrides.md) |
 | 0.40.2 | [Rename adr-guard plugin to adr](./0.40.2-rename-adr-guard-plugin-to-adr.md) |
+| 0.40.3 | [已接受决策的可上诉性](./0.40.3-appealability-of-accepted-decisions.md) |

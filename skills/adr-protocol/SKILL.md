@@ -334,6 +334,7 @@ Canonical section IDs derive from the container namespace
 - `Deprecated` — no longer applies but not replaced by another ADR.
 - `Superseded by NNNN` — fully replaced; the successor ADR **MUST** cross-reference back.
 - Accepted decision substance is immutable. Reviewed lifecycle metadata/status and mechanical relocation links may change; a changed decision **MUST** be an explicitly accepted successor. New OCP sections are proposed units, not edits to accepted sections.
+- **Appealability** — an accepted record is precedent, not law. Challenge it when its grounds no longer hold (new facts, changed constraints, flawed rationale); a challenge never edits in place — it lands as a **proposed** successor that amends or supersedes and names the concrete changed condition. "I prefer otherwise" is not a reason; acceptance stays human.
 
 ## If the guard blocks your commit
 

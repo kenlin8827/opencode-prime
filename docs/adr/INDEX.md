@@ -7,7 +7,7 @@
 
 *Directory: `docs/adr`*
 
-## Records (8)
+## Records (9)
 
 | ID | Decision Title | Style | Layer | Status | Domain | Iteration | Created |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -19,3 +19,4 @@
 | [ADR-0.40.0](./0.40.0-multi-style-adl-and-prose-language-policy.md) | Iteration 0.40.0 · Multi-style ADL and prose language policy (2 sections) | `ocp` | `system` | 🔵 Proposed | adr-governance | 0 | 2026-09-18 |
 | [ADR-0.40.1](./0.40.1-project-level-adr-overrides.md) | Iteration 0.40.1 · Project-level ADR overrides (4 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 1 | 2026-09-18 |
 | [ADR-0.40.2](./0.40.2-rename-adr-guard-plugin-to-adr.md) | Iteration 0.40.2 · Rename adr-guard plugin to adr (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 2 | 2026-09-19 |
+| [ADR-0.40.3](./0.40.3-appealability-of-accepted-decisions.md) | Iteration 0.40.3 · Appealability of accepted decisions (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 3 | 2026-09-21 |
