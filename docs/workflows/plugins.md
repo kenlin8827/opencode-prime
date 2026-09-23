@@ -156,7 +156,7 @@ baijiu-shop-style docs governance, no runtime switch or gate (the retired
 ```
 
 Detection pre-fills the template (package manager, e2e script, spec dir,
-runner config); undetected values stay as `{{...}}` placeholders for manual
+runner config); undetected values stay as <code v-pre>{{...}}</code> placeholders for manual
 fill-in. The adopted policy carries the four core elements: risk-graded
 tiers (lightweight / targeted / full), a confirmation loop (ask before ANY
 E2E run; explicit request this turn counts as confirmed; refusal pauses the
