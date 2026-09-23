@@ -4,7 +4,7 @@ Five Dev Flows represent the flagship multi-agent workflow system in OpenCode's 
 
 Each flow embodies a **development philosophy** — a distinct trade-off between speed, depth, autonomy, and risk posture. Choose based on the nature of your task, not a linear "better/worse" hierarchy.
 
-The three linear flows (`/dev-quick`, `/dev-plan`, `/dev-review`) are implemented as **presets over one [`/dev`](dev.md) compositor engine** — each expands to a flag set on `/dev`. `/dev-prud` and `/dev-ultra` remain standalone protocols (different topologies). Invoke `/dev` directly when no preset matches.
+The three linear flows (`/dev-quick`, `/dev-plan`, `/dev-review`) are implemented as **presets over one [`/dev`](dev.md) compositor engine** — each expands to a flag set on `/dev`. `/dev-prud` and `/dev-ultra` remain standalone protocols (different topologies). Invoke `/dev` directly when no preset matches. Upstream of all five: [`/dev-deep`](dev-deep.md) mines requirements too vague to write acceptance criteria, then hands the clarified goal to whichever flow fits (or a `/goal` contract).
 
 ---
 
@@ -83,6 +83,8 @@ User → Objective → @build decomposes → Phase 0: @explore → Loop[Phase 1.
 ---
 
 ## Selection Guide
+
+Before the tree: requirement too vague to write acceptance criteria (code or analysis)? Run [`/dev-deep`](dev-deep.md) first — it mines the requirement into a clarified goal + constraints + acceptance criteria, then re-enter the tree.
 
 ```
                     Is it a large-scale objective
