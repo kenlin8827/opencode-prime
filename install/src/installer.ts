@@ -27,6 +27,7 @@ import {
   mergeUserOptions,
 } from './merger';
 import { isBinaryOnPath, probeRunningOpencodeConfigDir } from './shared/opencode-detect';
+import { section } from './shared/output';
 import { resolvePmForSpec } from './package-manager';
 
 // Detection primitives live in shared/opencode-detect.ts (self-contained
@@ -52,6 +53,23 @@ export function getMaxBackups(): number {
 }
 
 /**
+ * Config directories managed by a hosting application — currently orca's
+ * opencode-hooks shared dir. Wrapper apps inject OPENCODE_CONFIG_DIR into
+ * every shell they spawn, so the value is ambient environment noise rather
+ * than a deliberate user choice (it is invisible in the OS env-var settings
+ * and only exists inside the wrapper's process tree). Installing OCP's
+ * managed file set into another app's managed tree is never the intent, so
+ * the install TARGET skips these values; the detect/report still shows them
+ * truthfully, and an explicit --target always wins.
+ */
+const WRAPPER_MANAGED_CONFIG_PATTERN = /[/\\]orca[/\\]opencode-hooks(?:[/\\]|$)/i;
+
+export function isWrapperManagedConfigDir(dir: string | undefined | null): boolean {
+  if (!dir) return false;
+  return WRAPPER_MANAGED_CONFIG_PATTERN.test(path.resolve(dir));
+}
+
+/**
  * Resolve the install target directory.
  *
  * Precedence:
@@ -62,14 +80,18 @@ export function getMaxBackups(): number {
  *      opencode-hooks, e.g.) that diverge from where the running
  *      opencode TUI actually reads.
  *   2. `OPENCODE_CONFIG_DIR` in this process — caller has not opted out.
+ *      Wrapper-managed values (isWrapperManagedConfigDir) are skipped
+ *      automatically: they are injected by the hosting app, not chosen
+ *      by the user, and must not silently become the install target.
  *   3. Default ~/.config/opencode.
  *
  * Existing callers that omit `useDefaultConfig` get the previous
  * behaviour (env var wins) — backward compatible.
  */
 export function getDefaultTargetDir(useDefaultConfig = false): string {
-  if (!useDefaultConfig && process.env.OPENCODE_CONFIG_DIR) {
-    return path.resolve(process.env.OPENCODE_CONFIG_DIR);
+  const envOverride = process.env.OPENCODE_CONFIG_DIR;
+  if (!useDefaultConfig && envOverride && !isWrapperManagedConfigDir(envOverride)) {
+    return path.resolve(envOverride);
   }
   const home = os.homedir();
   return path.join(home, '.config', 'opencode');
@@ -94,7 +116,12 @@ export function warnInstallTargetMismatch(
   targetDir: string,
   runtimeConfigDir: string | null = probeRunningOpencodeConfigDir(),
 ): string | null {
-  const envOverride = process.env.OPENCODE_CONFIG_DIR
+  // A wrapper-managed env override (orca's opencode-hooks, e.g.) is skipped
+  // by getDefaultTargetDir on purpose — flagging the resulting divergence
+  // as "pick one" would contradict that deliberate guard.
+  const envOverride = isWrapperManagedConfigDir(process.env.OPENCODE_CONFIG_DIR)
+    ? undefined
+    : process.env.OPENCODE_CONFIG_DIR
   const envAbs = envOverride ? path.resolve(envOverride) : null
   const runtimeAbs = runtimeConfigDir ? path.resolve(runtimeConfigDir) : null
 
@@ -763,9 +790,17 @@ function runPmCommand(spec: string, binary?: string): ShellCommandResult {
  * Provision CLIs for enabled MCP servers that declare an `install` field and
  * are missing from PATH. Never throws — failures are logged with manual
  * instructions so a missing CLI can't fail the config install.
+ *
+ * `plan` lets the caller pass a precomputed mcpProvisionPlan() result (the
+ * install flow uses it to skip the section header when the plan is empty);
+ * when omitted the plan is computed here.
  */
-export function provisionMcpCli(repoDir: string, options: InstallOptions): void {
-  for (const { name, install } of mcpProvisionPlan(repoDir, options)) {
+export function provisionMcpCli(
+  repoDir: string,
+  options: InstallOptions,
+  plan?: Array<{ name: string; install: string }>
+): void {
+  for (const { name, install } of plan ?? mcpProvisionPlan(repoDir, options)) {
     console.log(`🚀 [mcp] ${name} missing from PATH — provisioning via: ${install}`);
     const res = runInstallCommand(install, repoDir, { binary: name });
     if (res.status !== 0 || res.error) {
@@ -875,8 +910,11 @@ export function loadToolRegistry(repoDir: string): ToolRegistry | null {
  * True when `options.tools[name]` is not explicitly set to false.
  * All tools (rtk, openchamber, herdr, ...) read from the same `tools: {}`
  * map — no top-level flags anymore.
+ *
+ * Exported so the install flow can guard the "Tools" section header
+ * (all-tools-disabled would otherwise print an empty block).
  */
-function toolEnabled(name: string, options: InstallOptions): boolean {
+export function toolEnabled(name: string, options: InstallOptions): boolean {
   const v = options.tools?.[name];
   return v && typeof v === "object" ? v.enabled !== false : v !== false;
 }
@@ -1122,6 +1160,15 @@ export function migrateGlobalOcpConfig(targetDir: string): {
   return { action: 'skipped', message: '' };
 }
 
+/**
+ * Resolve the install target directory from CLI args — shared by
+ * executeInstall and the CLI's Environment report so the displayed target
+ * can never drift from the one actually written to.
+ */
+export function resolveInstallTarget(args: Pick<CliArgs, 'target' | 'useDefaultConfig'>): string {
+  return args.target ? path.resolve(args.target) : getDefaultTargetDir(args.useDefaultConfig === true);
+}
+
 export function executeInstall(
   repoDir: string,
   args: CliArgs,
@@ -1133,9 +1180,10 @@ export function executeInstall(
   filesInstalled: number;
   backupPath: string | null;
 } {
-  const targetDir = args.target
-    ? path.resolve(args.target)
-    : getDefaultTargetDir(args.useDefaultConfig === true);
+  const targetDir = resolveInstallTarget(args);
+  // Opens the "Install" section of the log; every phase below (options
+  // notes, backup/prune, copy, merge, provisioning) reports under it.
+  section('Install');
   // Cross-process sanity: the shell that runs `ocp install` may have a
   // different OPENCODE_CONFIG_DIR (or none) than the opencode TUI process
   // that will actually load the installed files. Surface the divergence
@@ -1298,18 +1346,37 @@ export function executeInstall(
   fs.writeFileSync(path.join(targetDir, 'installed.version'), curVersion + '\n', 'utf8');
   writeTargetInstalledManifest(targetDir, targetManagedFiles);
 
-  // 7. Provision CLIs for enabled MCP servers missing from PATH
-  provisionMcpCli(repoDir, effectiveOptions);
+  // 7. Provision CLIs for enabled MCP servers missing from PATH. The
+  //    section header is emitted only when the plan is non-empty — with
+  //    every MCP CLI already present (the common case) there is nothing
+  //    to report and an empty header would be noise.
+  const mcpPlan = mcpProvisionPlan(repoDir, effectiveOptions);
+  if (mcpPlan.length > 0) {
+    section('MCP servers');
+    provisionMcpCli(repoDir, effectiveOptions, mcpPlan);
+  }
 
   // 8. Provision optional tools declared in install/tools.jsonc
   //    Phase 1 reports presence for each enabled tool (✓ [tool] … is present
   //    on PATH / provisioning / installed); Phase 2 runs post-install steps.
   //    This subsumes the former standalone checkExternalTools() call.
-  provisionTools(repoDir, effectiveOptions);
+  //    Header guarded the same way as MCP: only when at least one tool is
+  //    enabled (all-disabled options would otherwise print an empty block).
+  const toolRegistry = loadToolRegistry(repoDir);
+  if (toolRegistry?.tools && Object.keys(toolRegistry.tools).some((n) => toolEnabled(n, effectiveOptions))) {
+    section('Tools');
+    provisionTools(repoDir, effectiveOptions);
+  }
 
   // 10. Deploy the bundled herdr config to ~/.config/herdr/ — only when herdr
   //     is enabled. Non-destructive: if the user already has a config, we
   //     leave it alone (they can run `ocp herdr-config install --force`).
+  // 11. Deploy the bundled OCP models/cost.jsonc (coding-plan points) to
+  //     ~/.config/opencode/models/. Copy-if-missing — user's edits to the
+  //     rates survive; --force overwrites.
+  //     Both always report at least one line (models-cost is unconditional),
+  //     so this section header is unguarded.
+  section('Bundled configs');
   if (effectiveOptions.tools?.herdr !== false) {
     const herdrCfg = deployHerdrConfig(repoDir, false);
     if (herdrCfg.action === 'installed' || herdrCfg.action === 'merged') {
@@ -1321,9 +1388,6 @@ export function executeInstall(
     }
   }
 
-  // 11. Deploy the bundled OCP models/cost.jsonc (coding-plan points) to
-  //     ~/.config/opencode/models/. Copy-if-missing — user's edits to the
-  //     rates survive; --force overwrites.
   const modelsCost = deployModelsCost(repoDir, args.force === true);
   if (modelsCost.action === 'installed') {
     console.log(`✓ [models-cost] ${modelsCost.message}`);

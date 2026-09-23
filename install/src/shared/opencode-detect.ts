@@ -19,6 +19,9 @@ import path from 'node:path';
 /** How a binary reached this machine — drives upgrade-channel decisions. */
 export type InstallMethod = 'bun' | 'pnpm' | 'yarn' | 'npm' | 'official' | 'unknown';
 
+/** How the effective config dir was resolved — surfaced in the env report. */
+export type ConfigDirSource = 'env' | 'process-probe' | 'default';
+
 /** Everything detectOpencode() knows about the local opencode install. */
 export interface OpencodeInstall {
   /** Full path, shim-resolved (npm .cmd → node_modules/opencode-ai/bin/opencode.exe on Windows), spawn-ready. */
@@ -29,6 +32,8 @@ export interface OpencodeInstall {
   version: string | null;
   /** OPENCODE_CONFIG_DIR env → live-process probe → ~/.config/opencode default. */
   configDir: string;
+  /** Which link of that chain produced `configDir`. */
+  configDirSource: ConfigDirSource;
   /** Install method classified from the executable's path. */
   installMethod: InstallMethod;
   /**
@@ -365,12 +370,12 @@ function matchConfigDirFromString(s: string): string | null {
  * resolution), then a live probe of a running opencode process, then the
  * canonical ~/.config/opencode default.
  */
-function resolveConfigDir(): string {
+function resolveConfigDir(): { dir: string; source: ConfigDirSource } {
   const env = process.env.OPENCODE_CONFIG_DIR;
-  if (env) return path.resolve(env);
+  if (env) return { dir: path.resolve(env), source: 'env' };
   const probed = probeRunningOpencodeConfigDir();
-  if (probed) return probed;
-  return path.join(os.homedir(), '.config', 'opencode');
+  if (probed) return { dir: probed, source: 'process-probe' };
+  return { dir: path.join(os.homedir(), '.config', 'opencode'), source: 'default' };
 }
 
 // ── Snapshot ─────────────────────────────────────────────────────────
@@ -385,11 +390,13 @@ let cachedInstall: OpencodeInstall | undefined;
 export function detectOpencode(): OpencodeInstall {
   if (cachedInstall !== undefined) return cachedInstall;
   const executable = resolveExecutable();
+  const configDir = resolveConfigDir();
   cachedInstall = {
     executable,
     binDir: executable ? path.dirname(executable) : null,
     version: executable ? spawnVersion(executable) : null,
-    configDir: resolveConfigDir(),
+    configDir: configDir.dir,
+    configDirSource: configDir.source,
     installMethod: executable ? installMethodFromPath(executable) : 'unknown',
     installed: executable !== null,
   };
