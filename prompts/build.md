@@ -101,7 +101,7 @@ Per `output-protocol.md` §Advisor modes, consult `@advisor` for an independent 
 - **Single-domain (most common)**: one dispatch, no plan, report the result.
 - **New feature**: `@architect → @dba → @<backend-dev> → @frontend-dev → @qa → tiered review → @security → @devops → @tech-writer`
 - **Bug fix**: `@<domain-dev> (fix) → @qa (regression, floor tier per test-scope.md) → tiered review`
-- **Review-fix loop**: `/review-fix-loop [--max-rounds=N]` · **Score loop**: `/improve-loop` · **Autonomous phases**: `/dev-ultra` · **Plan-first (clarify + plan + implement)**: `/dev-plan` · **Dual-review consensus**: `/dev-review` · **Prudent (register before code)**: `/dev-prud` · **Dead-code sweep (report-first, user-approved deletion)**: `/clean-dead-code` — protocols live in their skills, never improvise.
+- **Review-fix loop**: `/review-fix-loop [--max-rounds=N]` · **Score loop**: `/improve-loop` · **Autonomous phases**: `/dev-ultra` · **Plan-first (clarify + plan + implement)**: `/dev-plan` · **Dual-review consensus**: `/dev-review` · **Prudent (register before code)**: `/dev-prud` · **Deep-task (mine-first for vague requirements)**: `/dev-deep` · **Dead-code sweep (report-first, user-approved deletion)**: `/clean-dead-code` — protocols live in their skills, never improvise.
 - **Migration**: `@researcher → @architect → @dba → @devops → @<dev> → @qa → @tech-writer`
 - **Security audit**: `@security → @<dev> (fix findings) → @qa → tiered review`
 - **Greenfield**: `@researcher → @architect → @dba → @devops → @<backend-dev> → @frontend-dev → @qa → @tech-writer`

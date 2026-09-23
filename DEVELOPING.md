@@ -611,7 +611,7 @@ providers/
 └── qoder-router.json         # Custom provider definition (auto-loaded preset; importable via /provider → "Add preset")
 
 commands/                     # Native opencode slash-command launchers (thin: frontmatter + "load the skill")
-├── dev.md · dev-plan.md · dev-quick.md · dev-flash.md · dev-review.md · dev-ultra.md   # Dev-flow launchers (agent: build)
+├── dev.md · dev-plan.md · dev-quick.md · dev-flash.md · dev-review.md · dev-ultra.md · dev-deep.md   # Dev-flow launchers (agent: build)
 ├── git-merge.md                 # Git merge launcher — 2 strategies: merge/squash (agent-less; added in v0.23.0)
 ├── git-pick.md                  # Selective/all source-only cherry-pick with per-commit conflict resolution (agent-less; added in v0.27.0)
 ├── git-rebase.md                # Git rebase launcher — replay source commits onto target HEAD, linear (agent-less; added in v0.25.0)
@@ -621,7 +621,7 @@ commands/                     # Native opencode slash-command launchers (thin: f
 
 skills/                       # L2 workflow protocols — metadata resident, body loads on demand
 ├── dev/SKILL.md                     # /dev compositor — dev-quick/dev-plan/dev-review are preset routers over it
-├── dev-prud/ · dev-ultra/
+├── dev-prud/ · dev-ultra/ · dev-deep/
 ├── git-merge/SKILL.md          # /git-merge protocol — baseline-first conflict resolution, 2 strategies (merge/squash); Step 2 doctrine (incl. per-hunk confidence self-check + @advisor escalation) is shared with git-pick and git-rebase — see § Git workflow skill family (added in v0.23.0)
 ├── git-pick/SKILL.md           # /git-pick protocol — selected or all non-merge source-only commits, ordinary new commits, per-commit conflict resolution (added in v0.27.0)
 ├── git-rebase/SKILL.md         # /git-rebase protocol — replay source onto target HEAD, linear; self-contained conflict resolution (same Step 2 doctrine as git-merge in rebase terms — see § Git workflow skill family) (added in v0.25.0)

@@ -301,7 +301,7 @@ $allFiles = @(
     "commands/goal.md", "commands/handoff.md", "commands/grill-me.md", "commands/grill-with-docs.md",
     "commands/improve-loop.md", "commands/dev.md", "commands/dev-plan.md", "commands/dev-quick.md", "commands/dev-flash.md",
     "commands/dev-review.md", "commands/dev-ultra.md", "commands/review-fix-loop.md",
-    "commands/dev-prud.md", "commands/clean-dead-code.md",
+    "commands/dev-prud.md", "commands/dev-deep.md", "commands/clean-dead-code.md",
     "commands/git-merge.md",
     "commands/git-pick.md",
     "commands/git-pull.md",
@@ -312,7 +312,7 @@ $allFiles = @(
     "skills/goal/SKILL.md", "skills/handoff/SKILL.md", "skills/grill-me/SKILL.md", "skills/grill-with-docs/SKILL.md",
     "skills/improve-loop/SKILL.md", "skills/dev/SKILL.md",
     "skills/dev-ultra/SKILL.md", "skills/review-fix-loop/SKILL.md",
-    "skills/dev-prud/SKILL.md", "skills/clean-dead-code/SKILL.md",
+    "skills/dev-prud/SKILL.md", "skills/dev-deep/SKILL.md", "skills/clean-dead-code/SKILL.md",
     "skills/git-merge/SKILL.md",
     "skills/git-pick/SKILL.md",
     "skills/git-pull/SKILL.md",
@@ -475,6 +475,12 @@ CheckWorkflowSkill "dev-prud" @("Surface model", "SEV", "PROB", "Tier A", "misse
 # dev compositor: anchors protect flag grammar, preset routing, zero-loss
 # passthrough, Safety-First arbitration, and the test-scope tier.
 CheckWorkflowSkill "dev" @("--plan-review", "--code-review", "--sdd", "dev-quick", "dev-plan", "dev-review", "Zero-Loss", "Safety-First", "test-scope", "--auto-advisor")
+
+# dev-deep: anchors protect the mining-first pipeline (P1a + understanding
+# gate), the isolation rule, layered retry semantics (transport vs work
+# level), todowrite materialization, checkpoint/resume, the fixed brakes,
+# and the no-self-clear role wall.
+CheckWorkflowSkill "dev-deep" @("Requirement mining", "Understanding gate", "Isolation Rule", "Task tree table", "todowrite", "Recovery Card", "dev-deep-state.md", "never self-clear", "rejected alternatives", "Stop conditions", "NOT a /dev preset", "--resume")
 
 # clean-dead-code: anchors protect the user-decides doctrine (uncertain findings
 # escalate, R2/R3 doubt resolves to R3, R3 never pre-approvable), the two diff
