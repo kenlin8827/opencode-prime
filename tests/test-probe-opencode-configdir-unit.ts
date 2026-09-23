@@ -1,10 +1,10 @@
 /**
  * Cross-platform unit test for the --config-dir regex shared by all
- * per-platform probes in install/src/installer.ts.
+ * per-platform probes in install/src/shared/opencode-detect.ts.
  *
  * Run: bun tests/test-probe-opencode-configdir-unit.ts
  *
- * Why this exists: installer.ts has three platform-specific probe
+ * Why this exists: opencode-detect.ts has three platform-specific probe
  * functions (probeWindows via wmic, probeLinux via /proc, probeDarwin
  * via ps -wwE). The shared bit — the regex that parses `--config-dir=X`
  * out of any of those outputs — is platform-agnostic and MUST accept:
@@ -16,7 +16,8 @@
  *   - POSIX:   `--config-dir "/home/me/.config/opencode"`
  *   - wmic:    `CommandLine=...\opencode.exe --config-dir="D:\foo" ...`
  *
- * The regex lives in installer.ts (private `matchConfigDirFromString`).
+ * The regex lives in shared/opencode-detect.ts (private
+ * `matchConfigDirFromString`; moved verbatim from installer.ts).
  * To keep the test cross-platform-portable without monkey-patching
  * spawnSync or /proc, this test re-declares the EXACT same regex here
  * AND asserts that the source file's regex literal is character-for-
@@ -26,20 +27,20 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-// Mirror — keep in lock-step with install/src/installer.ts.
+// Mirror — keep in lock-step with install/src/shared/opencode-detect.ts.
 const REGEX = /--config-dir(?:=|\s+)?["']?((?:[A-Za-z]:[\\\/][^\s"']+|\/[^\s"']+))["']?/
 
-// Read installer.ts and pull the regex literal out of the source.
-const installerSrc = fs.readFileSync(
-  path.join(import.meta.dir, '..', 'install', 'src', 'installer.ts'),
+// Read opencode-detect.ts and pull the regex literal out of the source.
+const detectSrc = fs.readFileSync(
+  path.join(import.meta.dir, '..', 'install', 'src', 'shared', 'opencode-detect.ts'),
   'utf8',
 )
 // Extract the literal in matchConfigDirFromString — capture from `--config-dir`
 // to the closing slash + flags. Source line:
 //   const m = s.match(/--config-dir(?:=|\s+)?["']?((?:[A-Za-z]:[\\\/][^\s"']+|\/[^\s"']+))["']?/)
-const m = installerSrc.match(/matchConfigDirFromString\(s:\s*string\)[^}]+const m = s\.match\((\/[^\n]+\/)\)/)
+const m = detectSrc.match(/matchConfigDirFromString\(s:\s*string\)[^}]+const m = s\.match\((\/[^\n]+\/)\)/)
 if (!m) {
-  console.error('✗ FAIL: could not locate matchConfigDirFromString regex in installer.ts')
+  console.error('✗ FAIL: could not locate matchConfigDirFromString regex in opencode-detect.ts')
   process.exit(1)
 }
 const sourceRegexLiteral = m[1]!.trim()
@@ -48,13 +49,13 @@ const sourceRegexLiteral = m[1]!.trim()
 // invariant. If the source regex changes, this fails loud and forces an
 // explicit test update.
 if (sourceRegexLiteral !== REGEX.toString()) {
-  console.error('✗ FAIL: regex in installer.ts drifted from the test mirror.')
+  console.error('✗ FAIL: regex in opencode-detect.ts drifted from the test mirror.')
   console.error('  source: ' + sourceRegexLiteral)
   console.error('  test:   ' + REGEX.toString())
   console.error('  Update tests/test-probe-opencode-configdir-unit.ts to match.')
   process.exit(1)
 }
-console.log(`✓ Regex matches installer.ts (${REGEX.toString()})`)
+console.log(`✓ Regex matches opencode-detect.ts (${REGEX.toString()})`)
 
 interface Case {
   input: string

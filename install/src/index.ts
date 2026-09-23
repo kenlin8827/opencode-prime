@@ -12,7 +12,9 @@ import {
   executeUninstall,
   getCurrentRepoVersion,
   getDefaultTargetDir,
+  isWrapperManagedConfigDir,
   loadEffectiveOptions,
+  resolveInstallTarget,
 } from './installer';
 import { unregisterShim, runGlobalRegistration } from './shim';
 import { formatI18n, getPreferredLocaleCode, loadLocale } from './i18n';
@@ -34,7 +36,9 @@ import {
 import { executeUpdate, executeUpgrade } from './updater';
 import { executeClean, executeSessionProjects } from './session-clean';
 import { normalizeTuiPassthrough } from './tui-args';
-import { getOpencodeExecutable } from './shared/opencode-command';
+import { detectOpencode, getOpencodeExecutable } from './shared/opencode-detect';
+import { banner, kv, section } from './shared/output';
+import { colorize } from './color';
 import type { BackendResult } from '../../plugins/project-manager/project-manager-index';
 import type { HookResult } from '../../plugins/project-manager/project-manager-hooks';
 import { indexProject, initProject, syncProject } from '../../plugins/project-manager/project-manager-operations';
@@ -804,6 +808,27 @@ async function main() {
     }
     case 'install':
     default: {
+      banner('OpenCode Prime installer', `v${curVersion}`);
+      section('Environment');
+      const det = detectOpencode();
+      kv(
+        'opencode',
+        det.installed
+          ? `${det.version ? `v${det.version}` : 'version unknown'} · ${det.installMethod}`
+          : colorize.yellow('not found on PATH')
+      );
+      if (det.executable) kv('', det.executable);
+      kv('config dir', `${det.configDir} ${colorize.gray(`(${det.configDirSource})`)}`);
+      // Surface the overrides that drive detection/target resolution — when
+      // these are set, the resolved values above come from them, not defaults.
+      if (process.env.OPENCODE_BIN) kv('OPENCODE_BIN', process.env.OPENCODE_BIN);
+      if (process.env.OPENCODE_CONFIG_DIR) kv('OPENCODE_CONFIG_DIR', process.env.OPENCODE_CONFIG_DIR);
+      kv('repo', `${repoDir} ${colorize.gray(`(v${curVersion})`)}`);
+      kv('target', resolveInstallTarget(args));
+      if (isWrapperManagedConfigDir(process.env.OPENCODE_CONFIG_DIR)) {
+        kv('', colorize.gray('ℹ OPENCODE_CONFIG_DIR points into a wrapper-managed dir — ignored for the install target (--target overrides)'));
+      }
+
       const effectiveOptions = loadEffectiveOptions(repoDir, args.target || getDefaultTargetDir(), args.optionsFile ? readJsoncFile<InstallOptions>(args.optionsFile) || {} : undefined);
       const wantGlobal = effectiveOptions.global_commands !== false;
 
@@ -812,6 +837,7 @@ async function main() {
       if (res.backupPath) console.log(formatI18n(copy('backupSaved', 'Backup saved to {path}'), { path: res.backupPath }));
 
       if (wantGlobal) {
+        section('Global commands');
         const reg = runGlobalRegistration(repoDir, args.binDir);
         console.log(reg.shimMessage);
         console.log(reg.pathMessage);
@@ -819,13 +845,21 @@ async function main() {
 
       // OpenChamber ships as three independent surfaces, one
       // tools.openchamber_* switch each (web / vscode / desktop).
-      if (isOpenChamberSurfaceEnabled(effectiveOptions.tools, 'web')) {
+      const companions = {
+        web: isOpenChamberSurfaceEnabled(effectiveOptions.tools, 'web'),
+        vscode: isOpenChamberSurfaceEnabled(effectiveOptions.tools, 'vscode'),
+        desktop: isOpenChamberSurfaceEnabled(effectiveOptions.tools, 'desktop'),
+      };
+      if (companions.web || companions.vscode || companions.desktop) {
+        section('Companions');
+      }
+      if (companions.web) {
         console.log(ensureOpenChamberWebCli().message);
       }
-      if (isOpenChamberSurfaceEnabled(effectiveOptions.tools, 'vscode')) {
+      if (companions.vscode) {
         console.log(ensureOpenChamberVscodeExtension().message);
       }
-      if (isOpenChamberSurfaceEnabled(effectiveOptions.tools, 'desktop')) {
+      if (companions.desktop) {
         console.log(checkOpenChamberDesktop().message);
       }
       break;

@@ -325,20 +325,21 @@ if (realTemplate?.permission !== 'allow') {
 if (realTemplate?.agent?.lite?.permission?.['*']?.['*'] !== 'deny') {
   throw new Error('shipped template lost the lite wildcard deny');
 }
-// lite's skill access is scoped to the six agent-less commands (/handoff,
-// /git-merge, /git-pick, /git-pull, /git-push, /git-rebase) that follow the
-// current agent; every other skill stays denied.
+// lite's skill access is scoped to the agent-less commands (/handoff,
+// /git-merge, /git-pick, /git-pull, /git-push, /git-rebase) plus
+// /memory-summarize (agent: lite); every other skill stays denied.
 const liteSkill = realTemplate?.agent?.lite?.permission?.skill;
-if (liteSkill?.['*'] !== 'deny' || liteSkill?.['git-merge'] !== 'allow' || liteSkill?.['git-pick'] !== 'allow' || liteSkill?.['git-pull'] !== 'allow' || liteSkill?.['git-push'] !== 'allow' || liteSkill?.['git-rebase'] !== 'allow') {
-  throw new Error('lite skill permission must deny "*" and allow exactly git-merge + git-pick + git-pull + git-push + git-rebase');
+if (liteSkill?.['*'] !== 'deny' || liteSkill?.['handoff'] !== 'allow' || liteSkill?.['memory-summarize'] !== 'allow' || liteSkill?.['git-merge'] !== 'allow' || liteSkill?.['git-pick'] !== 'allow' || liteSkill?.['git-pull'] !== 'allow' || liteSkill?.['git-push'] !== 'allow' || liteSkill?.['git-rebase'] !== 'allow') {
+  throw new Error('lite skill permission must deny "*" and allow handoff + memory-summarize + git-merge/git-pick/git-pull/git-push/git-rebase');
 }
 const liteTools = realTemplate?.agent?.lite?.tools;
 if (!liteTools || typeof liteTools !== 'object' || liteTools['*'] !== false) {
   throw new Error('lite tools must wildcard-deny then whitelist the capable set');
 }
 // Whitelisted core set + the skill tool (needed to load git-merge/git-pick/git-pull/git-push/git-rebase)
-// + question (interactive ask for the default primary; measured ~216 tok/step with the lite-tools override).
-const liteRequired = ['read', 'edit', 'write', 'bash', 'grep', 'glob', 'webfetch', 'websearch', 'todowrite', 'task', 'skill', 'question'];
+// + question (interactive ask for the default primary; measured ~216 tok/step with the tool-compress description)
+// + memory_note (lite.md's project-memory habit).
+const liteRequired = ['read', 'edit', 'write', 'bash', 'grep', 'glob', 'webfetch', 'websearch', 'todowrite', 'task', 'skill', 'question', 'memory_note'];
 const liteMissing = liteRequired.filter((t) => liteTools?.[t] !== true);
 if (liteMissing.length) {
   throw new Error('lite tools whitelist lost required tools: ' + liteMissing.join(', '));

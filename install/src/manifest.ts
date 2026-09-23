@@ -92,13 +92,28 @@ export function majorOf(version: string): number {
 /**
  * True when `a` and `b` sit on different major versions (e.g. 0.45.0 vs
  * 1.0.0). Direction-agnostic — callers pair it with isNewerVersion to talk
- * about upgrades. An unparseable major (NaN) never counts as crossing: the
+ * about upgrades. An unprovable major (NaN) never counts as crossing: the
  * major-version lock refuses only what it can prove.
  */
 export function isCrossMajorVersion(a: string, b: string): boolean {
   const ma = majorOf(a);
   const mb = majorOf(b);
   return !Number.isNaN(ma) && !Number.isNaN(mb) && ma !== mb;
+}
+
+/**
+ * Newest v1 tag from a newest-first release listing (e.g. the GitHub
+ * releases API, which returns newest first). The opencode v1 pin
+ * (install/scripts/tools/opencode.sh|.ps1) mirrors this contract: first
+ * entry with major 1 wins — never "latest overall", which may be v2.
+ * Returns null when no v1 tag is present; callers fall back to a pinned
+ * known-good v1 release.
+ */
+export function selectLatestV1Tag(tags: string[]): string | null {
+  for (const t of tags) {
+    if (majorOf(t) === 1) return t;
+  }
+  return null;
 }
 
 export interface VersionInfo {

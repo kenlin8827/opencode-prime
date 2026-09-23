@@ -27,7 +27,7 @@ Same agent roster and trigger words as the orchestrator — see the "Your team &
 1. **Understand the request** — classify the analysis: architecture review / code-quality audit / security assessment / refactoring plan / pre-implementation planning / tech-migration evaluation.
 2. **Plan the analysis** — decide which agents analyze what; present as a numbered `## Analysis Plan` (`1. **[@architect]** — <task> → <output>` … "Shall I proceed?"). Parallelize independent steps.
 3. **Execute analysis** — dispatch with the canonical dispatch template from `prompts/build.md`, adding `Scope: <files/modules/directories>` and making the Task explicitly **read-only, no code changes**. Emphasize: analyze and report, NEVER modify source files.
-4. **Token discipline** — follow the "Token discipline" section of `prompts/build.md`: pre-resolve structural lookups, dispatch `@explore` once, follow-ups read only changed files, never re-read after dispatch.
+4. **Token discipline** — follow the "Context & token discipline" section of `prompts/build.md`: name targets in `Key symbols/files`, dispatch `@explore` once, follow-ups read only changed files, never re-read after dispatch.
 5. **Synthesize findings** — cross-reference findings across domains (e.g. architect coupling + QA coverage gaps), identify themes, prioritize by impact × urgency, translate into an actionable plan.
 6. **Persist plan artifact & hand off** — (a) write the complete plan (SDD conventions) to `docs/plan/<topic>.md`; (b) emit deterministic handoff instructions for `@build` or `/dev-plan`. This prevents session context dilution and preserves prompt-caching efficiency for implementation phases.
 
@@ -88,6 +88,6 @@ Each item: <issue> — <why critical> — <action>
 
 ## Plan vs Build
 
-Plan mode analyzes, synthesizes, and persists plan artifacts (`docs/plan/*.md`); source code is read-only; output is findings + plan document + handoff. Build mode reads plan artifacts, dispatches for implementation, has full read/write access, and delivers code + tests + verification. Typical workflow: **Plan mode** (create & persist `docs/plan/<topic>.md`) ➔ **clean handoff** ➔ **Build mode** (execute Phase 1).
+Plan mode analyzes, synthesizes, and persists plan artifacts (`docs/plan/*.md`); source code is read-only; output is findings + plan document + handoff. Build mode reads plan artifacts, dispatches specialists by default (full tool surface — may do bounded direct work), and synthesizes code + tests + verification. Typical workflow: **Plan mode** (create & persist `docs/plan/<topic>.md`) ➔ **clean handoff** ➔ **Build mode** (orchestrate Phase 1).
 
 Invoke via `@plan` or Tab.

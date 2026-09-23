@@ -104,11 +104,46 @@ $scoutNativeGaps = @(@('task', 'bash', 'read', 'glob', 'grep', 'edit', 'write', 
 })
 Check "codegraph-scout has no native source or shell tools" `
     ($scoutNativeGaps.Count -eq 0)
-$graphSurfaceDenied = @('advisor', 'architect', 'dba', 'security', 'qa', 'devops', 'fast-coder') | Where-Object {
+# Advisory/non-coding roles hide GitNexus (Scout-only); security keeps
+# CodeGraph for blast-radius assessments. Full dual-deny: advisor/architect/dba.
+$graphSurfaceDenied = @('advisor', 'architect', 'dba') | Where-Object {
     $permission = $config.agent.$_.permission
     $permission.'codegraph_*'.'*' -ne 'deny' -or $permission.'gitnexus_*'.'*' -ne 'deny'
 }
-Check "non-graph roles hide CodeGraph and GitNexus schemas" ($graphSurfaceDenied.Count -eq 0)
+Check "non-graph advisory roles hide CodeGraph and GitNexus schemas" ($graphSurfaceDenied.Count -eq 0)
+Check "security keeps CodeGraph for blast-radius, denies GitNexus" `
+    ($config.agent.security.permission.'codegraph_*'.'*' -eq 'allow' -and $config.agent.security.permission.'gitnexus_*'.'*' -eq 'deny')
+Check "plan tools whitelist omits bash (specialists run commands)" `
+    ($config.agent.plan.tools.'*' -eq $false -and ($config.agent.plan.tools.PSObject.Properties.Name -notcontains 'bash') -and $config.agent.plan.tools.task -eq $true -and $config.agent.plan.tools.write -eq $true)
+Check "code skill roster is explicit open (* allow) like build/plan" `
+    ($config.agent.code.permission.skill.'*' -eq 'allow')
+$codingLeafGitNexusGaps = @('qa', 'devops', 'java-dev', 'python-dev', 'go-dev', 'rust-dev', 'node-dev', 'frontend-dev', 'fast-coder', 'code', 'explore') | Where-Object {
+    $config.agent.$_.permission.'gitnexus_*'.'*' -ne 'deny'
+}
+Check "coding leaves deny Scout-only GitNexus" ($codingLeafGitNexusGaps.Count -eq 0) ($codingLeafGitNexusGaps -join ', ')
+$codingLeafDbhubGaps = @('qa', 'devops', 'java-dev', 'python-dev', 'go-dev', 'rust-dev', 'node-dev', 'frontend-dev', 'fast-coder', 'code', 'explore') | Where-Object {
+    $config.agent.$_.permission.'dbhub_*'.'*' -ne 'deny'
+}
+Check "coding leaves deny @dba-owned dbhub" ($codingLeafDbhubGaps.Count -eq 0) ($codingLeafDbhubGaps -join ', ')
+Check "dba keeps dbhub visible (THE DB role)" ($config.agent.dba.permission.'dbhub_*'.'*' -eq 'allow')
+Check "security keeps dbhub for DB-security checks" ($config.agent.security.permission.'dbhub_*'.'*' -eq 'allow')
+Check "architect skill roster is sdd-workflow + adr-* only" `
+    ($config.agent.architect.permission.skill.'*' -eq 'deny' -and $config.agent.architect.permission.skill.'sdd-workflow' -eq 'allow' -and $config.agent.architect.permission.skill.'adr-protocol' -eq 'allow')
+Check "template: lite allows memory-summarize skill and memory_note tool" `
+    ($config.agent.lite.permission.skill.'memory-summarize' -eq 'allow' -and $config.agent.lite.tools.memory_note -eq $true)
+$orchestratorMcpGaps = @()
+foreach ($orchName in @('build', 'plan')) {
+    $orchP = $config.agent.$orchName.permission
+    foreach ($mcpKey in @('serena_*', 'codegraph_*', 'gitnexus_*', 'dbhub_*', 'idea_*', 'headroom_*')) {
+        if ($orchP.$mcpKey.'*' -ne 'deny') { $orchestratorMcpGaps += "$orchName/$mcpKey" }
+    }
+}
+Check "build+plan deny full six-server MCP set (incl. headroom)" ($orchestratorMcpGaps.Count -eq 0) ($orchestratorMcpGaps -join ', ')
+$codeP = $config.agent.code.permission
+$codeOptionalMcpGaps = @('gitnexus_*', 'dbhub_*', 'idea_*', 'headroom_*') | Where-Object { $codeP.$_.'*' -ne 'deny' }
+Check "code keeps serena+codegraph, denies optional MCP servers" ($codeOptionalMcpGaps.Count -eq 0 -and $codeP.'codegraph_*'.'*' -ne 'deny') ($codeOptionalMcpGaps -join ', ')
+Check "graph scouts disable tgrep_search (bounded native surface)" `
+    ($config.agent.'codegraph-scout'.tools.tgrep_search -eq $false -and $config.agent.'gitnexus-scout'.tools.tgrep_search -eq $false)
 Check "codegraph-scout defaults to compact source-free evidence" `
     ((Get-Content "$PSScriptRoot\..\prompts\codegraph-scout.md" -Raw) -match 'Default to 220 tokens' -and (Get-Content "$PSScriptRoot\..\prompts\codegraph-scout.md" -Raw) -match 'up to 360' -and (Get-Content "$PSScriptRoot\..\prompts\codegraph-scout.md" -Raw) -match 'do not quote')
 Check "gitnexus-scout uses the same complexity-triggered evidence cap" `
@@ -198,6 +233,15 @@ $buildContent = Get-Content "$PSScriptRoot\..\prompts\build.md" -Raw
 $planContent = Get-Content "$PSScriptRoot\..\prompts\plan.md" -Raw
 Check "build.md: never routes to @code" ($buildContent -notmatch "@code(?=\s|$|[`,)])")
 Check "plan.md: never routes to @code" ($planContent -notmatch "@code(?!-)")
+# Plan-1 contract: full-capability orchestrator (default dispatch), never pure-orchestrator narrative
+Check "template: build description is full-capability default entry" ($config.agent.build.description -match 'full capability' -and $config.agent.build.description -match 'dispatch')
+Check "template: build is not pure-orchestrator narrative" ($config.agent.build.description -notmatch 'pure orchestrator')
+Check "template: build skills open (* allow)" ($config.agent.build.permission.skill.'*' -eq 'allow')
+Check "template: build tools whitelist has edit+write+grep+glob" (($config.agent.build.tools.edit -eq $true) -and ($config.agent.build.tools.write -eq $true) -and ($config.agent.build.tools.grep -eq $true) -and ($config.agent.build.tools.glob -eq $true) -and ($config.agent.build.tools.task -eq $true))
+Check "template: build tools wildcard false hides the rest" ($config.agent.build.tools.'*' -eq $false)
+Check "build.md: default dispatch, not do" ($buildContent -match 'dispatch, not do')
+Check "build.md: no never-edit hard boundary" ($buildContent -notmatch 'Never edit files' -and $buildContent -notmatch 'no edit/write' -and $buildContent -notmatch 'You have no `edit`')
+Check "build.md: still has role walls (review/dba/security/devops)" ($buildContent -match '@code-review` reviews' -and $buildContent -match '@dba` owns schema' -and $buildContent -match '@security` owns findings' -and $buildContent -match '@devops` owns deploy')
 
 # lite agent + lite-mode plugin (L2 layer: default agent, near-zero-overhead primary)
 $litePlugin = Get-Content "$PSScriptRoot\..\plugins\lite-mode\lite-mode.ts" -Raw
@@ -210,7 +254,7 @@ Check "opencode.template.jsonc: lite prompt uses {file:} for lite.md" ($config.a
 Check "opencode.template.jsonc: lite prompt carries lite-mode sentinel" ($config.agent.lite.prompt -match '<!-- lite-mode -->')
 Check "template: lite uses wildcard MCP deny" ($config.agent.lite.permission.'*'.'*' -eq "deny")
 Check "template: lite tools whitelist carries question (interactive ask for the default primary)" ($config.agent.lite.tools.question -eq $true)
-Check "template: lite tools whitelist has 12 tools" (($config.agent.lite.tools.read -eq $true) -and ($config.agent.lite.tools.edit -eq $true) -and ($config.agent.lite.tools.write -eq $true) -and ($config.agent.lite.tools.bash -eq $true) -and ($config.agent.lite.tools.grep -eq $true) -and ($config.agent.lite.tools.glob -eq $true) -and ($config.agent.lite.tools.webfetch -eq $true) -and ($config.agent.lite.tools.websearch -eq $true) -and ($config.agent.lite.tools.todowrite -eq $true) -and ($config.agent.lite.tools.task -eq $true) -and ($config.agent.lite.tools.question -eq $true))
+Check "template: lite tools whitelist carries the capable set (incl. memory_note)" (($config.agent.lite.tools.read -eq $true) -and ($config.agent.lite.tools.edit -eq $true) -and ($config.agent.lite.tools.write -eq $true) -and ($config.agent.lite.tools.bash -eq $true) -and ($config.agent.lite.tools.grep -eq $true) -and ($config.agent.lite.tools.glob -eq $true) -and ($config.agent.lite.tools.webfetch -eq $true) -and ($config.agent.lite.tools.websearch -eq $true) -and ($config.agent.lite.tools.todowrite -eq $true) -and ($config.agent.lite.tools.task -eq $true) -and ($config.agent.lite.tools.question -eq $true) -and ($config.agent.lite.tools.memory_note -eq $true))
 Check "template: lite does not whitelist list (not a real opencode tool)" ($config.agent.lite.tools.PSObject.Properties.Name -notcontains "list")
 Check "template: lite tools wildcard false hides everything else" ($config.agent.lite.tools.'*' -eq $false)
 Check "template: lite prompt hardcodes the on-demand dispatch policy (vision exception)" ($litePrompt -match 'explicit user request' -and $litePrompt -notmatch 'Boost mode')
@@ -236,10 +280,10 @@ Check "lite-mode.ts: barrel re-exports LiteModePlugin" ($liteBarrel -match "expo
 Check "lite-mode.ts: barrel exports functions only (loader contract)" ($liteBarrel -notmatch "export\s+(const|let|var)\s")
 Check "shared/plugin-scope.ts: two-step gate (detectAgent + scoped, no hardcoded match text)" (($pluginScope -match "export function detectAgent") -and ($pluginScope -match "export async function scoped") -and ((Get-Content "$PSScriptRoot\..\plugin-scope.json" -Raw) -match '"identifiers"'))
 Check "lite-mode.ts: identifies lite via detectAgent (no hardcoded sentinel)" (($litePlugin -match "detectAgent") -and ($litePlugin -notmatch "lite-mode -->"))
-$liteTools = Get-Content "$PSScriptRoot\..\plugins\lite-tools.ts" -Raw
-Check "lite-tools.ts: exports functions only (loader contract)" ($liteTools -notmatch "export\s+(const|let|var)\s")
-Check "lite-tools.ts: gates rewrite on chat.message agent" ($liteTools -match '"chat\.message"' -and $liteTools -match 'currentAgent !== "lite"')
-Check "lite-tools.ts: hooks tool.definition" ($liteTools -match '"tool\.definition"')
+$liteTools = Get-Content "$PSScriptRoot\..\plugins\tool-compress.ts" -Raw
+Check "tool-compress.ts: exports functions only (loader contract)" ($liteTools -notmatch "export\s+(const|let|var)\s")
+Check "tool-compress.ts: gates rewrite on chat.message agent" ($liteTools -match '"chat\.message"' -and $liteTools -match 'COMPRESS_AGENTS\.has\(currentAgent\)')
+Check "tool-compress.ts: hooks tool.definition" ($liteTools -match '"tool\.definition"')
 Check "routing-index.md: routes lightweight tasks to @lite" ((Get-Content "$PSScriptRoot\..\instructions\routing-index.md" -Raw) -match "@lite")
 
 # File integrity
@@ -369,7 +413,7 @@ $allFiles = @(
     "plugins/lite-mode/lite-mode.ts",
     "plugins/shared/plugin-scope.ts",
     "plugin-scope.json",
-    "plugins/lite-tools.ts",
+    "plugins/tool-compress.ts",
     # Config
     "tsconfig.json", "package.json",
     "tests/test-provider-core-unit.ts", "tests/test-profile-core-unit.ts",
@@ -992,7 +1036,7 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-auto-format-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
-& bun "$PSScriptRoot\test-lite-tools-unit.ts"
+& bun "$PSScriptRoot\test-tool-compress-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-model-preserve-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }

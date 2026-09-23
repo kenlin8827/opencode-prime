@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { execSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { CliArgs, InstallOptions } from './types';
 import { deployHerdrConfig } from './herdr-config';
 import { deployModelsCost } from './models-cost';
@@ -12,7 +12,9 @@ import {
   collectShippedFiles,
   generateManifest,
   getManifestPath,
+  isCrossMajorVersion,
   isNewerVersion,
+  majorOf,
   readManifest,
   readVersionJson,
 } from './manifest';
@@ -24,6 +26,14 @@ import {
   getUserOptionsPath,
   mergeUserOptions,
 } from './merger';
+import { isBinaryOnPath, probeRunningOpencodeConfigDir } from './shared/opencode-detect';
+import { section } from './shared/output';
+import { resolvePmForSpec } from './package-manager';
+
+// Detection primitives live in shared/opencode-detect.ts (self-contained
+// leaf module); re-exported here so existing importers of installer.ts
+// keep working unchanged.
+export { isBinaryOnPath, probeRunningOpencodeConfigDir };
 
 /**
  * Maximum number of backup directories ("<targetDir>.bak.<timestamp>") kept
@@ -43,6 +53,23 @@ export function getMaxBackups(): number {
 }
 
 /**
+ * Config directories managed by a hosting application — currently orca's
+ * opencode-hooks shared dir. Wrapper apps inject OPENCODE_CONFIG_DIR into
+ * every shell they spawn, so the value is ambient environment noise rather
+ * than a deliberate user choice (it is invisible in the OS env-var settings
+ * and only exists inside the wrapper's process tree). Installing OCP's
+ * managed file set into another app's managed tree is never the intent, so
+ * the install TARGET skips these values; the detect/report still shows them
+ * truthfully, and an explicit --target always wins.
+ */
+const WRAPPER_MANAGED_CONFIG_PATTERN = /[/\\]orca[/\\]opencode-hooks(?:[/\\]|$)/i;
+
+export function isWrapperManagedConfigDir(dir: string | undefined | null): boolean {
+  if (!dir) return false;
+  return WRAPPER_MANAGED_CONFIG_PATTERN.test(path.resolve(dir));
+}
+
+/**
  * Resolve the install target directory.
  *
  * Precedence:
@@ -53,139 +80,21 @@ export function getMaxBackups(): number {
  *      opencode-hooks, e.g.) that diverge from where the running
  *      opencode TUI actually reads.
  *   2. `OPENCODE_CONFIG_DIR` in this process — caller has not opted out.
+ *      Wrapper-managed values (isWrapperManagedConfigDir) are skipped
+ *      automatically: they are injected by the hosting app, not chosen
+ *      by the user, and must not silently become the install target.
  *   3. Default ~/.config/opencode.
  *
  * Existing callers that omit `useDefaultConfig` get the previous
  * behaviour (env var wins) — backward compatible.
  */
 export function getDefaultTargetDir(useDefaultConfig = false): string {
-  if (!useDefaultConfig && process.env.OPENCODE_CONFIG_DIR) {
-    return path.resolve(process.env.OPENCODE_CONFIG_DIR);
+  const envOverride = process.env.OPENCODE_CONFIG_DIR;
+  if (!useDefaultConfig && envOverride && !isWrapperManagedConfigDir(envOverride)) {
+    return path.resolve(envOverride);
   }
   const home = os.homedir();
   return path.join(home, '.config', 'opencode');
-}
-
-/**
- * Probe a running opencode process and infer its effective config dir.
- *
- * Why this exists: the install writes to whatever `getDefaultTargetDir()`
- * resolves to (driven by `OPENCODE_CONFIG_DIR` in *this* shell). The opencode
- * TUI independently reads from `api.state.path.config`, which the opencode
- * server resolves from its OWN environment. If the two differ, an `ocp
- * install` will land in a directory opencode never sees — the classic
- * "shell has OPENCODE_CONFIG_DIR but opencode was started outside that
- * scope" divergence that the orca opencode-hooks wrapper can produce.
- *
- * Returns the inferred dir, or null when:
- *   - no opencode process is running
- *   - the probe fails / is not supported on this platform
- *   - the running process inherited its env without an explicit override
- *     and the platform doesn't expose per-process env vars to other UIDs
- *     (notably macOS: ps eww requires same UID; we fall back to silent)
- *
- * Detection strategy (cross-platform):
- *   - Windows: `wmic process where name='opencode.exe' get CommandLine`
- *     matches an explicit `--config-dir=X` flag.
- *   - Linux:   scan `/proc/<pid>/environ` for `OPENCODE_CONFIG_DIR=X`.
- *     Also matches `--config-dir=X` in `/proc/<pid>/cmdline` as a backup.
- *   - macOS:   `ps -p <pid> -wwE` (BSD `ps` env-var syntax). Falls back
- *     to `pgrep -af opencode` cmdline match when env-var probe fails
- *     (e.g. different UID, SIP-protected shell).
- */
-export function probeRunningOpencodeConfigDir(): string | null {
-  try {
-    if (process.platform === 'win32') return probeWindows()
-    if (process.platform === 'linux') return probeLinux()
-    if (process.platform === 'darwin') return probeDarwin()
-    return null
-  } catch {
-    return null
-  }
-}
-
-// ── Per-platform probes ────────────────────────────────────────────
-
-function probeWindows(): string | null {
-  const res = spawnSync(
-    'wmic',
-    [
-      'process', 'where', "name='opencode.exe'",
-      'get', 'CommandLine', '/format:list',
-    ],
-    { encoding: 'utf8', timeout: 3000, windowsHide: true },
-  )
-  if (res.error || !res.stdout) return null
-  return matchConfigDirFromString(res.stdout)
-}
-
-interface ProcListing {
-  pid: number
-  cmdline: string
-}
-
-function listOpencodeProcsLinux(): ProcListing[] {
-  const res = spawnSync('pgrep', ['-x', 'opencode'], { encoding: 'utf8', timeout: 3000 })
-  if (res.error || !res.stdout) return []
-  return res.stdout.split(/\s+/).filter(Boolean).map((p) => ({ pid: Number(p), cmdline: '' }))
-}
-
-function probeLinux(): string | null {
-  const procs = listOpencodeProcsLinux()
-  for (const p of procs) {
-    try {
-      const envRaw = fs.readFileSync(`/proc/${p.pid}/environ`, 'utf8')
-      const envParts = envRaw.split('\0')
-      for (const kv of envParts) {
-        const eq = kv.indexOf('=')
-        if (eq < 0) continue
-        if (kv.slice(0, eq) === 'OPENCODE_CONFIG_DIR') {
-          return path.normalize(kv.slice(eq + 1))
-        }
-      }
-    } catch { /* /proc not readable — fall through to cmdline */ }
-    try {
-      const cmdRaw = fs.readFileSync(`/proc/${p.pid}/cmdline`, 'utf8')
-      const joined = cmdRaw.split('\0').filter(Boolean).join(' ')
-      const m = matchConfigDirFromString(joined)
-      if (m) return m
-    } catch { /* ignore */ }
-  }
-  return null
-}
-
-function probeDarwin(): string | null {
-  const pg = spawnSync('pgrep', ['-x', 'opencode'], { encoding: 'utf8', timeout: 3000 })
-  if (pg.error || !pg.stdout) return null
-  const pids = pg.stdout.split(/\s+/).filter(Boolean)
-  for (const pid of pids) {
-    const ps = spawnSync('ps', ['-p', pid, '-wwE'], { encoding: 'utf8', timeout: 3000 })
-    if (ps.error || !ps.stdout) continue
-    const lines = ps.stdout.split('\n')
-    if (lines.length < 2) continue
-    const cmdlineAndEnv = lines.slice(1).join('\n')
-    for (const line of cmdlineAndEnv.split(/\s+/)) {
-      if (line.startsWith('OPENCODE_CONFIG_DIR=')) {
-        return path.normalize(line.slice('OPENCODE_CONFIG_DIR='.length))
-      }
-    }
-    const m = matchConfigDirFromString(cmdlineAndEnv)
-    if (m) return m
-  }
-  return null
-}
-
-/**
- * Extract an explicit --config-dir flag from a free-form string. Matches
- * both `--config-dir=X` and `--config-dir X` forms, and accepts both
- * Windows (`C:\...`) and POSIX (`/home/...`) path shapes. Returns null
- * when no explicit flag is present — the opencode process inherits its
- * env from its parent in that case, and we can't infer the effective
- * dir from outside the process.
- */
-function matchConfigDirFromString(s: string): string | null {
-  const m = s.match(/--config-dir(?:=|\s+)?["']?((?:[A-Za-z]:[\\\/][^\s"']+|\/[^\s"']+))["']?/)
-  return m ? path.normalize(m[1]!) : null
 }
 
 /**
@@ -207,7 +116,12 @@ export function warnInstallTargetMismatch(
   targetDir: string,
   runtimeConfigDir: string | null = probeRunningOpencodeConfigDir(),
 ): string | null {
-  const envOverride = process.env.OPENCODE_CONFIG_DIR
+  // A wrapper-managed env override (orca's opencode-hooks, e.g.) is skipped
+  // by getDefaultTargetDir on purpose — flagging the resulting divergence
+  // as "pick one" would contradict that deliberate guard.
+  const envOverride = isWrapperManagedConfigDir(process.env.OPENCODE_CONFIG_DIR)
+    ? undefined
+    : process.env.OPENCODE_CONFIG_DIR
   const envAbs = envOverride ? path.resolve(envOverride) : null
   const runtimeAbs = runtimeConfigDir ? path.resolve(runtimeConfigDir) : null
 
@@ -458,14 +372,48 @@ function writeTargetInstalledManifest(targetDir: string, files: string[]): void 
   fs.writeFileSync(getTargetInstalledManifestPath(targetDir), files.sort().join('\n') + '\n', 'utf8');
 }
 
-export function isBinaryOnPath(cmdName: string): boolean {
-  const checkCmd = process.platform === 'win32' ? `where.exe ${cmdName}` : `which ${cmdName}`;
+/**
+ * Major of an `opencode --version` stdout ("opencode 1.18.32" → 1);
+ * NaN when no semver-looking token is present. Pure — the shell/PS1
+ * installers mirror this parse with grep/regex.
+ */
+export function majorOfOpencodeOutput(output: string): number {
+  const m = /\d+\.\d+\.\d+/.exec(output ?? '');
+  return m ? majorOf(m[0]) : NaN;
+}
+
+/**
+ * Installed opencode major, or null when opencode is absent from PATH or
+ * its version is unparseable. Null is fail-open on purpose (same philosophy
+ * as isCrossMajorVersion): the lock refuses only what it can prove.
+ */
+export function installedOpencodeMajor(): number | null {
+  if (!isBinaryOnPath('opencode')) return null;
   try {
-    execSync(checkCmd, { stdio: 'ignore', timeout: 1000 });
-    return true;
+    const res = spawnSync('opencode', ['--version'], {
+      encoding: 'utf8',
+      timeout: 15000,
+      shell: process.platform === 'win32',
+    });
+    const major = majorOfOpencodeOutput(res.stdout ?? '');
+    return Number.isNaN(major) ? null : major;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/**
+ * Pure decision helper for the fresh-install major-version lock in
+ * `executeInstall`: true when an existing installation sits on a different
+ * major than the repo copy being applied (e.g. installed OCP v2.x vs repo
+ * v0.41.0 — the v2→v1 rollback — or the symmetric v1→v2 jump). Direction-
+ * agnostic: a cross-major apply in EITHER direction is the jump the lock
+ * exists to prevent (stale-file prune, template mergers). Null installed
+ * (first install, or `ocp init` cleared the target) is always allowed, as
+ * are unprovable versions.
+ */
+export function isBlockedFreshInstall(installed: string | null, repo: string): boolean {
+  return installed !== null && isCrossMajorVersion(installed, repo);
 }
 
 export function checkExternalTools(repoDir: string, options: InstallOptions): void {
@@ -712,6 +660,18 @@ export function installCommandSequence(
  *
  * On POSIX the commands are `curl | sh` pipelines, so let Node pick a shell.
  *
+ * Placeholder prefixes resolved here before any shell involvement:
+ *   - "@script:<name>" — a script file under install/scripts/tools/ (see
+ *     runScriptCommand).
+ *   - "@pm:<pkg-spec>" — a package-manager global install of the spec (the
+ *     spec may carry @version/@latest, e.g. "@pm:@openchamber/web@latest").
+ *     The manager is resolved at run time by resolvePmForSpec (per-tool
+ *     ownership → opencode's own install method → npm fallback) instead of
+ *     hardcoding `npm install -g`, so a bun/pnpm-owned machine reinstalls
+ *     through its own manager. `opts.binary` (the tool's binary name, when
+ *     the caller knows it) enables the per-tool ownership layer; callers
+ *     without context skip it.
+ *
  * Mirror orchestration for tool installs (chains OCP_RAW_MIRROR and
  * OCP_RELEASE_MIRROR — they cover non-overlapping URL classes, so order
  * is cosmetic):
@@ -724,12 +684,18 @@ export function installCommandSequence(
  *      fallback, mirror-only users would hard-fail on the first mirror
  *      hiccup.
  */
-export function runInstallCommand(cmd: string, repoDir?: string) {
+export function runInstallCommand(cmd: string, repoDir?: string, opts?: { binary?: string }) {
   // "@script:<name>" references a script file under install/scripts/tools/
   // (see tools.jsonc) instead of an inline command — long escape-prone
   // one-liners live there as real .ps1/.sh files.
   if (cmd.startsWith('@script:')) {
     return runScriptCommand(cmd.slice('@script:'.length).trim(), repoDir);
+  }
+
+  // "@pm:<pkg-spec>" references a package-manager global install (see
+  // runPmCommand) — resolved against the machine's actual managers.
+  if (cmd.startsWith('@pm:')) {
+    return runPmCommand(cmd.slice('@pm:'.length).trim(), opts?.binary);
   }
 
   // Chain both rewriters — they target non-overlapping URL classes, so
@@ -789,14 +755,54 @@ function runScriptCommand(name: string, repoDir?: string): ShellCommandResult {
 }
 
 /**
+ * Execute a "@pm:<pkg-spec>" reference: resolve the package manager for the
+ * spec via resolvePmForSpec (per-tool ownership → opencode's own install
+ * method → npm fallback) and run its global-add for the spec. Spawn
+ * conventions mirror smartUpgrade in updater.ts: stdio inherit, generous
+ * timeout, shell on Windows (manager shims are .cmd there).
+ *
+ * When no usable manager exists, prints the raw npm command as a manual
+ * hint and returns a failure — never throws.
+ */
+function runPmCommand(spec: string, binary?: string): ShellCommandResult {
+  if (!spec) {
+    console.error('[ocp] "@pm:" reference is missing a package spec.');
+    return { status: 1, error: new Error('empty @pm: spec'), stdout: '', stderr: '' };
+  }
+  const resolved = resolvePmForSpec(spec, { binary });
+  if (!resolved) {
+    const manual = `npm install -g ${spec}`;
+    console.error(`[ocp] "@pm:${spec}" — no usable package manager (bun/pnpm/yarn/npm) found on PATH.`);
+    console.error(`[ocp] Install manually: ${manual}`);
+    return { status: 1, error: new Error(`no package manager available for: ${spec}`), stdout: '', stderr: '' };
+  }
+  const cmdText = `${resolved.bin} ${resolved.args.join(' ')}`;
+  console.log(`Running: ${cmdText}`);
+  const res = spawnSync(resolved.bin, resolved.args, {
+    stdio: 'inherit',
+    timeout: 600000,
+    shell: process.platform === 'win32',
+  });
+  return { status: res.status ?? 1, error: res.error, stdout: '', stderr: '' };
+}
+
+/**
  * Provision CLIs for enabled MCP servers that declare an `install` field and
  * are missing from PATH. Never throws — failures are logged with manual
  * instructions so a missing CLI can't fail the config install.
+ *
+ * `plan` lets the caller pass a precomputed mcpProvisionPlan() result (the
+ * install flow uses it to skip the section header when the plan is empty);
+ * when omitted the plan is computed here.
  */
-export function provisionMcpCli(repoDir: string, options: InstallOptions): void {
-  for (const { name, install } of mcpProvisionPlan(repoDir, options)) {
+export function provisionMcpCli(
+  repoDir: string,
+  options: InstallOptions,
+  plan?: Array<{ name: string; install: string }>
+): void {
+  for (const { name, install } of plan ?? mcpProvisionPlan(repoDir, options)) {
     console.log(`🚀 [mcp] ${name} missing from PATH — provisioning via: ${install}`);
-    const res = runInstallCommand(install, repoDir);
+    const res = runInstallCommand(install, repoDir, { binary: name });
     if (res.status !== 0 || res.error) {
       const detail = res.error ? res.error.message : `exit code ${res.status}`;
       console.log(`⚠ [mcp] ${name} automatic installation failed (${detail}). Install manually: ${install}`);
@@ -904,8 +910,11 @@ export function loadToolRegistry(repoDir: string): ToolRegistry | null {
  * True when `options.tools[name]` is not explicitly set to false.
  * All tools (rtk, openchamber, herdr, ...) read from the same `tools: {}`
  * map — no top-level flags anymore.
+ *
+ * Exported so the install flow can guard the "Tools" section header
+ * (all-tools-disabled would otherwise print an empty block).
  */
-function toolEnabled(name: string, options: InstallOptions): boolean {
+export function toolEnabled(name: string, options: InstallOptions): boolean {
   const v = options.tools?.[name];
   return v && typeof v === "object" ? v.enabled !== false : v !== false;
 }
@@ -934,6 +943,17 @@ export function provisionTools(repoDir: string, options: InstallOptions): void {
   for (const [name, def] of Object.entries(registry.tools)) {
     if (!toolEnabled(name, options)) continue;
     if (isBinaryOnPath(def.binary)) {
+      // opencode is major-locked to v1 (see @script:opencode): a v2+ binary
+      // on PATH is refused, never adopted — adopting it would wire OCP's
+      // v1 plugins/SDK against an incompatible runtime. Dependent
+      // post-install steps are skipped below via the same check.
+      if (name === 'opencode') {
+        const major = installedOpencodeMajor();
+        if (major !== null && major !== 1) {
+          console.log(colorize.red(`✗ [tool] ${name} v${major}.x detected — OCP requires opencode v1 (v2 breaks OCP plugins and the v1 SDK). Uninstall it, install the newest v1, then re-run; leaving the v${major}.x binary untouched.`));
+          continue;
+        }
+      }
       console.log(colorize.green(`✓ [tool] ${name} (${def.binary}) is present on PATH`));
       continue;
     }
@@ -950,7 +970,7 @@ export function provisionTools(repoDir: string, options: InstallOptions): void {
       continue;
     }
     console.log(colorize.cyan(`🚀 [tool] ${name} missing from PATH — provisioning via: ${cmd}`));
-    const res = runInstallCommand(cmd, repoDir);
+    const res = runInstallCommand(cmd, repoDir, { binary: def.binary });
     if (res.error || res.status !== 0) {
       const detail = res.error ? res.error.message : `exit code ${res.status}`;
       const hint = def.url ? ` Manual install: ${def.url}` : '';
@@ -993,6 +1013,17 @@ function runPostInstall(repoDir: string, name: string, def: ToolRegistry['tools'
     if (guard && !isBinaryOnPath(guard)) {
       console.log(colorize.gray(`⏭ [post-install] ${name}: skipping "${stepName}" (requires "${guard}" on PATH)`));
       continue;
+    }
+
+    // opencode-gated steps (herdr/luvus integration) must not run against a
+    // v2+ binary — the integration would be wired to an incompatible
+    // runtime. Unparseable/absent versions fall through (fail-open).
+    if (guard === 'opencode') {
+      const major = installedOpencodeMajor();
+      if (major !== null && major !== 1) {
+        console.log(colorize.yellow(`⏭ [post-install] ${name}: skipping "${stepName}" (requires opencode v1; v${major}.x detected)`));
+        continue;
+      }
     }
 
     console.log(colorize.cyan(`⚙ [post-install] ${name}: ${stepName}`));
@@ -1129,6 +1160,15 @@ export function migrateGlobalOcpConfig(targetDir: string): {
   return { action: 'skipped', message: '' };
 }
 
+/**
+ * Resolve the install target directory from CLI args — shared by
+ * executeInstall and the CLI's Environment report so the displayed target
+ * can never drift from the one actually written to.
+ */
+export function resolveInstallTarget(args: Pick<CliArgs, 'target' | 'useDefaultConfig'>): string {
+  return args.target ? path.resolve(args.target) : getDefaultTargetDir(args.useDefaultConfig === true);
+}
+
 export function executeInstall(
   repoDir: string,
   args: CliArgs,
@@ -1140,9 +1180,10 @@ export function executeInstall(
   filesInstalled: number;
   backupPath: string | null;
 } {
-  const targetDir = args.target
-    ? path.resolve(args.target)
-    : getDefaultTargetDir(args.useDefaultConfig === true);
+  const targetDir = resolveInstallTarget(args);
+  // Opens the "Install" section of the log; every phase below (options
+  // notes, backup/prune, copy, merge, provisioning) reports under it.
+  section('Install');
   // Cross-process sanity: the shell that runs `ocp install` may have a
   // different OPENCODE_CONFIG_DIR (or none) than the opencode TUI process
   // that will actually load the installed files. Surface the divergence
@@ -1153,6 +1194,23 @@ export function executeInstall(
     console.warn(colorize.yellow(mismatchWarning))
   }
   const curVersion = getCurrentRepoVersion(repoDir);
+
+  // Major-version lock, fresh-install step: `ocp update` / `ocp upgrade`
+  // refuse cross-major applies, and a bare `ocp install` must not be the
+  // back door around them — installed v2.x + repo v0.41.0 would otherwise
+  // silently roll back (and the symmetric jump forward is no safer:
+  // stale-file prune and template mergers assume same-major evolution).
+  // --force re-applies in-major work only — it never bypasses this lock.
+  // Escape hatch: back up, `ocp init` (clears the target, removing
+  // installed.version), then install fresh.
+  const installedBefore = getInstalledVersion(targetDir);
+  if (isBlockedFreshInstall(installedBefore, curVersion)) {
+    throw new Error(
+      `Cross-major install blocked: installed v${installedBefore} vs repository v${curVersion}. ` +
+      'The major-version lock cannot be bypassed — not even with --force. ' +
+      'To jump majors, back up your config, run `ocp init`, then install fresh (see docs/maintenance/ocp-cli.md).',
+    );
+  }
 
   // Load options: repo defaults < user overrides < explicit customOptions
   const effectiveOptions = loadEffectiveOptions(repoDir, targetDir, customOptions);
@@ -1288,18 +1346,37 @@ export function executeInstall(
   fs.writeFileSync(path.join(targetDir, 'installed.version'), curVersion + '\n', 'utf8');
   writeTargetInstalledManifest(targetDir, targetManagedFiles);
 
-  // 7. Provision CLIs for enabled MCP servers missing from PATH
-  provisionMcpCli(repoDir, effectiveOptions);
+  // 7. Provision CLIs for enabled MCP servers missing from PATH. The
+  //    section header is emitted only when the plan is non-empty — with
+  //    every MCP CLI already present (the common case) there is nothing
+  //    to report and an empty header would be noise.
+  const mcpPlan = mcpProvisionPlan(repoDir, effectiveOptions);
+  if (mcpPlan.length > 0) {
+    section('MCP servers');
+    provisionMcpCli(repoDir, effectiveOptions, mcpPlan);
+  }
 
   // 8. Provision optional tools declared in install/tools.jsonc
   //    Phase 1 reports presence for each enabled tool (✓ [tool] … is present
   //    on PATH / provisioning / installed); Phase 2 runs post-install steps.
   //    This subsumes the former standalone checkExternalTools() call.
-  provisionTools(repoDir, effectiveOptions);
+  //    Header guarded the same way as MCP: only when at least one tool is
+  //    enabled (all-disabled options would otherwise print an empty block).
+  const toolRegistry = loadToolRegistry(repoDir);
+  if (toolRegistry?.tools && Object.keys(toolRegistry.tools).some((n) => toolEnabled(n, effectiveOptions))) {
+    section('Tools');
+    provisionTools(repoDir, effectiveOptions);
+  }
 
   // 10. Deploy the bundled herdr config to ~/.config/herdr/ — only when herdr
   //     is enabled. Non-destructive: if the user already has a config, we
   //     leave it alone (they can run `ocp herdr-config install --force`).
+  // 11. Deploy the bundled OCP models/cost.jsonc (coding-plan points) to
+  //     ~/.config/opencode/models/. Copy-if-missing — user's edits to the
+  //     rates survive; --force overwrites.
+  //     Both always report at least one line (models-cost is unconditional),
+  //     so this section header is unguarded.
+  section('Bundled configs');
   if (effectiveOptions.tools?.herdr !== false) {
     const herdrCfg = deployHerdrConfig(repoDir, false);
     if (herdrCfg.action === 'installed' || herdrCfg.action === 'merged') {
@@ -1311,9 +1388,6 @@ export function executeInstall(
     }
   }
 
-  // 11. Deploy the bundled OCP models/cost.jsonc (coding-plan points) to
-  //     ~/.config/opencode/models/. Copy-if-missing — user's edits to the
-  //     rates survive; --force overwrites.
   const modelsCost = deployModelsCost(repoDir, args.force === true);
   if (modelsCost.action === 'installed') {
     console.log(`✓ [models-cost] ${modelsCost.message}`);

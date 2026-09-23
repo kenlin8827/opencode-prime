@@ -43,16 +43,47 @@ if [ "$IS_INFO_CMD" = false ] && ! command -v opencode >/dev/null 2>&1; then
     fi
     
     if [ "$INSTALL_OPENCODE" = true ]; then
-        echo -e "\n🚀 Installing OpenCode CLI via official installer..."
-        if curl -fsSL https://opencode.ai/install | bash; then
+        # OCP is locked to opencode major v1 (v2 breaks OCP plugins and the
+        # v1 SDK). The pinned installer resolves the newest v1 release and
+        # refuses when a v2+ binary is on PATH — never the official
+        # "latest" one-liner. Exit 2 = v1 already present but managed
+        # outside ocp (benign, same convention as the other tool scripts).
+        echo -e "\n🚀 Installing OpenCode CLI (pinned to major v1)..."
+        _ocp_status=0
+        bash "$SCRIPT_DIR/scripts/tools/opencode.sh" || _ocp_status=$?
+        if [ "$_ocp_status" -eq 0 ]; then
             export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$PATH"
             echo -e "✔ OpenCode CLI installed successfully!\n"
+        elif [ "$_ocp_status" -eq 2 ]; then
+            export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$PATH"
+            echo -e "✔ OpenCode CLI already present (managed outside ocp).\n"
         else
-            echo "⚠️ Automatic installation encountered an issue. You can install it manually from https://opencode.ai"
+            echo "⚠️ Automatic installation encountered an issue. Install the newest opencode v1 manually from https://github.com/anomalyco/opencode/releases (v2 is NOT supported by OCP)"
         fi
+        unset _ocp_status
     else
         echo -e "ℹ️ Skipping OpenCode CLI installation. You can install it later from https://opencode.ai\n"
     fi
+fi
+
+# 0b. A v2+ opencode on PATH is refused outright: OCP plugins and the v1 SDK
+# are incompatible with v2. Never auto-touch it here (silently downgrading a
+# user's binary would be destructive) — the TS installer (provisionTools)
+# repeats this refusal and skips the opencode-dependent setup steps.
+if [ "$IS_INFO_CMD" = false ] && command -v opencode >/dev/null 2>&1; then
+    _ocp_ver="$(opencode --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)"
+    _ocp_major="$(printf '%s' "$_ocp_ver" | cut -d. -f1)"
+    if [ -n "$_ocp_major" ] && [ "$_ocp_major" != "1" ]; then
+        echo ""
+        echo "============================================================"
+        echo "  ⚠️  opencode v$_ocp_ver detected — OCP requires opencode v1"
+        echo "============================================================"
+        echo ""
+        echo "OpenCode Prime is locked to opencode major v1 (v2 breaks OCP plugins and the v1 SDK)."
+        echo "Uninstall v$_ocp_ver, install the newest v1 from https://github.com/anomalyco/opencode/releases, then re-run."
+        echo ""
+    fi
+    unset _ocp_ver _ocp_major
 fi
 
 # 0.5 Check for Bun runtime and offer automated install if missing — the

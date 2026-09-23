@@ -1,18 +1,19 @@
 /**
- * lite-tools Plugin — Unit Tests (no opencode runtime dependency)
+ * tool-compress Plugin — Unit Tests (no opencode runtime dependency)
  *
  * Covers:
- *   - tool.definition rewrites descriptions for @lite (description only,
- *     parameters and jsonSchema stay untouched)
- *   - gating: rewrite applies only after chat.message reports agent=lite
+ *   - tool.definition rewrites descriptions for @lite and @build (description
+ *     only, parameters and jsonSchema stay untouched)
+ *   - gating: rewrite applies only after chat.message reports a COMPRESS agent
+ *   - task/skill prose is per-agent (lite five-assist vs build full roster)
  *   - chat.params provides redundant agent signal
  *   - unknown/MCP tools are left intact (not in OVERRIDES)
  *   - tgrep_search description is owned by the tgrep plugin, not this one
  *
- * Run: bun tests/test-lite-tools-unit.ts
+ * Run: bun tests/test-tool-compress-unit.ts
  */
 
-import { LiteToolsPlugin } from "../plugins/lite-tools"
+import { ToolCompressPlugin } from "../plugins/tool-compress"
 
 let passed = 0
 let failed = 0
@@ -33,7 +34,7 @@ function section(title: string): void {
   console.log(`${"═".repeat(60)}`)
 }
 
-const plugin = await LiteToolsPlugin()
+const plugin = await ToolCompressPlugin()
 const onMessage = plugin["chat.message"]!
 const onParams = plugin["chat.params"]!
 const onToolDef = plugin["tool.definition"]!
@@ -75,6 +76,14 @@ await onMessage({ sessionID: "s1", agent: "lite" } as any, {} as any)
   assert(output.description.includes("offset"), "compressed read keeps offset mention")
 }
 
+{
+  const output = { description: "x".repeat(900) }
+  await onToolDef({ toolID: "skill" } as any, output)
+  // Lite roster: five git ops + handoff + memory-summarize (agent: lite).
+  assert(output.description.includes("memory-summarize") && output.description.includes("handoff") && output.description.includes("git-merge"), "lite skill prose names git + handoff + memory-summarize")
+  assert(!output.description.includes("sdd-workflow"), "lite skill prose is not build's full roster")
+}
+
 // ─── Unknown/MCP tools left intact ───────────────────────────────────────
 
 section("unknown/MCP tools: left intact (not in OVERRIDES)")
@@ -85,24 +94,51 @@ section("unknown/MCP tools: left intact (not in OVERRIDES)")
   assert(output.description === "Convert markdown to PDF", "unknown/MCP tools left intact")
 }
 
-// ─── Gate closes again for other agents ──────────────────────────────────
+// ─── Gate: build compresses shared tools with build-specific rosters ─────
 
-section("gate: other agents keep stock descriptions")
+section("gate: @build compresses shared tools + build rosters")
 
 await onMessage({ sessionID: "s2", agent: "build" } as any, {} as any)
 
 {
   const output = { description: "x".repeat(4655) }
   await onToolDef({ toolID: "bash" } as any, output)
-  assert(output.description.length === 4655, "no rewrite for non-lite agents (bash is lite-only)")
+  assert(output.description.length < 300, "bash description compressed for build")
+  assert(output.description.includes("workdir"), "compressed bash keeps the workdir rule for build")
 }
 
-// ─── tgrep_search description is owned by the tgrep plugin, not lite-tools ─
+{
+  const output = { description: "x".repeat(1800) }
+  await onToolDef({ toolID: "task" } as any, output)
+  assert(output.description.includes("architect") && output.description.includes("code-review"), "build task roster names the full team")
+  assert(!output.description.includes("five-assist"), "build task roster is not lite's five-assist list")
+}
 
-section("ownership: tgrep_search description is NOT modified by lite-tools")
+{
+  const output = { description: "x".repeat(900) }
+  await onToolDef({ toolID: "skill" } as any, output)
+  assert(output.description.includes("sdd-workflow") && output.description.includes("git-merge") && output.description.includes("handoff"), "build skill prose names full roster (sdd + git + handoff)")
+  assert(!output.description.includes("five-assist"), "build skill prose is not lite's five-assist list")
+}
+
+// ─── Gate closes again for other agents ──────────────────────────────────
+
+section("gate: other agents keep stock descriptions")
+
+await onMessage({ sessionID: "s4", agent: "code" } as any, {} as any)
+
+{
+  const output = { description: "x".repeat(4655) }
+  await onToolDef({ toolID: "bash" } as any, output)
+  assert(output.description.length === 4655, "no rewrite for non-compressed agents (bash stock for code)")
+}
+
+// ─── tgrep_search description is owned by the tgrep plugin, not tool-compress ─
+
+section("ownership: tgrep_search description is NOT modified by tool-compress")
 
 // tgrep_search now sets its own description via `plugins/tgrep.ts` (loaded
-// from `plugins/tgrep/tgrep-tool-description.md`). lite-tools only
+// from `plugins/tgrep/tgrep-tool-description.md`). tool-compress only
 // short-circuits tools it knows about; an unknown tool ID leaves the
 // output untouched, so the plugin's description survives.
 await onMessage({ sessionID: "s3", agent: "code" } as any, {} as any)
@@ -110,7 +146,7 @@ await onMessage({ sessionID: "s3", agent: "code" } as any, {} as any)
 {
   const output = { description: "Built-in OpenCode tool for codebase-wide text/regex search..." }
   await onToolDef({ toolID: "tgrep_search" } as any, output)
-  assert(output.description.startsWith("Built-in OpenCode tool"), "tgrep_search description untouched by lite-tools (owned by tgrep plugin)")
+  assert(output.description.startsWith("Built-in OpenCode tool"), "tgrep_search description untouched by tool-compress (owned by tgrep plugin)")
 }
 
 // ─── chat.params provides redundant agent signal ─────────────────────────
