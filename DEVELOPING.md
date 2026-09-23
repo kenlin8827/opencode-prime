@@ -692,8 +692,8 @@ tests/
 2. Regenerate the manifest: `bun run manifest:generate` — the manifest is **always overwritten**, so ensure `SHIPPED_DIRS` / `SHIPPED_FILES` in `install/src/manifest.ts` include every new file (see `AGENTS.md` §4). **Never hand-edit a generated manifest.** `pack.sh` / `pack.ps1` resolve the shipped-file inventory through `scripts/check-package-manifest.ts`, which refuses to build when the current-version manifest disagrees with what actually ships (a stale manifest silently omits files from the archive).
 3. Run structural tests: `pwsh -ExecutionPolicy Bypass -File tests/test-all.ps1 -StructuralOnly`.
 4. Type-check plugins: `bun install && bunx tsc --noEmit`.
-5. Commit and push to `main`.
-6. Tag and push: `git tag v0.7.0 && git push origin v0.7.0`.
+5. Commit and push to the release line (`dev-v1`, `dev-v2.x`, …). Do **not** merge to `main` first — each line is its own release line; a `main` merge is optional snapshot only (see `AGENTS.md` §3).
+6. Tag and push from that line: `git tag v0.7.0 && git push origin v0.7.0`.
 7. The [Release workflow](.github/workflows/release.yml) builds `opencode-prime-<ver>.tar.gz` + `.zip` and creates a GitHub Release automatically — no manual artifact upload needed.
 
 Runtime behavior (hooks, LLM compliance) cannot be fully covered by the structural suite — verify in a real `opencode` environment against the pre-release flow before tagging.
