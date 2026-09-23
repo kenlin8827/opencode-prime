@@ -616,6 +616,7 @@ commands/                     # Native opencode slash-command launchers (thin: f
 ├── git-pick.md                  # Selective/all source-only cherry-pick with per-commit conflict resolution (agent-less; added in v0.27.0)
 ├── git-rebase.md                # Git rebase launcher — replay source commits onto target HEAD, linear (agent-less; added in v0.25.0)
 ├── git-pull.md                  # Safe upstream sync — ff-only first, diverged → guard + git-merge protocol; --rebase → git-rebase (agent-less; added in v0.24.0)
+├── git-push.md                  # Safe push — ordinary push first; confirmed non-ff → guard + reconcile (merge/rebase) + retry; plain --force forbidden (agent-less; added in v0.27.0)
 ├── goal.md · handoff.md · grill-*.md · review-fix-loop.md · clean-dead-code.md
 └── sdd.md · prd.md · plan.md · impl.md   # SDD launchers (agent: plan/code)
 
@@ -626,6 +627,7 @@ skills/                       # L2 workflow protocols — metadata resident, bod
 ├── git-pick/SKILL.md           # /git-pick protocol — selected or all non-merge source-only commits, ordinary new commits, per-commit conflict resolution (added in v0.27.0)
 ├── git-rebase/SKILL.md         # /git-rebase protocol — replay source onto target HEAD, linear; self-contained conflict resolution (same Step 2 doctrine as git-merge in rebase terms — see § Git workflow skill family) (added in v0.25.0)
 ├── git-pull/SKILL.md           # /git-pull protocol — ff-first sync; diverged → guard backup + delegate to git-merge (--rebase → git-rebase) (added in v0.24.0)
+├── git-push/SKILL.md           # /git-push protocol — ordinary push first; confirmed non-ff → guard + reconcile + retry; plain --force forbidden (added in v0.27.0)
 ├── goal/ · handoff/ · grill-me/ · grill-with-docs/ · improve-loop/
 ├── review-fix-loop/ · clean-dead-code/
 ├── adr-compaction/                   # /adr compaction protocol — analysis, batched drafting, native review Ask, archive/restore
