@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { getOpencodeExecutable } from './shared/opencode-command';
+import { getOpencodeExecutable } from './shared/opencode-detect';
 
 /**
  * `ocp clean` — delete old OpenCode sessions via the official CLI.

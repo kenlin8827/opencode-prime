@@ -1,4 +1,4 @@
-import { execSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,7 +17,8 @@ import {
   type ToolRegistry,
 } from './installer';
 import { isCrossMajorVersion, isNewerVersion, parseVersionPayload } from './manifest';
-import { findPackageManager, findPackageManagerForBinary, globalAddCommand } from './package-manager';
+import { findPackageManager, globalAddCommand } from './package-manager';
+import { installMethodFromPath, localBinaryVersion, resolveBinPath } from './shared/opencode-detect';
 
 const REPO_BASE = 'https://github.com/kenlin8827/opencode-prime';
 const RELEASE_BASE = `${REPO_BASE}/releases/latest/download`;
@@ -476,7 +477,7 @@ function staticUpgrade(toolName: string, def: ToolEntry, repoDir: string): numbe
     return 1;
   }
   console.log(`Running: ${cmd}`);
-  const res = runInstallCommand(cmd, repoDir);
+  const res = runInstallCommand(cmd, repoDir, { binary: def.binary });
   if (res.error) {
     console.error(`Failed to run upgrade for "${toolName}": ${res.error.message}`);
     return 1;
@@ -485,15 +486,19 @@ function staticUpgrade(toolName: string, def: ToolEntry, repoDir: string): numbe
 }
 
 /**
- * "Smart" upgrade: pick the package manager whose global bin owns the
- * current binary of `def.binary`, then re-install the package declared in
- * `update_check.upgrade_package` through that manager. Falls back to the
- * static `upgrade` command if no package manager is on PATH.
- *
- * The lookup order is:
- *   1. The path of the binary contains "bun" / "pnpm" / "yarn" → use that.
- *   2. Otherwise, the first of bun / pnpm / yarn / npm that is on PATH.
- *   3. Otherwise, run the static fallback (or fail).
+ * "Smart" upgrade: classify the installed binary of `def.binary` by its
+ * path shape (installMethodFromPath — anchored directory markers, npm
+ * included), then:
+ *   - 'official' (e.g. opencode installed by the official @script channel):
+ *     re-run the registry's own static `upgrade` command — the registry
+ *     decides per tool (for opencode that is the pinned @script:opencode).
+ *     Blindly reinstalling an officially-installed binary through
+ *     bun/pnpm/yarn/npm would leave a duplicate orphaned copy behind.
+ *   - bun/pnpm/yarn/npm: re-install the package declared in
+ *     `update_check.upgrade_package` through that manager (per-tool
+ *     ownership first). If the owning manager is not on PATH, fall back to
+ *     the first of bun/pnpm/yarn/npm that is.
+ *   - 'unknown' / no manager on PATH: static `upgrade` fallback (or fail).
  */
 function smartUpgrade(toolName: string, def: ToolEntry, repoDir: string): number {
   const pkg = def.update_check?.upgrade_package;
@@ -502,16 +507,30 @@ function smartUpgrade(toolName: string, def: ToolEntry, repoDir: string): number
     return 1;
   }
 
-  const ownedBy = resolveBinPath(def.binary) ?? '';
-  const manager = findPackageManagerForBinary(ownedBy, ['bun', 'pnpm', 'yarn'], isBinaryOnPath) ??
-    findPackageManager(['bun', 'pnpm', 'yarn', 'npm'], isBinaryOnPath);
+  const binPath = resolveBinPath(def.binary);
+  const method = installMethodFromPath(binPath ?? '');
+
+  if (method === 'official') {
+    const official = resolveInstallCommand(def?.update_check?.upgrade);
+    if (!official) {
+      console.error(`"${toolName}" is officially installed and no static fallback upgrade is configured in update_check.`);
+      return 1;
+    }
+    console.log(`Officially installed — using the tool's own upgrade channel: ${official}`);
+    return runInstallCommand(official, repoDir, { binary: def.binary }).status ?? 1;
+  }
+
+  const manager =
+    method !== 'unknown' && isBinaryOnPath(method)
+      ? method
+      : findPackageManager(['bun', 'pnpm', 'yarn', 'npm'], isBinaryOnPath);
   const cmd = manager === null ? null : globalAddCommand(manager, pkg);
 
   if (!cmd) {
     const fallback = resolveInstallCommand(def?.update_check?.upgrade);
     if (fallback) {
       console.log(`No package manager detected — falling back to: ${fallback}`);
-      return runInstallCommand(fallback, repoDir).status ?? 1;
+      return runInstallCommand(fallback, repoDir, { binary: def.binary }).status ?? 1;
     }
     console.error(`No package manager detected for "${toolName}" and no static fallback upgrade configured.`);
     return 1;
@@ -621,22 +640,6 @@ async function probeToolFromRegistry(repoDir: string, name: string, def: ToolEnt
   }
 }
 
-/** Run `<binary> --version` and extract the first semver-looking token. */
-function localBinaryVersion(binary: string): string | null {
-  if (!isBinaryOnPath(binary)) return null;
-  try {
-    const res = spawnSync(binary, ['--version'], {
-      encoding: 'utf8',
-      timeout: 15000,
-      shell: process.platform === 'win32',
-    });
-    const m = /\d+\.\d+\.\d+[\w.-]*/.exec(res.stdout ?? '');
-    return m ? m[0] : null;
-  } catch {
-    return null;
-  }
-}
-
 /** Resolve a source-kind URL + extract the version. */
 async function fetchLatestFromSource(src: UpdateCheckSource): Promise<string | null> {
   switch (src.kind) {
@@ -698,19 +701,6 @@ async function fetchLatestFromSource(src: UpdateCheckSource): Promise<string | n
     }
     default:
       return null;
-  }
-}
-
-/** Absolute path of a command on PATH, or null. */
-function resolveBinPath(cmd: string): string | null {
-  try {
-    const out = execSync(process.platform === 'win32' ? `where.exe ${cmd}` : `which ${cmd}`, {
-      encoding: 'utf8',
-      timeout: 2000,
-    });
-    return out.split(/\r?\n/)[0]?.trim() || null;
-  } catch {
-    return null;
   }
 }
 

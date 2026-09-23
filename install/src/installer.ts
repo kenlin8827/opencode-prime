@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { execSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { CliArgs, InstallOptions } from './types';
 import { deployHerdrConfig } from './herdr-config';
 import { deployModelsCost } from './models-cost';
@@ -26,6 +26,13 @@ import {
   getUserOptionsPath,
   mergeUserOptions,
 } from './merger';
+import { isBinaryOnPath, probeRunningOpencodeConfigDir } from './shared/opencode-detect';
+import { resolvePmForSpec } from './package-manager';
+
+// Detection primitives live in shared/opencode-detect.ts (self-contained
+// leaf module); re-exported here so existing importers of installer.ts
+// keep working unchanged.
+export { isBinaryOnPath, probeRunningOpencodeConfigDir };
 
 /**
  * Maximum number of backup directories ("<targetDir>.bak.<timestamp>") kept
@@ -66,128 +73,6 @@ export function getDefaultTargetDir(useDefaultConfig = false): string {
   }
   const home = os.homedir();
   return path.join(home, '.config', 'opencode');
-}
-
-/**
- * Probe a running opencode process and infer its effective config dir.
- *
- * Why this exists: the install writes to whatever `getDefaultTargetDir()`
- * resolves to (driven by `OPENCODE_CONFIG_DIR` in *this* shell). The opencode
- * TUI independently reads from `api.state.path.config`, which the opencode
- * server resolves from its OWN environment. If the two differ, an `ocp
- * install` will land in a directory opencode never sees — the classic
- * "shell has OPENCODE_CONFIG_DIR but opencode was started outside that
- * scope" divergence that the orca opencode-hooks wrapper can produce.
- *
- * Returns the inferred dir, or null when:
- *   - no opencode process is running
- *   - the probe fails / is not supported on this platform
- *   - the running process inherited its env without an explicit override
- *     and the platform doesn't expose per-process env vars to other UIDs
- *     (notably macOS: ps eww requires same UID; we fall back to silent)
- *
- * Detection strategy (cross-platform):
- *   - Windows: `wmic process where name='opencode.exe' get CommandLine`
- *     matches an explicit `--config-dir=X` flag.
- *   - Linux:   scan `/proc/<pid>/environ` for `OPENCODE_CONFIG_DIR=X`.
- *     Also matches `--config-dir=X` in `/proc/<pid>/cmdline` as a backup.
- *   - macOS:   `ps -p <pid> -wwE` (BSD `ps` env-var syntax). Falls back
- *     to `pgrep -af opencode` cmdline match when env-var probe fails
- *     (e.g. different UID, SIP-protected shell).
- */
-export function probeRunningOpencodeConfigDir(): string | null {
-  try {
-    if (process.platform === 'win32') return probeWindows()
-    if (process.platform === 'linux') return probeLinux()
-    if (process.platform === 'darwin') return probeDarwin()
-    return null
-  } catch {
-    return null
-  }
-}
-
-// ── Per-platform probes ────────────────────────────────────────────
-
-function probeWindows(): string | null {
-  const res = spawnSync(
-    'wmic',
-    [
-      'process', 'where', "name='opencode.exe'",
-      'get', 'CommandLine', '/format:list',
-    ],
-    { encoding: 'utf8', timeout: 3000, windowsHide: true },
-  )
-  if (res.error || !res.stdout) return null
-  return matchConfigDirFromString(res.stdout)
-}
-
-interface ProcListing {
-  pid: number
-  cmdline: string
-}
-
-function listOpencodeProcsLinux(): ProcListing[] {
-  const res = spawnSync('pgrep', ['-x', 'opencode'], { encoding: 'utf8', timeout: 3000 })
-  if (res.error || !res.stdout) return []
-  return res.stdout.split(/\s+/).filter(Boolean).map((p) => ({ pid: Number(p), cmdline: '' }))
-}
-
-function probeLinux(): string | null {
-  const procs = listOpencodeProcsLinux()
-  for (const p of procs) {
-    try {
-      const envRaw = fs.readFileSync(`/proc/${p.pid}/environ`, 'utf8')
-      const envParts = envRaw.split('\0')
-      for (const kv of envParts) {
-        const eq = kv.indexOf('=')
-        if (eq < 0) continue
-        if (kv.slice(0, eq) === 'OPENCODE_CONFIG_DIR') {
-          return path.normalize(kv.slice(eq + 1))
-        }
-      }
-    } catch { /* /proc not readable — fall through to cmdline */ }
-    try {
-      const cmdRaw = fs.readFileSync(`/proc/${p.pid}/cmdline`, 'utf8')
-      const joined = cmdRaw.split('\0').filter(Boolean).join(' ')
-      const m = matchConfigDirFromString(joined)
-      if (m) return m
-    } catch { /* ignore */ }
-  }
-  return null
-}
-
-function probeDarwin(): string | null {
-  const pg = spawnSync('pgrep', ['-x', 'opencode'], { encoding: 'utf8', timeout: 3000 })
-  if (pg.error || !pg.stdout) return null
-  const pids = pg.stdout.split(/\s+/).filter(Boolean)
-  for (const pid of pids) {
-    const ps = spawnSync('ps', ['-p', pid, '-wwE'], { encoding: 'utf8', timeout: 3000 })
-    if (ps.error || !ps.stdout) continue
-    const lines = ps.stdout.split('\n')
-    if (lines.length < 2) continue
-    const cmdlineAndEnv = lines.slice(1).join('\n')
-    for (const line of cmdlineAndEnv.split(/\s+/)) {
-      if (line.startsWith('OPENCODE_CONFIG_DIR=')) {
-        return path.normalize(line.slice('OPENCODE_CONFIG_DIR='.length))
-      }
-    }
-    const m = matchConfigDirFromString(cmdlineAndEnv)
-    if (m) return m
-  }
-  return null
-}
-
-/**
- * Extract an explicit --config-dir flag from a free-form string. Matches
- * both `--config-dir=X` and `--config-dir X` forms, and accepts both
- * Windows (`C:\...`) and POSIX (`/home/...`) path shapes. Returns null
- * when no explicit flag is present — the opencode process inherits its
- * env from its parent in that case, and we can't infer the effective
- * dir from outside the process.
- */
-function matchConfigDirFromString(s: string): string | null {
-  const m = s.match(/--config-dir(?:=|\s+)?["']?((?:[A-Za-z]:[\\\/][^\s"']+|\/[^\s"']+))["']?/)
-  return m ? path.normalize(m[1]!) : null
 }
 
 /**
@@ -458,16 +343,6 @@ function writeTargetInstalledManifest(targetDir: string, files: string[]): void 
   const stateDir = path.join(targetDir, OCP_STATE_DIR);
   fs.mkdirSync(stateDir, { recursive: true });
   fs.writeFileSync(getTargetInstalledManifestPath(targetDir), files.sort().join('\n') + '\n', 'utf8');
-}
-
-export function isBinaryOnPath(cmdName: string): boolean {
-  const checkCmd = process.platform === 'win32' ? `where.exe ${cmdName}` : `which ${cmdName}`;
-  try {
-    execSync(checkCmd, { stdio: 'ignore', timeout: 1000 });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -758,6 +633,18 @@ export function installCommandSequence(
  *
  * On POSIX the commands are `curl | sh` pipelines, so let Node pick a shell.
  *
+ * Placeholder prefixes resolved here before any shell involvement:
+ *   - "@script:<name>" — a script file under install/scripts/tools/ (see
+ *     runScriptCommand).
+ *   - "@pm:<pkg-spec>" — a package-manager global install of the spec (the
+ *     spec may carry @version/@latest, e.g. "@pm:@openchamber/web@latest").
+ *     The manager is resolved at run time by resolvePmForSpec (per-tool
+ *     ownership → opencode's own install method → npm fallback) instead of
+ *     hardcoding `npm install -g`, so a bun/pnpm-owned machine reinstalls
+ *     through its own manager. `opts.binary` (the tool's binary name, when
+ *     the caller knows it) enables the per-tool ownership layer; callers
+ *     without context skip it.
+ *
  * Mirror orchestration for tool installs (chains OCP_RAW_MIRROR and
  * OCP_RELEASE_MIRROR — they cover non-overlapping URL classes, so order
  * is cosmetic):
@@ -770,12 +657,18 @@ export function installCommandSequence(
  *      fallback, mirror-only users would hard-fail on the first mirror
  *      hiccup.
  */
-export function runInstallCommand(cmd: string, repoDir?: string) {
+export function runInstallCommand(cmd: string, repoDir?: string, opts?: { binary?: string }) {
   // "@script:<name>" references a script file under install/scripts/tools/
   // (see tools.jsonc) instead of an inline command — long escape-prone
   // one-liners live there as real .ps1/.sh files.
   if (cmd.startsWith('@script:')) {
     return runScriptCommand(cmd.slice('@script:'.length).trim(), repoDir);
+  }
+
+  // "@pm:<pkg-spec>" references a package-manager global install (see
+  // runPmCommand) — resolved against the machine's actual managers.
+  if (cmd.startsWith('@pm:')) {
+    return runPmCommand(cmd.slice('@pm:'.length).trim(), opts?.binary);
   }
 
   // Chain both rewriters — they target non-overlapping URL classes, so
@@ -835,6 +728,38 @@ function runScriptCommand(name: string, repoDir?: string): ShellCommandResult {
 }
 
 /**
+ * Execute a "@pm:<pkg-spec>" reference: resolve the package manager for the
+ * spec via resolvePmForSpec (per-tool ownership → opencode's own install
+ * method → npm fallback) and run its global-add for the spec. Spawn
+ * conventions mirror smartUpgrade in updater.ts: stdio inherit, generous
+ * timeout, shell on Windows (manager shims are .cmd there).
+ *
+ * When no usable manager exists, prints the raw npm command as a manual
+ * hint and returns a failure — never throws.
+ */
+function runPmCommand(spec: string, binary?: string): ShellCommandResult {
+  if (!spec) {
+    console.error('[ocp] "@pm:" reference is missing a package spec.');
+    return { status: 1, error: new Error('empty @pm: spec'), stdout: '', stderr: '' };
+  }
+  const resolved = resolvePmForSpec(spec, { binary });
+  if (!resolved) {
+    const manual = `npm install -g ${spec}`;
+    console.error(`[ocp] "@pm:${spec}" — no usable package manager (bun/pnpm/yarn/npm) found on PATH.`);
+    console.error(`[ocp] Install manually: ${manual}`);
+    return { status: 1, error: new Error(`no package manager available for: ${spec}`), stdout: '', stderr: '' };
+  }
+  const cmdText = `${resolved.bin} ${resolved.args.join(' ')}`;
+  console.log(`Running: ${cmdText}`);
+  const res = spawnSync(resolved.bin, resolved.args, {
+    stdio: 'inherit',
+    timeout: 600000,
+    shell: process.platform === 'win32',
+  });
+  return { status: res.status ?? 1, error: res.error, stdout: '', stderr: '' };
+}
+
+/**
  * Provision CLIs for enabled MCP servers that declare an `install` field and
  * are missing from PATH. Never throws — failures are logged with manual
  * instructions so a missing CLI can't fail the config install.
@@ -842,7 +767,7 @@ function runScriptCommand(name: string, repoDir?: string): ShellCommandResult {
 export function provisionMcpCli(repoDir: string, options: InstallOptions): void {
   for (const { name, install } of mcpProvisionPlan(repoDir, options)) {
     console.log(`🚀 [mcp] ${name} missing from PATH — provisioning via: ${install}`);
-    const res = runInstallCommand(install, repoDir);
+    const res = runInstallCommand(install, repoDir, { binary: name });
     if (res.status !== 0 || res.error) {
       const detail = res.error ? res.error.message : `exit code ${res.status}`;
       console.log(`⚠ [mcp] ${name} automatic installation failed (${detail}). Install manually: ${install}`);
@@ -1007,7 +932,7 @@ export function provisionTools(repoDir: string, options: InstallOptions): void {
       continue;
     }
     console.log(colorize.cyan(`🚀 [tool] ${name} missing from PATH — provisioning via: ${cmd}`));
-    const res = runInstallCommand(cmd, repoDir);
+    const res = runInstallCommand(cmd, repoDir, { binary: def.binary });
     if (res.error || res.status !== 0) {
       const detail = res.error ? res.error.message : `exit code ${res.status}`;
       const hint = def.url ? ` Manual install: ${def.url}` : '';

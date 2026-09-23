@@ -16,6 +16,10 @@
   // install/src/installer.ts to install/scripts/tools/<name>.<platform>[.arch].ps1|sh
   // (platform-specific file, then fallback). Long escape-prone scripts live
   // there as real files; short one-liners stay inline.
+  // Command values may also be "@pm:<pkg-spec>" — resolved at run time by
+  // resolvePmForSpec (install/src/package-manager.ts): the package manager
+  // owning the tool binary first, else opencode's own install method as
+  // proxy, else npm fallback; an unavailable pick degrades to npm.
   "tools": {
     "rtk": {
       "description": "Rust Token Killer — token-optimized shell command proxy",
@@ -41,7 +45,7 @@
       "binary": "herdr",
       "url": "https://herdr.dev",
       "install": {
-        "default": "npm install -g herdr-cli",
+        "default": "@pm:herdr-cli",
         "win32-x64": "iwr https://herdr.dev/install.ps1 -useb | iex",
         "darwin-arm64": "curl -fsSL https://herdr.dev/install.sh | sh",
         "linux-x64": "curl -fsSL https://herdr.dev/install.sh | sh"
@@ -83,7 +87,7 @@
           "repo": "herdrdev/herdr"
         },
         "upgrade": {
-          "default": "npm install -g herdr-cli@latest",
+          "default": "@pm:herdr-cli@latest",
           "win32-x64": "iwr https://herdr.dev/install.ps1 -useb | iex",
           "darwin-arm64": "curl -fsSL https://herdr.dev/install.sh | sh",
           "linux-x64": "curl -fsSL https://herdr.dev/install.sh | sh"
@@ -169,7 +173,7 @@
       "binary": "openchamber",
       "url": "https://openchamber.dev",
       "install": {
-        "default": "npm install -g @openchamber/web"
+        "default": "@pm:@openchamber/web"
       },
       "update_check": {
         "source": {
@@ -179,7 +183,7 @@
         "upgrade_strategy": "smart",
         "upgrade_package": "@openchamber/web",
         "upgrade": {
-          "default": "npm install -g @openchamber/web@latest"
+          "default": "@pm:@openchamber/web@latest"
         }
       }
     },

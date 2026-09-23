@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { isBinaryOnPath } from './installer';
-import { getOpencodeExecutable } from './shared/opencode-command';
+import { getOpencodeExecutable } from './shared/opencode-detect';
 import type { BackendResult } from '../../plugins/project-manager/project-manager-index';
 import type { HookResult } from '../../plugins/project-manager/project-manager-hooks';
 import { initProject } from '../../plugins/project-manager/project-manager-operations';

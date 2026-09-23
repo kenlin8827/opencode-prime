@@ -34,7 +34,7 @@ import {
 import { executeUpdate, executeUpgrade } from './updater';
 import { executeClean, executeSessionProjects } from './session-clean';
 import { normalizeTuiPassthrough } from './tui-args';
-import { getOpencodeExecutable } from './shared/opencode-command';
+import { getOpencodeExecutable } from './shared/opencode-detect';
 import type { BackendResult } from '../../plugins/project-manager/project-manager-index';
 import type { HookResult } from '../../plugins/project-manager/project-manager-hooks';
 import { indexProject, initProject, syncProject } from '../../plugins/project-manager/project-manager-operations';
