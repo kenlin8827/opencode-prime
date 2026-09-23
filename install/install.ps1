@@ -67,18 +67,57 @@ if (-not $isInfoCmd -and -not (Get-Command opencode -ErrorAction SilentlyContinu
     }
     
     if ($installOpencode) {
-        Write-Host "`n🚀 Installing OpenCode CLI via official installer..." -ForegroundColor Cyan
+        # OCP is locked to opencode major v1 (v2 breaks OCP plugins and the
+        # v1 SDK). The pinned installer resolves the newest v1 release and
+        # refuses when a v2+ binary is on PATH. (The official install.ps1
+        # endpoint is HTTP 404, so there is no official script to delegate
+        # to — the asset is downloaded directly.)
+        # Runs in a CHILD PowerShell process on purpose: the tool script
+        # uses `exit <code>` (0 = installed, 2 = v1 present but managed
+        # outside ocp, else failure), and in-process invocation would let
+        # that exit terminate this installer instead of landing in $LASTEXITCODE.
+        Write-Host "`n🚀 Installing OpenCode CLI (pinned to major v1)..." -ForegroundColor Cyan
         try {
-            Invoke-RemoteInstaller "https://opencode.ai/install.ps1"
-            Update-SessionPath
-            Write-Host "✔ OpenCode CLI installed successfully!`n" -ForegroundColor Green
+            $toolScript = Join-Path $ScriptDir 'scripts/tools/opencode.ps1'
+            $psBin = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell.exe' }
+            & $psBin -NoProfile -ExecutionPolicy Bypass -File $toolScript
+            if ($LASTEXITCODE -eq 0) {
+                Update-SessionPath
+                Write-Host "✔ OpenCode CLI installed successfully!`n" -ForegroundColor Green
+            }
+            elseif ($LASTEXITCODE -eq 2) {
+                Update-SessionPath
+                Write-Host "✔ OpenCode CLI already present (managed outside ocp).`n" -ForegroundColor Green
+            }
+            else {
+                throw "opencode v1 installer exited with code $LASTEXITCODE"
+            }
         }
         catch {
-            Write-Host "⚠️ Automatic installation encountered an issue. You can install it manually from https://opencode.ai" -ForegroundColor Yellow
+            Write-Host "⚠️ Automatic installation encountered an issue. Install the newest opencode v1 manually from https://github.com/anomalyco/opencode/releases (v2 is NOT supported by OCP)" -ForegroundColor Yellow
         }
     }
     else {
         Write-Host "ℹ️ Skipping OpenCode CLI installation. You can install it later from https://opencode.ai`n" -ForegroundColor DarkGray
+    }
+}
+
+# 0b. A v2+ opencode on PATH is refused outright: OCP plugins and the v1 SDK
+# are incompatible with v2. Never auto-touch it here (silently downgrading a
+# user's binary would be destructive) — the TS installer (provisionTools)
+# repeats this refusal and skips the opencode-dependent setup steps.
+if (-not $isInfoCmd -and (Get-Command opencode -ErrorAction SilentlyContinue)) {
+    $ocpVer = try { ((& opencode --version 2>$null) | Select-String -Pattern '\d+\.\d+\.\d+' | Select-Object -First 1).Matches.Value } catch { '' }
+    $ocpMajor = if ($ocpVer -match '^(\d+)\.') { $Matches[1] } else { '' }
+    if ($ocpMajor -and $ocpMajor -ne '1') {
+        Write-Host ""
+        Write-Host "============================================================" -ForegroundColor Yellow
+        Write-Host "  ⚠️  opencode v$ocpVer detected — OCP requires opencode v1" -ForegroundColor Yellow
+        Write-Host "============================================================" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "OpenCode Prime is locked to opencode major v1 (v2 breaks OCP plugins and the v1 SDK)."
+        Write-Host "Uninstall v$ocpVer, install the newest v1 from https://github.com/anomalyco/opencode/releases, then re-run."
+        Write-Host ""
     }
 }
 

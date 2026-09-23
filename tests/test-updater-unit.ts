@@ -17,9 +17,15 @@
  * executeUpgrade entry point's own `force` parse, not here.
  *
  * Run: bun run tests/test-updater-unit.ts
+ *
+ * Follow-up (opencode v1 pin + fresh-install lock): also pins
+ * `selectLatestV1Tag` (newest v1 from a newest-first listing),
+ * `majorOfOpencodeOutput` (--version parse) and `isBlockedFreshInstall`
+ * (cross-major `ocp install` refusal in both directions — installed v2 +
+ * repo v1 rolls back nothing).
  */
 
-import { isCrossMajorVersion, majorOf } from "../install/src/manifest"
+import { isCrossMajorVersion, majorOf, selectLatestV1Tag } from "../install/src/manifest"
 import {
   isBlockedMajorUpgrade,
   majorLockEnabled,
@@ -29,6 +35,7 @@ import {
   shouldSkipUpgradeDownload,
   type ComponentCheck,
 } from "../install/src/updater"
+import { isBlockedFreshInstall, majorOfOpencodeOutput } from "../install/src/installer"
 import type { ToolRegistry } from "../install/src/installer"
 
 let passed = 0
@@ -181,6 +188,31 @@ const unknownLocal = comp({ key: "x", label: "x", local: null, latest: "2.0.0", 
   const { pending, blocked } = partitionUpdates([comp({ local: "0.45.0", latest: "1.0.0" })])
   assert(blocked.length === 1 && pending.length === 0, "majorLocked undefined → locked (blocked)")
 }
+
+console.log("selectLatestV1Tag — newest v1 from a newest-first listing")
+
+assert(selectLatestV1Tag(["v2.0.0", "v1.18.32", "v1.18.31"]) === "v1.18.32", "v2 on top → first v1 wins (never latest-overall)")
+assert(selectLatestV1Tag(["v1.18.32", "v1.18.31"]) === "v1.18.32", "all-v1 listing → newest v1")
+assert(selectLatestV1Tag(["2.0.0", "1.18.32"]) === "1.18.32", "missing v prefix still parses")
+assert(selectLatestV1Tag(["v2.0.0", "v3.1.0"]) === null, "no v1 tag → null (caller falls back to the pinned v1 release)")
+assert(selectLatestV1Tag([]) === null, "empty listing → null")
+
+console.log("majorOfOpencodeOutput — parse `opencode --version`")
+
+assert(majorOfOpencodeOutput("opencode 1.18.32") === 1, "typical --version output → 1")
+assert(majorOfOpencodeOutput("2.0.0") === 2, "bare v2 version → 2")
+assert(Number.isNaN(majorOfOpencodeOutput("opencode: command not found")), "garbage → NaN (fail-open downstream)")
+assert(Number.isNaN(majorOfOpencodeOutput("")), "empty output → NaN")
+
+console.log("isBlockedFreshInstall — fresh-install lock (both directions)")
+
+assert(isBlockedFreshInstall("2.0.0", "0.41.0") === true, "installed v2 + repo v1 → blocked (no rollback)")
+assert(isBlockedFreshInstall("0.41.0", "1.0.0") === true, "installed v0 + repo v1 → blocked (no jump forward)")
+assert(isBlockedFreshInstall("1.18.32", "2.0.0") === true, "direction-agnostic: majors differ → blocked")
+assert(isBlockedFreshInstall("0.41.0", "0.42.0") === false, "same-major reinstall → allowed")
+assert(isBlockedFreshInstall("0.41.0", "0.41.0") === false, "same version → allowed")
+assert(isBlockedFreshInstall(null, "0.41.0") === false, "first install (no installed.version) → allowed")
+assert(isBlockedFreshInstall("garbage", "0.41.0") === false, "unparseable installed version → fail-open")
 
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)

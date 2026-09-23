@@ -8,7 +8,7 @@
 
 | 要求 | 用途 | 安装方式 |
 |---|---|---|
-| [opencode](https://opencode.ai) CLI | 核心运行时，读取配置并调度智能体 | `curl -fsSL https://opencode.ai/install \| bash` |
+| [opencode](https://opencode.ai) CLI（仅限大版本 **v1**——v2 会被拒绝） | 核心运行时，读取配置并调度智能体 | `curl -fsSL https://opencode.ai/install \| bash -s -- --version <latest-1.x>`（从 [releases](https://github.com/anomalyco/opencode/releases) 取最新 v1；通常由安装器自动装好并锁定在 v1） |
 | PowerShell 7+（Windows） | Windows 端安装与维护脚本 | `winget install Microsoft.PowerShell` |
 | Bash 4+ + `jq`（macOS / Linux / WSL） | Unix 端安装与清单解析 | `brew install jq` 或 `sudo apt install jq` |
 | Git | 版本控制与升级清单回退 | 系统包管理器自带 |

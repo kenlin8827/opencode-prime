@@ -220,24 +220,31 @@
       }
     },
     "opencode": {
-      "description": "OpenCode — AI coding agent",
+      "description": "OpenCode — AI coding agent (OCP is locked to major v1; v2 is refused)",
       "binary": "opencode",
       "url": "https://opencode.ai",
-      "install": {
-        "default": "curl -fsSL https://opencode.ai/install | bash",
-        "win32-x64": "irm https://opencode.ai/install.ps1 | iex"
-      },
+      // Pinned to v1 by install/scripts/tools/opencode.sh|.ps1: the script
+      // resolves the newest v1 release (never "latest overall") and refuses
+      // when a v2+ binary is on PATH. Do NOT revert to the official
+      // one-liner (`curl https://opencode.ai/install | bash` installs
+      // whatever is newest, including v2) — and note the official
+      // install.ps1 endpoint is HTTP 404, so Windows has no official
+      // script to delegate to anyway.
+      "install": "@script:opencode",
       "update_check": {
         "source": {
           "kind": "github",
           "repo": "anomalyco/opencode"
         },
-        "upgrade_strategy": "smart",
+        // "static" on purpose (NOT "smart"): the smart strategy would run
+        // `npm/bun/pnpm install -g opencode-ai` (unpinned `latest`) whenever
+        // a package manager is on PATH — sailing past the v1 pin straight
+        // into v2. The pinned @script below resolves the newest v1 itself.
+        // `upgrade_package` is kept for verifyPostUpgradeMajor's pin-back
+        // hint only.
+        "upgrade_strategy": "static",
         "upgrade_package": "opencode-ai",
-        "upgrade": {
-          "default": "curl -fsSL https://opencode.ai/install | bash",
-          "win32-x64": "irm https://opencode.ai/install.ps1 | iex"
-        }
+        "upgrade": "@script:opencode"
       }
     }
   }

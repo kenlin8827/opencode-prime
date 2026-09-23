@@ -229,7 +229,9 @@ ocp register -BinDir ~/bin  # shim 安装到自定义目录
 - **锁清单就是工具注册表** `install/tools.jsonc`（`update_policy.lock_major_default: true`）：其中声明的每个工具默认全部锁死，新增工具无需额外步骤即被锁定。个别工具如需豁免，在其 `update_check` 块中写 `"lock_major": false`。
 - **OCP 本体恒定锁死**（它不是注册表条目）。
 - `--force` 可以强制重新下载、重新应用，但**绝不能绕过大版本锁**——锁在版本探测、发布包覆盖、安装器应用三个环节独立生效。
-- 确需跨大版本时，请从**最新发布包**全新安装：先 `ocp init` 备份并清空目标目录（同时移除 `installed.version`），再执行 README 的一键安装命令——POSIX：`curl -fsSL https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.sh | bash`；Windows：`irm https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.ps1 | iex`。它直接下载最新发布包，安装器本身不带锁。单独的 `ocp upgrade` / `ocp install` 无法完成跨越——它们基于本地 repo 副本（仍在旧大版本）；先 `git pull` 再安装也可以。
+- **opencode 锁定在大版本 v1**——OCP 插件与 `@opencode-ai/*` 依赖面向 v1 API，因此 opencode 安装器（`install/scripts/tools/opencode.sh|.ps1`，以 `@script:opencode` 接入）只解析*最新 v1* 发布包——绝不取 "latest overall"；PATH 上检测到 v2+ 二进制直接拒绝。已装的 v2 绝不会被覆盖、被影子遮蔽或"覆盖升级"；请先卸载 v2、装好最新 v1 再重跑。`install/install.sh|.ps1` 引导器与 `provisionTools` 中有同样的拒绝逻辑（后者在 v2 存在时还会跳过所有依赖 opencode 的 post-install 步骤）。
+- **全新 `ocp install` 同样上锁**——目标目录已装版本与 repo 副本大版本不一致时，在动任何文件之前直接拒绝，**双向**如此（已装 v2 + 仓库 v1 不会回退，对称的前向跨越同样不安全）。
+- 确需跨大版本时，请从**最新发布包**全新安装：先 `ocp init` 备份并清空目标目录（同时移除 `installed.version`），再执行 README 的一键安装命令——POSIX：`curl -fsSL https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.sh | bash`；Windows：`irm https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.ps1 | iex`。它直接下载最新发布包。单独的 `ocp upgrade` / `ocp install` 无法完成跨越——大版本不一致的应用会被拒绝（`git pull` 把 repo 副本推到已装版本之外的大版本，同样会被拒绝）。
 
 ### `register` 与 `unregister`
 

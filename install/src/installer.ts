@@ -12,7 +12,9 @@ import {
   collectShippedFiles,
   generateManifest,
   getManifestPath,
+  isCrossMajorVersion,
   isNewerVersion,
+  majorOf,
   readManifest,
   readVersionJson,
 } from './manifest';
@@ -466,6 +468,50 @@ export function isBinaryOnPath(cmdName: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Major of an `opencode --version` stdout ("opencode 1.18.32" → 1);
+ * NaN when no semver-looking token is present. Pure — the shell/PS1
+ * installers mirror this parse with grep/regex.
+ */
+export function majorOfOpencodeOutput(output: string): number {
+  const m = /\d+\.\d+\.\d+/.exec(output ?? '');
+  return m ? majorOf(m[0]) : NaN;
+}
+
+/**
+ * Installed opencode major, or null when opencode is absent from PATH or
+ * its version is unparseable. Null is fail-open on purpose (same philosophy
+ * as isCrossMajorVersion): the lock refuses only what it can prove.
+ */
+export function installedOpencodeMajor(): number | null {
+  if (!isBinaryOnPath('opencode')) return null;
+  try {
+    const res = spawnSync('opencode', ['--version'], {
+      encoding: 'utf8',
+      timeout: 15000,
+      shell: process.platform === 'win32',
+    });
+    const major = majorOfOpencodeOutput(res.stdout ?? '');
+    return Number.isNaN(major) ? null : major;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pure decision helper for the fresh-install major-version lock in
+ * `executeInstall`: true when an existing installation sits on a different
+ * major than the repo copy being applied (e.g. installed OCP v2.x vs repo
+ * v0.41.0 — the v2→v1 rollback — or the symmetric v1→v2 jump). Direction-
+ * agnostic: a cross-major apply in EITHER direction is the jump the lock
+ * exists to prevent (stale-file prune, template mergers). Null installed
+ * (first install, or `ocp init` cleared the target) is always allowed, as
+ * are unprovable versions.
+ */
+export function isBlockedFreshInstall(installed: string | null, repo: string): boolean {
+  return installed !== null && isCrossMajorVersion(installed, repo);
 }
 
 export function checkExternalTools(repoDir: string, options: InstallOptions): void {
@@ -934,6 +980,17 @@ export function provisionTools(repoDir: string, options: InstallOptions): void {
   for (const [name, def] of Object.entries(registry.tools)) {
     if (!toolEnabled(name, options)) continue;
     if (isBinaryOnPath(def.binary)) {
+      // opencode is major-locked to v1 (see @script:opencode): a v2+ binary
+      // on PATH is refused, never adopted — adopting it would wire OCP's
+      // v1 plugins/SDK against an incompatible runtime. Dependent
+      // post-install steps are skipped below via the same check.
+      if (name === 'opencode') {
+        const major = installedOpencodeMajor();
+        if (major !== null && major !== 1) {
+          console.log(colorize.red(`✗ [tool] ${name} v${major}.x detected — OCP requires opencode v1 (v2 breaks OCP plugins and the v1 SDK). Uninstall it, install the newest v1, then re-run; leaving the v${major}.x binary untouched.`));
+          continue;
+        }
+      }
       console.log(colorize.green(`✓ [tool] ${name} (${def.binary}) is present on PATH`));
       continue;
     }
@@ -993,6 +1050,17 @@ function runPostInstall(repoDir: string, name: string, def: ToolRegistry['tools'
     if (guard && !isBinaryOnPath(guard)) {
       console.log(colorize.gray(`⏭ [post-install] ${name}: skipping "${stepName}" (requires "${guard}" on PATH)`));
       continue;
+    }
+
+    // opencode-gated steps (herdr/luvus integration) must not run against a
+    // v2+ binary — the integration would be wired to an incompatible
+    // runtime. Unparseable/absent versions fall through (fail-open).
+    if (guard === 'opencode') {
+      const major = installedOpencodeMajor();
+      if (major !== null && major !== 1) {
+        console.log(colorize.yellow(`⏭ [post-install] ${name}: skipping "${stepName}" (requires opencode v1; v${major}.x detected)`));
+        continue;
+      }
     }
 
     console.log(colorize.cyan(`⚙ [post-install] ${name}: ${stepName}`));
@@ -1153,6 +1221,23 @@ export function executeInstall(
     console.warn(colorize.yellow(mismatchWarning))
   }
   const curVersion = getCurrentRepoVersion(repoDir);
+
+  // Major-version lock, fresh-install step: `ocp update` / `ocp upgrade`
+  // refuse cross-major applies, and a bare `ocp install` must not be the
+  // back door around them — installed v2.x + repo v0.41.0 would otherwise
+  // silently roll back (and the symmetric jump forward is no safer:
+  // stale-file prune and template mergers assume same-major evolution).
+  // --force re-applies in-major work only — it never bypasses this lock.
+  // Escape hatch: back up, `ocp init` (clears the target, removing
+  // installed.version), then install fresh.
+  const installedBefore = getInstalledVersion(targetDir);
+  if (isBlockedFreshInstall(installedBefore, curVersion)) {
+    throw new Error(
+      `Cross-major install blocked: installed v${installedBefore} vs repository v${curVersion}. ` +
+      'The major-version lock cannot be bypassed — not even with --force. ' +
+      'To jump majors, back up your config, run `ocp init`, then install fresh (see docs/maintenance/ocp-cli.md).',
+    );
+  }
 
   // Load options: repo defaults < user overrides < explicit customOptions
   const effectiveOptions = loadEffectiveOptions(repoDir, targetDir, customOptions);
