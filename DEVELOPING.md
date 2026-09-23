@@ -71,12 +71,13 @@ User
  │   └── L2 skills/sdd-workflow — loaded on demand via the skill tool
  │
  ├── Per-step visibility gating (agent `permission` denies in the template)
- │     skills block: sdd-workflow visible only to build/plan/code/architect;
- │     MCP tool surface (serena_* / codegraph_*, ~10.9k tok/step of tool
- │     definitions) only to code-querying agents; tiered review confines
- │     graph backends to their selected Scout. Quantified by
- │     scripts/measure-prompts.ts (real MCP handshake snapshot in
- │     scripts/mcp-instructions.snapshot.json)
+  │     skills block: sdd-workflow visible only to build/plan/code (open
+  │     roster) and architect (explicit `sdd-workflow` + `adr-*` allows);
+  │     MCP tool surface (serena_* / codegraph_*, ~10.9k tok/step of tool
+  │     definitions) only to code-querying agents; tiered review confines
+  │     graph backends to their selected Scout. Quantified by
+  │     scripts/measure-prompts.ts (real MCP handshake snapshot in
+  │     scripts/mcp-instructions.snapshot.json)
  │
  └── Plugins (runtime enforcement & workflows — see "Plugin system")
      ├── npm plugins via `opencode.jsonc:plugin` (qoder-bridge, …)
@@ -89,7 +90,7 @@ User
 
 Design invariants:
 
-- **build** = execution coordinator (write code, run tests, deploy); **plan** = read-only analysis coordinator. Separation prevents analysis agents from accidentally modifying code.
+- **build** = multi-domain orchestrator (full tools/skills; defaults to dispatch, bounded direct work allowed); **plan** = read-only analysis coordinator. Separation keeps analysis from mutating code; build's limiter is discipline, not missing tools.
 - Specialist agents get only their relevant domain knowledge — no mega-prompt (token cost + context dilution).
 - Cross-cutting protocols live in `instructions/` and attach at the cheapest disclosure layer (L0 array or L1 `{file:}` assembly in `opencode.template.jsonc`) — never duplicated in agent files.
 
@@ -329,7 +330,7 @@ Workflow slash commands (`/dev`, `/goal`, `/handoff`, …) are native opencode c
 
 ### Git workflow skill family (shared doctrine)
 
-`/git-merge`, `/git-pick`, `/git-pull`, `/git-push`, and `/git-rebase` are one family: five thin launchers over five L2 protocols that share a single doctrine. They are **agent-less** (no `agent:` frontmatter), so they follow the current agent — which is why `lite`'s `permission.skill` block in `opencode.template.jsonc` allow-lists exactly these five names and denies every other skill.
+`/git-merge`, `/git-pick`, `/git-pull`, `/git-push`, and `/git-rebase` are one family: five thin launchers over five L2 protocols that share a single doctrine. They are **agent-less** (no `agent:` frontmatter), so they follow the current agent — which is why `lite`'s `permission.skill` block in `opencode.template.jsonc` allow-lists these five names plus `/handoff` and `/memory-summarize` (`agent: lite`) and denies every other skill.
 
 **Edit-together invariant.** These blocks are structurally identical across the family; changing one file alone is a defect, not a style choice:
 
@@ -546,10 +547,10 @@ Token cost + context dilution. Specialist agents get only relevant domain knowle
 Output protocol, test scope, RFC keywords, and coding principles apply to ALL agents. Injecting via `instructions` ensures consistency without duplicating in each file.
 
 ### Why two primary orchestrators (build + plan) plus code?
-- **build** = execution coordinator (write code, run tests, deploy)
+- **build** = multi-domain orchestrator (full capability; default = dispatch specialists)
 - **plan** = read-only analysis coordinator (review, audit, design)
 - **code** = direct developer for single-domain tasks (no proactive delegation)
-- Separation prevents analysis agents from accidentally modifying code.
+- Separation keeps analysis from mutating code; build's limiter is discipline, not missing tools.
 
 ### Why explore rides the flash tier?
 Exploration is high-volume, low-complexity. Cheaper model + read-only + bounded steps = fast and cheap context gathering before dispatching specialists.
@@ -577,7 +578,7 @@ instructions/
 └── edit-protocol.md          # Search-expression edit discipline (serena)
 
 prompts/
-├── build.md                  # Primary: execution coordinator
+├── build.md                  # Primary: full-capability orchestrator (default dispatch)
 ├── plan.md                   # Primary: read-only analysis coordinator
 ├── code.md                   # Primary: direct developer (default entry)
 ├── advisor.md                # Decision advisor + red-team stance
