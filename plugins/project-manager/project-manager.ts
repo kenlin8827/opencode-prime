@@ -64,6 +64,7 @@
  */
 
 import { Plugin } from "@opencode/plugin"
+import { refreshLocale, tr } from "../tui/i18n"
 import { commandArgumentText, type V2Session } from "../shared/agent-scope"
 import { makeAnnounceHandler } from "./project-manager-announce"
 import { makeCommandHandler } from "./project-manager-command"
@@ -85,8 +86,10 @@ export const ProjectManagerPlugin = Plugin.define({
     const commands = await ctx.command.transform((editor) => {
       editor.add({
         name: COMMAND_NAME,
-        description:
-          "Project scaffolding + index bootstrap — /project init runs the one-shot legacy migration (.opencode/ OCP state into .ocp/), creates missing baseline files (never overwrites) and runs first-time backend init (codegraph init, gitnexus analyze) when each CLI is installed + enabled; /project index manually refreshes existing indexes; /project sync re-runs the legacy migration alone, on demand",
+        // cp-marked: the server twin's menu label — keep distinct from the
+        // TUI wizard row (host shows both, no dedupe). Routed through tr()
+        // so en/zh stay aligned with guard.pm.help. See guard.pm.desc.
+        description: (refreshLocale(), tr("guard.pm.desc")),
         execute: async (invocation) => {
           await makeCommandHandler(session)({
             arguments: commandArgumentText(invocation.prompt?.text, COMMAND_NAME),

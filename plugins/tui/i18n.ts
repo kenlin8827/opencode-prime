@@ -6,6 +6,9 @@
  * and usage. This module is the single source of truth for the locale
  * registry (`LOCALES`) and the ADR glossary (`ADR_GLOSSARY`); headless
  * CLI entry points share it via `initI18nHeadless` / `refreshLocale`.
+ * String content lives per-locale in ./i18n/locales/ (en.ts = the key
+ * registry; siblings fall back to English via tr()) and is assembled
+ * into STRINGS below.
  *
  * The chosen language is persisted as the "language" key of the shared
  * user config (~/.config/opencode/ocp.json, via plugins/shared/ocp-config).
@@ -20,6 +23,15 @@
 
 import type { Context, DialogSelectOption } from "@opencode/plugin/tui/context"
 import { readOcpField, writeOcpField } from "../shared/ocp-config"
+import en from "./i18n/locales/en"
+import zhCN from "./i18n/locales/zh-CN"
+import es from "./i18n/locales/es"
+import fr from "./i18n/locales/fr"
+import ru from "./i18n/locales/ru"
+import ar from "./i18n/locales/ar"
+import pt from "./i18n/locales/pt"
+import ja from "./i18n/locales/ja"
+import type { StringKey } from "./i18n/locales/en"
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -31,9 +43,12 @@ export type Locale = string
  * from these codes: registering a locale FORCES full `ADR_GLOSSARY` coverage
  * at compile time. To add a language: register it here and fill its glossary
  * meanings; detection, persistence, switching and menus pick it up
- * automatically. UI strings (`STRINGS`) may lag behind and fall back to
- * English via `tr()`; glossary meanings may not — they are complete per
- * locale (unit-test enforced).
+ * automatically. Both surfaces are complete per locale and enforced by
+ * tests: `STRINGS` by tests/test-i18n-coverage-unit.ts (all 611 keys ×
+ * 8 locales, structure/placeholder/slash-token parity), and glossary
+ * meanings at compile time via `GlossaryLocale` (unit-test enforced too).
+ * `tr()` still falls back to en — that is the runtime safety net for an
+ * untranslated NEW key, not the shipping state.
  */
 export const LOCALES = [
   { code: "en", name: "English" },
@@ -164,745 +179,41 @@ export function localeName(locale: Locale): string {
 // ─── Translation table ──────────────────────────────────────────────
 // Keys are namespaced: "common.xxx", "profile.xxx", "provider.xxx",
 // "project.xxx", "usage.xxx".  Placeholders use {name} syntax.
+// String CONTENT lives in ./i18n/locales/<code>.ts — one catalog per
+// language: en.ts is the canonical key registry (`StringKey` derives from
+// it). Every catalog is COMPLETE (611 keys) — completeness is asserted by
+// tests/test-i18n-coverage-unit.ts, while the `Partial` type below keeps a
+// missing translation a test failure rather than a compile error, so a newly
+// added en key can land before its 7 translations. `tr()` still falls back to
+// en as the runtime net. A typo'd key in a sibling is a compile error (its
+// `satisfies`); a registered locale with no catalog is a compile error (the
+// Record type below). Assembled once per process into the key-major Record
+// shape every consumer imports.
 
-export const STRINGS = {
-  // ════════════════════════════════════════════════════════════════
-  // ── Common (shared across all wizards) ───────────────────────────
-  // ════════════════════════════════════════════════════════════════
-  "adr.compaction.scopeCard": { en: "Sources: {sources}\nSuccessors: {successors}\nMove origins: {moves}\nUnresolved units retained unchanged: {unresolved}. Full destinations, coverage and views are in the review artifact.", "zh-CN": "源记录：{sources}\n后继：{successors}\n移动起点：{moves}\n保持原样的未解决单元：{unresolved}。完整目标路径、覆盖矩阵和视图见评审文件。" },
-  "adr.compaction.costContinue": { en: "Authorize drafting cost", "zh-CN": "授权起草成本" },
-  "adr.compaction.costContinueDesc": { en: "Read evidence and prepare drafts only; no decision acceptance or archival.", "zh-CN": "仅读取证据并准备草稿；不接受决策、不归档。" },
-  "adr.compaction.cost": { en: "Drafting will ingest {records} records, {chars} Unicode characters (rough chars/4 estimate: {tokens} tokens, NOT a tokenizer measurement). Model/tool/review overhead and repeated input are additional. Default analysis is free of model calls; this cost dialog itself takes a small model turn. Authorize source ingestion?", "zh-CN": "起草将读取 {records} 个记录、{chars} 个 Unicode 字符（字符数/4 粗估为 {tokens} tokens，并非 tokenizer 实测）。模型、工具、评审及重复输入另有开销。默认分析不调用模型；此成本对话本身需要少量模型轮次。是否授权读取源文？" },
-  "adr.compaction.publish": { en: "Publish summary", "zh-CN": "发布摘要" },
-  "adr.compaction.accept": { en: "Accept and execute", "zh-CN": "接受并执行" },
-  "adr.compaction.drafts": { en: "Save drafts only", "zh-CN": "仅保存草稿" },
-  "adr.compaction.modify": { en: "Request changes", "zh-CN": "需要修改" },
-  "adr.compaction.cancel": { en: "Cancel", "zh-CN": "取消" },
-  "adr.compaction.review": { en: "Review {id}, revision {revision}, mode {mode}. Create {creates}; retire {retires}; archive/remove {moves}. Full content, coverage, deliberate changes and link repairs: {path}", "zh-CN": "审阅 {id}，版本 {revision}，模式 {mode}。新增 {creates} 份，替代 {retires} 份，归档/移除 {moves} 份。完整正文、覆盖关系、约束变化和链接修复见：{path}" },
-  "adr.compaction.effects": { en: "Accept explicitly approves the listed replacement decisions, CURRENT/index publication and any listed archive operations. Review the complete artifacts first; historical external links may break. Unresolved constraints must not be retired.", "zh-CN": "接受表示明确批准所列新决策、CURRENT/索引发布及计划内归档动作。请先审阅完整产物；历史外部链接可能失效，未解决约束不得退役。" },
-  "adr.compaction.acceptDesc": { en: "Approve this exact reviewed version and apply its authorized actions", "zh-CN": "批准此确切审阅版本并执行列出的动作" },
-  "adr.compaction.draftDesc": { en: "Save proposed replacements; preserve old decision authority and locations", "zh-CN": "仅保存待决新记录，不改变旧决策效力或位置" },
-  "adr.compaction.modifyDesc": { en: "Revise the candidate and ask again; apply nothing now", "zh-CN": "修改候选稿后重新确认，本次不执行" },
-  "adr.compaction.cancelDesc": { en: "Apply nothing; local review artifacts may remain", "zh-CN": "不执行计划；本地审阅产物可保留" },
-  "common.cancel": { en: "❌ Cancel", "zh-CN": "❌ 取消" },
-  "common.applyChanges": { en: "✅ Apply", "zh-CN": "✅ 应用" },
-  "common.activeMarker": { en: "← active", "zh-CN": "← 当前" },
-  "common.currentMarker": { en: "← current", "zh-CN": "← 当前" },
-  "common.addedMarker": { en: "added", "zh-CN": "已添加" },
-  "common.unset": { en: "(unset)", "zh-CN": "(未设置)" },
-  "common.config": { en: "config", "zh-CN": "配置" },
-  "common.builtin": { en: "built-in", "zh-CN": "内置" },
-  "common.connected": { en: "connected", "zh-CN": "已连接" },
-  "common.modelCount": { en: "{count} model(s)", "zh-CN": "{count} 个模型" },
-  "common.langTitle": { en: "Switch language", "zh-CN": "切换语言" },
-  "common.langDesc": { en: "Switch interface language", "zh-CN": "切换界面语言" },
-  "common.langPickPlaceholder": { en: "Select language (Esc cancels)", "zh-CN": "选择语言 (Esc 取消)" },
-  "common.langSwitched": { en: "Language switched to {lang}", "zh-CN": "语言已切换为 {lang}" },
-  "common.interfaceHeader": { en: "Interface", "zh-CN": "界面" },
-  "common.working": { en: "Working…", "zh-CN": "处理中…" },
+const PARTIAL_CATALOGS: Readonly<Record<Exclude<GlossaryLocale, "en">, Partial<Record<StringKey, string>>>> = {
+  "zh-CN": zhCN,
+  es,
+  fr,
+  ru,
+  ar,
+  pt,
+  ja,
+}
 
-  // ════════════════════════════════════════════════════════════════
-  // ── Profile wizard ──────────────────────────────────────────────
-  // ════════════════════════════════════════════════════════════════
-  "profile.cmdTitle": { en: "Switch model profile", "zh-CN": "切换配置方案" },
-  "profile.cmdDesc": { en: "Select a profile, edit agent tiers or live tier models, or manage profile models — /profile reset clears all model refs", "zh-CN": "选择配置方案，编辑 Agent 的模型层级或当前层级的模型，或管理配置方案的模型 — /profile reset 清空所有模型引用" },
-  "profile.cli.noProfiles": { en: "No profiles found.", "zh-CN": "未找到配置方案。" },
-  "profile.cli.usage": { en: "Usage: ocp profile [list|apply <name>|reset]", "zh-CN": "用法：ocp profile [list|apply <名称>|reset]" },
-  "profile.cli.applied": { en: "Applied profile '{name}'.", "zh-CN": "已应用配置方案“{name}”。" },
-  "profile.cli.nothing": { en: "Nothing to change.", "zh-CN": "没有需要变更的内容。" },
+function buildStrings(): Record<StringKey, StringEntry> {
+  const built = {} as Record<StringKey, StringEntry>
+  // en first: canonical key set + the fallback value for every entry.
+  for (const key of Object.keys(en) as StringKey[]) built[key] = { en: en[key] }
+  for (const [code, table] of Object.entries(PARTIAL_CATALOGS)) {
+    for (const [key, value] of Object.entries(table)) {
+      if (value === undefined) continue
+      built[key as StringKey][code] = value
+    }
+  }
+  return built
+}
 
-  // Main menu
-  "profile.mainTitle": { en: "Profile wizard", "zh-CN": "配置方案向导" },
-  "profile.agentsHeader": { en: "Agents", "zh-CN": "Agents" },
-  "profile.tiersHeader": { en: "Tiers", "zh-CN": "模型层级" },
-  "profile.selectionHeader": { en: "Selection", "zh-CN": "选择" },
-  "profile.editHeader": { en: "Edit", "zh-CN": "编辑" },
-  "profile.manageHeader": { en: "Manage", "zh-CN": "管理" },
-  "profile.providersHeader": { en: "Providers", "zh-CN": "服务商" },
-  "profile.connectedProvidersHeader": { en: "✅ Connected providers", "zh-CN": "✅ 已连接服务商" },
-  "profile.profilesHeader": { en: "Profiles", "zh-CN": "配置方案" },
-  "profile.activeProfilesHeader": { en: "⭐ Active", "zh-CN": "⭐ 当前" },
-  "profile.customProfilesHeader": { en: "🧩 Custom profiles", "zh-CN": "🧩 自定义配置方案" },
-  "profile.recentProfilesHeader": { en: "🕘 Recent presets", "zh-CN": "🕘 最近使用的预设" },
-  "profile.presetProfilesHeader": { en: "📦 {group}", "zh-CN": "📦 {group}" },
-  "profile.actionsHeader": { en: "Actions", "zh-CN": "操作" },
-  "profile.mainPlaceholder": { en: "Pick an action (Esc: close)", "zh-CN": "选择一个操作 (Esc: 关闭)" },
-  "profile.editAgentTier": { en: "🤖 Edit: Agent→Tier", "zh-CN": "🤖 编辑: Agent→模型层级" },
-  "profile.editAgentTierDesc": { en: "Reassign which tier (flash/standard/pro/max/vision) each agent uses", "zh-CN": "重新分配每个 Agent 所属的模型层级 (flash/standard/pro/max/vision)" },
-  "profile.editTierModels": { en: "⚙️ Edit: Tier→Model", "zh-CN": "⚙️ 编辑: 模型层级→模型" },
-  "profile.editTierModelsDesc": { en: "Change the live tier→model mapping directly, without going through a profile", "zh-CN": "直接修改当前生效的 模型层级→模型 映射，无需经过配置方案" },
-  "profile.manageModels": { en: "🗂️ Manage: Profile→Models", "zh-CN": "🗂️ 管理: 配置方案→模型" },
-  "profile.manageModelsDesc": { en: "Edit a profile's tier→model mapping, or add/delete profiles", "zh-CN": "编辑配置方案的 模型层级→模型 映射，或添加/删除配置方案" },
-  "profile.selectProfile": { en: "🎯 Select: Profile", "zh-CN": "🎯 选择: 配置方案" },
-  "profile.selectProfileActive": { en: "🎯 Select: Profile (active: {active})", "zh-CN": "🎯 选择: 配置方案 (当前: {active})" },
-  "profile.selectProfileDesc": { en: "Pick a profile, review its mapping, then apply", "zh-CN": "选一个配置方案，确认映射后再应用" },
-  "profile.resetModels": { en: "🧹 Reset: Model refs", "zh-CN": "🧹 重置: 模型引用" },
-  "profile.resetModelsDesc": { en: "Remove every model ref from opencode.jsonc — opencode falls back to its model picker (asks for confirmation)", "zh-CN": "移除 opencode.jsonc 中所有模型引用 — opencode 回落到原生模型选择器（执行前需确认）" },
-  "profile.resetTitle": { en: "Reset model refs", "zh-CN": "重置模型引用" },
-  "profile.resetMsg": { en: "Remove ALL model refs from opencode.jsonc?\n\n{refs}\n\nProfile files and tiers.json are kept; a .bak backup of the config is kept. opencode falls back to its native model picker.", "zh-CN": "移除 opencode.jsonc 中的全部模型引用？\n\n{refs}\n\n配置方案文件与 tiers.json 保留；配置会保留 .bak 备份。opencode 将回落到原生模型选择器。" },
-  "profile.resetNothing": { en: "Nothing to reset — no model refs in the config.", "zh-CN": "无需重置 — 配置中没有模型引用。" },
-  "profile.resetDone": { en: "Removed {count} model ref(s). Restart opencode to apply.", "zh-CN": "已移除 {count} 个模型引用。重启 opencode 后生效。" },
-  "profile.resetFailed": { en: "Reset failed: {err}", "zh-CN": "重置失败: {err}" },
-  "profile.unknownSub": { en: "Unknown subcommand '{sub}'. Usage: /profile [reset]", "zh-CN": "未知子命令 '{sub}'。用法: /profile [reset]" },
-  "provider.cli.usage": { en: "Usage: ocp provider [list]", "zh-CN": "用法：ocp provider [list]" },
-  "provider.cli.noProviders": { en: "No providers configured.", "zh-CN": "未配置服务商。" },
-  "tuiHost.interactiveRequired": { en: "This command requires an interactive terminal. Use provider list, profile list, profile apply <name>, or profile reset --yes.", "zh-CN": "此命令需要交互式终端。请使用 provider list、profile list、profile apply <名称> 或 profile reset --yes。" },
-
-  // Edit: Agent→Tier
-  "profile.editTierTitle": { en: "Edit agent→tier", "zh-CN": "编辑 Agent→模型层级" },
-  "profile.editTierTitlePending": { en: "Edit agent→tier ({count} pending)", "zh-CN": "编辑 Agent→模型层级 ({count} 个待应用)" },
-  "profile.editTierPlaceholder": { en: "Pick an agent to reassign its tier (Esc: back)", "zh-CN": "选择 Agent 重新分配模型层级 (Esc: 返回)" },
-  "profile.applyChangesDesc": { en: "Write {count} change{s} to tiers.json and apply live", "zh-CN": "将 {count} 个变更写入 tiers.json 并热生效" },
-  "profile.tierModelDesc": { en: "Tier: {tier} — model: {model}", "zh-CN": "模型层级: {tier} — 模型: {model}" },
-  "profile.pickTierTitle": { en: "Set tier for '{agent}' (current: {tier})", "zh-CN": "设置 '{agent}' 的模型层级 (当前: {tier})" },
-  "profile.pickTierPlaceholder": { en: "Pick a tier (Esc: back)", "zh-CN": "选择模型层级 (Esc: 返回)" },
-  "profile.tierChanged": { en: "{agent}: {old} → {new} (pending)", "zh-CN": "{agent}: {old} → {new} (待应用)" },
-  "profile.writeTiersFailed": { en: "Failed to write tiers.json: {err}", "zh-CN": "写入 tiers.json 失败: {err}" },
-  "profile.readConfigFailed": { en: "Cannot read the opencode config: {err}", "zh-CN": "无法读取 opencode 配置: {err}" },
-  "profile.noAgents": { en: "No agents found in the config.", "zh-CN": "配置中未找到 Agent。" },
-  "profile.tiersUpdatedConfigFailed": { en: "tiers.json updated, but cannot read the opencode config: {err}. Restart or run /profile to apply.", "zh-CN": "tiers.json 已更新，但无法读取 opencode 配置: {err}。重启或运行 /profile 来应用。" },
-  "profile.noModelRef": { en: "{agent} → {tier} (no model ref — set via /profile)", "zh-CN": "{agent} → {tier} (无模型引用 — 通过 /profile 设置)" },
-  "profile.writeOpencodeFailed": { en: "tiers.json updated, but failed to write the opencode config: {err}. Restart or run /profile.", "zh-CN": "tiers.json 已更新，但写入 opencode 配置失败: {err}。重启或运行 /profile。" },
-  "profile.tierChangesApplied": { en: "{count} tier change{s} applied — {details}. {live}", "zh-CN": "{count} 个模型层级变更已应用 — {details}。{live}" },
-  "profile.liveNoRestart": { en: "Live, no restart needed.", "zh-CN": "已热生效，无需重启。" },
-  "profile.restartToApply": { en: "Restart to apply.", "zh-CN": "重启后生效。" },
-
-  // Edit: Tier→Model (live config, no profile)
-  "profile.editTierModelsTitle": { en: "Edit tier→model (live)", "zh-CN": "编辑 模型层级→模型（当前生效）" },
-  "profile.editTierModelsTitlePending": { en: "Edit tier→model (live) ({count} pending)", "zh-CN": "编辑 模型层级→模型（当前生效）({count} 个待应用)" },
-  "profile.editTierModelsPlaceholder": { en: "Pick a tier to change its model (Esc: back)", "zh-CN": "选择模型层级修改其模型 (Esc: 返回)" },
-  "profile.applyTierModelsDesc": { en: "Apply {count} model change{s} to the live config", "zh-CN": "将 {count} 个模型变更热应用到当前配置" },
-  "profile.noTierModels": { en: "No tier mapping found — agents have no models in the config.", "zh-CN": "未找到模型层级映射 — 配置中 Agent 没有模型。" },
-  "profile.pickTierModelProviderTitle": { en: "tier.{tier} → provider", "zh-CN": "模型层级 {tier} → 服务商" },
-  "profile.pickTierModelModelTitle": { en: "tier.{tier} → model on {provider}", "zh-CN": "模型层级 {tier} → {provider} 上的模型" },
-  "profile.promptTierModelRefTitle": { en: "tier.{tier} — custom ref", "zh-CN": "模型层级 {tier} — 手动输入引用" },
-  "profile.liveTierModelChanged": { en: "tier.{tier} → {provider}/{model} (pending)", "zh-CN": "模型层级 {tier} → {provider}/{model} (待应用)" },
-  "profile.tierModelsApplied": { en: "{count} model change{s} applied — {details}. {live}", "zh-CN": "{count} 个模型变更已应用 — {details}。{live}" },
-
-  // Manage: Profile→Models
-  "profile.manageTitle": { en: "Manage: Profile→Models", "zh-CN": "管理: 配置方案→模型" },
-  "profile.managePlaceholder": { en: "Pick a profile to edit its tier→model mapping (Esc: back)", "zh-CN": "选择配置方案编辑其 模型层级→模型 映射 (Esc: 返回)" },
-  "profile.addProfile": { en: "➕ Add: Profile", "zh-CN": "➕ 添加: 配置方案" },
-  "profile.addProfileDesc": { en: "Create a new blank profile JSON in ~/.config/opencode/profiles/", "zh-CN": "在 ~/.config/opencode/profiles/ 创建空白配置方案 JSON" },
-  "profile.deleteProfile": { en: "🗑️ Delete", "zh-CN": "🗑️ 删除" },
-  "profile.deleteProfileDesc": { en: "Delete this profile's JSON file (asks for confirmation)", "zh-CN": "删除此配置方案的 JSON 文件（删除前需确认）" },
-  "profile.reviewTiersTitle": { en: "{name} — review tiers", "zh-CN": "{name} — 审阅模型层级" },
-  "profile.reviewTiersPlaceholder": { en: "Pick a tier to change its model (provider → model), or apply (Esc: back)", "zh-CN": "选择模型层级修改其模型 (服务商 → 模型)，或应用 (Esc: 返回)" },
-  "profile.applyChangesModelDesc": { en: "Write the mapping below to the profile JSON and apply", "zh-CN": "将以下映射写入配置方案 JSON 并应用" },
-  "profile.cancelDiscard": { en: "Discard overrides and return to profile list", "zh-CN": "丢弃覆写，返回配置方案列表" },
-  "profile.pickProviderTitle": { en: "{name} — tier.{tier} → provider", "zh-CN": "{name} — 模型层级 {tier} → 服务商" },
-  "profile.pickProviderPlaceholder": { en: "Pick a provider (Esc: back)", "zh-CN": "选择服务商 (Esc: 返回)" },
-  "profile.typeCustomRef": { en: "( Type a custom ref )", "zh-CN": "( 手动输入引用 )" },
-  "profile.typeCustomRefDesc": { en: "For providers not listed above", "zh-CN": "用于未列出的服务商" },
-  "profile.pickModelTitle": { en: "{name} — tier.{tier} → model on {provider}", "zh-CN": "{name} — 模型层级 {tier} → {provider} 上的模型" },
-  "profile.pickModelPlaceholder": { en: "Pick a model — {count} available (Esc: back)", "zh-CN": "选择模型 — {count} 个可用 (Esc: 返回)" },
-  "profile.modelChanged": { en: "{name}: tier.{tier} → {provider}/{model} (pending)", "zh-CN": "{name}: 模型层级 {tier} → {provider}/{model} (待应用)" },
-  "profile.promptTierRefTitle": { en: "{name} — tier.{tier}", "zh-CN": "{name} — 模型层级 {tier}" },
-  "profile.promptTierRefPlaceholder": { en: "<provider>/<model_id> (empty keeps current)", "zh-CN": "<provider>/<model_id> (留空保留当前值)" },
-  "profile.invalidRef": { en: "Invalid ref '{ref}' — expected '<provider>/<model_id>'.", "zh-CN": "无效引用 '{ref}' — 格式应为 '<provider>/<model_id>'。" },
-  "profile.customized": { en: "{override} ← customized (preset: {ref})", "zh-CN": "{override} ← 已覆写 (原配置方案: {ref})" },
-  "profile.profileVanished": { en: "Profile '{name}' vanished.", "zh-CN": "配置方案 '{name}' 不见了。" },
-  "profile.writeProfileFailed": { en: "Failed to write profile '{name}': {err}", "zh-CN": "写入配置方案 '{name}' 失败: {err}" },
-  "profile.profileUpdatedApplied": { en: "Profile '{name}' updated and applied — {updated} agent(s) updated ({details}). {live}", "zh-CN": "配置方案 '{name}' 已更新并应用 — {updated} 个 Agent 已更新 ({details})。{live}" },
-  "profile.profileSavedApplyFailed": { en: "Profile JSON saved, but failed to apply: {err}", "zh-CN": "配置方案 JSON 已保存，但应用失败: {err}" },
-
-  // Add / Delete profile
-  "profile.addProfileTitle": { en: "Add new profile", "zh-CN": "添加新配置方案" },
-  "profile.addProfilePlaceholder": { en: "Profile name (e.g. my-custom)", "zh-CN": "配置方案名称 (如 my-custom)" },
-  "profile.profileExists": { en: "Profile '{name}' already exists.", "zh-CN": "配置方案 '{name}' 已存在。" },
-  "profile.customProfile": { en: "Custom profile", "zh-CN": "自定义配置方案" },
-  "profile.profileCreated": { en: "Profile '{name}' created — edit its tiers via Manage.", "zh-CN": "配置方案 '{name}' 已创建 — 通过管理编辑其模型层级。" },
-  "profile.createProfileFailed": { en: "Failed to create profile: {err}", "zh-CN": "创建配置方案失败: {err}" },
-  "profile.deleteProfileTitle": { en: "Delete profile", "zh-CN": "删除配置方案" },
-  "profile.confirmDeleteMsg": { en: "Delete profile '{name}'?\n\nFile: {path}\n\nA .bak backup will be kept. This cannot be undone.", "zh-CN": "删除配置方案 '{name}'?\n\n文件: {path}\n\n将保留 .bak 备份。此操作不可撤销。" },
-  "profile.profileDeleted": { en: "Profile '{name}' deleted (.bak kept).", "zh-CN": "配置方案 '{name}' 已删除（保留 .bak 备份）。" },
-  "profile.deleteFailed": { en: "Failed to delete: {err}", "zh-CN": "删除失败: {err}" },
-
-  // Select: Profile
-  "profile.selectTitle": { en: "Select: Profile", "zh-CN": "选择: 配置方案" },
-  "profile.selectPlaceholder": { en: "Pick a profile to review and apply (Esc: back)", "zh-CN": "选择配置方案审阅并应用 (Esc: 返回)" },
-  "profile.confirmApplyTitle": { en: "Apply profile '{name}'?", "zh-CN": "应用配置方案 '{name}'？" },
-  "profile.confirmApplyMsg": { en: "The following tier→model mapping will be applied:\n\n{mapping}\n\nAgent models in the config will be overwritten.", "zh-CN": "即将应用以下 模型层级→模型 映射：\n\n{mapping}\n\n配置中的 Agent 模型将被覆写。" },
-  "profile.noProfiles": { en: "No profiles found in {dir}.", "zh-CN": "在 {dir} 中未找到配置方案。" },
-  "profile.switchedTo": { en: "Switched to '{name}' — {updated} agent(s) updated ({details}). {live}", "zh-CN": "已切换到 '{name}' — {updated} 个 Agent 已更新 ({details})。{live}" },
-  "profile.appliedLive": { en: "Applied live, no restart needed.", "zh-CN": "已热生效，无需重启。" },
-  "profile.restartToApply2": { en: "Restart opencode to apply.", "zh-CN": "重启 opencode 后生效。" },
-  "profile.applyFailed": { en: "Failed to apply '{name}': {err}", "zh-CN": "应用 '{name}' 失败: {err}" },
-
-  // Tier descriptions
-  "profile.tierFlash": { en: "Fast / lightweight — exploration, high-throughput", "zh-CN": "快速 / 轻量 — 代码粗筛，高吞吐" },
-  "profile.tierStandard": { en: "General workhorse — orchestrator (root model)", "zh-CN": "通用主力 — 编排中枢（根模型）" },
-  "profile.tierPro": { en: "Professional — strongest coding models", "zh-CN": "专业级 — 最强编码模型" },
-  "profile.tierMax": { en: "Flagship reasoning — deep analysis, review, design", "zh-CN": "旗舰推理 — 深度分析，审查，设计" },
-  "profile.tierVision": { en: "Multimodal — image/screenshot analysis", "zh-CN": "多模态 — 图像/截图分析" },
-
-  // Misc
-  "profile.activeProfileToast": { en: "Active profile: {name}", "zh-CN": "当前配置方案: {name}" },
-
-  // ════════════════════════════════════════════════════════════════
-  // ── Provider wizard ────────────────────────────────────────────
-  // ════════════════════════════════════════════════════════════════
-  "provider.cmdTitle": { en: "Configure provider", "zh-CN": "配置服务商" },
-  "provider.cmdDesc": { en: "Add custom providers, configure credentials, fetch and manage models", "zh-CN": "添加自定义服务商，配置凭证，拉取和管理模型" },
-  "provider.toastTitle": { en: "Provider wizard", "zh-CN": "服务商向导" },
-  "provider.setupTitle": { en: "Provider wizard", "zh-CN": "服务商向导" },
-  "provider.setupPlaceholder": { en: "Pick a provider to configure (Esc: close)", "zh-CN": "选择服务商进行配置 (Esc: 关闭)" },
-  "provider.addProvider": { en: "➕ Add custom provider", "zh-CN": "➕ 添加自定义服务商" },
-  "provider.addProviderDesc": { en: "Create a blank provider config from scratch", "zh-CN": "从零创建空白服务商配置" },
-  "provider.addPresetProvider": { en: "📦 Add preset provider…", "zh-CN": "📦 添加预设服务商…" },
-  "provider.manageConnections": { en: "🔌 Manage connections…", "zh-CN": "🔌 管理连接…" },
-  "provider.manageConnectionsDesc": { en: "{count} connected — official built-ins and custom providers, disconnectable in one click", "zh-CN": "{count} 个已连接 — 官方内置与自定义服务商，点击即可断开" },
-  "provider.connectionsTitle": { en: "Connections", "zh-CN": "连接" },
-  "provider.connectionsHeader": { en: "Connections", "zh-CN": "连接" },
-  "provider.connectionsPlaceholder": { en: "Pick a connection to disconnect (Esc: back)", "zh-CN": "选择要断开的连接 (Esc: 返回)" },
-  "provider.connectionsEmpty": { en: "No connections — connect providers via /connect or ⚙ Basic settings.", "zh-CN": "当前没有连接 — 可通过 /connect 或 ⚙ 基础设置 连接服务商。" },
-  "provider.connSourceStore": { en: "credential store", "zh-CN": "凭证存储" },
-  "provider.connSourceConfig": { en: "config", "zh-CN": "配置文件" },
-  "provider.connKindCustom": { en: "custom", "zh-CN": "自定义" },
-  "provider.connKindExternal": { en: "official/external (not in config)", "zh-CN": "官方/外部（不在配置中）" },
-  "provider.connTypeApi": { en: "API key", "zh-CN": "API 密钥" },
-  "provider.connTypeOauth": { en: "OAuth", "zh-CN": "OAuth" },
-  "provider.connTypeEnv": { en: "env ref", "zh-CN": "环境变量引用" },
-  "provider.cmdDisconnectTitle": { en: "Disconnect provider", "zh-CN": "断开服务商连接" },
-  "provider.cmdDisconnectDesc": { en: "Interactive: connections wizard (bare); <id> jumps to confirm; --all asks once", "zh-CN": "交互弹窗：连接向导（无参）；<id> 直达确认；--all 一次确认" },
-  "provider.connNotFound": { en: "No connection found for '{id}'.", "zh-CN": "未找到 '{id}' 的连接。" },
-  "provider.disconnectAllTitle": { en: "Disconnect all", "zh-CN": "断开全部连接" },
-  "provider.disconnectAllConfirm": { en: "Disconnect all {count} connection(s)? Provider definitions and models stay.", "zh-CN": "断开全部 {count} 个连接？服务商定义与模型保留。" },
-  "provider.disconnectAllDone": { en: "Disconnected {ok}/{count} connection(s).", "zh-CN": "已断开 {ok}/{count} 个连接。" },
-  "provider.addPresetProviderDesc": { en: "Import a preset provider from the bundled providers/ definitions", "zh-CN": "从内置的 providers/ 定义文件导入预设服务商" },
-  "provider.pickPresetTitle": { en: "Add preset provider", "zh-CN": "添加预设服务商" },
-  "provider.pickPresetPlaceholder": { en: "Pick a preset — new ones are imported, added ones open their details (Esc: back)", "zh-CN": "选择预设服务商 — 新的将导入，已添加的直接进详情 (Esc: 返回)" },
-  "provider.noPresetsLeft": { en: "No preset definitions found in the providers/ directory.", "zh-CN": "providers/ 目录中未找到预设定义。" },
-  "provider.invalidProviderId": { en: "Invalid id — lowercase letters, digits, '-' and '_' only.", "zh-CN": "无效 id — 仅限小写字母、数字、'-' 和 '_'。" },
-  "provider.providerExists": { en: "Provider '{id}' already exists.", "zh-CN": "服务商 '{id}' 已存在。" },
-  "provider.providerRenamed": { en: "Renamed '{from}' → '{to}'.", "zh-CN": "已重命名 '{from}' → '{to}'。" },
-  "provider.detailTitle": { en: "{id} — provider details", "zh-CN": "{id} — 服务商详情" },
-  "provider.detailPlaceholder": { en: "Pick settings, a model, or an action (Esc: back)", "zh-CN": "选择设置、模型或操作 (Esc: 返回)" },
-  "provider.noCustomProviders": { en: "No custom providers yet.", "zh-CN": "还没有自定义服务商。" },
-  "provider.modelsHeader": { en: "Models", "zh-CN": "模型" },
-  "provider.settingsHeader": { en: "Settings", "zh-CN": "设置" },
-  "provider.actionsHeader": { en: "Actions", "zh-CN": "操作" },
-  "provider.configuredHeader": { en: "Providers", "zh-CN": "服务商" },
-  "provider.setupHeader": { en: "Setup", "zh-CN": "新增" },
-  "provider.basicSettings": { en: "⚙ Basic settings…", "zh-CN": "⚙ 基础设置…" },
-  "provider.addProviderFormTitle": { en: "Add custom provider — basic settings", "zh-CN": "添加自定义服务商 — 基础设置" },
-  "provider.idTitle": { en: "New provider — id", "zh-CN": "新服务商 — id" },
-  "provider.idPlaceholder": { en: "Used in refs '<id>/<model>'; lowercase letters, digits, '-' and '_'", "zh-CN": "用于引用 '<id>/<model>'；小写字母、数字、'-' 和 '_'" },
-  "provider.idRequired": { en: "id is required.", "zh-CN": "id 为必填。" },
-  "provider.providerFormTitleEdit": { en: "{id} — basic settings", "zh-CN": "{id} — 基础设置" },
-  "provider.providerFormPlaceholder": { en: "Edit fields, then save (* = required; Esc: back)", "zh-CN": "编辑字段后保存 (* = 必填；Esc: 返回)" },
-  "provider.saveProvider": { en: "💾 Save provider", "zh-CN": "💾 保存服务商" },
-  "provider.nameLabel": { en: "name", "zh-CN": "名称" },
-  "provider.editNameDesc": { en: "Display name shown in pickers", "zh-CN": "选择器中显示的名称" },
-  "provider.nameTitle": { en: "{id} — name", "zh-CN": "{id} — 名称" },
-  "provider.namePlaceholder": { en: "Shown in pickers ({hint}). Empty clears to the id.", "zh-CN": "在选择器中显示 ({hint})。留空则清除，回退为 id。" },
-  "provider.npmLabel": { en: "npm", "zh-CN": "npm 包" },
-  "provider.baseURLLabel": { en: "baseURL", "zh-CN": "服务地址" },
-  "provider.apiKeyLabel": { en: "apiKey", "zh-CN": "API 密钥" },
-  "provider.pickNpmTitle": { en: "{id} — npm package", "zh-CN": "{id} — npm 包" },
-  "provider.pickNpmPlaceholder": { en: "Pick the SDK package — it decides the API protocol (Esc: back)", "zh-CN": "选择 SDK 包 — 决定 API 协议 (Esc: 返回)" },
-  "provider.editBaseURLDesc": { en: "API endpoint base URL", "zh-CN": "API 端点地址" },
-  "provider.editApiKeyDesc": { en: "API key credential", "zh-CN": "API 密钥凭证" },
-  "provider.baseURLTitle": { en: "{id} — baseURL", "zh-CN": "{id} — 服务地址" },
-  "provider.apiKeyTitle": { en: "{id} — apiKey", "zh-CN": "{id} — API 密钥" },
-  "provider.baseURLPlaceholder": { en: "https://api.example.com/v1 or {env:VAR} ({hint}; empty clears)", "zh-CN": "https://api.example.com/v1 或 {env:VAR} ({hint}；留空清除)" },
-  "provider.baseURLRequired": { en: "baseURL is required for openai-compatible providers.", "zh-CN": "openai 兼容服务商必须填写服务地址。" },
-  "provider.apiKeyPlaceholder": { en: "sk-... or {env:VAR} ({hint}; empty keeps)", "zh-CN": "sk-... 或 {env:VAR} ({hint}；留空保留)" },
-  "provider.fetchModels": { en: "📥 Fetch models…", "zh-CN": "📥 拉取模型…" },
-  "provider.fetchingTitle": { en: "Fetching models — {id}", "zh-CN": "正在拉取模型 — {id}" },
-  "provider.fetchingBusy": { en: "Contacting the provider and the model catalog…", "zh-CN": "正在连接服务商和模型目录，请稍候…" },
-  "provider.fetchModelsDesc": { en: "Fetch the remote model list and import matches as custom models", "zh-CN": "拉取远端模型列表，匹配项导入为自定义" },
-  "provider.fetchPatternTitle": { en: "{id} — fetch pattern", "zh-CN": "{id} — 拉取 pattern" },
-  "provider.fetchPatternPlaceholder": { en: "Glob filter for model ids, e.g. gpt-* (empty = *)", "zh-CN": "按模型 id 过滤的 glob，如 gpt-* (留空 = *)" },
-  "provider.fetchNeedsBaseURL": { en: "Set baseURL before fetching.", "zh-CN": "拉取前请先设置服务地址。" },
-  "provider.fetchNeedsKey": { en: "Set apiKey before fetching.", "zh-CN": "拉取前请先设置 API 密钥。" },
-  "provider.keyMigrated": { en: "API key moved to the shared credential store used by /connect.", "zh-CN": "API 密钥已移至与 /connect 共享的凭证存储。" },
-  "provider.keyInCredStore": { en: "set (in credential store)", "zh-CN": "已设置（凭证存储）" },
-  "provider.keyInConfig": { en: "set (in config)", "zh-CN": "已设置（配置文件）" },
-  "provider.fetchEnvMissing": { en: "Environment variable '{name}' is not set.", "zh-CN": "环境变量 '{name}' 未设置。" },
-  "provider.fetchFailed": { en: "Fetch failed: {err}", "zh-CN": "拉取失败: {err}" },
-  "provider.fetchNoMatch": { en: "Fetch OK — no models match '{pattern}' ({total} total).", "zh-CN": "拉取成功 — 没有匹配 '{pattern}' 的模型 (共 {total} 个)。" },
-  "provider.fetchImported": { en: "Imported {added} model(s) into '{id}' (pattern '{pattern}'); {enriched} existing enriched with catalog capabilities; {skipped} kept as-is.", "zh-CN": "已导入 {added} 个模型到 '{id}' (pattern '{pattern}')；{enriched} 个已有模型按目录补齐了属性；{skipped} 个保持原样。" },
-  "provider.fetchNoNew": { en: "All {skipped} matched model(s) already exist on '{id}' — nothing added.", "zh-CN": "匹配的 {skipped} 个模型均已存在于 '{id}' — 未新增。" },
-  "provider.addModel": { en: "➕ Add model…", "zh-CN": "➕ 添加模型…" },
-  "provider.addModelDesc": { en: "Form sheet: identity, capabilities, limits", "zh-CN": "表单录入: 身份、能力、限制" },
-  "provider.removeModelTitle": { en: "{id} — remove model", "zh-CN": "{id} — 删除模型" },
-  "provider.modelFormTitleAdd": { en: "{id} — add model", "zh-CN": "{id} — 添加模型" },
-  "provider.modelFormTitleEdit": { en: "{id}/{key} — edit model", "zh-CN": "{id}/{key} — 编辑模型" },
-  "provider.modelFormPlaceholder": { en: "Pick a field to edit, or save (* = required; Esc: back)", "zh-CN": "选择要编辑的字段，或保存 (* = 必填；Esc: 返回)" },
-  "provider.modelFieldTitle": { en: "{id} — model {field}", "zh-CN": "{id} — 模型 {field}" },
-  "provider.formFieldsHeader": { en: "Fields", "zh-CN": "字段" },
-  "provider.formCapsHeader": { en: "Capabilities", "zh-CN": "能力" },
-  "provider.formLimitsHeader": { en: "Limits", "zh-CN": "限制" },
-  "provider.formActionsHeader": { en: "Actions", "zh-CN": "操作" },
-  "provider.capAttachmentDesc": { en: "Accepts image / file attachments", "zh-CN": "接受图片 / 文件附件" },
-  "provider.capTemperatureDesc": { en: "Supports the temperature parameter", "zh-CN": "支持 temperature 参数" },
-  "provider.capReasoningDesc": { en: "Reasoning model", "zh-CN": "推理模型" },
-  "provider.capToolCallDesc": { en: "Tool calling (keep on for coding)", "zh-CN": "工具调用 (编码模型保持开)" },
-  "provider.modalitiesPlaceholder": { en: "Enter/click to toggle, Esc to return", "zh-CN": "回车/点击切换，Esc 返回" },
-  "provider.limitContextPlaceholder": { en: "Context window in tokens (empty = unset)", "zh-CN": "上下文窗口 (tokens，留空 = 未设置)" },
-  "provider.limitOutputPlaceholder": { en: "Max output tokens (empty = unset)", "zh-CN": "最大输出 tokens (留空 = 未设置)" },
-  "provider.invalidNumber": { en: "Not a valid non-negative integer.", "zh-CN": "不是有效的非负整数。" },
-  "provider.saveModel": { en: "💾 Save model", "zh-CN": "💾 保存模型" },
-  "provider.deleteProvider": { en: "🗑 Delete provider…", "zh-CN": "🗑 删除服务商…" },
-  "provider.disconnect": { en: "🔌 Disconnect…", "zh-CN": "🔌 断开连接…" },
-  "provider.disconnectDesc": { en: "Remove the stored credential — provider config and models stay; reconnect anytime", "zh-CN": "移除已存密钥 — 服务商配置与模型保留，可随时重新连接" },
-  "provider.disconnectTitle": { en: "{id} — disconnect", "zh-CN": "{id} — 断开连接" },
-  "provider.disconnectConfirm": { en: "Remove the stored credential and clear the apiKey field for '{id}'? The provider config and models stay — reconnect anytime via ⚙ Basic settings.", "zh-CN": "移除 '{id}' 的已存密钥并清空 apiKey 字段？服务商配置与模型保留 — 可随时在 ⚙ 基础设置 中重新连接。" },
-  "provider.disconnected": { en: "Disconnected '{id}' — credential removed.", "zh-CN": "已断开 '{id}' — 密钥已移除。" },
-  "provider.deleteProviderTitle": { en: "{id} — delete provider", "zh-CN": "{id} — 删除服务商" },
-  "provider.deleteProviderConfirm": { en: "Remove '{id}', all its models and the stored credential? This cannot be undone.", "zh-CN": "移除 '{id}'、其全部模型及已存密钥？不可撤销。" },
-  "provider.clearModels": { en: "🗑 Clear models…", "zh-CN": "🗑 清空模型…" },
-  "provider.clearModelsDesc": { en: "Remove models by glob pattern (default: all)", "zh-CN": "按 glob 模式移除模型（默认：全部）" },
-  "provider.clearModelsTitle": { en: "{id} — clear models", "zh-CN": "{id} — 清空模型" },
-  "provider.clearModelsPatternTitle": { en: "{id} — clear models by pattern", "zh-CN": "{id} — 按模式清空模型" },
-  "provider.clearModelsPatternPlaceholder": { en: "Glob pattern for model keys, e.g. gpt-* (empty = *)", "zh-CN": "模型 key 的 glob 模式，如 gpt-*（留空 = *）" },
-  "provider.clearModelsConfirm": { en: "Remove {count} model(s) matching '{pattern}' from '{id}'? Profiles referencing them will break.", "zh-CN": "从 '{id}' 移除匹配 '{pattern}' 的 {count} 个模型？引用它们的配置方案将会失效。" },
-  "provider.noModelsToClear": { en: "No models to clear on '{id}'.", "zh-CN": "'{id}' 上没有可清空的模型。" },
-  "provider.clearModelsNoMatch": { en: "No models on '{id}' match '{pattern}'.", "zh-CN": "'{id}' 上没有匹配 '{pattern}' 的模型。" },
-  "provider.modelsCleared": { en: "Cleared {count} model(s) matching '{pattern}' from '{id}'.", "zh-CN": "已从 '{id}' 清空匹配 '{pattern}' 的 {count} 个模型。" },
-  "provider.providerDeleted": { en: "Provider '{id}' deleted.", "zh-CN": "服务商 '{id}' 已删除。" },
-  "provider.deleteModel": { en: "🗑 Delete model…", "zh-CN": "🗑 删除模型…" },
-  "provider.modelKeyPlaceholder": { en: "Key used in refs '<provider>/<key>', e.g. gpt-5.6-low or vendor/gpt-5.6", "zh-CN": "引用中使用的 key '<provider>/<key>'，如 gpt-5.6-low 或 vendor/gpt-5.6" },
-  "provider.modelIdPlaceholder": { en: "Id sent to the API (empty keeps the key)", "zh-CN": "发送给 API 的 id (留空则使用 key)" },
-  "provider.modelNamePlaceholder": { en: "Shown in pickers (empty keeps the key)", "zh-CN": "在选择器中显示 (留空则使用 key)" },
-  "provider.fieldStatusDesc": { en: "deprecated = hidden from pickers (soft disable); alpha = experimental only", "zh-CN": "deprecated = 从选择器隐藏 (软禁用)；alpha = 仅实验模式显示" },
-  "provider.wizardTitle": { en: "Provider setup wizard", "zh-CN": "服务商配置向导" },
-  "provider.writeFailed": { en: "Failed to write config: {err}", "zh-CN": "写入配置失败: {err}" },
-  "provider.configSaved": { en: "'{id}' saved — restart to take effect.", "zh-CN": "'{id}' 已保存 — 重启后生效。" },
-  "provider.modelAdded": { en: "Model '{key}' added to '{id}'.", "zh-CN": "模型 '{key}' 已添加到 '{id}'。" },
-  "provider.modelRemoved": { en: "Model '{key}' removed from '{id}'.", "zh-CN": "模型 '{key}' 已从 '{id}' 删除。" },
-  "provider.addModelFailed": { en: "Failed to add model: {err}", "zh-CN": "添加模型失败: {err}" },
-  "provider.invalidKey": { en: "Invalid key — no spaces; '/' allowed inside, not at edges or doubled.", "zh-CN": "无效 key — 不能含空格；'/' 可在中间使用，但不能在首尾或连续出现。" },
-  "provider.modelExists": { en: "Model '{key}' already exists on '{id}'.", "zh-CN": "模型 '{key}' 已存在于 '{id}'。" },
-  "provider.providerVanished": { en: "Provider '{id}' no longer exists.", "zh-CN": "服务商 '{id}' 已不存在。" },
-  "provider.removeModelConfirm": { en: "Remove model '{key}' from '{id}'? Profiles referencing '{id}/{key}' will break.", "zh-CN": "从 '{id}' 删除模型 '{key}'？引用 '{id}/{key}' 的配置方案将会失效。" },
-  "provider.noProvidersAvailable": { en: "No providers configured and no definitions in {dir}.", "zh-CN": "未配置服务商且 {dir} 中无定义文件。" },
-  "provider.cannotReadConfig": { en: "Cannot read {path}: {err}", "zh-CN": "无法读取 {path}: {err}" },
-
-  // ════════════════════════════════════════════════════════════════
-  // ── Project wizard ─────────────────────────────────────────────
-  // ════════════════════════════════════════════════════════════════
-  "project.cmdTitle": { en: "Project setup wizard", "zh-CN": "项目设置向导" },
-  "project.cmdDesc": { en: "Configure project switches, sync templates, refresh indexes", "zh-CN": "配置项目开关，同步模板，刷新索引" },
-  "project.toastTitle": { en: "Project wizard", "zh-CN": "项目向导" },
-  "project.mainPlaceholder": { en: "Select action (Esc to exit)", "zh-CN": "选择操作 (Esc 退出)" },
-  "project.firstScreenPlaceholder": { en: "Skeleton → conventions → maintenance → system (Esc: close)", "zh-CN": "骨架 → 规范 → 维护 → 系统 (Esc: 关闭)" },
-  "project.groupsHeader": { en: "Groups", "zh-CN": "分组" },
-  "project.groups.autoAdvisor": { en: "Auto advisor", "zh-CN": "自动顾问" },
-  "project.groups.projectMemory": { en: "Project memory", "zh-CN": "项目记忆" },
-  "project.groups.projectGuards": { en: "Project guards", "zh-CN": "项目护栏" },
-  "project.groups.adr": { en: "ADR Settings", "zh-CN": "ADR设置" },
-  "project.groups.tooling": { en: "Project tooling", "zh-CN": "项目工具" },
-  "project.groups.index": { en: "Index maintenance", "zh-CN": "索引维护" },
-  "project.groups.indexDesc": { en: "Backend indexing refresh", "zh-CN": "后端索引刷新" },
-  "project.navigationHeader": { en: "Navigation", "zh-CN": "导航" },
-  "project.tooling.title": { en: "Formatter setup", "zh-CN": "格式化器设置" },
-  "project.tooling.placeholder": { en: "Pick an action (Esc: back)", "zh-CN": "选择操作 (Esc: 返回)" },
-  "project.tooling.summaryEligible": { en: "dprint setup available", "zh-CN": "可配置 dprint" },
-  "project.tooling.summaryNotEligible": { en: "dprint not eligible for this project", "zh-CN": "此项目不适用 dprint" },
-  "project.tooling.dprintNotEligibleTitle": { en: "dprint not eligible", "zh-CN": "dprint 不适用" },
-  "project.tooling.dprintNotEligibleDesc": { en: "No supported files detected in this project", "zh-CN": "未在项目中检测到支持的文件类型" },
-  "project.projectGuards.title": { en: "Project guards — {config}", "zh-CN": "项目护栏 — {config}" },
-  "project.projectGuards.placeholder": { en: "Pick a guard to edit (Esc: back)", "zh-CN": "选择要编辑的护栏 (Esc: 返回)" },
-  "project.autoAdvisor.title": { en: "Auto-advisor mode — {config}", "zh-CN": "顾问模式 — {config}" },
-  "project.adr.title": { en: "ADR Settings — {config}", "zh-CN": "ADR 设置 — {config}" },
-  "project.adr.placeholder": { en: "Pick an ADR setting (Esc: back)", "zh-CN": "选择 ADR 设置 (Esc: 返回)" },
-  "project.configureSwitches": { en: "⚙️ Configure Project Switches", "zh-CN": "⚙️ 配置项目开关" },
-  "project.syncTemplates": { en: "🔄 Sync Template Switches", "zh-CN": "🔄 同步模板开关" },
-  "project.syncTemplatesDesc": { en: "Append missing switch lines to config", "zh-CN": "将缺失的开关行追加到配置" },
-  "project.refreshIndex": { en: "⚡ Refresh Code Index", "zh-CN": "⚡ 刷新代码索引" },
-  "project.refreshIndexDesc": { en: "Catch up codegraph & gitnexus indexes", "zh-CN": "更新 codegraph 和 gitnexus 索引" },
-  "project.exitWizard": { en: "❌ Exit Wizard", "zh-CN": "❌ 退出向导" },
-  "project.exitWizardDesc": { en: "Close setup dialog (or Esc)", "zh-CN": "关闭设置对话框 (或 Esc)" },
-  "project.configureSwitchesTitle": { en: "Configure Switches — {config}", "zh-CN": "配置开关 — {config}" },
-  "project.configureSwitchesPlaceholder": { en: "Select switch to edit (Esc cancels)", "zh-CN": "选择要编辑的开关 (Esc 取消)" },
-  "project.setupHeader": { en: "Setup", "zh-CN": "设置" },
-  "project.maintainHeader": { en: "Maintenance", "zh-CN": "维护" },
-  "project.advisorHeader": { en: "Advisor", "zh-CN": "顾问" },
-  "project.guardsHeader": { en: "Quality Guards", "zh-CN": "质量护栏" },
-  "project.adrConfigHeader": { en: "ADR Config", "zh-CN": "ADR 配置" },
-  "project.suiteHeader": { en: "ADR Suite", "zh-CN": "ADR 套件" },
-  "project.actionsHeader": { en: "Actions", "zh-CN": "操作" },
-  "project.skeletonHeader": { en: "🏗 Skeleton", "zh-CN": "🏗 骨架" },
-  "project.conventionsHeader": { en: "📋 Conventions", "zh-CN": "📋 规范" },
-  "project.maintenanceHeader": { en: "🔧 Maintenance", "zh-CN": "🔧 维护" },
-  "project.systemHeader": { en: "⚙ System", "zh-CN": "⚙ 系统" },
-  "project.saveApply": { en: "💾 Save & Apply Changes", "zh-CN": "💾 保存并应用变更" },
-  "project.saveApplyDesc": { en: "Write switches to config file", "zh-CN": "将开关写入配置文件" },
-  "project.backToMain": { en: "🔙 Back to Main Menu", "zh-CN": "🔙 返回主菜单" },
-  "project.backToMainDesc": { en: "Return to Level 1 action menu", "zh-CN": "返回第一层操作菜单" },
-  "project.initResult": { en: "Project Initialization Result", "zh-CN": "项目初始化结果" },
-  "project.updateResult": { en: "Project Update Result", "zh-CN": "项目更新结果" },
-  "project.initFailed": { en: "Init / Update Failed", "zh-CN": "初始化 / 更新失败" },
-  "project.saveResult": { en: "Project Save Result", "zh-CN": "项目保存结果" },
-  "project.saveFailed": { en: "Save Failed", "zh-CN": "保存失败" },
-  "project.syncResult": { en: "Template Switches Sync Result", "zh-CN": "模板开关同步结果" },
-  "project.syncError": { en: "Sync Error", "zh-CN": "同步错误" },
-  "project.indexResult": { en: "Code Index Refresh Results", "zh-CN": "代码索引刷新结果" },
-  "project.indexError": { en: "Index Error", "zh-CN": "索引错误" },
-  "project.newProject": { en: "Project Setup Wizard — new project", "zh-CN": "项目设置向导 — 新建项目" },
-  "project.setupExisting": { en: "Project Setup Wizard — {config}", "zh-CN": "项目设置向导 — {config}" },
-  "project.applyUpdate": { en: "🏗 Update Project Skeleton", "zh-CN": "🏗 更新项目骨架" },
-  "project.applyInit": { en: "🏗 Initialize Project Skeleton", "zh-CN": "🏗 初始化项目骨架" },
-  "project.applyUpdateDesc": { en: "Append missing template lines & re-run backends", "zh-CN": "追加缺失的模板行并重新运行后端" },
-  "project.applyInitDesc": { en: "Create config, AGENTS.md & git-commits.md", "zh-CN": "创建配置、AGENTS.md 和 git-commits.md" },
-  "project.setupDprint": { en: "✨ Set up dprint", "zh-CN": "✨ 配置 dprint" },
-  "project.setupDprintDesc": { en: "Add local dprint and generate a config from detected files", "zh-CN": "添加项目本地 dprint，并根据检测到的文件生成配置" },
-  "project.setupDprintConfirmTitle": { en: "Set up dprint", "zh-CN": "配置 dprint" },
-  "project.setupDprintConfirm": { en: "Add dprint to this project's dev dependencies and create dprint.json using detected files? Existing formatter configurations are never changed.", "zh-CN": "将 dprint 添加到此项目的开发依赖，并根据检测到的文件创建 dprint.json？不会修改任何现有 formatter 配置。" },
-  "project.setupDprintDone": { en: "dprint is ready; created dprint.json from detected files.", "zh-CN": "dprint 已就绪；已根据检测到的文件创建 dprint.json。" },
-  "project.setupDprintFailed": { en: "dprint setup failed", "zh-CN": "dprint 配置失败" },
-  "project.configUpdated": { en: "Project configuration updated!", "zh-CN": "项目配置已更新！" },
-  "project.configSavedToast": { en: "Project configuration saved!", "zh-CN": "项目配置已保存！" },
-  "project.initSuccess": { en: "Project initialized successfully!", "zh-CN": "项目初始化成功！" },
-  "project.operationFailed": { en: "Operation failed: {err}", "zh-CN": "操作失败: {err}" },
-  "project.saveFailedMsg": { en: "Save failed: {err}", "zh-CN": "保存失败: {err}" },
-  "project.indexFailed": { en: "Index refresh failed: {err}", "zh-CN": "索引刷新失败: {err}" },
-  "project.syncMissing": { en: "⚠️ No legacy state found and project config does not exist.\nPlease run Init first.", "zh-CN": "⚠️ 未发现旧状态，且项目配置文件不存在。\n请先运行初始化。" },
-  "project.syncUpToDate": { en: "ℹ️ Nothing left to migrate.\n.ocp/ocp.json is the single source of truth.", "zh-CN": "ℹ️ 无旧状态需要迁移。\n.ocp/ocp.json 即唯一配置来源。" },
-  "project.syncAdded": { en: "✅ Successfully migrated {count} item(s) into the project config:\n\n{lines}\n\nExisting configuration content was preserved.", "zh-CN": "✅ 已将 {count} 项迁移到项目配置:\n\n{lines}\n\n已保留现有配置内容。" },
-  "project.migratedLine": { en: "🧭 Migrated {switches} switch(es), moved {files} file(s) into .ocp/", "zh-CN": "🧭 已迁移 {switches} 个开关、移动 {files} 个文件至 .ocp/" },
-  "project.syncFailed": { en: "Sync operation failed: {err}", "zh-CN": "同步操作失败: {err}" },
-  "project.noBackends": { en: "ℹ️ No backends needed index refresh.", "zh-CN": "ℹ️ 无后端需要索引刷新。" },
-
-  // ─── Async-operation loading states (showBusyModal placeholders) ────
-  // Replaces the menu with a busy DialogAlert while init/dprint/index/save run
-  // in the background. Footer shows the spinner + busyText; Enter/Esc are
-  // suppressed until the wizard replaces the frame with the result alert.
-  "project.initWorkingTitle": { en: "Initializing project", "zh-CN": "正在初始化项目" },
-  "project.initWorking": { en: "Scaffolding config files, registering hooks, and running detected backends.\nThis usually takes a few seconds.", "zh-CN": "正在生成配置文件、注册钩子、运行检测到的后端。\n这通常需要几秒钟。" },
-  "project.initBusyText": { en: "Initializing…", "zh-CN": "正在初始化…" },
-  "project.updateWorkingTitle": { en: "Updating project", "zh-CN": "正在更新项目" },
-  "project.updateWorking": { en: "Updating baseline files and re-running detected backends.\nThis usually takes a few seconds.", "zh-CN": "正在更新基线文件并重新运行检测到的后端。\n这通常需要几秒钟。" },
-  "project.updateBusyText": { en: "Updating…", "zh-CN": "正在更新…" },
-  "project.saveWorkingTitle": { en: "Saving configuration", "zh-CN": "正在保存配置" },
-  "project.saveWorking": { en: "Writing switches to config file.\nThis usually takes less than a second.", "zh-CN": "正在写入开关到配置文件。\n这通常不到一秒。" },
-  "project.saveBusyText": { en: "Saving…", "zh-CN": "正在保存…" },
-  "project.setupDprintWorkingTitle": { en: "Setting up dprint", "zh-CN": "正在配置 dprint" },
-  "project.setupDprintWorking": { en: "Installing dprint and generating dprint.json from detected files.\nThis may take a few seconds.", "zh-CN": "正在安装 dprint 并根据检测到的文件生成 dprint.json。\n这可能需要几秒钟。" },
-  "project.setupDprintBusyText": { en: "Setting up dprint…", "zh-CN": "正在配置 dprint…" },
-  "project.indexWorkingTitle": { en: "Refreshing code index", "zh-CN": "正在刷新代码索引" },
-  "project.indexWorking": { en: "Running index backends against the project.\nThis may take a few seconds for large repos.", "zh-CN": "正在对项目运行索引后端。\n大型仓库可能需要几秒钟。" },
-  "project.indexBusyText": { en: "Refreshing…", "zh-CN": "正在刷新…" },
-
-  // Switch picker labels and descriptions (each guard has its own on/off; default = the recommended runtime value).
-  "project.currentMarker": { en: "  (current)", "zh-CN": "  (当前)" },
-  "project.currentValue": { en: "Current: {value}", "zh-CN": "当前: {value}" },
-  "project.cancel": { en: "🔙 Cancel", "zh-CN": "🔙 取消" },
-  "project.cancelDesc": { en: "Keep current and return", "zh-CN": "保留当前值并返回" },
-
-  "project.pickAdvisor": { en: "Select autoAdvisorMode", "zh-CN": "选择 autoAdvisorMode" },
-  "project.valueAdvisorLite": { en: "Advisory mode (recommended)", "zh-CN": "顾问模式 (推荐)" },
-  "project.valueAdvisorFull": { en: "Decisive review mode", "zh-CN": "决定性审查模式" },
-  "project.valueAdvisorOff": { en: "Disable advisor completely", "zh-CN": "完全关闭顾问" },
-  "project.toastAdvisor": { en: "autoAdvisorMode -> {value}", "zh-CN": "autoAdvisorMode -> {value}" },
-
-  "project.pickAdrGuard": { en: "Select adrGuard", "zh-CN": "选择 adrGuard" },
-  "project.valueGuardAdrOn": { en: "Enforce ADR change check on feat/refactor", "zh-CN": "对 feat / refactor 类型启用 ADR 变更检查" },
-  "project.valueGuardAdrOff": { en: "Disable ADR guard check", "zh-CN": "关闭 ADR 守卫检查" },
-  "project.toastAdrGuard": { en: "adrGuard -> {value}", "zh-CN": "adrGuard -> {value}" },
-
-  "project.pickEnvGuard": { en: "Select envGuard", "zh-CN": "选择 envGuard" },
-  "project.valueGuardEnvOn": { en: "Block agent reading secret .env files", "zh-CN": "阻止代理读取 .env 密钥文件" },
-  "project.valueGuardEnvOff": { en: "Allow unrestricted access to env files", "zh-CN": "允许对 .env 文件的无限制访问" },
-  "project.toastEnvGuard": { en: "envGuard -> {value}", "zh-CN": "envGuard -> {value}" },
-
-  "project.valueGuardMemoryOn": { en: "Inject curated project-memory lessons", "zh-CN": "注入已整理的项目记忆经验" },
-  "project.valueGuardMemoryOff": { en: "Never inject project memory", "zh-CN": "从不注入项目记忆" },
-  "project.toastGuard": { en: "{key} -> {value}", "zh-CN": "{key} -> {value}" },
-
-  "project.pickAdrLayout": { en: "Select ADR Layout (adrLayout)", "zh-CN": "选择 ADR 布局 (adrLayout)" },
-  "project.valueAdrLayoutAuto": { en: "Smart adaptive (flat <=15, hierarchy >15)", "zh-CN": "智能适配 (≤15 平铺, >15 分层)" },
-  "project.valueAdrLayoutFlat": { en: "Single directory (0001-xxx.md)", "zh-CN": "单目录 (0001-xxx.md)" },
-  "project.valueAdrLayoutHierarchy": { en: "Domain subdirectories (auth/0001-xxx.md)", "zh-CN": "按域划分子目录 (auth/0001-xxx.md)" },
-  "project.toastAdrLayout": { en: "adrLayout -> {value}", "zh-CN": "adrLayout -> {value}" },
-
-  "project.pickAdrDir": { en: "Select ADR Directory (adrDir)", "zh-CN": "选择 ADR 目录 (adrDir)" },
-  "project.valueAdrDirDocsAdr": { en: "Standard docs/adr/ folder", "zh-CN": "标准 docs/adr/ 目录" },
-  "project.valueAdrDirCustom": { en: "✍️ Custom Path...", "zh-CN": "✍️ 自定义路径..." },
-  "project.valueAdrDirCustomDesc": { en: "Type custom directory path", "zh-CN": "输入自定义目录路径" },
-  "project.promptAdrDirTitle": { en: "Custom ADR Directory", "zh-CN": "自定义 ADR 目录" },
-  "project.promptAdrDirPlaceholder": { en: "e.g. docs/adr", "zh-CN": "例如 docs/adr" },
-  "project.toastAdrDir": { en: "adrDir -> {value}", "zh-CN": "adrDir -> {value}" },
-
-  // Switch row descriptors on the Level-2 (configure switches) menu.
-  "project.switchAdvisor": { en: "Advisor reviews (lite / full / off)", "zh-CN": "顾问审查 (lite / full / off)" },
-  "project.switchAdrGuard": { en: "Enforce ADR on feat/refactor", "zh-CN": "对 feat / refactor 启用 ADR 守护" },
-  "project.switchAdrDir": { en: "ADR markdown folder path", "zh-CN": "ADR Markdown 目录路径" },
-  "project.switchAdrLayout": { en: "ADR structure (auto/flat/hierarchy)", "zh-CN": "ADR 结构 (auto / flat / hierarchy)" },
-  "project.switchAdrStyle": { en: "ADR document style for NEW records (persists as adr.style)", "zh-CN": "新建 ADR 的文档样式（持久化为 adr.style）" },
-  "project.valueAdrStyleMadr": { en: "MADR — lightweight, status + context/options/decision", "zh-CN": "MADR —— 轻量模板，含状态与 背景/选项/决策" },
-  "project.valueAdrStyleNygard": { en: "Nygard — classic, context/decision/consequences", "zh-CN": "Nygard —— 经典格式，含 背景/决策/后果" },
-  "project.valueAdrStyleOcp": { en: "ocp container — one record per decision batch (iteration form with --baseline/--iteration, sequential ADR-NNNN otherwise)", "zh-CN": "ocp 容器 —— 一批决策一条记录（带 --baseline/--iteration 为迭代容器，否则顺序 ADR-NNNN）" },
-  "project.switchAdrNumbering": { en: "ADR ID numbering (adr.numbering)", "zh-CN": "ADR 编号方式 (adr.numbering)" },
-  "project.valueAdrNumberingSequential": { en: "Sequential — 0001, 0002, ... (ADR log)", "zh-CN": "顺序编号 —— 0001、0002……（决策日志）" },
-  "project.valueAdrNumberingIteration": { en: "Per-iteration — baseline/iteration based IDs", "zh-CN": "按迭代编号 —— 基于 baseline / iteration 的 ID" },
-  "project.switchAdrGovernance": { en: "ADR governance mode (adr.governance)", "zh-CN": "ADR 治理模式 (adr.governance)" },
-  "project.valueAdrGovernanceNone": { en: "None — propose freely, no acceptance gate", "zh-CN": "无 —— 自由提议，无采纳门控" },
-  "project.valueAdrGovernanceReview": { en: "Review — accepted only after recorded review", "zh-CN": "评审 —— 记录评审后才可 accepted" },
-  "project.valueAdrGovernanceStrict": { en: "Strict — user-only /adr decide ratification", "zh-CN": "严格 —— 仅用户可通过 /adr decide 拍板" },
-  "project.adrSuiteStandardDesc": { en: "Plain ADR log — madr · sequential · auto layout · no governance", "zh-CN": "纯决策日志 —— madr · 顺序编号 · auto 布局 · 无治理" },
-  "project.adrSuiteEvolutionDesc": { en: "Decisions per iteration — madr · iteration numbering · hierarchical layout · review governance", "zh-CN": "按迭代跟踪决策 —— madr · 迭代编号 · 层级布局 · review 治理" },
-  "project.adrSuiteOcpDesc": { en: "Container record per iteration (OCP discipline) — ocp · iteration numbering · hierarchical layout · review governance; every /adr new needs --baseline/--iteration", "zh-CN": "每迭代一条容器记录（OCP 纪律）—— ocp · 迭代编号 · 层级布局 · review 治理；每次 /adr new 须带 --baseline/--iteration" },
-  "project.switchEnvGuard": { en: "Protect secret .env file reads", "zh-CN": "保护 .env 密钥文件读取" },
-  "project.switchProjectMemory": { en: "Inject curated project memory into context (.ocp/memory/public.md inside the project, committed)", "zh-CN": "将整理后的项目记忆注入上下文(项目内 .ocp/memory/public.md,进 git)" },
-  "project.nameEnvGuard": { en: "envGuard", "zh-CN": "环境护栏" },
-  "project.nameAdrGuard": { en: "adrGuard", "zh-CN": "ADR 护栏" },
-  "project.nameProjectMemory": { en: "projectMemory", "zh-CN": "项目记忆" },
-
-  // ════════════════════════════════════════════════════════════════
-  // ── Usage (token/cost view — usage.ts) ───────────────────────────
-  // ════════════════════════════════════════════════════════════════
-  "usage.commandTitle": { en: "Show token usage", "zh-CN": "查看 token 用量" },
-  "usage.commandDesc": { en: "Token/cost usage with tabbed dimensions (session / agent / model) — 1/2/3 or ←→ to switch, ↑/↓ to scroll", "zh-CN": "按会话 / Agent / 模型分 tab 查看 token/费用消耗 — 1/2/3 或 ←→ 切换，↑/↓ 滚动" },
-  "usage.dialogTitle": { en: "Token usage", "zh-CN": "Token 用量" },
-  "usage.dimPrev": { en: "Previous usage tab", "zh-CN": "上一个用量 tab" },
-  "usage.dimNext": { en: "Next usage tab", "zh-CN": "下一个用量 tab" },
-  "usage.dimSession": { en: "By session", "zh-CN": "按会话" },
-  "usage.dimAgent": { en: "By agent", "zh-CN": "按Agent" },
-  "usage.dimModel": { en: "By model", "zh-CN": "按模型" },
-  "usage.scrollHint": { en: "↑/↓ scroll · rows {first}–{last} of {total}", "zh-CN": "↑/↓ 滚动 · 第 {first}–{last} 行 / 共 {total} 行" },
-  "usage.totalRow": { en: "total", "zh-CN": "总计" },
-  "usage.hSession": { en: "session", "zh-CN": "会话" },
-  "usage.hAgent": { en: "agent", "zh-CN": "Agent" },
-  "usage.hSessions": { en: "sess", "zh-CN": "会话" },
-  "usage.hIn": { en: "in", "zh-CN": "输入" },
-  "usage.hOut": { en: "out", "zh-CN": "输出" },
-  "usage.hCached": { en: "cached", "zh-CN": "缓存" },
-  "usage.hCost": { en: "cost", "zh-CN": "费用" },
-  "usage.hCredits": { en: "credits", "zh-CN": "积分" },
-  "usage.hSteps": { en: "steps", "zh-CN": "步数" },
-  "usage.hHit": { en: "hit", "zh-CN": "命中率" },
-  "usage.hShare": { en: "share", "zh-CN": "占比" },
-  "usage.hModel": { en: "model", "zh-CN": "模型" },
-  "usage.hitCell": { en: "hit {hit}% · {total}", "zh-CN": "命中 {hit}% · {total}" },
-  "usage.estimateNote": { en: "🪙 = simulated pricing (public list-price estimate, not an actual invoice)", "zh-CN": "🪙 = 模拟计价（按公开标价估算，非实际账单）" },
-  "usage.estimateFloor": { en: "Some models were not found on models.dev; those rows use a low-end market-floor fallback.", "zh-CN": "部分模型未在 models.dev 匹配到价格，已按市场最低价下界兜底估算。" },
-  "usage.fullIdMapping": { en: "Full IDs:", "zh-CN": "模型全名:" },
-  "usage.noData": { en: "📊 No token data for the current session yet.", "zh-CN": "📊 当前会话还没有 token 数据。" },
-  "usage.picker.today": { en: "Today", "zh-CN": "今天" },
-  "usage.picker.yesterday": { en: "Yesterday", "zh-CN": "昨天" },
-  "usage.picker.daysAgo": { en: "2 days ago", "zh-CN": "前天" },
-  "usage.picker.earlier": { en: "Earlier", "zh-CN": "之前" },
-  "usage.picker.filterHint": { en: "Type to filter", "zh-CN": "输入以筛选" },
-  "usage.unknownSub": { en: "📊 Unknown subcommand \"{sub}\". Usage: /usage [all|model]", "zh-CN": "📊 未知子命令 \"{sub}\"。用法: /usage [all|model]" },
-  "usage.failed": { en: "📊 Failed to query usage: {err}", "zh-CN": "📊 查询用量失败: {err}" },
-
-  // Context-watch: long-session reminders injected above the table.
-  // Three tiers — gentle hint at soft threshold, strong warning past the
-  // standard attention-decay boundary, and a hard "you should handoff
-  // now" beyond the compaction safety line. Compactions flagging fires
-  // independently because compaction is an opencode-internal action the
-  // user can't undo from the prompt side.
-  "usage.contextWarning.soft": {
-    en: "💡 {count} turns — early context may be losing weight. Consider asking the agent for a recap before the next task.",
-    "zh-CN": "💡 已 {count} 轮 — 早期上下文可能开始在弱化。下一步任务前建议让 agent 做个小结。",
-  },
-  "usage.contextWarning.strong": {
-    en: "⚠️ {count} turns — context is getting heavy. Strongly recommend wrapping up and opening a fresh session with a recap bridge.",
-    "zh-CN": "⚠️ 已 {count} 轮 — 上下文已经很重。强烈建议尽快收尾，用小结桥接开新会话。",
-  },
-  "usage.contextWarning.hard": {
-    en: "🚨 {count} turns — past the attention-decay line. Old instructions may already be forgotten; a fresh session will be cheaper AND more reliable.",
-    "zh-CN": "🚨 已 {count} 轮 — 超过注意力衰减红线。早期指令可能已经被遗忘，开新会话既省钱又可靠。",
-  },
-  "usage.contextWarning.compactions": {
-    en: "⚠️ {count} compaction(s) detected — opencode has already auto-summarized earlier context. Past history may be lossy.",
-    "zh-CN": "⚠️ 已发生 {count} 次自动压缩 — opencode 已经摘要过早期上下文，更早的历史可能有损。",
-  },
-
-  // ════════════════════════════════════════════════════════════════
-  // ── Host (standalone OpenTUI shell: right-click copy) ──────────
-  // ════════════════════════════════════════════════════════════════
-  "host.copy.copied": { en: "📋 Copied {count} characters", "zh-CN": "📋 已复制 {count} 个字符" },
-  "host.copy.empty": { en: "📋 No selection — drag to select text, then right-click to copy", "zh-CN": "📋 未选中内容 — 先拖动选中文字，再右键复制" },
-  "host.copy.failed": { en: "📋 Copy failed — this terminal does not allow clipboard writes", "zh-CN": "📋 复制失败 — 当前终端不支持剪贴板写入" },
-
-  // ════════════════════════════════════════════════════════════════
-  // ── Guard command/announce layer (server-side plugins) ────────
-  //   Locale-invariant by design: [plugin] prefixes, `gate:`/`Status:`
-  //   labels, on/off/ON/OFF/ACTIVE/INACTIVE tokens, subcommand names,
-  //   paths, config field names. Prose is translated. LLM-facing
-  //   protocol/injection fragments stay English and are NOT here.
-  // ════════════════════════════════════════════════════════════════
-
-  // ── project-memory (/memory) ──
-  "guard.memory.help": {
-    en: "[project-memory] Project-level lessons memory — two scopes, one gate.\n" +
-      "  Public file:  {public} (committed to git, reviewed via PR flow)\n" +
-      "  Private file: {private} (project-scoped, gitignored — escape hatch for notes the team should not see)\n\n" +
-      "Usage:\n" +
-      "/memory note <lesson>           → append a dated entry to public.md (default)\n" +
-      "/memory note --private <lesson> → append to gitignored private.md (escape hatch)\n" +
-      "/memory on | off                → toggle injection of both into the system prompt\n" +
-      "/memory status                  → gate state + public/private entry counts\n\n" +
-      "Both scopes are advisory — AGENTS.md stays authoritative on conflict.",
-    "zh-CN": "[project-memory] 项目级经验记忆 —— 两个 scope，一个开关。\n" +
-      "  公开文件：{public}（进 git，通过常规 PR 流程由团队把关）。\n" +
-      "  私人文件：{private}（项目作用域，gitignored —— 仅当前用户可见，团队不应该看到的笔记的逃生口）。\n\n" +
-      "用法：\n" +
-      "/memory note <lesson>           → 将一条带日期条目追加到 public.md（默认）\n" +
-      "/memory note --private <lesson> → 追加到 gitignored 的 private.md（个人逃生口）\n" +
-      "/memory on | off                → 切换是否把两个文件注入系统提示\n" +
-      "/memory status                  → 开关状态 + 公开/私人条目计数\n\n" +
-      "两个 scope 都只是建议 —— 冲突时以 AGENTS.md 为准。",
-  },
-  "guard.memory.noted": { en: "[project-memory] Noted to {path} — entry is live in {memory} ({scope} scope).", "zh-CN": "[project-memory] 已记入 {path} — 条目已在 {memory} 中生效（{scope} scope）。" },
-  "guard.memory.scopePublic": { en: "public", "zh-CN": "公开" },
-  "guard.memory.scopePrivate": { en: "private", "zh-CN": "私人" },
-  "guard.memory.nothing": { en: "[project-memory] Nothing to note — usage: /memory note <lesson> (or /memory note --private <lesson>)", "zh-CN": "[project-memory] 没有可记的内容 —— 用法：/memory note <经验>（或 /memory note --private <经验>）" },
-  "guard.memory.unknown": { en: "[project-memory] Unknown subcommand \"{sub}\".", "zh-CN": "[project-memory] 未知子命令 \"{sub}\"。" },
-  "guard.memory.set": { en: "[project-memory] Injection {STATE} — wrote \"projectMemory\": \"{state}\" to {path}.", "zh-CN": "[project-memory] 注入已{zhState} —— 已把 \"projectMemory\": \"{state}\" 写入 {path}。" },
-  "guard.memory.setFail": { en: "[project-memory] Failed to write the project config — edit the \"{field}\" field of .ocp/ocp.json by hand.", "zh-CN": "[project-memory] 写入项目配置失败 —— 请手工编辑 .ocp/ocp.json 的 \"{field}\" 字段。" },
-  "guard.memory.status": { en: "[project-memory] gate: {gate} — public: {public}, private: {private}. Injection {flag}.", "zh-CN": "[project-memory] gate: {gate} —— 公开：{public}，私人：{private}。注入 {flag}。" },
-  "guard.memory.entries": { en: "{count} entries", "zh-CN": "{count} 条" },
-  "guard.memory.missing": { en: "missing/empty", "zh-CN": "缺失或为空" },
-  "guard.memory.noCurated": { en: "[project-memory] NOTE: gate is ON but both files are missing/empty — nothing is injected. Note with /memory note \"<lesson>\" (public) or /memory note --private \"<note>\" (private) to populate.", "zh-CN": "[project-memory] 注意：开关已开但两个文件都缺失或为空，当前无任何注入。用 /memory note \"<经验>\"（公开）或 /memory note --private \"<笔记>\"（私人）写入第一条。" },
-  "guard.memory.showHeader": { en: "[project-memory] Active memory preview (what the LLM sees on each chat request):", "zh-CN": "[project-memory] 当前活跃记忆预览（LLM 每次聊天请求看到的内容）：" },
-  "guard.memory.showScope": { en: "=== {label} ({count} entries, last edited {mtime}){stale} ===", "zh-CN": "=== {label}（{count} 条，最后修改 {mtime}）{stale} ===" },
-  "guard.memory.showStale": { en: " — STALE (>30 days), consider review", "zh-CN": " —— 已过期（>30 天），建议 review" },
-  "guard.memory.showPaths": { en: "Files:\n  public:  {public}\n  private: {private}", "zh-CN": "文件路径：\n  公开：  {public}\n  私人：{private}" },
-  "guard.memory.showEmpty": { en: "[project-memory] No memory captured yet — nothing injected.\nNote with /memory note \"<lesson>\" (public) or /memory note --private \"<note>\" (private).\nFiles:\n  public:  {public}\n  private: {private}", "zh-CN": "[project-memory] 暂无任何记录——当前无注入内容。\n用 /memory note \"<经验>\"（公开）或 /memory note --private \"<笔记>\"（私人）写入第一条。\n文件路径：\n  公开：  {public}\n  私人：{private}" },
-
-  // ── e2e-adopt (/e2e-adopt) ──
-  "guard.e2eadopt.help": {
-    en: "[e2e-adopt] Adopt the E2E red-line policy into project docs (baijiu-shop-style documentation governance — no runtime switch).\nUsage:\n/e2e-adopt        → detect E2E setup, write docs/e2e-redline.md + insert the red-line section into AGENTS.md\n/e2e-adopt dry    → preview detection + placeholders, write nothing\n/e2e-adopt status → report whether the policy is adopted\nUninstall: delete docs/e2e-redline.md and the <!-- e2e-redline --> section in AGENTS.md.",
-    "zh-CN": "[e2e-adopt] 将 E2E 红线政策落进项目文档（baijiu-shop 式文档治理——无运行时开关）。\n用法：\n/e2e-adopt        → 检测 E2E 环境，写入 docs/e2e-redline.md 并在 AGENTS.md 插入红线小节\n/e2e-adopt dry    → 仅预览检测结果与待填占位符，不写任何文件\n/e2e-adopt status → 报告政策是否已采纳\n卸载：删除 docs/e2e-redline.md 和 AGENTS.md 中的 <!-- e2e-redline --> 小节。",
-  },
-  "guard.e2eadopt.detect": { en: "Detection: e2e-dir={dir} · runner-config={runner} · command=to be filled (stack-agnostic by design)", "zh-CN": "检测结果：e2e 目录={dir} · runner 配置={runner} · 命令=待填（按设计不猜测技术栈）" },
-  "guard.e2eadopt.fillHint": { en: "⚠ {{E2E_COMMAND}} is intentionally not guessed — ask the agent to inspect the repo's build/test setup and fill it (plus {{E2E_DIR}} / {{CRITICAL_JOURNEYS}} if empty) in docs/e2e-redline.md, or edit by hand.", "zh-CN": "⚠ {{E2E_COMMAND}} 按设计不做猜测 —— 请让 agent 检查仓库的构建/测试配置后代填（含 {{E2E_DIR}} / {{CRITICAL_JOURNEYS}} 如为空），或手工编辑 docs/e2e-redline.md。" },
-  "guard.e2eadopt.applied": { en: "[e2e-adopt] Adopted — E2E red-line policy written into project docs:", "zh-CN": "[e2e-adopt] 已采纳 —— E2E 红线政策已写入项目文档：" },
-  "guard.e2eadopt.dry": { en: "[e2e-adopt] Dry run — nothing written.", "zh-CN": "[e2e-adopt] 预览模式 —— 未写入任何文件。" },
-  "guard.e2eadopt.status": { en: "[e2e-adopt] Adoption status — doc: {doc} · AGENTS.md section: {section}", "zh-CN": "[e2e-adopt] 采纳状态 —— 文档：{doc} · AGENTS.md 小节：{section}" },
-  "guard.e2eadopt.placeholders": { en: "⚠ Unfilled placeholders: {list} — fill them in docs/e2e-redline.md.", "zh-CN": "⚠ 待填占位符：{list} —— 请在 docs/e2e-redline.md 中补全。" },
-  "guard.e2eadopt.agentsMissing": { en: "AGENTS.md not found — section NOT written (a minimal AGENTS.md would make /project init skip its full baseline). Run /project init or create AGENTS.md, then re-run /e2e-adopt.", "zh-CN": "未找到 AGENTS.md —— 未写入小节（最小化的 AGENTS.md 会让 /project init 跳过完整基线）。请先运行 /project init 或创建 AGENTS.md，再重跑 /e2e-adopt。" },
-  "guard.e2eadopt.agentsMalformed": { en: "⚠ AGENTS.md e2e-redline markers are malformed (crossed or duplicated) — nothing written. Clean up the markers by hand, then re-run /e2e-adopt.", "zh-CN": "⚠ AGENTS.md 的 e2e-redline 标记形态异常（交叉或重复）—— 未写入任何内容。请手工整理标记后重跑 /e2e-adopt。" },
-  "guard.e2eadopt.writeFail": { en: "[e2e-adopt] Write failed: {error}", "zh-CN": "[e2e-adopt] 写入失败：{error}" },
-  "guard.e2eadopt.uninstall": { en: "Uninstall: delete docs/e2e-redline.md and the <!-- e2e-redline --> section in AGENTS.md.", "zh-CN": "卸载：删除 docs/e2e-redline.md 和 AGENTS.md 中的 <!-- e2e-redline --> 小节。" },
-
-  // ── adr plugin (/adr; guard submodule + /adr-guard alias) ──
-  "guard.adr.announceOn": { en: "[adr] guard ON — every feat/refactor commit requires a new/updated ADR ({dir}/). /adr guard off to disable.", "zh-CN": "[adr] guard ON —— 每个 feat/refactor 提交都需要新增/更新 ADR（{dir}/）。用 /adr guard off 关闭。" },
-  "guard.adr.announceOff": { en: "[adr] guard OFF — no ADR enforcement. /adr guard on to enable the iron law for this project.", "zh-CN": "[adr] guard OFF —— 不做 ADR 强制。用 /adr guard on 为本项目启用铁律。" },
-  "guard.adr.statusMsg": { en: "[adr] guard Status: {state} | ADR dir: {dir}/ | switch: /adr guard on|off (project-level, stored in .ocp/ocp.json)", "zh-CN": "[adr] guard Status: {state} | ADR 目录：{dir}/ | 开关：/adr guard on|off（项目级，存于 .ocp/ocp.json）" },
-  "guard.adr.help": {
-    en: "### 🏛️ Architecture Decision Records (/adr)\n\nCurrent Layout: **`{mode}`**\n\nCommands:\n- `/adr compaction [--mode summary|consolidate]` — Read-only by default; native cost/review Ask for explicit drafting. `/adr compaction --help` for archive/recovery flags.\n- `/adr check --compaction` — Read-only provenance and lineage checks.\n- `/adr config readGuard off|warn|guard` — Independent reading policy (default off).\n- `/adr [new] [layer/scope] <title> [--empty] [--style madr|nygard|ocp] [--numbering sequential|iteration --baseline B --iteration I]` — Create and auto-draft a new ADR (use --empty for template only); --style ocp scaffolds a CONTAINER (iteration form with --baseline/--iteration, sequential otherwise)\n- `/adr section <ADR-x.y.z> <title>` — Append one section (🟡 pending) to an ocp container; fill the five-part skeleton\n- `/adr decide <ADR-ID> [note]` — User-only accept: flip proposed → accepted with a ledger entry (strict governance only; the agent never self-accepts)\n- `/adr init [standard|evolution|custom]` — Detect project shape, pick a suite, persist adr.* config (detection pre-selects, never applies silently)\n- `/adr supersede <old-id> <new-title> [--empty]` — Supersede an old decision & auto-draft replacement\n- `/adr tree` — Visualize hierarchical decision tree & Mermaid DAG\n- `/adr tree --by path|layer|domain|iteration` — Deterministic logical views over normalized records\n- `/adr history <ADR-ID>` — Traverse the supersession chain (predecessors + successors, cross-style safe)\n- `/adr glossary [locale]` — Decode the fixed English grammar labels in your language (8 locales; default: session language)\n- `/adr check` — Verify ADR integrity, links, and complexity advice\n- `/adr check --report-style` — List each document's resolved style (legacy flag included); report-only\n- `/adr check --profile evolution` — Add opt-in discipline: rejected alternatives with cons, good/bad consequences, Confirmation for `risk: high` records\n- `/adr context <ADR-ID>` / `--domain <slug>` / `--iteration <id>` — Bounded context bundle (selected records + direct relations only, retrieval path reported)\n- `/adr layout [auto|flat|hierarchical]` — Configure ADR layout\n- `/adr migrate [flat|hierarchical] [--confirm]` — Plan and restructure ADR architecture\n- `/adr migrate --to nygard|madr [--dry-run|--confirm]` — Explicit style conversion (dry-run default; warns about dropped MADR-only content)\n- `/adr guard on|off|reset|status` — Toggle commit-guard enforcement (alias: `/adr-guard`)",
-    "zh-CN": "### 🏛️ 架构决策记录 (/adr)\n\n当前布局：**`{mode}`**\n\n命令：\n- `/adr compaction [--mode summary|consolidate]` — 默认只读；显式起草使用原生成本／评审 Ask。归档与恢复参数见 `/adr compaction --help`。\n- `/adr check --compaction` — 只读来源与血缘检查。\n- `/adr config readGuard off|warn|guard` — 独立读取策略（默认 off）。\n- `/adr [new] [层级/范围] <标题> [--empty] [--style madr|nygard|ocp] [--numbering sequential|iteration --baseline B --iteration I]` — 新建并自动起草 ADR（--empty 仅生成模板）；--style ocp 生成容器（带 --baseline/--iteration 为迭代形态，否则顺序编号）\n- `/adr section <ADR-x.y.z> <标题>` —— 向 ocp 容器追加一个板块（🟡 待拍板），补全五段骨架\n- `/adr decide <ADR-ID> [附言]` —— 仅用户可拍板：proposed → accepted 并留账本（仅 strict 治理模式；智能体无权自我采纳）\n- `/adr init [standard|evolution|custom]` — 侦测项目形态、选择套件并持久化 adr.* 配置（侦测仅预选，绝不静默套用）\n- `/adr supersede <旧id> <新标题> [--empty]` — 取代旧决策并自动起草替代文档\n- `/adr tree` — 展示层级决策树 & Mermaid DAG\n- `/adr tree --by path|layer|domain|iteration` — 基于规范化记录的确定性逻辑视图\n- `/adr history <ADR-ID>` — 遍历取代链（前驱 + 后继，跨样式安全）\n- `/adr glossary [语言]` — 以你的语言解码固定英文语法标签（8 种语言；默认：会话语言）\n- `/adr check` — 校验 ADR 完整性、链接并给出复杂度建议\n- `/adr check --report-style` — 列出每份文档的解析样式（含 legacy 标记）；仅报告\n- `/adr check --profile evolution` — 追加可选纪律：带 cons 的备选方案、好坏后果拆分、`risk: high` 记录需 Confirmation\n- `/adr context <ADR-ID>` / `--domain <slug>` / `--iteration <id>` — 有界上下文包（仅选中记录 + 直接关系，报告检索路径）\n- `/adr layout [auto|flat|hierarchical]` — 配置 ADR 布局\n- `/adr migrate [flat|hierarchical] [--confirm]` — 规划并重组 ADR 架构\n- `/adr migrate --to nygard|madr [--dry-run|--confirm]` — 显式样式转换（默认 dry-run；对 MADR 独有内容丢失给出警告）\n- `/adr guard on|off|reset|status` — 切换提交护栏强制检查（别名：`/adr-guard`）",
-  },
-  "guard.adr.layoutCurrent": { en: "🏛️ ADR Layout is currently set to: **`{mode}`** (in project .ocp/ocp.json)\nOptions: `/adr layout auto`, `/adr layout flat`, `/adr layout hierarchical`", "zh-CN": "🏛️ ADR 布局当前为：**`{mode}`**（项目 .ocp/ocp.json）\n可选：`/adr layout auto`、`/adr layout flat`、`/adr layout hierarchical`" },
-  "guard.adr.layoutInvalid": { en: "❌ Invalid ADR layout `{rest}`. Valid values are: `auto`, `flat`, `hierarchical`.", "zh-CN": "❌ 无效的 ADR 布局 `{rest}`。可选：`auto`、`flat`、`hierarchical`。" },
-  "guard.adr.layoutSet": { en: "✅ ADR Layout updated to: **`{mode}`** (saved in project .ocp/ocp.json).", "zh-CN": "✅ ADR 布局已更新为 **`{mode}`**（已保存到项目 .ocp/ocp.json）。" },
-  "guard.adr.migrateHint": { en: "💡 **Restructuring Available**: {count} file(s) can be automatically reorganized to match the `{mode}` layout.\nRun `/adr migrate {mode}` to preview and apply.", "zh-CN": "💡 **可重组**：{count} 个文件可自动整理为 `{mode}` 布局。\n运行 `/adr migrate {mode}` 预览并执行。" },
-  "guard.adr.migrateNone": { en: "ℹ️ **ADR Migration Plan ({cur} $\\to$ {target})**:\nAll ADR files are already in optimal locations. No file moves required.", "zh-CN": "ℹ️ **ADR 迁移计划（{cur} → {target}）**：\n所有 ADR 文件已在最佳位置，无需移动。" },
-  "guard.adr.migrateDoneHead": { en: "🎉 **ADR Migration Completed ({cur} $\\to$ {target})**\n\nSuccessfully relocated **{count}** file(s) and synchronized indexes:\n\n", "zh-CN": "🎉 **ADR 迁移完成（{cur} → {target}）**\n\n已成功移动 **{count}** 个文件并同步索引：\n\n" },
-  "guard.adr.migratePreviewHead": { en: "📋 **ADR Migration Preview ({cur} $\\to$ {target})**\n\nProposed Restructuring Plan (**{count}** moves):\n\n", "zh-CN": "📋 **ADR 迁移预览（{cur} → {target}）**\n\n拟议重组计划（**{count}** 次移动）：\n\n" },
-  "guard.adr.migrateTableHead": { en: "| Source Path | Target Path | Title | Layer |\n| :--- | :--- | :--- | :--- |\n", "zh-CN": "| 源路径 | 目标路径 | 标题 | 层级 |\n| :--- | :--- | :--- | :--- |\n" },
-  "guard.adr.migrateNoWrite": { en: "\n⚠️ *No files have been modified yet.* To execute this migration, run:\n", "zh-CN": "\n⚠️ *尚未修改任何文件。* 要执行本迁移，请运行：\n" },
-  "guard.adr.checkOk": { en: "✅ **ADR Integrity Check Passed**: All ADRs, links, and indexes are consistent.\n\n", "zh-CN": "✅ **ADR 完整性检查通过**：所有 ADR、链接与索引一致。\n\n" },
-  "guard.adr.checkIssues": { en: "⚠️ **ADR Integrity Issues Found ({count})**:\n\n", "zh-CN": "⚠️ **发现 ADR 完整性问题（{count}）**：\n\n" },
-  "guard.adr.complexityHead": { en: "💡 **Architecture Complexity Advisory**:\n", "zh-CN": "💡 **架构复杂度建议**：\n" },
-  "guard.adr.complexityRun": { en: "👉 Run `/adr migrate {mode}` to preview the recommended restructuring.", "zh-CN": "👉 运行 `/adr migrate {mode}` 预览建议的重组方案。" },
-  "guard.adr.newUsage": { en: "❌ Usage: `/adr [new] [system|domain|component|scope] <title> [--empty]`\nExample: `/adr \"Core Event Architecture\"` or `/adr new system \"Core Event Architecture\"`", "zh-CN": "❌ 用法：`/adr [new] [system|domain|component|范围] <标题> [--empty]`\n示例：`/adr \"核心事件架构\"` 或 `/adr new system \"核心事件架构\"`" },
-  "guard.adr.createdScaffold": { en: "✅ **Created ADR [{id}] ({layer}) [Scaffold Only]**\n\n- File: `{file}`\n- Empty template ready. Edit file and commit alongside your code.\n\n**Protocol**: read `skills/adr-protocol/SKILL.md` (§7 output protocol + prose language rule) before filling the body — the scaffold placeholders are grammar-validated, fill the structure, do not rewrite it as prose.", "zh-CN": "✅ **已创建 ADR [{id}]（{layer}）[仅骨架]**\n\n- 文件：`{file}`\n- 空模板已就绪。编辑该文件并随代码一起提交。\n\n**协议**：填充正文前先读 `skills/adr-protocol/SKILL.md`（§7 输出协议 + 散文语言规则）—— scaffold 占位符受语法校验，按结构填充，不要改写成散文。" },
-  "guard.adr.created": { en: "✅ **Created ADR [{id}] ({layer})**\n\n- File: `{file}`\n- 🤖 *Agent is analyzing codebase context and auto-drafting decision document...*\n- **Protocol**: read `skills/adr-protocol/SKILL.md` (§output protocol + §prose language rule) BEFORE drafting — fill the scaffold structure, do not rewrite it as prose; draft ALL prose in the team's working language.\n- 💡 *SDD Lifecycle: After drafting this ADR, proceed to `/plan` or jump directly to `/impl`.*", "zh-CN": "✅ **已创建 ADR [{id}]（{layer}）**\n\n- 文件：`{file}`\n- 🤖 *智能体正在分析代码库上下文并自动起草决策文档...*\n- **协议**：起草前先读 `skills/adr-protocol/SKILL.md`（§输出协议 + §散文语言规则）—— 按 scaffold 结构填充，不要改写成散文；全部散文用团队工作语言起草。\n- 💡 *SDD 生命周期：起草本 ADR 后，进入 `/plan` 或直接跳到 `/impl`。*" },
-  "guard.adr.createFail": { en: "❌ Failed to create ADR: {err}", "zh-CN": "❌ 创建 ADR 失败：{err}" },
-  "guard.adr.supUsage": { en: "❌ Usage: `/adr supersede <old-id-or-path> <new-title> [--empty]`\nExample: `/adr supersede 0001 \"NATS Streaming Standard\"`", "zh-CN": "❌ 用法：`/adr supersede <旧id或路径> <新标题> [--empty]`\n示例：`/adr supersede 0001 \"NATS 流式标准\"`" },
-  "guard.adr.supMissingTitle": { en: "❌ Missing new ADR title.\nUsage: `/adr supersede <old-id-or-path> <new-title> [--empty]`", "zh-CN": "❌ 缺少新 ADR 标题。\n用法：`/adr supersede <旧id或路径> <新标题> [--empty]`" },
-  "guard.adr.supDoneScaffold": { en: "🔄 **Superseded ADR [{old}] $\\to$ [{new}] [Scaffold Only]**\n\n- Old ADR: `{oldPath}` (marked as superseded)\n- New ADR: `{newPath}` (accepted)\n- Indexes updated.", "zh-CN": "🔄 **已取代 ADR [{old}] → [{new}] [仅骨架]**\n\n- 旧 ADR：`{oldPath}`（已标记为被取代）\n- 新 ADR：`{newPath}`（已采纳）\n- 索引已更新。" },
-  "guard.adr.supDone": { en: "🔄 **Superseded ADR [{old}] $\\to$ [{new}]**\n\n- Old ADR: `{oldPath}` (marked as superseded)\n- New ADR: `{newPath}` (accepted)\n- 🤖 *Agent is analyzing codebase context and auto-drafting replacement decision...*\n- **Protocol**: read `skills/adr-protocol/SKILL.md` (§output protocol + §prose language rule) BEFORE drafting — fill the scaffold structure; cross-reference the superseded ADR back.\n- 💡 *SDD Lifecycle: After drafting this ADR, proceed to `/plan` or jump directly to `/impl`.*", "zh-CN": "🔄 **已取代 ADR [{old}] → [{new}]**\n\n- 旧 ADR：`{oldPath}`（已标记为被取代）\n- 新 ADR：`{newPath}`（已采纳）\n- 🤖 *智能体正在分析代码库上下文并自动起草替代决策...*\n- **协议**：起草前先读 `skills/adr-protocol/SKILL.md`（§输出协议 + §散文语言规则）—— 按 scaffold 结构填充；回链被取代的 ADR。\n- 💡 *SDD 生命周期：起草本 ADR 后，进入 `/plan` 或直接跳到 `/impl`。*" },
-  "guard.adr.supFail": { en: "❌ Failed to supersede ADR: {err}", "zh-CN": "❌ 取代 ADR 失败：{err}" },
-  "guard.adr.sectionUsage": { en: "❌ Usage: `/adr section <container> <title>` — e.g. `/adr section ADR-0.2.54 \"calcMode dual mode\"`", "zh-CN": "❌ 用法：`/adr section <容器> <标题>` —— 示例：`/adr section ADR-0.2.54 \"calcMode 双模式\"`" },
-  "guard.adr.sectionMissingTitle": { en: "❌ Missing section title. Usage: `/adr section <container> <title>`", "zh-CN": "❌ 缺少板块标题。用法：`/adr section <容器> <标题>`" },
-  "guard.adr.sectionDone": { en: "✅ Section [{id}] appended to `{file}` — fill the five-part skeleton (background/decision/rationale/rejected/impact); it stays 🟡 pending until a human flips the status line.", "zh-CN": "✅ 板块 [{id}] 已追加到 `{file}` —— 补全五段骨架（背景/决策/理由/反例/影响范围）；🟡 待拍板，须由人改状态行。" },
-  "guard.adr.sectionFail": { en: "❌ Failed to append section: {err}", "zh-CN": "❌ 追加板块失败：{err}" },
-  "guard.adr.decideUsage": { en: "❌ Usage: `/adr decide <ADR-ID> [note]` (strict governance only)\nExample: `/adr decide ADR-0007 \"ratified after review\"`", "zh-CN": "❌ 用法：`/adr decide <ADR-ID> [附言]`（仅 strict 治理模式可用）\n示例：`/adr decide ADR-0007 \"评审后拍板\"`" },
-  "guard.adr.decided": { en: "✅ **Decided ADR [{id}]** (proposed → accepted)\n\n- File: `{file}`\n- Decision recorded in the append-only ledger (`.ocp/adr-decisions.log`).\n- The ADR is now binding — commits may ship it.", "zh-CN": "✅ **已拍板 ADR [{id}]**（proposed → accepted）\n\n- 文件：`{file}`\n- 拍板已记入只追加账本（`.ocp/adr-decisions.log`）。\n- 该 ADR 现已生效 —— 提交可随代码一并落地。" },
-  "guard.adr.decideFail": { en: "❌ Failed to decide ADR: {err}", "zh-CN": "❌ 拍板失败：{err}" },
-  "guard.adr.governanceUnknownWarning": { en: "[adr] Unknown adr.governance value '{value}' — falling back to 'none'. Valid values: none | review | strict.", "zh-CN": "[adr] 未知的 adr.governance 值 '{value}' —— 回退为 'none'。可选值：none | review | strict。" },
-  "guard.adr.governanceInvalid": { en: "❌ Invalid ADR governance `{value}`. Valid values: `none`, `review`, `strict`. Nothing was written.", "zh-CN": "❌ 无效的 ADR 治理值 `{value}`。可选值：`none`、`review`、`strict`。未写入任何配置。" },
-  "guard.adr.pathspecBlock": { en: "[ADR-GOVERNANCE] Blocked: `git commit -- <path>` pathspec commits bypass the staged-index gate.\nThe gate validates the whole staged index, but a pathspec commit ships only the named paths — a decided ADR flip would land in a LATER non-gated commit, breaking the SAME-commit invariant.\nFix: stage the ADR flip together with the code and commit the full index (`git commit -m \"...\"`), never a pathspec.", "zh-CN": "[ADR-GOVERNANCE] 已阻止：`git commit -- <path>` 路径提交会绕过暂存区闸门。\n闸门校验的是整个暂存索引，但路径提交只提交指定路径 —— 已拍板的 ADR 翻转将落在后续不受闸门约束的提交中，破坏「同一提交」不变量。\n修复：将 ADR 翻转与代码一起暂存，并提交完整索引（`git commit -m \"...\"`），切勿使用路径提交。" },
-  "guard.adr.unknown": { en: "Unknown subcommand `{sub}`. Run `/adr help` for available commands.", "zh-CN": "未知子命令 `{sub}`。运行 `/adr help` 查看可用命令。" },
-  "guard.adr.styleUnavailable": { en: "❌ ADR style `{style}` is not available — supported styles: `nygard`, `madr`. Check the spelling or upgrade the adr plugin.", "zh-CN": "❌ ADR 样式 `{style}` 不可用 —— 支持的样式：`nygard`、`madr`。请检查拼写或升级 adr 插件。" },
-  "guard.adr.initRecommend": { en: "🔍 **ADR Init — codebase reconnaissance**:\n- Agent config (.opencode/): {agent} | packages: {pkgs} | migrations/: {migrations}\n- Recommended suite: **`{suite}`** (pre-selected, NOT applied — detection never applies silently)\n\nRun one of:\n- `/adr init standard` — plain ADR log; madr, sequential, auto layout, no governance\n- `/adr init evolution` — decisions per iteration; madr, iteration numbering, hierarchical, review governance\n- `/adr init custom --style <s> --numbering <n> --layout <l> --governance <g>` — choose each option individually", "zh-CN": "🔍 **ADR 初始化 —— 代码库侦测**：\n- 智能体配置（.opencode/）：{agent} | 包数量：{pkgs} | migrations/：{migrations}\n- 推荐套件：**`{suite}`**（仅预选，未应用 —— 侦测绝不会静默套用）\n\n运行以下之一：\n- `/adr init standard` —— 纯 ADR 日志；madr、顺序编号、auto 布局、无治理\n- `/adr init evolution` —— 按迭代跟踪决策；madr、迭代编号、层级布局、review 治理\n- `/adr init custom --style <s> --numbering <n> --layout <l> --governance <g>` —— 逐项自选" },
-  "guard.adr.initCustomFlags": { en: "ℹ️ **Custom suite** needs explicit options — nothing written. Example:\n`/adr init custom --style madr --numbering sequential --layout auto --governance none`", "zh-CN": "ℹ️ **自定义套件**需要显式选项 —— 未写入任何配置。示例：\n`/adr init custom --style madr --numbering sequential --layout auto --governance none`" },
-  "guard.adr.initApplied": { en: "✅ **ADR Init — suite `{suite}` applied** (written={ok}):\n\n| Option | Value |\n| :--- | :--- |\n| adr.style | `{style}` |\n| adr.numbering | `{numbering}` |\n| adr.layout | `{layout}` |\n| adr.governance | `{governance}` |\n| adr.suite (informational label) | `{suite}` |\n\nIndividual options stay overridable at any time; the label never re-enforces anything. Legacy keys (adrGuard/adrDir/adrLayout) untouched. Re-running with the same selection is a no-op.", "zh-CN": "✅ **ADR 初始化 —— 已应用套件 `{suite}`**（写入={ok}）：\n\n| 选项 | 值 |\n| :--- | :--- |\n| adr.style | `{style}` |\n| adr.numbering | `{numbering}` |\n| adr.layout | `{layout}` |\n| adr.governance | `{governance}` |\n| adr.suite（信息性标签） | `{suite}` |\n\n各选项随时可单独覆盖；该标签不会强制执行任何内容。旧版键（adrGuard/adrDir/adrLayout）不受影响。用相同选择重复运行是空操作。" },
-  "guard.adr.legacyKeyWarning": { en: "[adr] Deprecated ADR config key(s) detected: {keys}. Legacy keys still work today but will be REMOVED in v1.0 — migrate to the `adr.*` config block (see `/adr init`).", "zh-CN": "[adr] 检测到已弃用的 ADR 配置键：{keys}。旧键目前仍生效，但将在 v1.0 移除 —— 请迁移到 `adr.*` 配置块（参见 `/adr init`）。" },
-  "guard.adr.overrideUnknownWarning": { en: "[adr] Unknown adr.{key} value `{value}` — falling back to default. See ADR config schema in `plugins/adr/adr-config.ts`.", "zh-CN": "[adr] 未知的 adr.{key} 值 `{value}` —— 回退为默认值。详见 `plugins/adr/adr-config.ts` 中的 ADR 配置 schema。" },
-  "guard.adr.configSet": { en: "✅ ADR config `{key}` set to `{value}` (written={ok}).", "zh-CN": "✅ ADR 配置 `{key}` 已设为 `{value}`（写入={ok}）。" },
-  "guard.adr.configReset": { en: "✅ ADR config `{key}` cleared (written={ok}). Falls back to default.", "zh-CN": "✅ ADR 配置 `{key}` 已清除（写入={ok}）。回退为默认值。" },
-  "guard.adr.configUnknownKey": { en: "❌ Unknown ADR config key `{key}`. Run `/adr config` for the full list.", "zh-CN": "❌ 未知的 ADR 配置键 `{key}`。运行 `/adr config` 查看完整列表。" },
-  "guard.adr.configList": { en: "📋 **Current ADR config** (from `.ocp/ocp.json` `adr.*` block):\n\n| Key | Value | Source |\n| :--- | :--- | :--- |\n| style | `{style}` | {styleSrc} |\n| numbering | `{numbering}` | {numberingSrc} |\n| layout | `{layout}` | {layoutSrc} |\n| governance | `{governance}` | {governanceSrc} |\n| readGuard | `{readGuard}` | {readGuardSrc} |\n| filenamePattern | `{filenamePattern}` | {filenamePatternSrc} |\n| slugStyle | `{slugStyle}` | {slugStyleSrc} |\n| extraSections | {extraSections} | {extraSectionsSrc} |\n| indexColumns | {indexColumns} | {indexColumnsSrc} |\n\n`config` = value present in `.ocp/ocp.json` · `default` = fallback applied (key absent / invalid).", "zh-CN": "📋 **当前 ADR 配置**（来自 `.ocp/ocp.json` 的 `adr.*` 块）：\n\n| 键 | 值 | 来源 |\n| :--- | :--- | :--- |\n| style | `{style}` | {styleSrc} |\n| numbering | `{numbering}` | {numberingSrc} |\n| layout | `{layout}` | {layoutSrc} |\n| governance | `{governance}` | {governanceSrc} |\n| readGuard | `{readGuard}` | {readGuardSrc} |\n| filenamePattern | `{filenamePattern}` | {filenamePatternSrc} |\n| slugStyle | `{slugStyle}` | {slugStyleSrc} |\n| extraSections | {extraSections} | {extraSectionsSrc} |\n| indexColumns | {indexColumns} | {indexColumnsSrc} |\n\n`config` = 值出现在 `.ocp/ocp.json` · `default` = 键缺失/无效时回退。" },
-  "guard.adr.configUsage": { en: "❌ Usage:\n- `/adr config` — list every ADR config key with current value + source\n- `/adr config <key> <value>` — set one key (suite fields and overrides share the same command)\n- `/adr config <key>` — show that key's value + source\n- `/adr config reset <key>` — clear that key (fall back to default)\n\nKeys (suite — same block as `/adr init`): `style`, `numbering`, `layout`, `governance`. Read access: `readGuard` (`off|warn|guard`).\nKeys (Phase 7 overrides): `filenamePattern`, `slugStyle`, `extraSections`, `indexColumns`.", "zh-CN": "❌ 用法：\n- `/adr config` —— 列出全部 ADR 配置键及当前值 + 来源\n- `/adr config <key> <value>` —— 设置单个键（套件字段与覆盖字段共用同一命令）\n- `/adr config <key>` —— 显示该键的当前值 + 来源\n- `/adr config reset <key>` —— 清除该键（回退为默认值）\n\n键（套件 —— 与 `/adr init` 同一块）：`style`、`numbering`、`layout`、`governance`。读取门禁：`readGuard`（`off|warn|guard`）。\n键（Phase 7 覆盖）：`filenamePattern`、`slugStyle`、`extraSections`、`indexColumns`。" },
-  "guard.adr.contextUsage": { en: "❌ Usage: `/adr context <ADR-ID>` · `/adr context --domain <slug>` · `/adr context --iteration <id>`\nBundles the target's records with direct parents, supersession chains, and same-iteration records — bounded, never the full corpus, with a reported retrieval path.\nExample: `/adr context ADR-0003`", "zh-CN": "❌ 用法：`/adr context <ADR-ID>` · `/adr context --domain <slug>` · `/adr context --iteration <id>`\n打包目标记录及其直接父决策、取代链与同迭代记录 —— 有界输出，绝不倾倒全量语料，并报告检索路径。\n示例：`/adr context ADR-0003`" },
-  "guard.adr.contextNotFound": { en: "❌ No records carry iteration `{iteration}`.\nChecked the `iteration` frontmatter metadata (including the `baseline.iteration` composite form) across the whole ADL.", "zh-CN": "❌ 没有任何记录携带迭代 `{iteration}`。\n已检查整个 ADL 的记录 `iteration` frontmatter 元数据（含 `baseline.iteration` 组合形式）。" },
-  "guard.adr.checkProfileIssues": { en: "🧬 **Evolution profile findings ({count})** — opt-in discipline; default `/adr check` does not apply these:\n\n", "zh-CN": "🧬 **evolution 配置文件发现（{count}）** —— 可选纪律；默认 `/adr check` 不应用这些规则：\n\n" },
-  "guard.adr.checkProfilePass": { en: "🧬 **Evolution profile**: all discipline checks passed.\n", "zh-CN": "🧬 **evolution 配置文件**：所有纪律检查通过。\n" },
-  "guard.adr.profileUnknown": { en: "❌ Unknown validation profile `{profile}`. Available profiles: `evolution`.", "zh-CN": "❌ 未知的校验配置文件 `{profile}`。可用配置文件：`evolution`。" },
-
-  "guard.adr.treeByInvalid": { en: "❌ Unknown tree view `{by}`. Available views: `path`, `layer`, `domain`, `iteration`.", "zh-CN": "❌ 未知的树视图 `{by}`。可用视图：`path`、`layer`、`domain`、`iteration`。" },
-
-  // ── Style migration & audit (Phase 5, §13/§6.2) ──
-  "guard.adr.migrateStyleInvalid": { en: "❌ Unknown ADR style `{style}`. Available styles: `nygard`, `madr`, `ocp`.", "zh-CN": "❌ 未知的 ADR 样式 `{style}`。可用样式：`nygard`、`madr`、`ocp`。" },
-  "guard.adr.migrateStyleOcp": { en: "❌ `ocp` is a container style — it cannot be reached by per-file style conversion. Create a container instead: `/adr new --style ocp <title>` (add --baseline/--iteration for the iteration form).", "zh-CN": "❌ `ocp` 是容器样式 —— 无法通过逐文件样式转换到达。请直接创建容器：`/adr new --style ocp <标题>`（加 --baseline/--iteration 则为迭代形态）。" },
-  "guard.adr.migrateStyleNone": { en: "ℹ️ **Style Migration ({to})**: nothing to convert — {count} document(s) already declare `style: {to}`.", "zh-CN": "ℹ️ **样式迁移（{to}）**：无需转换 —— {count} 份文档已声明 `style: {to}`。" },
-  "guard.adr.migrateStylePreviewHead": { en: "📋 **Style Migration Preview — target `{to}`** (**{count}** record(s), dry-run — no files written):\n\n", "zh-CN": "📋 **样式迁移预览 —— 目标 `{to}`**（**{count}** 条记录，dry-run —— 未写入任何文件）：\n\n" },
-  "guard.adr.migrateStyleDoneHead": { en: "🎉 **Style Migration Completed — target `{to}`**\n\nConverted **{count}** document(s) in place (IDs unchanged):\n\n", "zh-CN": "🎉 **样式迁移完成 —— 目标 `{to}`**\n\n已就地转换 **{count}** 份文档（ID 不变）：\n\n" },
-  "guard.adr.migrateStyleVerifyFail": { en: "\n⚠️ **Post-migration verification failed ({count} issue(s))**:\n", "zh-CN": "\n⚠️ **迁移后校验失败（{count} 个问题）**：\n" },
-  "guard.adr.migStyleSummary": { en: "Records to convert: **{count}** · already `{to}`: **{skipped}**", "zh-CN": "待转换记录：**{count}** · 已是 `{to}`：**{skipped}**" },
-  "guard.adr.migStyleRecordHead": { en: "### {id} — {title}", "zh-CN": "### {id} — {title}" },
-  "guard.adr.migStyleSource": { en: "- Source: `{path}`", "zh-CN": "- 源路径：`{path}`" },
-  "guard.adr.migStyleDest": { en: "- Destination: `{path}`{note}", "zh-CN": "- 目标路径：`{path}`{note}" },
-  "guard.adr.migStyleDestSame": { en: " (filename unchanged — IDs are frozen, §9.5 rule 3)", "zh-CN": "（文件名不变 —— ID 永久冻结，§9.5 规则 3）" },
-  "guard.adr.migStyleId": { en: "- Record ID: `{id}` (unchanged)", "zh-CN": "- 记录 ID：`{id}`（不变）" },
-  "guard.adr.migStyleLinksNone": { en: "- Link rewrites: none", "zh-CN": "- 链接重写：无" },
-  "guard.adr.migStyleLinksHead": { en: "- Link rewrites:", "zh-CN": "- 链接重写：" },
-  "guard.adr.migStyleLinksRow": { en: "  - `{field}`: `{from}` → `{to}`", "zh-CN": "  - `{field}`：`{from}` → `{to}`" },
-  "guard.adr.migStyleWarnNone": { en: "- Unconvertible content warnings: none", "zh-CN": "- 不可转换内容警告：无" },
-  "guard.adr.migStyleWarnHead": { en: "- Unconvertible content warnings:", "zh-CN": "- 不可转换内容警告：" },
-  "guard.adr.migStyleWarnDropped": { en: "  - ⚠️ Section `{section}` has no `{to}` equivalent — its content would be **dropped** on conversion", "zh-CN": "  - ⚠️ 章节 `{section}` 在 `{to}` 中无对应位置 —— 其内容将在转换时被**丢弃**" },
-  "guard.adr.migStyleWarnAdded": { en: "  - ℹ️ `{to}` adds empty section(s) {sections}; no source content is lost", "zh-CN": "  - ℹ️ `{to}` 会新增空章节 {sections}；源内容无任何丢失" },
-  "guard.adr.migStyleWarnMissing": { en: "  - ⚠️ Source section `{section}` is missing or empty — the target section will be a placeholder", "zh-CN": "  - ⚠️ 源章节 `{section}` 缺失或为空 —— 目标章节将为占位符" },
-  "guard.adr.reportStyleHead": { en: "🔍 **ADR Style Report** ({count} document(s), {legacy} legacy without `style` frontmatter):\n\n", "zh-CN": "🔍 **ADR 样式报告**（{count} 份文档，{legacy} 份缺少 `style` frontmatter 的 legacy 文档）：\n\n" },
-  "guard.adr.reportStyleTableHead": { en: "| Document | Resolved Style | Legacy |\n| :--- | :--- | :--- |\n", "zh-CN": "| 文档 | 解析样式 | Legacy |\n| :--- | :--- | :--- |\n" },
-  "guard.adr.reportStyleYes": { en: "yes — run `/adr migrate --to madr --confirm` to declare", "zh-CN": "是 —— 运行 `/adr migrate --to madr --confirm` 声明样式" },
-
-  "guard.adr.historyUsage": { en: "❌ Usage: `/adr history <ADR-ID>` — traverse the supersession chain (predecessors + successors, cross-style safe).\nExample: `/adr history ADR-0.2.54.01`", "zh-CN": "❌ 用法：`/adr history <ADR-ID>` —— 遍历取代链（前驱 + 后继，跨样式安全）。\n示例：`/adr history ADR-0.2.54.01`" },
-
-  "guard.adr.historyNotFound": { en: "❌ No ADR matches `{ref}`.\nAccepted forms: `0001`, `ADR-0001`, `0.2.54.01`, or a source path.", "zh-CN": "❌ 没有任何 ADR 匹配 `{ref}`。\n可用形式：`0001`、`ADR-0001`、`0.2.54.01` 或源文件路径。" },
-
-  "guard.adr.contextNoMatch": { en: "❌ No records match `{target}`.\nChecked normalized record IDs, source paths, and `domain` frontmatter metadata across the whole ADL.", "zh-CN": "❌ 没有任何记录匹配 `{target}`。\n已检查整个 ADL 的规范化记录 ID、源路径与 `domain` frontmatter 元数据。" },
-
-  // ── project-manager (/project) ──
-  "guard.pm.help": {
-    en: "[project-manager] Project scaffolding & configuration manager.\n\nUsage:\n- `ocp project init --wizard` → open the interactive project setup wizard\n- /project        → show available subcommands & options (CLI mode)\n- /project init   → migrate + scaffold baseline files & bootstrap indexes\n                    (headless / non-TUI):\n                    FIRST a one-shot legacy migration moves OCP state out of\n                    .opencode/ into .ocp/: switch keys into .ocp/ocp.json\n                    (legacy lines re-commented, platform keys kept),\n                    memory/handoffs/styles files relocated. Idempotent.\n                    THEN create baseline files if missing (never overwrites):\n                    .ocp/ocp.json, docs/git-commits.md, AGENTS.md\n                    Then run every first-time backend init step — each only\n                    when its CLI is installed and enabled:\n                      codegraph init    one-time; watcher keeps it fresh\n                      gitnexus analyze  initial index build (index missing)\n                      dbhub.toml        scaffolded when the dbhub MCP is\n                                        enabled and its CLI is installed\n                      gitnexus hooks    post-commit/post-merge/post-checkout\n                                        auto-refresh the GitNexus index when\n                                        gitnexus is enabled; removed when not\n- /project setup  → inspect current project switches & setup options (CLI mode)\n- /project index  → manual rebuild/refresh for EXISTING indexes\n- /project sync   → re-run the one-shot legacy migration on demand (idempotent escape hatch for skipped wizards)",
-    "zh-CN": "[project-manager] 项目脚手架与配置管理器。\n\n用法：\n- `ocp project init --wizard` → 打开交互式项目设置向导\n- /project        → 显示子命令与选项（CLI 模式）\n- /project init   → 迁移 + 生成基线文件并引导索引（无头 / 非 TUI）：\n                    首先执行一次性旧状态迁移，把 OCP 状态从\n                    .opencode/ 移入 .ocp/：开关键写入 .ocp/ocp.json\n                    （旧行重新注释，平台键保留），memory/handoffs/\n                    样式文件一并搬迁。可重复执行（幂等）。\n                    然后缺失时创建基线文件（从不覆盖）：\n                    .ocp/ocp.json、docs/git-commits.md、AGENTS.md\n                    随后运行各后端的首次初始化 —— 仅当其 CLI\n                    已安装且已启用：\n                      codegraph init    一次性；watcher 保持新鲜\n                      gitnexus analyze  初次索引构建（索引缺失时）\n                      dbhub.toml        dbhub MCP 已启用且 CLI 已安装时生成\n                      gitnexus hooks    gitnexus 启用时注册 post-commit/\n                                        post-merge/post-checkout 自动刷新\n                                        钩子；未启用时移除\n- /project setup  → 查看当前项目开关与设置选项（CLI 模式）\n- /project index  → 手动重建/刷新已有索引\n- /project sync   → 按需重跑一次性旧状态迁移（幂等，供跳过向导的用户补救）",
-  },
-  "guard.pm.initHead": { en: "[project-manager] init done in {dir} — {created} created, {updated} updated, {invalid} invalid, {skipped} skipped", "zh-CN": "[project-manager] init 完成于 {dir} —— 新建 {created}、更新 {updated}、无效 {invalid}、跳过 {skipped}" },
-  "guard.pm.created": { en: "  ✅ created {rel}", "zh-CN": "  ✅ 已创建 {rel}" },
-  "guard.pm.updated": { en: "  ♻️ updated {rel} (switch values saved; existing content preserved)", "zh-CN": "  ♻️ 已更新 {rel}（已保存开关取值；既有内容保留）" },
-  "guard.pm.migratedLine": { en: "  🧭 migrated {switches} switch(es), moved {files} file(s) into .ocp/", "zh-CN": "  🧭 已迁移 {switches} 个开关、移动 {files} 个文件至 .ocp/" },
-  "guard.pm.invalid": { en: "  ⚠️ {rel} is malformed (no proper closing brace) — left untouched, fix it manually", "zh-CN": "  ⚠️ {rel} 格式有误（缺少正确的右花括号）—— 保持原样，请手工修复" },
-  "guard.pm.skippedFile": { en: "  ⏭️ skipped {rel} (already exists)", "zh-CN": "  ⏭️ 跳过 {rel}（已存在）" },
-  "guard.pm.lineOk": { en: "  ✅ {name}: {detail}", "zh-CN": "  ✅ {name}：{detail}" },
-  "guard.pm.lineUpdated": { en: "  ♻️ {name}: {detail}", "zh-CN": "  ♻️ {name}：{detail}" },
-  "guard.pm.lineFail": { en: "  ❌ {name}: {detail}", "zh-CN": "  ❌ {name}：{detail}" },
-  "guard.pm.lineSkip": { en: "  ⏭️ {name}: skipped — {detail}", "zh-CN": "  ⏭️ {name}：跳过 —— {detail}" },
-  "guard.pm.unknown": { en: "[project-manager] Unknown subcommand \"{sub}\".", "zh-CN": "[project-manager] 未知子命令 \"{sub}\"。" },
-  "guard.pm.failed": { en: "[project-manager] {sub} failed: {err}", "zh-CN": "[project-manager] {sub} 失败：{err}" },
-  "guard.pm.indexHead": { en: "[project-manager] index done in {dir}", "zh-CN": "[project-manager] index 完成于 {dir}" },
-  "guard.pm.syncMissing": { en: "[project-manager] sync in {dir}: no legacy state found and {cfg} does not exist — run /project init first", "zh-CN": "[project-manager] sync 于 {dir}：未发现旧状态，且 {cfg} 不存在 —— 请先运行 /project init" },
-  "guard.pm.syncUptodate": { en: "[project-manager] sync in {dir}: nothing left to migrate — {cfg} is the single source", "zh-CN": "[project-manager] sync 于 {dir}：无旧状态可迁移 —— {cfg} 即唯一来源" },
-  "guard.pm.syncAppended": { en: "[project-manager] sync in {dir}: migrated {count} item(s) into {cfg} (legacy entries removed/moved):", "zh-CN": "[project-manager] sync 于 {dir}：已将 {count} 项迁移进 {cfg}（旧条目已移除/搬迁）：" },
-  "guard.pm.setup": {
-    en: "[project-manager] Project setup status in {dir}:\n- Interactive CLI: run `ocp project init --wizard` to open the project setup wizard.\n- Headless / CLI: run /project init to scaffold baseline files and bootstrap indexes.\n- Config sync: run /project sync to move pre-.ocp OCP state (switches, memory, handoffs, styles) into .ocp/ — idempotent, safe to re-run.",
-    "zh-CN": "[project-manager] 项目设置状态（{dir}）：\n- 交互式 CLI：运行 `ocp project init --wizard` 打开项目设置向导。\n- 无头 / CLI：运行 /project init 生成基线文件并引导索引。\n- 配置同步：运行 /project sync 将旧版（.ocp 之前）的 OCP 状态（开关、记忆、交接、样式）迁移进 .ocp/ —— 幂等，可安全重跑。",
-  },
-  "guard.pm.suggestInit": { en: "[project-manager] This project has never been initialized ({files}). Run `/project init` to scaffold them (never overwrites) and run the first-time backend init.{extras}", "zh-CN": "[project-manager] 本项目从未初始化过（{files}）。运行 `/project init` 生成基线文件（从不覆盖）并执行后端首次初始化。{extras}" },
-  "guard.pm.suggestMissing": { en: "missing baseline files: {files}", "zh-CN": "缺失基线文件：{files}" },
-  "guard.pm.hintCodegraph": { en: "codegraph CLI is installed but not indexed", "zh-CN": "codegraph CLI 已安装但未建索引" },
-  "guard.pm.hintGitnexus": { en: "gitnexus CLI is installed but not indexed", "zh-CN": "gitnexus CLI 已安装但未建索引" },
-  "guard.pm.hintTail": { en: " Also: {hints} — init covers both.", "zh-CN": " 另外：{hints} —— init 会一并处理。" },
-} as const
+export const STRINGS: Record<StringKey, StringEntry> = buildStrings()
 
 // ─── ADR label glossary (8-locale one-time decoding) ──────────────────
 /** Complete across ALL registered locales (`Record<GlossaryLocale, string>`
@@ -940,7 +251,8 @@ export const ADR_GLOSSARY: ReadonlyArray<{ label: string; style: string; meaning
   { label: "metadata keys", style: "frontmatter", meanings: { en: "`style` `status` `created` `date` `layer` `scope` `baseline` `iteration` `domain` `parent` `supersedes` `superseded_by` — machine-read, never localized", "zh-CN": "元数据键 —— 机器读取，永不本地化", es: "`style` `status` `created` `date` `layer` `scope` `baseline` `iteration` `domain` `parent` `supersedes` `superseded_by` — los lee la máquina, nunca se localizan", fr: "`style` `status` `created` `date` `layer` `scope` `baseline` `iteration` `domain` `parent` `supersedes` `superseded_by` — lus par la machine, jamais localisés", ru: "`style` `status` `created` `date` `layer` `scope` `baseline` `iteration` `domain` `parent` `supersedes` `superseded_by` — читаются машиной, никогда не локализуются", ar: "`style` `status` `created` `date` `layer` `scope` `baseline` `iteration` `domain` `parent` `supersedes` `superseded_by` — تقرأها الآلة، لا تُترجم أبداً", pt: "`style` `status` `created` `date` `layer` `scope` `baseline` `iteration` `domain` `parent` `supersedes` `superseded_by` — lidos pela máquina, nunca localizados", ja: "`style` `status` `created` `date` `layer` `scope` `baseline` `iteration` `domain` `parent` `supersedes` `superseded_by` — 機械が読むキー。決してローカライズしない" } },
 ]
 
-export type StringKey = keyof typeof STRINGS
+// Re-exported from the en catalog — the canonical key registry.
+export type { StringKey }
 
 // ─── tr() function ───────────────────────────────────────────────────
 

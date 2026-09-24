@@ -553,7 +553,12 @@ function test19_AnnounceSkillTriggerAssertions(): void {
 
   const i18nPath = join(testsDir(), "..", "plugins", "tui", "i18n.ts")
   assert(existsSync(i18nPath), "plugins/tui/i18n.ts exists")
-  const lines = readFileSync(i18nPath, "utf-8").split("\n")
+  // STRINGS is assembled from per-locale catalogs (plugins/tui/i18n/locales/);
+  // assert the receipt pointers directly in the en / zh-CN catalog files.
+  const catalogLines = (code: string) =>
+    readFileSync(join(testsDir(), "..", "plugins", "tui", "i18n", "locales", `${code}.ts`), "utf-8").split("\n")
+  const enLines = catalogLines("en")
+  const zhLines = catalogLines("zh-CN")
 
   const SKILL_REF = "skills/adr-protocol/SKILL.md"
   // Markers mirror each receipt's actual wording: created/supDone use
@@ -567,22 +572,18 @@ function test19_AnnounceSkillTriggerAssertions(): void {
   for (const { key, enMarker, zhMarker } of triggerKeys) {
     // Needle keeps the closing quote + colon so "guard.adr.created":
     // never matches "guard.adr.createdScaffold": / "guard.adr.supDoneScaffold":.
-    const line = lines.find((l) => l.includes(`"${key}":`))
-    assert(line !== undefined, `${key}: entry line found in i18n.ts`)
-    if (line === undefined) continue
+    const enLine = enLines.find((l) => l.includes(`"${key}":`))
+    const zhLine = zhLines.find((l) => l.includes(`"${key}":`))
+    assert(enLine !== undefined, `${key}: entry line found in locales/en.ts`)
+    assert(zhLine !== undefined, `${key}: entry line found in locales/zh-CN.ts`)
+    if (enLine === undefined || zhLine === undefined) continue
 
-    // Entries are single-line { en: "...", "zh-CN": "..." } — split the
-    // two locale segments at the zh-CN boundary to assert each value.
-    const zhIdx = line.indexOf('"zh-CN": "')
-    assert(zhIdx > 0, `${key}: single-line entry carries zh-CN after en`)
-    if (zhIdx <= 0) continue
-    const enSeg = line.slice(0, zhIdx)
-    const zhSeg = line.slice(zhIdx)
-
-    assert(enSeg.includes(SKILL_REF), `${key}: en value embeds ${SKILL_REF}`)
-    assert(zhSeg.includes(SKILL_REF), `${key}: zh-CN value embeds ${SKILL_REF}`)
-    assert(enSeg.includes(enMarker), `${key}: en value keeps the read-before-drafting marker ("${enMarker}")`)
-    assert(zhSeg.includes(zhMarker), `${key}: zh-CN value keeps the read-before-drafting marker ("${zhMarker}")`)
+    // One catalog line per key per locale (values are JSON-escaped onto a
+    // single physical line) — assert each locale's value in its own file.
+    assert(enLine.includes(SKILL_REF), `${key}: en value embeds ${SKILL_REF}`)
+    assert(zhLine.includes(SKILL_REF), `${key}: zh-CN value embeds ${SKILL_REF}`)
+    assert(enLine.includes(enMarker), `${key}: en value keeps the read-before-drafting marker ("${enMarker}")`)
+    assert(zhLine.includes(zhMarker), `${key}: zh-CN value keeps the read-before-drafting marker ("${zhMarker}")`)
   }
 }
 
