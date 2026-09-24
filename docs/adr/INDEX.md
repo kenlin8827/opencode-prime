@@ -7,7 +7,7 @@
 
 *Directory: `docs/adr`*
 
-## Records (9)
+## Records (11)
 
 | ID | Decision Title | Style | Layer | Status | Domain | Iteration | Created |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -20,6 +20,8 @@
 | [ADR-0.40.1](./0.40.1-project-level-adr-overrides.md) | Iteration 0.40.1 · Project-level ADR overrides (4 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 1 | 2026-09-18 |
 | [ADR-0.40.2](./0.40.2-rename-adr-guard-plugin-to-adr.md) | Iteration 0.40.2 · Rename adr-guard plugin to adr (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 2 | 2026-09-19 |
 | [ADR-0.40.3](./0.40.3-appealability-of-accepted-decisions.md) | Iteration 0.40.3 · Appealability of accepted decisions (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 3 | 2026-09-21 |
+| [ADR-0.41.0](./0.41.0-major-version-upgrade-lock.md) | Iteration 0.41.0 · Major-version upgrade lock (5 sections) | `ocp` | `system` | 🟢 Accepted | updater | 0 | 2026-09-22 |
+| [ADR-0.44.0](./0.44.0-per-task-checkpoint-dirs.md) | Iteration 0.44.0 · Per-task checkpoint directories (1 sections) | `ocp` | `system` | 🟢 Accepted | runtime | 0 | 2026-09-24 |
 
 ## Label glossary
 
