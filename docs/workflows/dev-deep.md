@@ -42,7 +42,7 @@ Six mandatory parts, capped by a three-question understanding gate (what misunde
 
 ### Stop ≠ lost
 
-Any of the four stop conditions (major conflict / retries exhausted + missing input / budget exhaustion / user halt) writes `.ocp/dev-deep-state.md` and prints a **Recovery Card**: breakpoint, completed branches, next step, required inputs. `/dev-deep --resume` continues from the first uncompleted node.
+Any of the four stop conditions (major conflict / retries exhausted + missing input / budget exhaustion / user halt) writes `.ocp/dev-deep/<slug>.md` and prints a **Recovery Card**: breakpoint, completed branches, next step, required inputs. `/dev-deep --resume=<slug>` continues from the first uncompleted node. Checkpoints are per-task (slug derived from the requirement), so parallel dev-deep runs in one project never collide; a same-slug active checkpoint triggers a resume/overwrite/abort guard instead of a silent clobber.
 
 ## Selection guide
 
@@ -68,4 +68,4 @@ Any of the four stop conditions (major conflict / retries exhausted + missing in
 /dev-deep --resume
 ```
 
-Arguments: `--auto` (skip the P1b confirm gate), `--retry=N` (subtree retry cap, default 2, range 1–3), `--budget=N` (token budget, default 80000, range 10000–500000), `--resume` (continue from `.ocp/dev-deep-state.md`).
+Arguments: `--auto` (skip the P1b confirm gate), `--retry=N` (subtree retry cap, default 2, range 1–3), `--budget=N` (token budget, default 80000, range 10000–500000), `--resume[=<slug>]` (continue from `.ocp/dev-deep/<slug>.md`; bare `--resume` lists checkpoints when several exist).

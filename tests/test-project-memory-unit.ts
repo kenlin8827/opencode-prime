@@ -184,9 +184,9 @@ assert(existsSync(privatePath()), "private.md created")
 assert(existsSync(gitignorePath), ".ocp/.gitignore auto-created on first private capture")
 const giContent = readFileSync(gitignorePath, "utf-8")
 // Pin (f): ADR §5 bootstrap content — exactly the seven lines; dev-ultra-state.md
-// + dev-deep-state.md (protocol checkpoints) added, node_modules/lockfile guards
-// dropped, committed files NOT ignored.
-assertEq(giContent, ".gitignore\nlogs/\n*.log\nhandoffs/\nmemory/private.md\ndev-ultra-state.md\ndev-deep-state.md\n", "gitignore bootstrap content per ADR §5 + dev-deep checkpoint")
+// + dev-deep/ (protocol checkpoints; dev-deep is a per-task dir since v0.43.1)
+// added, node_modules/lockfile guards dropped, committed files NOT ignored.
+assertEq(giContent, ".gitignore\nlogs/\n*.log\nhandoffs/\nmemory/private.md\ndev-ultra-state.md\ndev-deep/\n", "gitignore bootstrap content per ADR §5 + dev-deep checkpoint dir")
 assert(giContent.includes("memory/private.md"), "gitignore contains memory/private.md")
 assert(!giContent.includes("node_modules"), "gitignore drops the old .opencode node_modules guard")
 assert(!/\nocp\.json/.test(giContent) && !giContent.includes("memory/public.md\n") && !giContent.endsWith("memory/public.md"), "ocp.json + memory/public.md stay committed (not ignored)")
@@ -212,7 +212,7 @@ ensureOcpGitignore(tmp)
 const healedShared = readFileSync(gitignorePath, "utf-8")
 assert(healedShared.includes("memory/private.md"), "heal(shared): guard appended")
 assert(healedShared.includes("dev-ultra-state.md"), "heal(shared): dev-ultra-state.md appended")
-assert(healedShared.includes("dev-deep-state.md"), "heal(shared): dev-deep-state.md appended")
+assert(healedShared.includes("dev-deep/"), "heal(shared): dev-deep/ appended")
 assert(healedShared.includes("user-keep-me") && (healedShared.match(/logs\//g) ?? []).length === 1, "heal(shared): user lines kept, logs block not duplicated")
 
 // Concurrency guard (wx/EEXIST) on the public file.

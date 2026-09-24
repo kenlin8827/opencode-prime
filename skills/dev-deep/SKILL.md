@@ -21,7 +21,8 @@ You are now executing **dev-deep** — a closed-loop pipeline for tasks whose re
 - `--auto` (optional): skip the P1b confirmation gate — plan, then execute straight through. Default: confirm mode (gate active).
 - `--retry=N` (optional): per-subtree work-level retry cap. Default 2, clamp [1, 3]. Non-numeric or missing → default.
 - `--budget=N` (optional): token budget for the whole run. Default 80000, clamp [10000, 500000].
-- `--resume` (optional): resume from `.ocp/dev-deep-state.md` (first uncompleted node). Missing or corrupt checkpoint → start fresh and say so.
+- `--resume[=<slug>]` (optional): resume a checkpoint from `.ocp/dev-deep/` (first uncompleted node). With `=<slug>` → that task. Bare → single checkpoint: resume it; multiple: list them (requirement, timestamp, progress) and let the user pick (pre-run disambiguation, not a blocking gate); none: report and offer a fresh start. Missing or corrupt checkpoint → start fresh and say so.
+- **Checkpoint slug**: every run derives a short topic slug from the requirement's subject (≤ 40 chars, filesystem-safe, Unicode allowed — same convention as SDD slugs) and announces it at P1b. Checkpoints live at `.ocp/dev-deep/<slug>.md` — one file per task, so parallel dev-deep runs never collide. Same slug with an ACTIVE (non-completed) checkpoint and no `--resume` → pre-run guard question: resume it / overwrite / abort.
 - Replan cap (2) and probe cap (2) are FIXED — no flag, no model adjustment.
 
 **Parsing rules** (deterministic, no improvisation): unknown flag → one-line error listing valid flags, halt; out-of-range → clamp; never guess.
@@ -112,7 +113,7 @@ Dispatch ≤ 2 probes at minimal cost to verify the load-bearing assumptions; bu
 | c | Budget/context exhaustion threatens the quality of completed work |
 | d | User halts the run |
 
-On stop: write the checkpoint, then output the **Recovery Card** (template below). Resume with `/dev-deep --resume`.
+On stop: write the checkpoint, then output the **Recovery Card** (template below). Resume with `/dev-deep --resume=<slug>`.
 
 ## Acceptance criteria (defaults — requirement text may add, never lower)
 
@@ -149,7 +150,7 @@ On stop: write the checkpoint, then output the **Recovery Card** (template below
 - Completed branches: <list>
 - Next step: <exact next action>
 - Required inputs: <what's needed to resume>
-- Checkpoint: .ocp/dev-deep-state.md (resume: /dev-deep --resume)
+- Checkpoint: .ocp/dev-deep/<slug>.md (resume: /dev-deep --resume=<slug>)
 ```
 
 ### Final delivery (P3)
@@ -174,13 +175,15 @@ On stop: write the checkpoint, then output the **Recovery Card** (template below
 - Discretion reasons: <choice | one-line reason>
 ```
 
-## Checkpoint file (`.ocp/dev-deep-state.md`)
+## Checkpoint file (`.ocp/dev-deep/<slug>.md`)
 
-Written at every node boundary and on every stop (git-ignored `.ocp/`, same as handoff/dev-ultra state):
+Written at every node boundary and on every stop (the `.ocp/dev-deep/` directory is git-ignored, created on first write; one file per task slug — parallel runs stay isolated). Flip `status` to `completed` after P3 delivery — the same-slug guard only fires on non-completed checkpoints:
 
 ```markdown
 ---
 timestamp: "<YYYY-MM-DDTHH:MM:SSZ>"
+slug: "<slug>"
+status: "<running | stopped | completed>"
 requirement: "<raw requirement, unaltered>"
 flags: "<parsed flags>"
 budget: <N>
@@ -205,7 +208,9 @@ replan: <n>/2 · probes: <n>/2 · retries: <node → attempts>
 | Requirement missing (empty `$ARGUMENTS`) | Ask for the requirement before running — pre-run, not a blocking gate |
 | Unknown flag / invalid value | One-line error listing valid flags; halt (Parsing rules) |
 | `--resume` with missing/corrupt checkpoint | Start fresh; inform the user |
-| Stale checkpoint present without `--resume` | Start fresh; the old state is overwritten at the first node boundary — inform the user |
+| `--resume` (bare) with multiple checkpoints | List requirement + timestamp + progress; user picks (pre-run, not a blocking gate) |
+| Same slug ACTIVE without `--resume` | Guard question: resume it / overwrite / abort — never silently clobber a parallel run |
+| Stale COMPLETED checkpoint, same slug | Start fresh; overwrite at the first node boundary — inform the user |
 | Dispatched agent fails | build.md transport retry (once, same `task_id`); persistent → work-level subtree retry with a different method; still failing → mark node failed, skip subtree, continue other branches + audit trail |
 | Budget exhausted mid-node | Finish the current node's output, write the checkpoint, stop condition (c), Recovery Card |
 | `question` tool unavailable at the gate | Print the tree + "reply proceed / adjust / cancel" and wait — the gate is never silently skipped |

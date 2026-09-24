@@ -480,7 +480,7 @@ CheckWorkflowSkill "dev" @("--plan-review", "--code-review", "--sdd", "dev-quick
 # gate), the isolation rule, layered retry semantics (transport vs work
 # level), todowrite materialization, checkpoint/resume, the fixed brakes,
 # and the no-self-clear role wall.
-CheckWorkflowSkill "dev-deep" @("Requirement mining", "Understanding gate", "Isolation Rule", "Task tree table", "todowrite", "Recovery Card", "dev-deep-state.md", "never self-clear", "rejected alternatives", "Stop conditions", "NOT a /dev preset", "--resume")
+CheckWorkflowSkill "dev-deep" @("Requirement mining", "Understanding gate", "Isolation Rule", "Task tree table", "todowrite", "Recovery Card", ".ocp/dev-deep/", "never self-clear", "rejected alternatives", "Stop conditions", "NOT a /dev preset", "--resume")
 
 # clean-dead-code: anchors protect the user-decides doctrine (uncertain findings
 # escalate, R2/R3 doubt resolves to R3, R3 never pre-approvable), the two diff
