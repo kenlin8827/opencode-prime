@@ -87,7 +87,7 @@ User
       │     enforced per-agent by plugins/shared/agent-scope.ts on v2 hook events
       │     (protocol injections denied for lite/utility identities and all
       │     subagent steps; per-plugin overrides allowed; fail-open)
-      └── TUI plugins via `cli.template.jsonc:plugins` → global cli.json (provider-wizard, profile-wizard, project-wizard, queue-manager, sidebar-status, usage)
+      └── TUI plugins via `cli.template.jsonc:plugins` → global cli.json (provider-wizard, profile-wizard, project-wizard, sidebar-status, usage)
 ```
 
 Design invariants:
@@ -385,7 +385,7 @@ OpenCode plugin hooks provide runtime guarantees that prompts alone cannot achie
 ### Discovery & layout
 
 - **Auto-discovered**: OpenCode loads bare `.ts`/`.js` files and immediate plugin package directories from every discovered `plugins/` directory (global `~/.config/opencode/plugins/` and project `.opencode/plugins/`). Multi-file plugins therefore use the **barrel pattern**: `plugins/<name>.ts` re-exports from `plugins/<name>/<name>.ts`, keeping implementation, protocol markdown, and helpers in the subdirectory. V2 loader contract: each root barrel DEFAULT-exports a `Plugin.define({ id, setup })` object (`@opencode/plugin`) — v1 `server()`-function exports are gone (hard cutover, no shim). A `plugins[]` config entry must be a package or DIRECTORY (not a bare file); the dir needs a `server.ts`/`index.ts` entry. **Pitfall**: never combine a root barrel with an `index.ts` inside the subdir — the loader discovers BOTH and the plugin's `setup` runs twice (duplicate hooks/commands). The subdir entry module must be named `<name>.ts` (e.g. `plugins/adr/adr.ts`); `index.ts` is reserved for barrel-less directory plugins like `rtk-write/`. Corollary: `plugins/shared/` and `plugins/tui/` deliberately have NO `index.ts`/`tui.ts` (helper modules and explicit-`cli.json` TUI plugins respectively) — do not "complete" them into package dirs, or they become auto-discovered. Discovered-entry scope is `plugins/` immediate children only; nested bare files (e.g. `plugins/tui/i18n.ts`, `plugins/tui/_wizard-helpers.ts`) are never loaded as plugins. Known accepted deviation: barrels keep named re-exports (`export { XPlugin, XPlugin as default }`) consumed by unit tests; V2's loader reads only the default export, so these are runtime-inert — slim them opportunistically when touching a barrel, never in a dedicated churn commit.
-- **TUI plugins**: registered explicitly in `cli.template.jsonc:plugins` (`provider-wizard.ts`, `profile-wizard.ts`, `project-wizard.ts`, `queue-manager.ts`, `sidebar-status.ts`, `usage.ts` under `plugins/tui/`) — CLI-only (terminal-client) plugins on the `@opencode/plugin/tui` slot/keymap API, loaded by the TUI process from the ONE global `cli.json` (the background service never loads it). `provider-wizard.ts` and `profile-wizard.ts` are dual-hosted: opencode loads them for the `/provider` and `/profile` slash commands, and the standalone OpenTUI app behind `ocp provider` / `ocp profile` loads the SAME modules through a `TuiPluginApi`-compatible host (`install/src/ui/app.tsx` + `tui-host.ts`). One wizard, two hosts — never re-implement wizard flows in `install/src/`.
+- **TUI plugins**: registered explicitly in `cli.template.jsonc:plugins` (`provider-wizard.ts`, `profile-wizard.ts`, `project-wizard.ts`, `sidebar-status.ts`, `usage.ts` under `plugins/tui/`) — CLI-only (terminal-client) plugins on the `@opencode/plugin/tui` slot/keymap API, loaded by the TUI process from the ONE global `cli.json` (the background service never loads it). `provider-wizard.ts` and `profile-wizard.ts` are dual-hosted: opencode loads them for the `/provider` and `/profile` slash commands, and the standalone OpenTUI app behind `ocp provider` / `ocp profile` loads the SAME modules through a `TuiPluginApi`-compatible host (`install/src/ui/app.tsx` + `tui-host.ts`). One wizard, two hosts — never re-implement wizard flows in `install/src/`.
 - **npm plugins**: the default `opencode.template.jsonc:plugins` array is empty — OCP does not ship any default npm plugin. Optional plugins (`opencode-qoder-bridge`, `opencode-mem@2.24.3`) remain opt-in via `install/options.jsonc`; the `plugin` block controls membership in the `plugins` array at merge time, and the v2 runtime installs package plugins in the background at server startup. `@dietrichgebert/ponytail` was removed entirely (ADR-0003).
 - **User-level plugin config**: `~/.config/opencode/ocp.json` (`plugins/shared/ocp-config.ts`) — one JSON file for cross-session user preferences shared by all ocp plugins (currently `language`, written by i18n). Plugins add their own namespaced keys via `readOcpField`/`writeOcpField`; unknown keys survive every write. Writes are pure JSON; reads are JSONC-tolerant (hand-edited comments keep working). `OCP_CONFIG_PATH` overrides the location (tests). The legacy `ocp.jsonc` rename is a one-shot performed by the installer (ADR 0004).
 - **Shared plumbing**: `plugins/shared/opencode-prime.ts` — project-dir resolution, JSONC parsing, field upsert, never-throw writes; used by auto-advisor, adr, env-guard, project-manager. `plugins/shared/plugin-scope.ts` — the scope POLICY: `identifiers` (text detection) plus per-plugin `deny`/`allow` lists with scope grammar `x` / `x:*`; the `"*"` entry is the inherited default (deny `lite`, `utility`, `subagent:*`). `plugins/shared/agent-scope.ts` — the v2 GATE on top of that policy: v2 has no per-agent hook scoping, so every injector registers its `ctx.session.hook("context")` / `ctx.tool.hook(...)` callback behind an agent-scope check. Detection order: event `agent` ID → system-text sentinels → `session.get` parentID ground truth (cached). Fail-open, exactly like v1. `plugins/shared/system-block.ts` — shared `appendBlock` / `stripBlockByLine` / `escapeRegExp` for context-hook injectors operating on the v2 `SystemPart[]`. `plugins/shared/plugin-switch.ts` — shared project-level on/off state machine (`createPluginSwitch` factory + `normalizeSwitchState` helper): a plugin declares its field name, alias table, default state, and which canonical states count as "on"; the helper handles read-from-config / write-to-config / clear-to-default plumbing via `opencode-prime.ts`. Used by auto-advisor (`off`/`lite`/`full`), adr, env-guard, project-memory (`on`/`off`). Pure-function core (`normalizeSwitchState`) is exported for unit tests.
@@ -417,7 +417,6 @@ V2 plugin API: `Plugin.define({ id, setup })`; inside `setup(ctx)` registrations
 | `context-watch.ts` (+ `plugins/context-watch/`) | `ctx.session.hook("context")` + `ctx.event.subscribe` | Context-window watch banner; session-deleted state cleanup. |
 | `tui/profile-wizard.ts` | TUI plugin | `/profile` dialog wizard: tier review, per-tier model override, live apply via server config API with file rewrite on request failure. |
 | `tui/provider-wizard.ts` | TUI plugin | `/provider` dialog wizard: baseURL/apiKey prompts, atomic write, model add/remove management; 🔌 Manage connections — union of the /connect credential store and config apiKeys (official built-ins and custom), one-click disconnect that keeps provider definitions and models. `/disconnect` (TUI-only keymap, official-/connect shape: one menu row, instant dialogs). |
-| `tui/queue-manager.ts` | TUI plugin | `/queued` command: list / view / toggle delivery (steer↔queue) / cancel one or all queued inbox prompts (v1's "Edit text" dropped — see OCP-V2-GAP). |
 | `tui/sidebar-status.ts` | TUI plugin (slot) | TUI sidebar slot: plugin switches, MCP state, context watch, profile badge. |
 | `tui/usage.ts` | TUI plugin | `/usage` opens a dialog with auto-fitted width and a visible tab strip: **by session** (one row per session + total), **by agent**, **by model** — input (non-cached) / output / cached-in, cost, cache hit, share bars. `1/2/3` or `←→` (`[`/`[]`) switch tabs live via global keymap bindings; `Enter` closes. `/usage all\|agent\|model` opens a dimension directly. Pure view over server data — no local persistence. GAP: v2 folds steps into one assistant message per turn, so the "Steps" column counts assistant messages as the closest proxy. |
 | `tui/project-wizard.ts` | TUI plugin | `/project` dialog wizard: two-tier interactive wizard (scaffolding init, switch configuration, template sync, index catch-up) with re-entrant echo. New Node projects without an existing formatter may explicitly set up project-local dprint. Owns the `/project` TUI slash entry; the server `ctx.command.transform` handler in `project-manager.ts` keeps handling `init\|index\|sync` subcommands for headless `ocp project <sub>` invocations. |
@@ -507,7 +506,6 @@ bun tests/test-e2e-adopt-unit.ts
 bun tests/test-project-manager-unit.ts
 bun tests/test-project-wizard-unit.ts
 bun tests/test-project-dprint-unit.ts
-bun tests/test-queue-manager-unit.ts
 bun tests/test-anchor-unit.ts
 ```
 
@@ -528,7 +526,7 @@ $env:LLM_ROUTER_API_KEY  = "<your-api-key>"
 | Decision strategy | Two-tier decision strategy, subagent no-ask rule, blocking markers |
 | Advisor e2e | `/auto-advisor off/lite/full` state writes, invalid-arg no-op, off-mode soft guard (no auto-dispatch, manual @ allowed), cross-process persistence |
 | Profiles | Every profile applies cleanly to a fresh template (agent refs, root model, untouched tiers) |
-| Plugin units | adr guard commit gating, env-guard blocking matrix, e2e-adopt scaffold contract, project-manager gates, queue-manager behavior, deepseek-anchor protocol |
+| Plugin units | adr guard commit gating, env-guard blocking matrix, e2e-adopt scaffold contract, project-manager gates, deepseek-anchor protocol |
 | build.md / plan.md | Routing table, team table, workflow templates, identity, read-only rule |
 
 ---
@@ -673,7 +671,6 @@ plugins/
     ├── provider-wizard.ts         # /provider dialog wizard + /disconnect (TUI keymap)
     ├── profile-wizard.ts          # /profile dialog wizard (core logic in shared/profile-core.ts)
     ├── project-wizard.ts          # /project dialog wizard
-    ├── queue-manager.ts           # /queued dialog manager (steer↔queue / cancel — v1 edit dropped)
     ├── sidebar-status.ts          # TUI slot: plugin/MCP/profile status panel
     └── usage.ts                   # /usage token/cost view (assistant-message step proxy — OCP-V2-GAP)
 
@@ -682,7 +679,7 @@ tests/
 ├── test-profiles.ps1         # Profile stress test
 ├── test-advisor-e2e.ps1      # Advisor-mode end-to-end (needs opencode CLI)
 ├── test-*-unit.ts            # Bun unit tests (adr, adr-compaction, env-guard, e2e-adopt,
-│                             #   project-manager, queue-manager, anchor)
+│                             #   project-manager, anchor)
 ├── test-adr-compaction-*.ts  # Compaction services, 14-boundary crash matrix, native
 │                             #   runtime/restart, release-package and installed-tree delivery
 ├── test-build/plan/subagent/ # Prompt dispatch tests

@@ -43,7 +43,6 @@ OpenCode Multi-Agent ships with a suite of high-leverage workflow slash commands
 | **`/profile`** | TUI Wizard | Open model profile picker: easily switch or customize Auto / Ultimate / Performance / Economy / Lightweight tiers |
 | **`/provider`** | TUI Wizard | Open provider wizard: configure credentials (`baseURL` / `apiKey`) and manage model catalogs |
 | **`/disconnect [id\|--all]`** | TUI Wizard | Disconnect a provider credential — bare opens the connections wizard; `<id>` jumps straight to confirm; `--all` asks once for every connection |
-| **`/queued`** | TUI Wizard | Interactive TUI dialog to inspect, edit, or cancel queued messages submitted while the agent was busy |
 | **`/usage [session\|agent\|model\|all]`** | Observability | Token/cost usage with tabbed dimensions (session / agent / model) — 1/2/3 or ←→ to switch, ↑/↓ to scroll |
 
 > The five `/git-*` commands share one doctrine: preflight halts instead of cleaning up after you, `--ff-only` target sync where applicable, `guard/` backups, baseline-first conflict resolution, a per-hunk confidence self-check that escalates to `@advisor` and hands uncertain hunks to you rather than guessing, verify-once honesty, and a redacted hash-chained audit trail in `.git/ocp-*-reports/` on **every** invocation. Full doctrine, flag matrix and failure catalog: **[Git Workflows](git.md)**.

@@ -2,7 +2,7 @@
  * Shared i18n module for all TUI wizard plugins.
  *
  * Centralizes locale detection, storage, and all translation strings
- * for profile-wizard, provider-wizard, queue-manager,
+ * for profile-wizard, provider-wizard, project-wizard,
  * and usage. This module is the single source of truth for the locale
  * registry (`LOCALES`) and the ADR glossary (`ADR_GLOSSARY`); headless
  * CLI entry points share it via `initI18nHeadless` / `refreshLocale`.
@@ -163,7 +163,7 @@ export function localeName(locale: Locale): string {
 
 // ─── Translation table ──────────────────────────────────────────────
 // Keys are namespaced: "common.xxx", "profile.xxx", "provider.xxx",
-// "project.xxx", "queue.xxx", "usage.xxx".  Placeholders use {name} syntax.
+// "project.xxx", "usage.xxx".  Placeholders use {name} syntax.
 
 export const STRINGS = {
   // ════════════════════════════════════════════════════════════════
@@ -650,50 +650,6 @@ export const STRINGS = {
   "project.nameEnvGuard": { en: "envGuard", "zh-CN": "环境护栏" },
   "project.nameAdrGuard": { en: "adrGuard", "zh-CN": "ADR 护栏" },
   "project.nameProjectMemory": { en: "projectMemory", "zh-CN": "项目记忆" },
-
-  // ════════════════════════════════════════════════════════════════
-  // ── Queue manager ──────────────────────────────────────────────
-  // ════════════════════════════════════════════════════════════════
-  "queue.cmdTitle": { en: "Manage queued messages", "zh-CN": "管理排队消息" },
-  "queue.cmdDesc": { en: "View, steer, or cancel queued messages in the current session", "zh-CN": "查看、转向或取消当前会话的排队消息" },
-  "queue.toastTitle": { en: "Queue manager", "zh-CN": "队列管理" },
-  "queue.cancelTitle": { en: "Cancel queued message", "zh-CN": "取消排队消息" },
-  "queue.fullTextTitle": { en: "Queued message — full text", "zh-CN": "排队消息 — 完整文本" },
-  "queue.entryTitle": { en: "Queued message ({age})", "zh-CN": "排队消息 ({age})" },
-  "queue.cancelAction": { en: "( Cancel message )", "zh-CN": "( 取消消息 )" },
-  "queue.viewAction": { en: "( View full text )", "zh-CN": "( 查看全文 )" },
-  "queue.viewActionDesc": { en: "Show the complete message text", "zh-CN": "显示完整消息文本" },
-  "queue.backToQueue": { en: "( ← Back to queue )", "zh-CN": "( ← 返回队列 )" },
-  "queue.listTitle": { en: "Message queue — {count} queued{busy}", "zh-CN": "消息队列 — {count} 条排队{busy}" },
-  "queue.queuedHeader": { en: "Queued", "zh-CN": "排队中" },
-  "queue.actionsHeader": { en: "Actions", "zh-CN": "操作" },
-  "queue.sessionBusy": { en: " (session busy)", "zh-CN": " (会话忙碌)" },
-  "queue.sessionIdle": { en: " (session idle)", "zh-CN": " (会话空闲)" },
-  "queue.listPlaceholder": { en: "Pick a queued message to inspect, steer, or cancel (Esc closes)", "zh-CN": "选择排队消息进行查看、转向或取消 (Esc 关闭)" },
-  "queue.cancelAll": { en: "( Cancel ALL queued messages )", "zh-CN": "( 取消全部排队消息 )" },
-  "queue.cancelAllTitle": { en: "Cancel ALL queued messages", "zh-CN": "取消全部排队消息" },
-  "queue.noQueuedMessages": { en: "No queued messages in this session.", "zh-CN": "此会话中没有排队消息。" },
-  "queue.cancelResult": { en: "Cancelled {ok}/{total} queued messages.", "zh-CN": "已取消 {ok}/{total} 条排队消息。" },
-  "queue.openSessionFirst": { en: "Open a session first — the queue is per-session.", "zh-CN": "请先打开一个会话 — 队列是按会话隔离的。" },
-  "queue.noCurrentSession": { en: "No current session.", "zh-CN": "没有当前会话。" },
-  "queue.attachmentOnly": { en: "[attachment only — no text]", "zh-CN": "[仅附件 — 无文本]" },
-  "queue.loadMessagesError": { en: "Failed to load messages: {err}", "zh-CN": "加载消息失败: {err}" },
-  "queue.deleteFailed": { en: "Delete failed: {err}", "zh-CN": "删除失败: {err}" },
-  "queue.deliveryFailed": { en: "Delivery change failed: {err}", "zh-CN": "投递方式变更失败: {err}" },
-  "queue.deliveryChanged": { en: "Message {id} will now {delivery}.", "zh-CN": "消息 {id} 现在将以 {delivery} 方式投递。" },
-  "queue.deliverySteer": { en: "steer", "zh-CN": "转向" },
-  "queue.deliveryQueue": { en: "queue", "zh-CN": "排队" },
-  "queue.steerAction": { en: "( ➤ Steer — take priority at the next boundary )", "zh-CN": "( ➤ 转向 — 在下一安全边界优先投递 )" },
-  "queue.enqueueAction": { en: "( ⇣ Queue — keep delivery order )", "zh-CN": "( ⇣ 排队 — 保持投递顺序 )" },
-  "queue.steerActionDesc": { en: "Promote this message ahead of queued work", "zh-CN": "将此消息提升到排队工作之前" },
-  "queue.enqueueActionDesc": { en: "Keep this message in admission order", "zh-CN": "保持此消息的入队顺序" },
-  "queue.confirmCancelBusy": { en: "Cancel this queued message?\n\n\"{preview}\"\n\nThe session is BUSY — the pending item is removed before delivery.", "zh-CN": "取消此排队消息？\n\n\"{preview}\"\n\n会话忙碌 — 待投递项将在投递前移除。" },
-  "queue.confirmCancelIdle": { en: "Cancel this queued message?\n\n\"{preview}\"\n\nThe pending item will be removed permanently.", "zh-CN": "取消此排队消息？\n\n\"{preview}\"\n\n待投递项将被永久移除。" },
-  "queue.confirmCancelAllBusy": { en: "Cancel all {count} queued messages? The session is BUSY — each pending item is removed before delivery.", "zh-CN": "取消全部 {count} 条排队消息？会话忙碌 — 每个待投递项将在投递前移除。" },
-  "queue.confirmCancelAllIdle": { en: "Delete all {count} queued messages permanently?", "zh-CN": "永久删除全部 {count} 条排队消息？" },
-  "queue.noTextAttachmentsOnly": { en: "(no text — attachments only)", "zh-CN": "(无文本 — 仅附件)" },
-  "queue.stripAllCount": { en: "Remove all {count} queued messages", "zh-CN": "移除全部 {count} 条排队消息" },
-  "queue.attachmentCount": { en: "{count} attachment(s)", "zh-CN": "{count} 个附件" },
 
   // ════════════════════════════════════════════════════════════════
   // ── Usage (token/cost view — usage.ts) ───────────────────────────

@@ -103,12 +103,10 @@ export default Plugin.define({
 ## 已接受的降级（OCP-V2-GAP 登记表）
 
 v2 表面缺失某些 v1 能力时，OCP 选择接受**有记录的降级**而不是硬凑 hack。
-每处降级在源码中都有 `OCP-V2-GAP` 注释（2.0.0 打 tag 时共 16 处）：
+每处降级在源码中都有 `OCP-V2-GAP` 注释（2.0.0 打 tag 时共 15 处）：
 
 - **Toast 通知** → v2 插件 `Context` 没有 TUI 通知领域；公告降级为经
   `plugins/shared/notify.ts` 输出的服务端日志行（TUI 桥接是后续项）。
-- **`/queued` 编辑文本** → v2 收件箱 API 可取消、重新入队、切换投递方式
-  （steer ↔ queue），但不能改写待定条目的载荷。
 - **`/usage` 步数** → v2 把 steps 折叠为每回合一条 assistant 消息；该列以
   assistant 消息数作为最接近的代理指标。
 - **工具结果标题** → v2 `Tool.Result` 没有 `title` 字段（tgrep、memory-note：

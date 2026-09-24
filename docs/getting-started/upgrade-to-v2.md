@@ -115,13 +115,11 @@ live in `DEVELOPING.md` §"Plugin system".
 
 Where the v2 surface lacks a v1 affordance, OCP accepted a documented
 degradation instead of a hack. Each carries an `OCP-V2-GAP` comment in the
-source (16 markers at 2.0.0 tag time):
+source (15 markers at 2.0.0 tag time):
 
 - **Toasts** → the v2 plugin `Context` exposes no TUI notification domain;
   announcements degrade to a server-log line via `plugins/shared/notify.ts`
   (TUI bridge is a follow-up).
-- **`/queued` edit** → the v2 inbox API can cancel, re-admit and toggle
-  delivery (steer ↔ queue) but cannot rewrite a pending item's payload.
 - **`/usage` steps** → v2 folds steps into one assistant message per turn; the
   column counts assistant messages as the closest proxy.
 - **Tool-result titles** → v2 `Tool.Result` has no `title` field (tgrep,

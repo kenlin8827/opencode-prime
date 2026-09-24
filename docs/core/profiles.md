@@ -239,7 +239,7 @@ Pick a profile and apply it immediately — no intermediate review:
 
 > **Esc behavior:** At every dialog level, pressing Esc returns to the previous level (not closes the entire wizard). Only Esc at the main menu (Level 1) closes the wizard.
 
-> **i18n:** All TUI wizard plugins (`/profile`, `/provider`, `/project`, `/queued`) support internationalization. The language is auto-detected from system locale/environment variables on first use, then stored in `api.kv`. Each wizard's main menu includes a `🌐 English → 中文` (or reverse) option to switch languages on the fly — the menu re-renders in the new language immediately. Translations are centralized in `plugins/i18n.ts`.
+> **i18n:** All TUI wizard plugins (`/profile`, `/provider`, `/project`) support internationalization. The language is auto-detected from system locale/environment variables on first use, then stored in `api.kv`. Each wizard's main menu includes a `🌐 English → 中文` (or reverse) option to switch languages on the fly — the menu re-renders in the new language immediately. Translations are centralized in `plugins/i18n.ts`.
 
 ---
 

@@ -35,7 +35,6 @@ $env:LLM_ROUTER_API_KEY = "<your-api-key>"
 | `test-md-to-pdf-unit.ts` | Markdown to PDF export unit tests (no API, 18 assertions) — Puppeteer/Typst engine, offline Mermaid |
 | `test-anchor-unit.ts` | DeepSeek Anchor plugin unit tests (no API, 46 assertions) — verifies anchor injection, idempotency, model detection, tool block/restore |
 | `test-anchor-benchmark.ps1` | DeepSeek Anchor benchmark: on vs off comparison (requires API) |
-| `test-queue-manager-unit.ts` | Queue Manager TUI plugin unit tests (no API, 23 assertions) |
 | `test-project-manager-unit.ts` | Project Manager plugin unit tests (no API, 126 assertions) |
 | `test-project-wizard-unit.ts` | Project Wizard TUI plugin unit tests (no API, 48 assertions) |
 
@@ -53,9 +52,6 @@ powershell -ExecutionPolicy Bypass -File tests/test-build.ps1
 
 # DeepSeek Anchor unit tests (no API, fast)
 npx tsx tests/test-anchor-unit.ts
-
-# Queue Manager unit tests (no API, fast)
-npx tsx tests/test-queue-manager-unit.ts
 
 # DeepSeek Anchor benchmark (requires API, ~2 min per prompt × 2 states)
 pwsh -ExecutionPolicy Bypass -File tests/test-anchor-benchmark.ps1

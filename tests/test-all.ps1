@@ -399,7 +399,6 @@ $allFiles = @(
     "docs/zh/workflows/dev-prud.md",
     "plugins/design-token-guard.ts", "plugins/ai-slop-scanner.ts",
     "plugins/tui/usage.ts", "plugins/auto-format.ts",
-    "plugins/tui/queue-manager.ts",
     "plugins/tui/provider-wizard.ts", "plugins/tui/profile-wizard.ts",
     "install/src/ui/tui-host.ts", "install/src/ui/app.tsx",
     "install/src/ui/clipboard.ts",
@@ -766,21 +765,8 @@ Check "project-manager-tool-guard.ts: merge/revert/fixup/squash exempt" ($pmGuar
 $pmBarrel = Get-Content "$PSScriptRoot\..\plugins\project-manager.ts" -Raw
 Check "project-manager.ts: barrel re-exports ProjectManagerPlugin" ($pmBarrel -match "export.*ProjectManagerPlugin")
 
-# Queue manager plugin checks (plugins/tui/queue-manager.ts — TUI-only, registered via tui.template.jsonc)
-$qmPlugin = Get-Content "$PSScriptRoot\..\plugins\tui\queue-manager.ts" -Raw
-Check "queue-manager.ts: imports TuiPlugin from plugin/tui" ($qmPlugin -match "@opencode-ai/plugin/tui")
-Check "queue-manager.ts: slash command name is queued" ($qmPlugin -match 'SLASH_NAME = "queued"')
-Check "queue-manager.ts: registers palette command with slashName" ($qmPlugin -match "slashName: SLASH_NAME" -and $qmPlugin -match 'namespace: "palette"')
-Check "queue-manager.ts: cancel uses session.deleteMessage" ($qmPlugin -match "session\.deleteMessage")
-Check "queue-manager.ts: busy fallback strips via part.update" ($qmPlugin -match "part\.update")
-Check "queue-manager.ts: tombstone for busy-cancelled messages" ($qmPlugin -match "TOMBSTONE")
-Check "queue-manager.ts: exports pure helpers for unit tests" ($qmPlugin -match "export function computeQueued")
-$tuiTemplateRaw = Get-Content "$PSScriptRoot\..\tui.template.jsonc" -Raw
-# TUI plugin registration paths carry a leading ./ (opencode resolves them
-# relative to the config dir).
-Check "tui.template.jsonc: queue-manager registered in plugin array" ($tuiTemplateRaw -match '"\./plugins/tui/queue-manager\.ts"')
-
 # Usage plugin checks (plugins/tui/usage.ts — TUI-only, registered via tui.template.jsonc)
+$tuiTemplateRaw = Get-Content "$PSScriptRoot\..\tui.template.jsonc" -Raw
 $mtPlugin = Get-Content "$PSScriptRoot\..\plugins\tui\usage.ts" -Raw
 Check "usage.ts: imports TuiPlugin from plugin/tui" ($mtPlugin -match "@opencode-ai/plugin/tui")
 Check "usage.ts: slash command name is usage (bare, TUI prepends /)" ($mtPlugin -match 'SLASH_NAME = "usage"')
@@ -987,6 +973,8 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Unit Tests: SDD & Plugin Ecosystem" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 & bun "$PSScriptRoot\test-sdd-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-wizard-host-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-adr-compaction-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }

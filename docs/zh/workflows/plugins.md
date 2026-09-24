@@ -20,7 +20,6 @@
 | `e2e-adopt.ts` | `/e2e-adopt` 命令 —— 将 E2E 红线政策采纳进项目文档（`docs/e2e-redline.md` + AGENTS.md 小节）；文档治理，无运行时闸门 |
 | `project-manager.ts` | `/project` 命令 + 提交纪律 |
 | `project-memory.ts` | `/memory` 命令 —— 项目级记忆：在 `.ocp/memory/public.md`（团队）或 `private.md`（gitignored）里记录经验教训，并在每次聊天请求时以 `[PROJECT MEMORY]` 注入。LLM 可通过 `memory_note` 工具主动记录；`/memory-summarize` skill 用于 session 总结 |
-| `queue-manager.ts` | `/queued` 命令 —— 管理会话忙碌时排队的提示 |
 | `profile-wizard.ts`、`provider-wizard.ts`、`project-wizard.ts` | `/profile`、`/provider` 与 `/project` TUI 弹窗向导；未配置现有 formatter 的新 Node 项目可明确选择配置项目本地 dprint |
 | `md-to-pdf.ts` | `/md-to-pdf` 命令与 `md_to_pdf` 工具 —— 将 Markdown 一键导出为高质量 A4 PDF（基于 Pandoc + Playwright） |
 | `md-to-docx.ts` | `/md-to-docx` 命令与 `md_to_docx` 工具 —— 将 Markdown 导出为出版级 Word (.docx) 文档（宋体/黑体排版、自动TOC、智能表格与代码美化） |
@@ -301,14 +300,6 @@ memory_note({ lesson: "auth middleware swallows JWT errors" }, ctx: { agent: "ad
 - commit 首行须匹配 `type(scope): summary`（type 限 feat、fix、refactor、docs、test、chore、perf、ci、build、style、revert）且 ≤ 72 字符。
 
 ---
-
-## 管理排队提示（`/queued`）
-
-会话忙碌时提交的提示，OpenCode 会作为持久化收件箱条目（durable inbox item）保存。内置的 `queue-manager.ts` TUI 插件提供交互式管理界面：
-
-- `/queued` 打开选择对话框，列出全部排队消息。
-- 选中后可执行：**切换投递方式**（steer ↔ queue —— steer 会在下一个安全边界把该条目提前到排队工作之前）、**取消消息**、**查看全文**，或 **Cancel ALL** 批量取消。
-- v1 的"编辑文本"已移除：v2 收件箱 API 可取消、重新入队、更改投递方式，但无法重写待定条目的载荷。
 
 ---
 

@@ -16,7 +16,6 @@
     "./plugins/tui/provider-wizard.ts",
     "./plugins/tui/profile-wizard.ts",
     "./plugins/tui/project-wizard.ts",
-    "./plugins/tui/queue-manager.ts",
     "./plugins/tui/sidebar-status.ts",
     "./plugins/tui/usage.ts"
   ]

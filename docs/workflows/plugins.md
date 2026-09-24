@@ -20,7 +20,6 @@ Plugins provide runtime enforcement and workflows that prompts alone cannot achi
 | `e2e-adopt.ts` | `/e2e-adopt` command — adopts the E2E red-line policy into project docs (`docs/e2e-redline.md` + AGENTS.md section); docs governance, no runtime gate |
 | `project-manager.ts` | `/project` command + commit discipline |
 | `project-memory.ts` | `/memory` command — project-level memory: note lessons to `.ocp/memory/public.md` (team) or `private.md` (gitignored), inject under `[PROJECT MEMORY]` on each chat request. `memory_note` tool for LLM-initiated capture; `/memory-summarize` skill for session summaries. |
-| `queue-manager.ts` | `/queued` command — manage prompts queued while the session is busy |
 | `profile-wizard.ts`, `provider-wizard.ts`, `project-wizard.ts` | `/profile`, `/provider`, and `/project` TUI dialog wizards; new Node projects without an existing formatter may explicitly set up project-local dprint |
 | `md-to-pdf.ts` | `/md-to-pdf` command & `md_to_pdf` tool — export Markdown files as publication-quality A4 PDFs (via Pandoc + Playwright) |
 | `md-to-docx.ts` | `/md-to-docx` command & `md_to_docx` tool — export Markdown files as publication-quality Word (.docx) documents (Chinese typography, auto TOC, styled tables & code blocks) |
@@ -310,16 +309,6 @@ Per-project commit-convention enforcement with a **file-as-switch**: no state fi
 
 While `docs/git-commits.md` exists:
 - First line of commit message must match `type(scope): summary` (`feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`, `build`, `style`, `revert`) and stay ≤ 72 characters.
-
----
-
-## Managing queued prompts (`/queued`)
-
-OpenCode persists prompts submitted while busy as durable inbox items. The bundled `queue-manager.ts` TUI plugin provides an interactive UI:
-
-- `/queued` opens a picker dialog listing all queued messages.
-- Selected actions: **Toggle delivery** (steer ↔ queue — steering promotes the item ahead of queued work at the next safe boundary), **Cancel Prompt**, **View Full Text**, or **Cancel ALL**.
-- v1's "Edit text" is gone: the v2 inbox API can cancel, re-admit, and change delivery, but cannot rewrite a pending item's payload.
 
 ---
 
