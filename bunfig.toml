@@ -1,0 +1,7 @@
+# Bun configuration (repo-side dev tooling; not shipped).
+[test]
+# tests/fixtures/** contains seeded deliberately-failing files (e.g. the
+# review-tiering f3-sensitive "seed bug" used as a code-review fixture).
+# Exclude them from bare `bun test` discovery so the real suite result is
+# readable; tests invoked by explicit path are unaffected.
+ignore = ["**/tests/fixtures/**"]
