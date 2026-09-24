@@ -711,7 +711,7 @@ export function ensureOcpGitignore(root: string = getProjectDir()): void {
       mkdirSync(dir, { recursive: true })
     }
     const gitignorePath = join(dir, ".gitignore")
-    const defaultIgnore = ".gitignore\nlogs/\n*.log\nhandoffs/\nmemory/private.md\ndev-ultra-state.md\n"
+    const defaultIgnore = ".gitignore\nlogs/\n*.log\nhandoffs/\nmemory/private.md\ndev-ultra-state.md\ntgrep-state.json\n"
     if (!existsSync(gitignorePath)) {
       writeFileSync(gitignorePath, defaultIgnore, "utf-8")
       return
@@ -733,6 +733,10 @@ export function ensureOcpGitignore(root: string = getProjectDir()): void {
     }
     if (!content.includes("dev-ultra-state.md")) {
       nextContent = nextContent.trimEnd() + "\ndev-ultra-state.md\n"
+      needsUpdate = true
+    }
+    if (!content.includes("tgrep-state.json")) {
+      nextContent = nextContent.trimEnd() + "\ntgrep-state.json\n"
       needsUpdate = true
     }
     if (needsUpdate) {
