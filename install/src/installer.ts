@@ -374,6 +374,130 @@ function writeTargetInstalledManifest(targetDir: string, files: string[]): void 
 }
 
 /**
+ * Plugin runtime deps for the install TARGET (~/.config/opencode).
+ * Every shipped plugins/*.ts imports `@opencode/plugin` (MIT-licensed —
+ * compatible per AGENTS.md License section), but the manifest only ships
+ * the .ts files, never a package.json/node_modules. Without this step a
+ * cleaned/rebased target fails every plugin with
+ * `Die(ResolveMessage: Cannot find package '@opencode/plugin')`.
+ * Best-effort by design (same philosophy as provisionTools): never throws,
+ * network/PM failures degrade to a warning line and the install continues.
+ */
+export const PLUGIN_RUNTIME_PKG = '@opencode/plugin';
+const PLUGIN_RUNTIME_SPEC_FALLBACK = '^2.0.15';
+
+/**
+ * TUI-side runtime deps for the same target. The TUI loads plugin files with
+ * a bare `import()` (no dependency injection): every TUI plugin imports
+ * `solid-js` and `@opentui/solid/jsx-runtime`, and `@opencode/plugin/tui`
+ * itself imports `solid-js` — none of which opencode provides to plugin code.
+ * Versions pin opencode's own TUI catalog (v2.0.16: solid-js 1.9.15,
+ * @opentui/solid 0.5.10) so the plugin-side copy stays aligned with the
+ * host's across the two-instance boundary (mismatched solid instances break
+ * signals/context sharing).
+ * License — both MIT (AGENTS.md License section: compatible to bundle;
+ * this comment is the inline license statement): solid-js MIT,
+ * @opentui/solid MIT.
+ */
+export const TUI_PLUGIN_RUNTIME_DEPS: Record<string, string> = {
+  'solid-js': '1.9.15',
+  '@opentui/solid': '0.5.10',
+};
+
+/** Spec pinned by this repo (root package.json dependencies). Fallback when unreadable. Pure file read. */
+export function getPluginRuntimeSpec(repoDir: string): string {
+  try {
+    const raw = fs.readFileSync(path.join(repoDir, 'package.json'), 'utf8');
+    const spec = (JSON.parse(raw)?.dependencies as Record<string, string> | undefined)?.[PLUGIN_RUNTIME_PKG];
+    if (typeof spec === 'string' && spec.trim()) return spec.trim();
+  } catch {
+    // fall through to fallback
+  }
+  return PLUGIN_RUNTIME_SPEC_FALLBACK;
+}
+
+/** Create/merge targetDir/package.json so dependencies include the runtime spec. Preserves user fields. */
+export function ensureTargetPluginPackageJson(
+  targetDir: string,
+  spec: string,
+): { action: 'created' | 'updated' | 'uptodate' } {
+  const pkgPath = path.join(targetDir, 'package.json');
+  let pkg: Record<string, any> = {};
+  try {
+    if (fs.existsSync(pkgPath)) pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) ?? {};
+  } catch {
+    pkg = {};
+  }
+  if (typeof pkg !== 'object' || Array.isArray(pkg)) pkg = {};
+  const deps = (pkg.dependencies && typeof pkg.dependencies === 'object' ? pkg.dependencies : {}) as Record<string, string>;
+  const required: Record<string, string> = { [PLUGIN_RUNTIME_PKG]: spec, ...TUI_PLUGIN_RUNTIME_DEPS };
+  if (Object.entries(required).every(([name, value]) => deps[name] === value)) return { action: 'uptodate' };
+  const existed = fs.existsSync(pkgPath);
+  pkg.dependencies = { ...deps, ...required };
+  fs.mkdirSync(targetDir, { recursive: true });
+  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+  return { action: existed ? 'updated' : 'created' };
+}
+
+/** Run a local (non-global) install inside targetDir. Prefers bun, falls back to npm. */
+export function installTargetPluginDeps(
+  targetDir: string,
+  run: (cmd: string, opts: { cwd: string }) => ShellCommandResult = (cmd, opts) =>
+    runShellCommand(cmd, { cwd: opts.cwd, output: 'inherit', timeoutMs: 600000 }),
+): ShellCommandResult {
+  const cmd = isBinaryOnPath('bun') ? 'bun install' : 'npm install';
+  return run(cmd, { cwd: targetDir });
+}
+
+/** Orchestrator: package.json merge + local install. Never throws — returns a loggable summary. */
+export function ensurePluginRuntimeDeps(
+  repoDir: string,
+  targetDir: string,
+  overrides?: {
+    run?: (cmd: string, opts: { cwd: string }) => ShellCommandResult;
+  },
+): { pkg: 'created' | 'updated' | 'uptodate' | 'error'; install: 'ok' | 'failed' | 'skipped'; message: string } {
+  try {
+    const spec = getPluginRuntimeSpec(repoDir);
+    let pkg: 'created' | 'updated' | 'uptodate';
+    try {
+      pkg = ensureTargetPluginPackageJson(targetDir, spec).action;
+    } catch (err) {
+      return { pkg: 'error', install: 'skipped', message: `could not write package.json (${err instanceof Error ? err.message : String(err)})` };
+    }
+    // Fast path: every runtime dep already resolvable — skip the network
+    // install. All markers must exist: a target with @opencode/plugin but no
+    // solid-js is exactly the broken TUI-plugin state this step repairs.
+    try {
+      const marker = path.join(targetDir, 'node_modules', '@opencode', 'plugin', 'package.json');
+      const missing = Object.keys(TUI_PLUGIN_RUNTIME_DEPS).filter(
+        (name) => !fs.existsSync(path.join(targetDir, 'node_modules', ...name.split('/'), 'package.json')),
+      );
+      if (missing.length === 0 && fs.existsSync(marker)) {
+        const installed = JSON.parse(fs.readFileSync(marker, 'utf8'))?.version as string | undefined;
+        if (typeof installed === 'string' && installed.trim()) {
+          return { pkg, install: 'skipped', message: `@opencode/plugin@${installed} + TUI deps present — install skipped` };
+        }
+      }
+    } catch {
+      // unreadable marker — fall through to install
+    }
+    // Test/dev escape hatch: merge package.json but skip the network install.
+    if (process.env.OCP_SKIP_PLUGIN_INSTALL) {
+      return { pkg, install: 'skipped', message: `package.json ${pkg} — install skipped via OCP_SKIP_PLUGIN_INSTALL` };
+    }
+    const res = installTargetPluginDeps(targetDir, overrides?.run);
+    if (!res.error && res.status === 0) {
+      return { pkg, install: 'ok', message: `package.json ${pkg}, deps installed (${spec})` };
+    }
+    const detail = res.error ? res.error.message : `exit code ${res.status ?? '?'}`;
+    return { pkg, install: 'failed', message: `package.json ${pkg}, install failed (${detail}) — plugins will fail until \`bun install\`/\`npm install\` succeeds in ${targetDir}` };
+  } catch (err) {
+    return { pkg: 'error', install: 'skipped', message: `unexpected (${err instanceof Error ? err.message : String(err)})` };
+  }
+}
+
+/**
  * Major of an `opencode --version` stdout ("opencode 1.18.32" / "2.0.15" →
  * number); NaN when no semver-looking token is present — dev/local builds
  * report "local" (cli/src/version.ts), which stays unprovable and therefore
@@ -1415,6 +1539,21 @@ export function executeInstall(
   // 6. Write installed version
   fs.writeFileSync(path.join(targetDir, 'installed.version'), curVersion + '\n', 'utf8');
   writeTargetInstalledManifest(targetDir, targetManagedFiles);
+
+  // 6.5 Plugin runtime deps: target package.json + local install so
+  //   plugins/*.ts `import "@opencode/plugin"` and TUI plugins'
+  //   `import "solid-js"` resolve. Best-effort —
+  //   failures warn only (see ensurePluginRuntimeDeps).
+  try {
+    const runtime = ensurePluginRuntimeDeps(repoDir, targetDir);
+    if (runtime.install === 'ok' || runtime.install === 'skipped') {
+      console.log(`✓ [plugin-runtime] ${runtime.message}`);
+    } else {
+      console.log(colorize.yellow(`⚠ [plugin-runtime] ${runtime.message}`));
+    }
+  } catch (err) {
+    console.log(colorize.yellow(`⚠ [plugin-runtime] unexpected (${err instanceof Error ? err.message : String(err)})`));
+  }
 
   // 7. Provision CLIs for enabled MCP servers missing from PATH. The
   //    section header is emitted only when the plan is non-empty — with
