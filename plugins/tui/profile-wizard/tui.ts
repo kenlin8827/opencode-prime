@@ -1,6 +1,7 @@
 /// <reference types="bun" />
 import type { Context } from "@opencode/plugin/tui/context"
 import { Plugin } from "@opencode/plugin/tui"
+import { appKeymapLayer } from "../_keymap-app"
 
 /**
  * Profile Wizard — TUI dialog-based profile switching.
@@ -62,14 +63,14 @@ import { Plugin } from "@opencode/plugin/tui"
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, unlinkSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
-import { tr, initI18n, languageOption, switchLanguage, SWITCH_LANG } from "./i18n"
+import { tr, initI18n, refreshLocale, languageOption, switchLanguage, SWITCH_LANG } from "../i18n"
 import {
   CONFIG_FILE,
   readConfig,
   writeConfigAtomic,
   readAuth,
   type OpenCodeConfig,
-} from "../shared/provider-creds"
+} from "../../shared/provider-creds"
 import {
   agentsRead,
   applyProfile,
@@ -98,12 +99,12 @@ import {
   type ProfileListEntry,
   listModelRefs,
   stripModelRefs,
-} from "../shared/profile-core"
+} from "../../shared/profile-core"
 
 // Test/CLI surface: the reset + apply unit tests import these through the
 // wizard module — keep them re-exported from the shared core (single source).
 export { applyProfile, listModelRefs, stripModelRefs }
-export type { Catalog } from "../shared/profile-core"
+export type { Catalog } from "../../shared/profile-core"
 
 /**
  * Extract the subcommand from the slash command's raw input (v2 passes the
@@ -257,16 +258,22 @@ function tierDescription(tier: string): string {
 // ════════════════════════════════════════════════════════════════════
 
 async function startWizard(ctx: Context): Promise<void> {
-  const selectionCat = tr("profile.selectionHeader")
-  const editCat = tr("profile.editHeader")
-  const manageCat = tr("profile.manageHeader")
-  const actionsCat = tr("profile.actionsHeader")
-  const interfaceCat = tr("common.interfaceHeader")
+  // Cross-window language sync: another window's switch lives only in
+  // ocp.json (initI18n ran once behind its `initialized` guard) — re-read
+  // the shared config before composing any menu text.
+  refreshLocale()
 
   // Branch results: true = the branch applied/attempted a terminal action
   // and closed the wizard (v1's dialog.clear + toast); false/Esc = the
   // main menu re-presents itself.
   for (;;) {
+    // Rebuilt per iteration: an in-wizard switchLanguage updates the
+    // module locale directly, so headers must re-run tr() to follow it.
+    const selectionCat = tr("profile.selectionHeader")
+    const editCat = tr("profile.editHeader")
+    const manageCat = tr("profile.manageHeader")
+    const actionsCat = tr("profile.actionsHeader")
+    const interfaceCat = tr("common.interfaceHeader")
     const active = getActiveProfile()
     const pick = await ctx.ui.dialog.select<string>({
       title: tr("profile.mainTitle"),
@@ -1188,7 +1195,8 @@ export default Plugin.define({
   id: PLUGIN_ID,
   setup(ctx: Context) {
     initI18n()
-    ctx.keymap.layer(() => ({
+    appKeymapLayer(ctx, () => ({
+      mode: "global",
       commands: [
         {
           id: "profile.switch",
@@ -1196,7 +1204,7 @@ export default Plugin.define({
           description: tr("profile.cmdDesc"),
           group: "Profile",
           palette: true,
-          slash: { name: "profile", arguments: true },
+          slash: { name: "profile" },
           run(input?: string) {
             const sub = parseProfileSubcommand(input)
             if (sub === "reset") {

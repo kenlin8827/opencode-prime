@@ -19,7 +19,7 @@
 
 // applyProfile is a pure function — no host or filesystem dependency.
 
-const { applyProfile } = await import("../plugins/tui/profile-wizard")
+const { applyProfile } = await import("../plugins/tui/profile-wizard/tui")
 
 let passed = 0
 let failed = 0

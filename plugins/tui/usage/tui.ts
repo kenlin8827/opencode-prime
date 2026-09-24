@@ -1,17 +1,18 @@
 /// <reference types="bun" />
 import type { Context } from "@opencode/plugin/tui/context"
 import { Plugin } from "@opencode/plugin/tui"
+import { appKeymapLayer } from "../_keymap-app"
 import { createMemo, createSignal } from "solid-js"
 import { jsx } from "@opentui/solid/jsx-runtime"
-import { initI18n, tr, parseSlashArgs } from "./i18n"
-import { parseJsonc } from "../shared/ocp-config"
+import { initI18n, refreshLocale, tr, parseSlashArgs } from "../i18n"
+import { parseJsonc } from "../../shared/ocp-config"
 import {
   getPublicModelCatalog,
   publicModelPageID,
   publicModelPrice,
   resetModelCatalogCacheForTests,
   type PublicModelCatalog,
-} from "../shared/model-catalog"
+} from "../../shared/model-catalog"
 
 /**
  * Usage — TUI token/cost usage dialog with per-dimension views.
@@ -600,7 +601,7 @@ function hitRate(cacheRead: number, input: number): string {
  *  (CONTEXT_TIERS) — both /usage banner and the LLM-side reminder must
  *  agree on the threshold; importing the constant here keeps them in sync
  *  without a duplicate literal that could drift. */
-import { CONTEXT_TIERS as CONTEXT_WARN_TIERS } from "../context-watch/context-watch"
+import { CONTEXT_TIERS as CONTEXT_WARN_TIERS } from "../../context-watch/context-watch"
 
 /** Build the optional context-warning banner that appears above the
  *  /usage table. Returns "" when nothing is worth surfacing so the caller
@@ -1055,6 +1056,11 @@ function currentSessionID(ctx: Context): string | undefined {
 
 const DIMENSIONS: UsageDimension[] = ["session", "agent", "model"]
 
+/** Gap between tab labels — shared by the string strip (renderTabStrip,
+ *  which also positions the underline) and the clickable row in UsageDialog
+ *  so the two can never drift apart. */
+const TAB_GAP = "   "
+
 const DIM_TITLE_KEY: Record<UsageDimension, string> = {
   session: "usage.dimSession",
   agent: "usage.dimAgent",
@@ -1068,15 +1074,20 @@ const DIM_SUBCOMMAND: Record<string, UsageDimension> = {
   model: "model",
 }
 
+/** Tab labels with the hotkey number baked in — single source for both the
+ *  string strip (flat/scroll renders) and the clickable row in UsageDialog. */
+function tabLabels(): string[] {
+  return DIMENSIONS.map((d, i) => `(${i + 1}) ${tr(DIM_TITLE_KEY[d] as Parameters<typeof tr>[0])}`)
+}
+
 /** Tab strip with the hotkey number baked into each label and an underline bar under the active tab:
  *  `(1) 按会话   (2) 按Agent   (3) 按模型`
  *  `▬▬▬▬▬▬▬`                        */
 function renderTabStrip(active: UsageDimension): string {
-  const labels = DIMENSIONS.map((d, i) => `(${i + 1}) ${tr(DIM_TITLE_KEY[d] as Parameters<typeof tr>[0])}`)
-  const gap = "   "
-  const strip = labels.join(gap)
+  const labels = tabLabels()
+  const strip = labels.join(TAB_GAP)
   const idx = DIMENSIONS.indexOf(active)
-  const offset = labels.slice(0, idx).reduce((w, l) => w + displayWidth(l) + gap.length, 0)
+  const offset = labels.slice(0, idx).reduce((w, l) => w + displayWidth(l) + TAB_GAP.length, 0)
   const underline = " ".repeat(offset) + "▬".repeat(displayWidth(labels[idx]))
   return strip + "\n" + underline
 }
@@ -1130,10 +1141,6 @@ const DIALOG_CHROME = 7
 /** Never show fewer than one data row, even on degenerate tiny terminals. */
 const MIN_VISIBLE_ROWS = 1
 
-/** Max data rows per viewport — keeps the dialog compact on tall terminals;
- *  shorter terminals still shrink adaptively below this. */
-const MAX_VISIBLE_ROWS = 8
-
 export interface ScrollView {
   /** Composed dialog message: pinned tab strip / warning / column header,
    *  the visible slice of data rows, then pinned total row + footers +
@@ -1145,8 +1152,8 @@ export interface ScrollView {
   maxOffset: number
 }
 
-/** Compose the dialog message for a viewport of at most MAX_VISIBLE_ROWS data
- *  rows (short terminals shrink it further). Pinned top: tab strip, context
+/** Compose the dialog message for a viewport sized from the terminal budget
+ *  (short terminals shrink it, tall ones grow). Pinned top: tab strip, context
  *  warning, column header + rule. Scrolling region: data rows only,
  *  row-granular (a row is never cut mid-line). Pinned bottom: total row,
  *  table footers, scroll indicator. When nothing overflows the output is
@@ -1162,8 +1169,12 @@ export function renderScrollView(rendered: UsageRender, dim: UsageDimension, ter
   const pinnedTop = 2 /* tab strip */ + 1 /* blank */ + warningLines + 2 /* header + rule */
   const footerLines = tv.footers.reduce((n, f) => n + 1 + f.split("\n").length, 0) // + leading blank each
   const pinnedBottom = 2 /* blank + total row */ + footerLines
+  // Viewport height is adaptive: the budget (terminal rows genuinely
+  // available below the backdrop + chrome) is the only ceiling — no fixed
+  // row cap, so tall terminals show more rows instead of leaving the lower
+  // screen idle. Short terminals still shrink to MIN_VISIBLE_ROWS.
   const rowsFor = (withIndicator: boolean) =>
-    Math.max(MIN_VISIBLE_ROWS, Math.min(MAX_VISIBLE_ROWS, Math.floor((budget - pinnedTop - pinnedBottom - (withIndicator ? 2 : 0) + 1) / 2)))
+    Math.max(MIN_VISIBLE_ROWS, Math.floor((budget - pinnedTop - pinnedBottom - (withIndicator ? 2 : 0) + 1) / 2))
   let visible = rowsFor(false)
   let maxOffset = 0
   if (visible < total) {
@@ -1218,8 +1229,11 @@ export default Plugin.define({
       // those wrap naturally inside the dialog, so they must not inflate the
       // width tier). The full table keeps the tier stable while wide rows
       // scroll out of (and back into) the visible window.
-      ctx.ui.dialog.set({ size: fitDialogSize(rendered.table) })
-      if (dialogOpen()) return
+      const size = fitDialogSize(rendered.table)
+      if (dialogOpen()) {
+        ctx.ui.dialog.set({ size })
+        return
+      }
       setDialogOpen(true)
       ctx.ui.dialog.show(
         () => jsx(UsageDialog, {}),
@@ -1228,6 +1242,9 @@ export default Plugin.define({
           setCurrent(null)
         },
       )
+      // set() targets the ACTIVE dialog and the host's show()→replace() resets
+      // size to medium — it must follow show() or the fitted tier is discarded.
+      ctx.ui.dialog.set({ size })
     }
 
     /** Self-drawn panel body: tab strip + warning + table lines, one
@@ -1240,16 +1257,41 @@ export default Plugin.define({
         const scrolled = viewOf(c)
         const lines = scrolled.view.split("\n")
         const title = tr("usage.dialogTitle")
+        // line 0 is the tab-strip labels row (both render builders emit it
+        // first) — rebuild it as one <text> per label so each is its own hit
+        // target; the underline row (line 1) stays plain text.
+        const labels = tabLabels()
+        const stripIsFirst = lines[0] === labels.join(TAB_GAP)
+        const rest = stripIsFirst ? lines.slice(1) : lines
+        const pick = (i: number) => {
+          // A drag-release leaves a selection; treat it as copy, not a click.
+          if (ctx.renderer.getSelection?.()?.getSelectedText?.()) return
+          const dim = DIMENSIONS[i]
+          if (dim !== undefined && dim !== c.dim) void openDimension(dim)
+        }
         return [
           jsx("text", { style: { fg: theme.text.base }, children: jsx("span", { children: title }) }),
-          ...lines.map((line) =>
+          // Spacer: keeps the tab strip off the title row.
+          jsx("text", { style: { fg: theme.text.base }, children: jsx("span", { children: " " }) }),
+          ...(stripIsFirst
+            ? [jsx("box", { style: { flexDirection: "row" }, children: labels.map((label, i) =>
+                jsx("text", {
+                  style: { fg: theme.text.base },
+                  onMouseUp: () => pick(i),
+                  children: jsx("span", { children: (i > 0 ? TAB_GAP : "") + label }),
+                })) })]
+            : []),
+          ...rest.map((line) =>
             jsx("text", { style: { fg: theme.text.base }, children: jsx("span", { children: line.length ? line : " " }) })),
         ]
       })
       // Reactive children: the accessor re-runs on every signal read, so
       // tab switches and scroll updates repaint without reopening the
       // dialog (v1 re-called dialog.replace with a generation hack).
-      return jsx("box", { style: { flexDirection: "column", paddingLeft: 1, paddingRight: 1 }, children: view })
+      // Host panel supplies paddingTop:1 only (no bottom, no border); with
+      // our paddingTop:1 that makes the top inset 2, so 2 on the other
+      // three sides keeps the panel symmetric and the last row off the edge.
+      return jsx("box", { style: { flexDirection: "column", paddingLeft: 2, paddingRight: 2, paddingTop: 1, paddingBottom: 2 }, children: view })
     }
 
     const setScroll = (next: number) => {
@@ -1267,6 +1309,10 @@ export default Plugin.define({
     }
 
     const openDimension = (dim: UsageDimension) => {
+      // Cross-window language sync: single funnel for slash/palette/tab
+      // entries — re-read ocp.json (initI18n ran once at setup) so a
+      // switch from another window renders here without a restart.
+      refreshLocale()
       const sessionId = currentSessionID(ctx) || "default"
       // Warm the SWR cache: kicks a background refresh if the in-memory entry
       // is stale, but never blocks the dialog open path. First /usage open in
@@ -1295,7 +1341,7 @@ export default Plugin.define({
     // before DialogAlert; v2 dialogs participate in the keymap, so the
     // idiomatic surface is a layer scoped to the "modal" input mode.
     // 1/2/3 jump to a dimension tab, ←/→ cycle, ↑/↓/j/k scroll the table.
-    ctx.keymap.layer(() => ({
+    appKeymapLayer(ctx, () => ({
       mode: "modal",
       enabled: () => dialogOpen(),
       commands: [
@@ -1315,7 +1361,8 @@ export default Plugin.define({
 
     // Slash command + command palette entry. Tab keys live in the modal
     // layer above, active only while the dialog is on screen.
-    ctx.keymap.layer(() => ({
+    appKeymapLayer(ctx, () => ({
+      mode: "global",
       commands: [
         {
           id: "usage.show",
@@ -1323,7 +1370,7 @@ export default Plugin.define({
           description: tr("usage.commandDesc"),
           group: "Session",
           palette: true,
-          slash: { name: SLASH_NAME, arguments: true },
+          slash: { name: SLASH_NAME },
           run(input?: string) {
             const sub = parseSubcommand(input)
             const dim = sub === null ? "session" : DIM_SUBCOMMAND[sub]

@@ -31,7 +31,7 @@ const {
   stripModelRefs,
   parseProfileSubcommand,
   default: plugin,
-} = await import("../plugins/tui/profile-wizard")
+} = await import("../plugins/tui/profile-wizard/tui")
 
 const CONFIG_DIR = join(fakeHome, ".config", "opencode")
 const CONFIG_FILE = join(CONFIG_DIR, "opencode.jsonc")
@@ -196,6 +196,9 @@ const fakeCtx = {
     },
   },
   ui: {
+    // Keymap layers register from a slot render (plugins/tui/_keymap-app.ts,
+    // append:"app") — mimic the host by invoking the contribution once.
+    slot: (claim: { render: (input: unknown) => unknown }) => { claim.render({}); return () => {} },
     toast: { show: (t: { title?: string; message?: string; variant?: string }) => { toasts.push(t) } },
     dialog: {
       confirm: async (o: { title: string; message: string }) => {

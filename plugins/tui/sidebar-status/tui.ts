@@ -16,12 +16,18 @@
  * its slash command, the panel picks up the change on the next poll cycle
  * (the server-side plugin still fires a confirmation toast for the toggle).
  *
- * Registration: `tui.template.jsonc` → `plugin` array (TUI plugins have no directory
- * auto-discovery — they must be listed there).
+ * Registration: `cli.template.jsonc` → `plugins` array, as a DIRECTORY entry
+ * (`./plugins/tui/sidebar-status`). The v2 TUI reconcile silently skips file
+ * entries; the entrypoint is this directory's `tui.ts` (Host.resolve probes
+ * <dir>/tui). Nested bare files under plugins/tui/ are never auto-discovered.
  *
  * Slot: `sidebar.content` claim (session view) — renders as a vertical group
  * labeled "OCP" inside the right sidebar, mirroring the MCP/LSP section
- * style already used by OpenCode's sidebar.
+ * style already used by OpenCode's sidebar. Each section header is a
+ * collapsible disclosure mirroring the MCP group: a ▼/▶ prefix and a
+ * click handler on the header row toggle that section's rows. Collapse
+ * state is session-local (a plain signal — no config write for a pure
+ * view preference; a TUI restart re-opens both sections).
  *
  * State sources (all read-only, same logic as each plugin's config module):
  *   - adrGuard        → project OCP config field (on | off, default off)
@@ -65,8 +71,8 @@
  */
 
 import type { Context } from "@opencode/plugin/tui/context"
-import { Plugin, usePlugin } from "@opencode/plugin/tui"
-import { createMemo, createSignal, onCleanup } from "solid-js"
+import { Plugin } from "@opencode/plugin/tui"
+import { createMemo, createSignal } from "solid-js"
 // Programmatically create JSX elements via the SolidJS factory.
 // We use `jsx()` instead of JSX syntax to avoid tsconfig jsxImportSource
 // complications — the @opentui/solid JSX namespace is local, not global.
@@ -74,11 +80,11 @@ import { jsx } from "@opentui/solid/jsx-runtime"
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
-import { loadTgrepOptions } from "../tgrep/tgrep-config"
-import { resolveTgrepCapability, type TgrepCapabilityState } from "../tgrep/tgrep-service"
-import { countEntries, readPublic } from "../project-memory/project-memory-config"
-import { ocpConfigFile, readProjectConfig, stripJsonc } from "../shared/opencode-prime"
-import { normalizeOnOff, readOcpField } from "../shared/ocp-config"
+import { loadTgrepOptions } from "../../tgrep/tgrep-config"
+import { resolveTgrepCapability, type TgrepCapabilityState } from "../../tgrep/tgrep-service"
+import { countEntries, readPublic } from "../../project-memory/project-memory-config"
+import { ocpConfigFile, readProjectConfig, stripJsonc } from "../../shared/opencode-prime"
+import { normalizeOnOff, readOcpField } from "../../shared/ocp-config"
 
 // ─── Theme shape ───────────────────────────────────────────────────
 
@@ -693,17 +699,18 @@ export function buildProjectBadges(
  * harness of its own).
  * Layout (dot = •, same glyph as the MCP group; value text always
  * textMuted in title case — colour lives on the dot only):
- *   ─ OCP v0.30.0 ─────────────┐
+ *   ▼ OCP v0.30.0 ─────────────┐
  *   │ • profile  zhipuai-coding │
- *   \�\�\�\ \�\�\�\ adr\ \ Off\ \ \ \ \ \ \ \ \ \ \�\�\�
+ *   │ • adr  Off                │
  *   │ • auto-advisor  Off       │
  *   │ • deepseek-anchor  Off    │
- *   │ ─ OCP project ────────────│
- *   │ • scaffold  Init          │
- *   │ • git-commits  On         │
- *   │ • codegraph  Ready        │
- *   │ • dprint  Ready/Other/None│
+ *   │ ▶ OCP project ────────────│
  *   └───────────────────────────┘
+ *
+ * Each header row is a collapsible disclosure mirroring the MCP group's
+ * ▼/▶ interaction: clicking the header row toggles that section's rows
+ * (`collapse` + `onToggle` — omitted params default to expanded/no-op so
+ * render-only callers keep the pre-collapse static tree).
  *
  * When `latestVersion` is strictly newer than `version` (the installed
  * one), the OCP header grows a `↑ vX.Y.Z` suffix in warning colour.
@@ -716,6 +723,8 @@ export function renderStatusPanel(
   theme: ThemeColors,
   version: string,
   latestVersion: string,
+  collapse: { readonly guards: boolean; readonly project: boolean } = { guards: false, project: false },
+  onToggle?: (section: "guards" | "project") => void,
 ): unknown {
   if (guards.length === 0 && project.length === 0) return null
 
@@ -770,21 +779,31 @@ export function renderStatusPanel(
     })
   })
 
-  // Section header rows: "─ OCP v0.7.3 ─" / "─ OCP project ─"
+  // Section header rows: "▼ OCP v0.7.3 ─" / "▶ OCP project ─"
   // Version comes from ~/.config/opencode/installed.version (written by installer).
   // `suffix` is rendered inline after the title in warning colour —
   // used for "↑ vX.Y.Z" when a newer release is available. No gap above
-  // the OCP project header — the dashed header rule is separator enough,
+  // the OCP project header — the header rule is separator enough,
   // matching the tight stacking of the MCP/LSP sidebar groups.
-  const renderHeader = (text: string, suffix = "") => {
+  //
+  // Collapsible disclosure (mirrors the MCP group's ▼/▶ header): the
+  // leading rule glyph doubles as the state marker — ▼ expanded, ▶
+  // collapsed. When `section.onToggle` is provided the whole header row
+  // is clickable; mouse events bubble from the hit text child up to this
+  // box (Renderable.processMouseEvent), so the full row is the hit target.
+  // Bound on "up" for click semantics (a drag ending here never reaches
+  // this handler — the renderer routes dragged releases to the captured
+  // renderable instead).
+  const renderHeader = (text: string, suffix = "", section?: { readonly collapsed: boolean; readonly onToggle?: () => void }) => {
     // Same `fg` rename as the badge rows above — `color` is ignored by
     // OpenTUI's <text> reconciler.
     const borderStyle = { fg: theme.borderSubtle }
     const warningStyle = { fg: theme.warning }
+    const marker = section ? (section.collapsed ? "▶" : "▼") : "─"
     const headerChildren: unknown[] = [
       jsx("text", {
         style: borderStyle,
-        children: jsx("span", { children: `─ ${text}` }),
+        children: jsx("span", { children: `${marker} ${text}` }),
       }),
     ]
     if (suffix) {
@@ -803,6 +822,9 @@ export function renderStatusPanel(
     )
     return jsx("box", {
       style: { flexDirection: "row", paddingLeft: 1, height: 1 },
+      // `onMouseUp` rides the reconciler's default property branch →
+      // Renderable's `set onMouseUp` → the renderer's "up" mouse listener.
+      onMouseUp: section?.onToggle ? () => section.onToggle?.() : undefined,
       children: headerChildren,
     })
   }
@@ -814,8 +836,22 @@ export function renderStatusPanel(
   // current project).
   const updateSuffix = isUpdateAvailable(version, latestVersion) ? latestVersion : ""
   const sections: unknown[] = []
-  if (guards.length > 0) sections.push(renderHeader(`OCP v${version}`, updateSuffix), ...renderRows(guards))
-  if (project.length > 0) sections.push(renderHeader("OCP project"), ...renderRows(project))
+  if (guards.length > 0) {
+    sections.push(renderHeader(`OCP v${version}`, updateSuffix, {
+      collapsed: collapse.guards,
+      onToggle: onToggle ? () => onToggle("guards") : undefined,
+    }))
+    // Collapsed sections keep their clickable header and drop the rows —
+    // same contract as the MCP group's disclosure.
+    if (!collapse.guards) sections.push(...renderRows(guards))
+  }
+  if (project.length > 0) {
+    sections.push(renderHeader("OCP project", "", {
+      collapsed: collapse.project,
+      onToggle: onToggle ? () => onToggle("project") : undefined,
+    }))
+    if (!collapse.project) sections.push(...renderRows(project))
+  }
 
   // Combine sections in a vertical container
   return jsx("box", {
@@ -841,12 +877,26 @@ function ocpConfigDir(): string {
 }
 
 /**
- * The panel component — all reactive state (signals, timers, event
- * subscriptions) lives here so it mounts/disposes with the slot claim,
- * not with the plugin setup scope.
+ * Panel state — signals, timers, and event subscriptions owned by the
+ * plugin's SETUP scope. They must not live in the slot component: the TUI
+ * loads this module's solid-js as a SEPARATE instance from the host's, so
+ * inside a slot component onCleanup has no plugin-side owner (silently
+ * never runs) and usePlugin sees the host-side context (missing). Context
+ * travels as a prop; disposal runs from setup's return value.
  */
-function SidebarPanel() {
-  const ctx = usePlugin()
+interface PanelState {
+  readonly ctx: Context
+  readonly tick: () => number
+  readonly currentModelId: () => string
+  readonly latestVersion: () => string
+  readonly collapse: () => { readonly guards: boolean; readonly project: boolean }
+  readonly toggleSection: (section: "guards" | "project") => void
+  readonly projectDir: string
+  readonly ocpVersion: string
+  readonly dispose: () => void
+}
+
+function createPanelState(ctx: Context): PanelState {
   // Poll config files because slash-command toggles write to disk
   // asynchronously — there is no server→TUI event for "config field changed".
   // A 2s interval is cheap (a handful of small file reads) and keeps the
@@ -874,6 +924,13 @@ function SidebarPanel() {
   } catch { /* ignore */ }
 
   const refresh = () => setTick((t) => t + 1)
+
+  // Collapsible sections (MCP-style ▼/▶ disclosure). The click handler lives
+  // on the header row boxes built in renderStatusPanel; toggling flips this
+  // signal and the panel memo re-renders (it reads collapse() every pass).
+  const [collapse, setCollapse] = createSignal({ guards: false, project: false })
+  const toggleSection = (section: "guards" | "project") =>
+    setCollapse((c) => ({ ...c, [section]: !c[section] }))
 
   // Seed the model id from the session open at mount time. The V4 Pro /
   // non-V4 Pro distinction is refined by session.model.selected events;
@@ -923,22 +980,45 @@ function SidebarPanel() {
 
   const timer = setInterval(refresh, POLL_INTERVAL_MS)
   const fetchTimer = setInterval(checkUpdate, FETCH_REFRESH_MS)
-  onCleanup(() => {
-    clearInterval(timer)
-    clearInterval(fetchTimer)
-    offSessionCreated()
-    offModelSelected()
-    abort.abort()
-  })
+  return {
+    ctx,
+    tick,
+    currentModelId,
+    latestVersion,
+    collapse,
+    toggleSection,
+    projectDir,
+    ocpVersion,
+    dispose() {
+      clearInterval(timer)
+      clearInterval(fetchTimer)
+      offSessionCreated()
+      offModelSelected()
+      abort.abort()
+    },
+  }
+}
+
+/**
+ * The panel component — renders the current state. The body runs once per
+ * slot mount; only the memo lives in this scope. Timers/subscriptions stay
+ * in createPanelState (see the dual-instance note there) — context and
+ * state arrive as props, disposal as setup's return value.
+ */
+function SidebarPanel(props: { readonly panel: PanelState }) {
+  const p = props.panel
 
   // Reactive panel tree: tick() forces the badge rebuild, modelId() and
   // latestVersion() feed the gating / header suffix. Reactive children so
   // the tree repaints in place without remounting the slot contribution.
   const view = createMemo(() => {
-    tick()
-    const guards = safeBadges(() => buildGuardBadges(projectDir, currentModelId() || undefined))
-    const project = safeBadges(() => buildProjectBadges(projectDir))
-    return renderStatusPanel(guards, project, panelTheme(ctx), ocpVersion, latestVersion())
+    p.tick()
+    const guards = safeBadges(() => buildGuardBadges(p.projectDir, p.currentModelId() || undefined))
+    const project = safeBadges(() => buildProjectBadges(p.projectDir))
+    // collapse() read inside the memo — a header click flips the signal and
+    // this tree re-renders in place (same mechanism as tick()).
+    const collapse = p.collapse()
+    return renderStatusPanel(guards, project, panelTheme(p.ctx), p.ocpVersion, p.latestVersion(), collapse, p.toggleSection)
   })
   return jsx("box", { children: view })
 }
@@ -956,10 +1036,20 @@ export default Plugin.define({
   id: "sidebar-status",
   setup(ctx: Context) {
     // Claim the sidebar content slot — the OCP group renders as a vertical
-    // section inside the right sidebar, just like the MCP/LSP groups.
-    return ctx.ui.slot({
-      append: "sidebar.content",
-      render: () => jsx(SidebarPanel, {}),
+    // section at the TOP of the right sidebar (prepend = first inside the
+    // target boundary, above the MCP/LSP groups). State and disposal live
+    // with this scope (see createPanelState).
+    const panel = createPanelState(ctx)
+    const release = ctx.ui.slot({
+      prepend: "sidebar.content",
+      // The programmatic jsx() factory types components loosely
+      // (Record<string, unknown> props); SidebarPanel's concrete props only
+      // materialise at runtime — cast the component, not the props.
+      render: () => jsx(SidebarPanel as unknown as (props: Record<string, unknown>) => unknown, { panel }),
     })
+    return () => {
+      release()
+      panel.dispose()
+    }
   },
 })

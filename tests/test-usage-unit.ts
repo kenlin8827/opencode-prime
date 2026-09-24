@@ -56,6 +56,10 @@ function assertEq(actual: unknown, expected: unknown, label: string) {
 const toasts: Array<{ message: string; variant?: string; title?: string }> = []
 const dialogShows: number[] = [] // one entry per ctx.ui.dialog.show
 const dialogSizes: string[] = []
+const dialogEvents: string[] = [] // ordered "show" / "set:<tier>" log
+/** Host size slot. show() → replace() RESETS it to medium (opencode
+ *  dialog.tsx), so only a set() landing after show() survives. */
+let hostSize = "medium"
 let closeCallbacks: Array<() => void> = []
 let routeSessionID = "s1"
 
@@ -69,11 +73,21 @@ const fakeCtx = {
     },
   },
   ui: {
+    // Keymap layers register from a slot render (plugins/tui/_keymap-app.ts,
+    // append:"app") — mimic the host by invoking the contribution once.
+    slot: (claim: { render: (input: unknown) => unknown }) => { claim.render({}); return () => {} },
     toast: { show: (t: { message: string; variant?: string }) => toasts.push(t) },
     dialog: {
-      set: (o: { size?: string }) => { if (o.size) dialogSizes.push(o.size) },
+      set: (o: { size?: string }) => {
+        if (!o.size) return
+        dialogSizes.push(o.size)
+        hostSize = o.size
+        dialogEvents.push(`set:${o.size}`)
+      },
       show: (render: () => unknown, onClose?: () => void) => {
         dialogShows.push(dialogShows.length)
+        hostSize = "medium" // host replace() drops any size set beforehand
+        dialogEvents.push("show")
         void render
         if (onClose) closeCallbacks.push(onClose)
       },
@@ -149,7 +163,7 @@ messages.c0 = assistant({ agent: "code", providerID: "anthropic", modelID: "clau
 
 children.s1 = ["s2", "c0"]
 
-const plugin = (await import("../plugins/tui/usage")).default
+const plugin = (await import("../plugins/tui/usage/tui")).default
 
 await plugin.setup(fakeCtx)
 
@@ -185,19 +199,22 @@ const modalLayer = layers.find((layer) => layer.mode === "modal")
 assert(modalLayer !== undefined, "dialog commands live in a modal-mode layer")
 const showCmd = command("usage.show")!
 assertEq(showCmd.slash?.name, "usage", "slash name registered (bare, TUI prepends /)")
-assertEq(showCmd.slash?.arguments, true, "slash keeps raw input for subcommands")
+assertEq(showCmd.slash?.arguments, undefined, "slash has NO arguments — menu Enter executes immediately (UX contract 2026-09-24); subcommands live in-menu / in-dialog keys")
 assertEq(command("usage.key.agent")!.bind, "2", "tab hotkey bound to 2")
 
 // --- /usage: shows the session view in a dialog ---
 toasts.length = 0
 dialogShows.length = 0
 dialogSizes.length = 0
+dialogEvents.length = 0
 closeCallbacks = []
 await runUsage(undefined)
 await tick()
 assertEq(toasts.length, 0, "/usage with data shows no toast")
 assertEq(dialogShows.length, 1, "usage dialog opened")
 assertEq(dialogSizes.length, 1, "dialog size set once on open")
+assertEq(dialogEvents[dialogEvents.length - 1]?.startsWith("set:"), true, "size applied AFTER show() — set-before-show is wiped by the host's replace() reset to medium")
+assertEq(hostSize, dialogSizes[dialogSizes.length - 1], "host size slot holds the fitted tier, not the medium reset")
 
 // --- dimension commands are no-ops when dialog is closed ---
 closeAll()
@@ -222,6 +239,7 @@ command("usage.dim.agent")!.run()
 await tick()
 assertEq(dialogShows.length, 0, "tab switch does NOT reopen the dialog (v2 repaints in place)")
 assertEq(dialogSizes.length, 1, "tab switch re-fits the dialog size")
+assertEq(dialogEvents[dialogEvents.length - 1]?.startsWith("set:"), true, "tab switch applies size to the live dialog (no replace in between)")
 
 // --- modal layer enabledness is guarded by dialogOpen ---
 assertEq(typeof modalLayer!.enabled, "function", "modal layer is enable-guarded")
@@ -267,7 +285,7 @@ await tick()
 assertEq(dialogShows.length, 0, "commands stay no-op after close")
 
 // --- numbered tab strip + composed view (official TabSelect style underline) ---
-const { formatByDimension, renderDimensionView, fitDialogSize } = await import("../plugins/tui/usage")
+const { formatByDimension, renderDimensionView, fitDialogSize } = await import("../plugins/tui/usage/tui")
 // Aggregation assertions build a UsageSource over the same fixtures the
 // fake ctx feeds the plugin (the dialog path above exercised it end-to-end).
 const usageSource = {
@@ -298,7 +316,7 @@ writeFileSync(pointsPath, `{
 }`)
 process.env.OCP_POINTS_PATH = pointsPath
 // Force the points loader to re-read under the new OCP_POINTS_PATH.
-const { resetCostsCache } = await import("../plugins/tui/usage")
+const { resetCostsCache } = await import("../plugins/tui/usage/tui")
 resetCostsCache()
 
 sessions.z1 = { id: "z1", agent: "build" }
@@ -390,9 +408,9 @@ assert(modelText.includes("994") && modelText.includes("7,232"), "claude-pro out
 assert(modelText.includes("gemini-flash"), "model row: gemini-flash")
 
 // --- scrollable viewport: short terminals slice data rows, pin header + total ---
-const { renderScrollView } = await import("../plugins/tui/usage")
-// Pre-growth snapshot (few data rows): a table within MAX_VISIBLE_ROWS rows
-// fits any terminal without scrolling — used by the no-overflow assertions.
+const { renderScrollView } = await import("../plugins/tui/usage/tui")
+// Pre-growth snapshot (few data rows): a table small enough to fit a tall
+// terminal without scrolling — used by the no-overflow assertions.
 const smallRender = await formatByDimension(usageSource, "s1", "session")
 const smallFlat = renderDimensionView(smallRender, "session")
 // Grow the tree to 12 sessions so the session table overflows a 30-row
@@ -433,15 +451,21 @@ assertEq(svMid.offset, 3, "explicit mid offset honored")
 assert(svMid.view.includes("101"), "row 5 visible at offset 3")
 assert(!svMid.view.includes("11,702"), "row 1 scrolled out at offset 3")
 
-// Tall terminal: viewport capped at MAX_VISIBLE_ROWS (8) rows regardless of
-// terminal height — 12 data rows → 8 visible, 4-row scroll range.
+// Tall terminal: the viewport is budget-derived (no fixed row cap), so a
+// table that fits the available rows shows EVERY row — no scroll, no clamp.
 const svTall = renderScrollView(bigRender, "session", 100, 5)
-assertEq(svTall.maxOffset, 4, "tall terminal → viewport capped at 8 rows (12 − 8)")
-assertEq(svTall.offset, 4, "offset clamped to maxOffset")
-assert(svTall.view.includes("108"), "last data row visible at the capped bottom")
-assert(!svTall.view.includes("11,702"), "first data row outside the 8-row window")
-assert(svTall.view.includes("↑/↓"), "scroll indicator present when capped")
-// Table within 8 rows → fits, byte-identical to the flat render, no indicator
+assertEq(svTall.maxOffset, 0, "tall terminal fits all 12 rows → no scroll range")
+assertEq(svTall.offset, 0, "offset forced to 0 when nothing overflows")
+assert(svTall.view.includes("108"), "last data row visible on a tall terminal")
+assert(svTall.view.includes("11,702"), "first data row visible on a tall terminal")
+assert(!svTall.view.includes("↑/↓"), "no scroll indicator when the tall viewport fits everything")
+
+// Height adapts to the terminal: the same 12-row table overflows a 40-row
+// terminal but not a 100-row one — viewport grows with the budget.
+const svShortTall = renderScrollView(bigRender, "session", 40, 0)
+assert(svShortTall.maxOffset > svTall.maxOffset, "shorter terminal shows fewer rows (viewport scales with height)")
+
+// Small table → fits, byte-identical to the flat render, no indicator
 const svFit = renderScrollView(smallRender, "session", 100, 5)
 assertEq(svFit.maxOffset, 0, "table that fits → no scrolling")
 assertEq(svFit.offset, 0, "offset forced to 0 when nothing overflows")
@@ -497,7 +521,7 @@ assert(toasts[0].message.includes("Unknown subcommand"), "unknown subcommand sho
 assert(toasts[0].message.includes("Usage:"), "unknown subcommand shows usage hint")
 
 // --- parseSubcommand unit coverage (v2: raw slash input) ---
-const { parseSubcommand } = await import("../plugins/tui/usage")
+const { parseSubcommand } = await import("../plugins/tui/usage/tui")
 assertEq(parseSubcommand("usage.show"), null, "bare command name → no subcommand")
 assertEq(parseSubcommand("usage.show model"), "model", "trailing arg extracted")
 assertEq(parseSubcommand("/usage agent"), "agent", "leading /usage token skipped")

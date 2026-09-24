@@ -42,7 +42,7 @@ import { forgetSession, isSubagentSession, type V2Session } from "../shared/agen
 
 // Tier thresholds — single source of truth, also imported by /usage's
 // header banner (`renderContextWarning`). Keep in sync: any change here
-// must be reflected in `plugins/tui/usage.ts:CONTEXT_WARN_TIERS`.
+// must be reflected in `plugins/tui/usage/tui.ts:CONTEXT_WARN_TIERS`.
 export const CONTEXT_TIERS = { soft: 30, strong: 60, hard: 100 } as const
 type Tier = keyof typeof CONTEXT_TIERS
 

@@ -8,7 +8,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { buildGuardBadges, buildProjectBadges } from "../plugins/tui/sidebar-status"
+import { buildGuardBadges, buildProjectBadges } from "../plugins/tui/sidebar-status/tui"
 import { setProjectDir } from "../plugins/project-memory/project-memory-config"
 
 let pass = 0

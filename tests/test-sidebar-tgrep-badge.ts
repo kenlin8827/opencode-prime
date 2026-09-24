@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { loadTgrepOptions } from "../plugins/tgrep/tgrep-config"
-import { buildProjectBadges } from "../plugins/tui/sidebar-status"
+import { buildProjectBadges } from "../plugins/tui/sidebar-status/tui"
 
 let failed = 0
 function assert(ok: boolean, message: string): void {

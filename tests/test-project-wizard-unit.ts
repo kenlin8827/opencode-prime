@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert"
-import projectWizard, { applyAdrSuiteToSwitches, detectAdrSuite } from "../plugins/tui/project-wizard"
+import projectWizard, { applyAdrSuiteToSwitches, detectAdrSuite } from "../plugins/tui/project-wizard/tui"
 
 // v2 plugin entry: default export is Plugin.define({ id, setup }) — a fake
 // Context harness captures the keymap commands without a renderer.
@@ -12,12 +12,26 @@ const fakeCtx = {
       for (const command of input().commands ?? []) if (command.id) commandIds.push(command.id)
     },
   },
+  // Harness mimics the host contract: keymap layers register from a slot
+  // render (plugins/tui/_keymap-app.ts → append:"app"), never directly in
+  // setup — the real TUI requires a reactive owner for layer().
+  slotClaims: [] as Array<{ append?: string; render: (input: unknown) => unknown }>,
+  ui: {
+    slot(claim: { append?: string; render: (input: unknown) => unknown }) {
+      fakeCtx.slotClaims.push(claim)
+      claim.render({})
+      return () => {}
+    },
+    toast: { show: () => {} },
+  },
 }
 await projectWizard.setup(fakeCtx as never)
 
 assert.equal(projectWizard.id, "opencode-prime.project-wizard")
 assert.deepEqual(commandIds, ["project.wizard"])
 assert.equal(layerThunks.length, 1)
+assert.equal(fakeCtx.slotClaims.length, 1, "setup claims exactly one slot")
+assert.equal(fakeCtx.slotClaims[0]!.append, "app", "layer registers via the always-mounted app slot")
 
 // applyAdrSuiteToSwitches — the /adr init bundles land on the wizard state.
 const standard = applyAdrSuiteToSwitches({} as never, "standard")

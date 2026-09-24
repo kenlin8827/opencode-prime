@@ -2,6 +2,7 @@
 import type { Context } from "@opencode/plugin/tui/context"
 import type { ModelInfo } from "@opencode/client"
 import { Plugin } from "@opencode/plugin/tui"
+import { appKeymapLayer } from "../_keymap-app"
 
 /**
  * Provider Wizard — TUI dialog-based provider configuration.
@@ -79,7 +80,7 @@ import { join } from "node:path"
 import { homedir } from "node:os"
 // Programmatically create JSX elements (busy panel) — no tsconfig jsxImportSource needed.
 import { jsx } from "@opentui/solid/jsx-runtime"
-import { tr, initI18n, languageOption, switchLanguage, SWITCH_LANG, parseSlashArgs, type DialogOption } from "./i18n"
+import { tr, initI18n, refreshLocale, languageOption, switchLanguage, SWITCH_LANG, parseSlashArgs, type DialogOption } from "../i18n"
 import {
   CONFIG_FILE,
   readConfig,
@@ -95,8 +96,8 @@ import {
   type ProviderDef,
   type OpenCodeConfig,
   type ConnectionInfo,
-} from "../shared/provider-creds"
-import { fetchModelsDevModelCatalog, fetchProviderModelsCached } from "../shared/model-catalog"
+} from "../../shared/provider-creds"
+import { fetchModelsDevModelCatalog, fetchProviderModelsCached } from "../../shared/model-catalog"
 
 /** Navigation result a dialog level hands back to its parent loop. */
 type Nav = "back" | { detail: string }
@@ -793,6 +794,10 @@ function showBusyFetch(ctx: Context, id: string): void {
 // ─── Level 1: provider list ──────────────────────────────────────────
 
 async function startWizard(ctx: Context): Promise<void> {
+  // Cross-window language sync: another window's switch lives only in
+  // ocp.json (initI18n ran once behind its `initialized` guard) — re-read
+  // the shared config before composing any menu text.
+  refreshLocale()
   const config = readConfigOrToast(ctx)
   if (!config) return
 
@@ -800,13 +805,14 @@ async function startWizard(ctx: Context): Promise<void> {
   // presets are reachable only through the 📦 import picker
   const ids = Object.keys(config.provider ?? {}).sort(naturalCmp)
 
-  const setupCat = tr("provider.setupHeader")
-  const connectionsCat = tr("provider.connectionsHeader")
-  const configuredCat = tr("provider.configuredHeader")
-  const interfaceCat = tr("common.interfaceHeader")
-
   let selection = ids[0] as string | undefined
   for (;;) {
+    // Rebuilt per iteration: an in-wizard switchLanguage updates the
+    // module locale directly, so headers must re-run tr() to follow it.
+    const setupCat = tr("provider.setupHeader")
+    const connectionsCat = tr("provider.connectionsHeader")
+    const configuredCat = tr("provider.configuredHeader")
+    const interfaceCat = tr("common.interfaceHeader")
     const options: DialogOption<string>[] = [
       // ── Setup group: add a new provider (custom or preset)
       {
@@ -1786,7 +1792,8 @@ export default Plugin.define({
   id: PLUGIN_ID,
   setup(ctx: Context) {
     initI18n()
-    ctx.keymap.layer(() => ({
+    appKeymapLayer(ctx, () => ({
+      mode: "global",
       commands: [
         {
           id: "provider.wizard",
@@ -1809,7 +1816,7 @@ export default Plugin.define({
           description: tr("provider.cmdDisconnectDesc"),
           group: "Provider",
           palette: true,
-          slash: { name: "disconnect", arguments: true },
+          slash: { name: "disconnect" },
           async run(input?: string) {
             const sub = parseSlashArgs(input, ["provider.disconnect", "disconnect", "/disconnect"])
             if (!sub) {

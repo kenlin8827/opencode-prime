@@ -9,7 +9,7 @@
  *
  * History (kept for context):
  *   - Phase 1A (2026-09-11): group picker first screen; helpers extracted
- *     to `./_wizard-helpers.ts`.
+ *     to `../_wizard-helpers.ts`.
  *   - Phase 1B: "git-workflow" split into projectGuards / adr sub-dialogs
  *     and the inline autoAdvisor row.
  *   - Phase 1C: responsibility separation — single-field groups
@@ -37,21 +37,22 @@
 /// <reference types="bun" />
 import type { Context } from "@opencode/plugin/tui/context"
 import { Plugin } from "@opencode/plugin/tui"
-import { migrateLegacyProjectArtifacts, type MigrationReport } from "../shared/opencode-prime"
-import { tr, initI18n, languageOption, switchLanguage, SWITCH_LANG, type DialogOption, type StringKey } from "./i18n"
-import { CONFIG_REL, setProjectDir } from "../project-manager/project-manager-config"
+import { appKeymapLayer } from "../_keymap-app"
+import { migrateLegacyProjectArtifacts, type MigrationReport } from "../../shared/opencode-prime"
+import { tr, initI18n, refreshLocale, languageOption, switchLanguage, SWITCH_LANG, type DialogOption, type StringKey } from "../i18n"
+import { CONFIG_REL, setProjectDir } from "../../project-manager/project-manager-config"
 import {
   ADR_SUITES,
   normalizeAdrGovernance,
   normalizeAdrLayout,
   normalizeAdrNumbering,
   normalizeAdrStyle,
-} from "../adr/adr-config"
-import { indexProject, initProject, syncProject, updateSwitches } from "../project-manager/project-manager-operations"
-import { planDprintSetup, setupDprint } from "../project-manager/project-manager-dprint"
-import { PROJECT_SWITCH_OPTIONS } from "../project-manager/project-manager-options"
-import { detectProjectSwitches } from "../project-manager/project-manager-options"
-import type { ProjectSwitches } from "../project-manager/project-manager-scaffold"
+} from "../../adr/adr-config"
+import { indexProject, initProject, syncProject, updateSwitches } from "../../project-manager/project-manager-operations"
+import { planDprintSetup, setupDprint } from "../../project-manager/project-manager-dprint"
+import { PROJECT_SWITCH_OPTIONS } from "../../project-manager/project-manager-options"
+import { detectProjectSwitches } from "../../project-manager/project-manager-options"
+import type { ProjectSwitches } from "../../project-manager/project-manager-scaffold"
 import {
   projectRoot,
   toast,
@@ -61,16 +62,16 @@ import {
   breadcrumbHeader,
   scaffoldLine,
   type WizardGroupId,
-} from "./_wizard-helpers"
-import autoAdvisorSchemaJson from "./wizard-schema/auto-advisor.json" with { type: "json" }
-import projectMemorySchemaJson from "./wizard-schema/project-memory.json" with { type: "json" }
-import projectGuardsSchemaJson from "./wizard-schema/project-guards.json" with { type: "json" }
-import adrSchemaJson from "./wizard-schema/adr.json" with { type: "json" }
+} from "../_wizard-helpers"
+import autoAdvisorSchemaJson from "../wizard-schema/auto-advisor.json" with { type: "json" }
+import projectMemorySchemaJson from "../wizard-schema/project-memory.json" with { type: "json" }
+import projectGuardsSchemaJson from "../wizard-schema/project-guards.json" with { type: "json" }
+import adrSchemaJson from "../wizard-schema/adr.json" with { type: "json" }
 import {
   badgeFor,
   renderSchemaField,
   type WizardGroupSchema,
-} from "./schema-driven"
+} from "../schema-driven"
 
 const AUTO_ADVISOR_SCHEMA: WizardGroupSchema = autoAdvisorSchemaJson as WizardGroupSchema
 const PROJECT_MEMORY_SCHEMA: WizardGroupSchema = projectMemorySchemaJson as WizardGroupSchema
@@ -163,6 +164,10 @@ export async function startProjectWizard(
   ctx: Context,
   stateOverride?: WizardState,
 ): Promise<void> {
+  // Cross-window language sync: another window's switch lives only in
+  // ocp.json (initI18n ran once behind its `initialized` guard) — re-read
+  // the shared config before composing any menu text.
+  refreshLocale()
   const rootDir = projectRoot(ctx)
   setProjectDir(rootDir)
 
@@ -807,7 +812,8 @@ export default Plugin.define({
   id: PLUGIN_ID,
   setup(ctx: Context) {
     initI18n()
-    ctx.keymap.layer(() => ({
+    appKeymapLayer(ctx, () => ({
+      mode: "global",
       commands: [
         {
           id: "project.wizard",

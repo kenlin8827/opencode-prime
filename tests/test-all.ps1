@@ -398,8 +398,8 @@ $allFiles = @(
     "docs/workflows/dev-prud.md",
     "docs/zh/workflows/dev-prud.md",
     "plugins/design-token-guard.ts", "plugins/ai-slop-scanner.ts",
-    "plugins/tui/usage.ts", "plugins/auto-format.ts",
-    "plugins/tui/provider-wizard.ts", "plugins/tui/profile-wizard.ts",
+    "plugins/tui/usage/tui.ts", "plugins/auto-format.ts",
+    "plugins/tui/provider-wizard/tui.ts", "plugins/tui/profile-wizard/tui.ts",
     "install/src/ui/tui-host.ts", "install/src/ui/app.tsx",
     "install/src/ui/clipboard.ts",
     "install/src/ui/opencode-theme.ts", "install/src/ui/builtin-themes.ts",
@@ -417,7 +417,7 @@ $allFiles = @(
     "tsconfig.json", "package.json",
     "tests/test-provider-core-unit.ts", "tests/test-profile-core-unit.ts",
     "tests/test-ocp-wizard-cli-unit.ts", "tests/test-ocp-ui-router-unit.ts", "tests/test-ocp-ui-render.tsx", "tests/test-ocp-busy-alert-render.tsx",
-    "tests/test-sidebar-tgrep-badge.ts",
+    "tests/test-sidebar-tgrep-badge.ts", "tests/test-sidebar-collapse-render.ts",
     "plugins/project-memory.ts",
     "plugins/project-memory/project-memory.ts",
     "plugins/project-memory/project-memory-config.ts",
@@ -664,7 +664,7 @@ Check "shared/opencode-prime.ts: exports the .ocp path contract + one-shot migra
 # BEFORE switch detection, else a legacy project detects defaults that the
 # first save then writes back over the migrated values. Existence-guard AND
 # index-order so any reorder (or removal) fails this check.
-$wizardSrc = Get-Content "$PSScriptRoot\..\plugins\tui\project-wizard.ts" -Raw
+$wizardSrc = Get-Content "$PSScriptRoot\..\plugins\tui\project-wizard\tui.ts" -Raw
 Check "project-wizard.ts: open-time migration runs BEFORE detect (B1 / ADR 0004 §3)" `
   (($wizardSrc -match "migrateLegacyProjectArtifacts\(rootDir\)") -and `
    ($wizardSrc.IndexOf("migrateLegacyProjectArtifacts(rootDir)") -lt $wizardSrc.IndexOf("detectCurrentSwitches(rootDir)")))
@@ -765,27 +765,27 @@ Check "project-manager-tool-guard.ts: merge/revert/fixup/squash exempt" ($pmGuar
 $pmBarrel = Get-Content "$PSScriptRoot\..\plugins\project-manager.ts" -Raw
 Check "project-manager.ts: barrel re-exports ProjectManagerPlugin" ($pmBarrel -match "export.*ProjectManagerPlugin")
 
-# Usage plugin checks (plugins/tui/usage.ts — TUI-only, registered via tui.template.jsonc)
-$tuiTemplateRaw = Get-Content "$PSScriptRoot\..\tui.template.jsonc" -Raw
-$mtPlugin = Get-Content "$PSScriptRoot\..\plugins\tui\usage.ts" -Raw
+# Usage plugin checks (plugins/tui/usage/tui.ts — TUI-only, registered via cli.template.jsonc)
+$tuiTemplateRaw = Get-Content "$PSScriptRoot\..\cli.template.jsonc" -Raw
+$mtPlugin = Get-Content "$PSScriptRoot\..\plugins\tui\usage\tui.ts" -Raw
 Check "usage.ts: imports TuiPlugin from plugin/tui" ($mtPlugin -match "@opencode-ai/plugin/tui")
 Check "usage.ts: slash command name is usage (bare, TUI prepends /)" ($mtPlugin -match 'SLASH_NAME = "usage"')
 Check "usage.ts: registers palette command with slashName" ($mtPlugin -match "slashName: SLASH_NAME" -and $mtPlugin -match 'namespace: "palette"')
 Check "usage.ts: exports default TuiPluginModule with id" ($mtPlugin -match "export default plugin")
-Check "tui.template.jsonc: usage registered in plugin array" ($tuiTemplateRaw -match '"\.\/plugins\/tui\/usage\.ts"')
+Check "cli.template.jsonc: usage registered in plugin array" ($tuiTemplateRaw -match '"\.\/plugins\/tui\/usage"')
 
-# Provider wizard plugin checks (plugins/tui/provider-wizard.ts — the same
+# Provider wizard plugin checks (plugins/tui/provider-wizard/tui.ts — the same
 # module is hosted by opencode's /provider slash command AND by the
 # standalone OpenTUI host behind `ocp provider` — one wizard, two hosts.)
-$pvPlugin = Get-Content "$PSScriptRoot\..\plugins\tui\provider-wizard.ts" -Raw
+$pvPlugin = Get-Content "$PSScriptRoot\..\plugins\tui\provider-wizard\tui.ts" -Raw
 Check "provider-wizard.ts: imports TuiPlugin from plugin/tui" ($pvPlugin -match "@opencode-ai/plugin/tui")
 Check "provider-wizard.ts: registers palette command with slashName provider" ($pvPlugin -match 'slashName: "provider"' -and $pvPlugin -match 'namespace: "palette"')
 Check "provider-wizard.ts: exports default TuiPluginModule with id" ($pvPlugin -match "export default plugin")
 Check "provider-wizard.ts: /disconnect keymap command exists" ($pvPlugin -match 'slashName: "disconnect"')
 
-# Profile wizard plugin checks (plugins/tui/profile-wizard.ts — hosted by
+# Profile wizard plugin checks (plugins/tui/profile-wizard/tui.ts — hosted by
 # opencode /profile AND `ocp profile` through the compat TuiPluginApi host)
-$pfPlugin = Get-Content "$PSScriptRoot\..\plugins\tui\profile-wizard.ts" -Raw
+$pfPlugin = Get-Content "$PSScriptRoot\..\plugins\tui\profile-wizard\tui.ts" -Raw
 $i18nContent = Get-Content "$PSScriptRoot\..\plugins\tui\i18n.ts" -Raw
 Check "profile-wizard.ts: imports TuiPlugin from plugin/tui" ($pfPlugin -match "@opencode-ai/plugin/tui")
 Check "profile-wizard.ts: slash command name is profile" ($pfPlugin -match 'slashName: "profile"')
@@ -797,8 +797,8 @@ Check "profile-wizard.ts: profile selection has confirm gate showing tier→mode
 Check "profile-wizard.ts: dialogs group data vs actions via category headers, no fake divider rows" (($pfPlugin -match "profile\.actionsHeader") -and ($pfPlugin -notmatch 'option\.value === SEP') -and ($i18nContent -notmatch "function sepItem"))
 Check "profile-wizard.ts: /profile reset subcommand parses via ctx" ($pfPlugin -match "export function parseProfileSubcommand")
 Check "profile-wizard.ts: no explicit back items, Esc is the only back nav" (($pfPlugin -notmatch '"__back__"') -and ($pfPlugin -match 'navigated'))
-Check "tui.template.jsonc: provider-wizard registered in plugin array" ($tuiTemplateRaw -match '"\./plugins/tui/provider-wizard\.ts"')
-Check "tui.template.jsonc: profile-wizard registered in plugin array" ($tuiTemplateRaw -match '"\./plugins/tui/profile-wizard\.ts"')
+Check "cli.template.jsonc: provider-wizard registered in plugin array" ($tuiTemplateRaw -match '"\./plugins/tui/provider-wizard"')
+Check "cli.template.jsonc: profile-wizard registered in plugin array" ($tuiTemplateRaw -match '"\./plugins/tui/profile-wizard"')
 
 # Standalone host wiring: `ocp provider|profile` loads the SAME plugin
 # modules through a TuiPluginApi-compatible adapter — it must never
@@ -1015,6 +1015,8 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-project-memory-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-sidebar-tgrep-badge.ts"
+
+& bun "$PSScriptRoot\test-sidebar-collapse-render.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-project-dprint-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
@@ -1043,6 +1045,15 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-ocp-ui-router-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-ocp-ui-theme-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+# i18n: command-surface contract (13 keys × 8 locales) and full-catalog
+# coverage (611 keys × 8 locales — structure/placeholder/slash-token parity,
+# cross-script contamination, duplicate keys, angle-bracket balance). Both
+# must gate the release: tr() falls back to English silently, so an
+# untranslated key is invisible at runtime and only these tests catch it.
+& bun "$PSScriptRoot\test-command-i18n-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-i18n-coverage-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 # The render test mounts real OpenTUI Solid components — it needs the
 # @opentui/solid preload from install/node_modules so the app's imports

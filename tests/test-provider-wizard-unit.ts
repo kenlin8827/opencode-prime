@@ -10,7 +10,7 @@ import {
   enrichModelDef,
   parseModelList,
   ensureBaseReasoningOptions,
-} from "../plugins/tui/provider-wizard"
+} from "../plugins/tui/provider-wizard/tui"
 import { listConnections, planDisconnect } from "../plugins/shared/provider-creds"
 
 let passed = 0

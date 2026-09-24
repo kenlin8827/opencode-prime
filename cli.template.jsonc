@@ -4,19 +4,24 @@
   // layered v1 tui.json(c). The installer merges this template with the
   // user's existing cli.json (and migrates a legacy v1 tui.jsonc plugin list
   // on upgrade); user scalars and plugins are preserved. Every OCP TUI plugin
-  // must be registered here. The standalone OpenTUI CLI (`ocp provider|profile`)
-  // loads the SAME wizard plugin modules through a TuiPluginApi-compatible
-  // host — one wizard, two hosts. v2 renames: plugin→plugins (entries: string
-  // or {package, options}), display_thinking→session.thinking ("show"/"hide").
+  // must be registered here.
+  // Entries MUST be DIRECTORIES, never bare files: the v2 TUI reconcile
+  // silently skips file entries (packages/tui/src/plugin/context.tsx —
+  // stat().isFile() → continue, no toast/log). Each directory's entrypoint
+  // is its `tui.ts` (Host.resolve probes <dir>/tui). The standalone OpenTUI
+  // CLI (`ocp provider|profile`) loads the SAME wizard plugin modules through
+  // a TuiPluginApi-compatible host — one wizard, two hosts. v2 renames:
+  // plugin→plugins (entries: string or {package, options}),
+  // display_thinking→session.thinking ("show"/"hide").
   "$schema": "https://opencode.ai/v2/cli.json",
   "session": {
     "thinking": "show"
   },
   "plugins": [
-    "./plugins/tui/provider-wizard.ts",
-    "./plugins/tui/profile-wizard.ts",
-    "./plugins/tui/project-wizard.ts",
-    "./plugins/tui/sidebar-status.ts",
-    "./plugins/tui/usage.ts"
+    "./plugins/tui/provider-wizard",
+    "./plugins/tui/profile-wizard",
+    "./plugins/tui/project-wizard",
+    "./plugins/tui/sidebar-status",
+    "./plugins/tui/usage"
   ]
 }

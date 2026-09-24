@@ -1,5 +1,6 @@
 import { OpenCode } from '@opencode/client'
 import type { Context, KeymapLayer } from '@opencode/plugin/tui'
+import type { SlotClaim } from '@opencode/plugin/tui/context'
 import { ocpTheme } from './theme'
 import type { TuiHost } from './tui-host'
 
@@ -24,6 +25,9 @@ export interface WizardContextOptions {
   baseUrl?: string
   /** The OpenTUI renderer (usage reads `renderer.height` for scroll budgeting). */
   renderer?: unknown
+  /** Optional fetch override (V2 ClientOptions) — tests inject a rejecting
+   *  fetch to exercise the offline paths without touching the network. */
+  fetch?: typeof fetch
 }
 
 export interface WizardContextHandle {
@@ -45,8 +49,9 @@ export function createUsageClient(directory?: string) {
 export function createWizardContext(host: TuiHost, options: WizardContextOptions = {}): WizardContextHandle {
   const directory = options.root ?? process.cwd()
   const client = OpenCode.make({
-    baseUrl: options.baseUrl ?? process.env.OPENCODE_SERVER_URL || 'http://localhost:4096',
+    baseUrl: options.baseUrl ?? (process.env.OPENCODE_SERVER_URL || 'http://localhost:4096'),
     headers: { 'x-opencode-directory': encodeURIComponent(directory) },
+    ...(options.fetch ? { fetch: options.fetch } : {}),
   })
   let sessionId = options.sessionId
   const location = { directory }
@@ -129,7 +134,9 @@ export function createWizardContext(host: TuiHost, options: WizardContextOptions
       alert(options: { title: string; message: string }): Promise<void> {
         return new Promise<void>((resolve) => {
           const done = settle(resolve)
-          host.replace({ kind: 'alert', title: options.title, message: options.message, onClose: () => done(undefined) })
+          // Property onClose: DialogView's Enter path calls it; frame-level
+          // onClose (2nd arg): Esc / stack unwind. settle() dedupes.
+          host.replace({ kind: 'alert', title: options.title, message: options.message, onClose: () => done(undefined) }, () => done(undefined))
         })
       },
       confirm(options: { title: string; message: string; label?: { confirm?: string; cancel?: string } }): Promise<boolean | undefined> {
@@ -140,8 +147,7 @@ export function createWizardContext(host: TuiHost, options: WizardContextOptions
             confirmLabel: options.label?.confirm, cancelLabel: options.label?.cancel,
             onConfirm: () => { done(true); host.clear() },
             onCancel: () => { done(undefined); host.clear() },
-            onClose: () => done(undefined),
-          })
+          }, () => done(undefined))
         })
       },
       prompt(options: { title: string; placeholder?: string; value?: string }): Promise<string | undefined> {
@@ -151,8 +157,7 @@ export function createWizardContext(host: TuiHost, options: WizardContextOptions
             kind: 'prompt', title: options.title, placeholder: options.placeholder, value: options.value,
             onConfirm: (value) => { done(value); host.clear() },
             onCancel: () => { done(undefined); host.clear() },
-            onClose: () => done(undefined),
-          })
+          }, () => done(undefined))
         })
       },
       select<Value>(options: { title: string; placeholder?: string; options: readonly { title: string; value: Value; description?: string; category?: string; disabled?: boolean }[]; current?: Value }): Promise<Value | undefined> {
@@ -178,12 +183,11 @@ export function createWizardContext(host: TuiHost, options: WizardContextOptions
               done(Number.isInteger(index) ? options.options[index]?.value : undefined)
               host.clear()
             },
-            onClose: () => done(undefined),
-          })
+          }, () => done(undefined))
         })
       },
       show(render: () => unknown, onClose?: () => void): void {
-        host.replace({ kind: 'custom', render: render as () => never, ...(onClose ? { onClose } : {}) })
+        host.replace({ kind: 'custom', render: render as () => never }, onClose)
       },
       set(options: { size?: 'medium' | 'large' | 'xlarge' }): void { host.setSize(options.size) },
       clear(): void { host.clear() },
@@ -197,7 +201,20 @@ export function createWizardContext(host: TuiHost, options: WizardContextOptions
     },
     panel: { open: () => false, close: () => {}, current: () => undefined },
     tabs: { enabled: () => false },
-    slot: () => () => {},
+    // No slot tree in the standalone host: invoke the contribution once at
+    // claim time for its registration side effects (the opencode app-slot
+    // keymap pattern — see plugins/tui/_keymap-app.ts) and discard the JSX.
+    // A throwing contribution logs instead of crashing, mirroring the TUI's
+    // PluginBoundary. Claims with slot INPUT get `{}` — our claims are all
+    // input-less (`app`); anything else fails visibly in the log.
+    slot(value: SlotClaim) {
+      try {
+        ;(value.render as (input: unknown) => unknown)({})
+      } catch (error) {
+        console.error('ocp: plugin slot render failed:', error instanceof Error ? error.message : error)
+      }
+      return () => {}
+    },
   }
 
   const context = {
