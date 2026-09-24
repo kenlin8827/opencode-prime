@@ -59,9 +59,10 @@ DomainCoding --> TieredReview: Route the phase diff by tier
 - **Positional args**: The high-level objective or task description (e.g. `/dev-ultra Implement a complete user authentication system with OAuth2, session management, and role-based access control`).
 - `--max-rounds=N` (optional): Maximum iteration rounds **per phase**. **Default: 10**, range: 1–99. Non-numeric or missing → fall back to 10. Clamp to [1, 99].
 - `--max-phases=N` (optional): Maximum number of phases the orchestrator may decompose into. **Default: 6**, range: 1–20. Recommended range: 3–6. Phases beyond 6 require context compaction (see Step 4) to avoid orchestrator context overflow. Non-numeric or missing → fall back to 6. Clamp to [1, 20].
-- `--resume` (optional): Resume from the last checkpoint. Reads `.ocp/dev-ultra-state.md` and continues from the first uncompleted phase. If no checkpoint exists, starts fresh.
+- `--resume[=<slug>]` (optional): Resume from the last checkpoint in `.ocp/dev-ultra/` (per-task directory — parallel runs never collide). With `=<slug>` → that objective. Bare → single checkpoint: resume it; multiple: list them (objective, timestamp, phase progress) and let the user pick at the plan-confirmation gate; none: start fresh. **Legacy fallback**: if `.ocp/dev-ultra/` holds no checkpoint and the pre-0.44.0 single file `.ocp/dev-ultra-state.md` exists, resume from it and write subsequent checkpoints into the directory (announce the migration). Missing or corrupt checkpoint → start fresh and inform the user.
+- **Checkpoint slug**: every run derives a short topic slug from the objective's subject (≤ 40 chars, filesystem-safe, Unicode allowed — same convention as SDD slugs and `/dev-deep`) and announces it with the plan. Checkpoints live at `.ocp/dev-ultra/<slug>.md`. Same slug with an ACTIVE (non-completed) checkpoint and no `--resume` → pre-run guard question: resume it / overwrite / abort — never silently clobber a parallel run.
 
-**Parsing rules**: Parse `--max-rounds`, `--max-phases`, and `--resume` from the command arguments (the user request following this protocol). Non-numeric, empty, or missing values → fall back to defaults. Clamp to valid ranges. Example: `--max-rounds=0` → 1; `--max-rounds=abc` → 10; `--max-phases=100` → 20.
+**Parsing rules**: Parse `--max-rounds`, `--max-phases`, and `--resume[=<slug>]` from the command arguments (the user request following this protocol). Non-numeric, empty, or missing values → fall back to defaults. Clamp to valid ranges. Example: `--max-rounds=0` → 1; `--max-rounds=abc` → 10; `--max-phases=100` → 20.
 
 ---
 
@@ -99,7 +100,7 @@ The orchestrator (`@build`) receives the raw user objective and decomposes it in
 4. Cap at `--max-phases` (default 6, max 20). If the objective needs more phases, prioritize and merge — do not exceed the cap. Recommend 3–6 phases for best results; beyond 6 requires context compaction to avoid overflow.
 5. Reserve the final phase for verification (build + test + lint) — this is mandatory.
 
-**Resume check**: If `--resume` was specified, read `.ocp/dev-ultra-state.md` before decomposing. If a valid checkpoint exists with completed phases, skip decomposition for those phases and resume from the first uncompleted phase. If the checkpoint is missing or corrupt, start fresh and inform the user.
+**Resume check**: If `--resume[=<slug>]` was specified, read the selected checkpoint from `.ocp/dev-ultra/` (legacy single-file fallback per Arguments) before decomposing. If a valid checkpoint exists with completed phases, skip decomposition for those phases and resume from the first uncompleted phase. If the checkpoint is missing or corrupt, start fresh and inform the user.
 
 **Example decomposition** for `/dev-ultra Implement QR-code login: session table, polling API, frontend dialog`:
 ```
@@ -265,14 +266,16 @@ Between phases, carry context forward as compressed one-line conclusions:
 
 To prevent orchestrator context overflow on long runs, compact the context after every 2 completed phases (i.e. after phase 2, 4, 6, …):
 
-1. **Write checkpoint**: Append the completed phase's summary to `.ocp/dev-ultra-state.md` using the checkpoint format below. This file lives in the workspace root under `.ocp/` (git-ignored, same as handoff files).
+1. **Write checkpoint**: Append the completed phase's summary to `.ocp/dev-ultra/<slug>.md` using the checkpoint format below. The directory lives in the workspace root under `.ocp/` (git-ignored, same as handoff files; created on first write).
 2. **Drop detailed results**: After writing the checkpoint, discard the detailed reviewer reports, coder outputs, and arbitration records from your active context for phases older than the current one. Keep only the one-line conclusions in active context.
 3. **Carry forward what matters**: Active context should contain only: (a) the original objective, (b) the execution plan, (c) one-line conclusions per completed phase, (d) files-changed list, (e) the current phase's working context.
 
-**Checkpoint file format** (`.ocp/dev-ultra-state.md`):
+**Checkpoint file format** (`.ocp/dev-ultra/<slug>.md` — flip `status` to `completed` after Step 6 delivery; the same-slug guard only fires on non-completed checkpoints):
 ```markdown
 ---
 timestamp: "<YYYY-MM-DDTHH:MM:SSZ>"
+slug: "<slug>"
+status: "<running | stopped | completed>"
 objective: "<user's raw objective>"
 max_rounds: <N>
 max_phases: <N>
@@ -300,7 +303,7 @@ total_phases_planned: <N>
 <running list across all phases>
 ```
 
-**Session recovery**: If the session is interrupted (context overflow, network drop, user closes terminal), the user can resume with `/dev-ultra --resume`. The orchestrator reads `.ocp/dev-ultra-state.md`, reconstructs the one-line conclusions from the checkpoint, and continues from the first uncompleted phase. If the checkpoint is missing or the objective has changed, start fresh.
+**Session recovery**: If the session is interrupted (context overflow, network drop, user closes terminal), the user can resume with `/dev-ultra --resume=<slug>` (bare `--resume` lists checkpoints when several exist). The orchestrator reads the selected `.ocp/dev-ultra/<slug>.md`, reconstructs the one-line conclusions from the checkpoint, and continues from the first uncompleted phase. If the checkpoint is missing or the objective has changed, start fresh.
 
 ---
 
@@ -412,7 +415,7 @@ After all phases complete (or a stop condition halts execution):
 5. **Zero Configuration Pollution**: `tiers.json` stays clean — no new agents or tiers needed. Ultra-dev reuses the existing multi-agent roster exclusively.
 6. **Token Discipline**: Exploration runs once (phase 0). Cross-phase context is compressed to one-liners. Follow-up phases read only changed files, not the full codebase.
 7. **Single Retry Rule**: Each agent gets at most one retry per phase. Repeated failures fuse the phase — no infinite retry loops.
-8. **Context Compaction**: Every 2 completed phases, write a checkpoint to `.ocp/dev-ultra-state.md` and drop detailed results from active context. Enables session recovery via `--resume` and prevents orchestrator context overflow.
+8. **Context Compaction**: Every 2 completed phases, write a checkpoint to `.ocp/dev-ultra/<slug>.md` and drop detailed results from active context. Enables session recovery via `--resume` and prevents orchestrator context overflow.
 9. **Per-Phase Diff Isolation**: Each phase gets its own git commit. Reviewers see only the current phase's diff (`HEAD~1`), not the cumulative history. Prevents diff bloat and ensures clean, auditable commit history.
 
 ---
