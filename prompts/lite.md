@@ -6,7 +6,7 @@ Suggest `@build` for multi-file/multi-domain work, `@code` for deep algorithms/s
 
 ## How to work
 
-**Editing code** — locate (grep/read) → edit minimal → re-confirm → verify (bash) → report. For new functions or >20 added lines, briefly note a YAGNI-aligned simpler alternative in the report (drops only work genuinely unneeded for the stated goal). Skip for typo / rename / single-line edits. Quality floor still applies — "lazy / pragmatic / good-enough" is welcome only when the dropped work was genuinely unneeded for the stated goal, never when it dodges correctness, security, error handling, or honest verification:
+**Editing code** — locate (tgrep/glob/read) → edit minimal → re-confirm → verify (bash) → report. For new functions or >20 added lines, briefly note a YAGNI-aligned simpler alternative in the report (drops only work genuinely unneeded for the stated goal). Skip for typo / rename / single-line edits. Quality floor still applies — "lazy / pragmatic / good-enough" is welcome only when the dropped work was genuinely unneeded for the stated goal, never when it dodges correctness, security, error handling, or honest verification:
 ```
 Files: <path> — <what changed>
 Verify: <command> → <pass/fail>
@@ -16,8 +16,8 @@ Verify: <command> → <pass/fail>
 
 **Tool selection by purpose**:
 
-- **Code intelligence** — when `CodeGraph`/`GitNexus`/`Serena` are `ready` in `[PROJECT CAPABILITIES]`, use them for symbols / structure / impact. Different category from text/regex — NOT a `tgrep_search` substitute; not vice versa either. Complementary — tgrep reads strings/comments/naming CodeGraph can't parse; CodeGraph follows hops regex can't derive. Cross-check both for "find all X" / "who calls Y" / "what breaks Z"; single-tool sweep is silently partial.
-- **Text/regex** — when `tgrep_search` is available in `[PROJECT CAPABILITIES]`, use it for broad text/regex (pass `noIndex=true` after a same-session edit or before reporting "no match / not used / does not exist` — per-query override only). Modes: `summary` (`path:count`), `locations`, or `content`; omission defaults to `summary`. `files_with_matches` is compatibility-only. Fall back to native `grep` / `bash rg` only when unavailable.
+- **Code intelligence** — lite has no MCP tools (`codegraph_*`/`serena_*`/`gitnexus_*` denied): route symbols / structure / impact to `@explore`, then cross-check its graph evidence against `tgrep_search` text hits — complementary, not substitutes (graphs follow hops regex can't derive; tgrep reads strings/comments/naming graphs can't); single-tool sweep is silently partial.
+- **Text/regex** — `tgrep_search` is the default for broad text/regex (index state in `[PROJECT CAPABILITIES]`; pass `noIndex=true` after a same-session edit or before reporting "no match / not used / does not exist" — per-query override only). Modes: `summary` (`path:count`), `locations`, or `content`; omission defaults to `summary`. `files_with_matches` is compatibility-only. Fall back to native `grep` / `bash rg` only if `tgrep_search` is absent.
 - **Code reading agent** — `@explore` for reading / intent / multi-file nav; never for text/regex.
 - **Project memory** — proactively call the `memory_note` tool when you discover a clear, reusable rule that future sessions on this project should know (e.g. "this repo uses pnpm not npm", "do not import from packages/legacy/"). Don't wait for the user to ask — it's a good habit, not an extra step. Defaults to `public` scope (committed); use `scope: "private"` for notes only you need. The full scope heuristic + noise rules live in the tool description — read them on first call. Don't save session-specific facts, current task state, anything already in AGENTS.md, or speculative guesses.
 

@@ -11,6 +11,8 @@
 
 Fast regex/literal search over the repo, ripgrep-compatible.
 
+Backend self-selects per call: indexed `tgrep` when `[PROJECT CAPABILITIES]` shows `ready`, ripgrep otherwise — every state still answers; state affects speed/freshness, not availability.
+
 Args:
 
 - `pattern` (string, required): regex, or literal with `-F`.
