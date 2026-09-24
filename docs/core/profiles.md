@@ -239,7 +239,7 @@ Pick a profile and apply it immediately — no intermediate review:
 
 > **Esc behavior:** At every dialog level, pressing Esc returns to the previous level (not closes the entire wizard). Only Esc at the main menu (Level 1) closes the wizard.
 
-> **i18n:** All TUI wizard plugins (`/profile`, `/provider`, `/project`) support internationalization. The language is auto-detected from system locale/environment variables on first use, then stored in `api.kv`. Each wizard's main menu includes a `🌐 English → 中文` (or reverse) option to switch languages on the fly — the menu re-renders in the new language immediately. Translations are centralized in `plugins/i18n.ts`.
+> **i18n:** All TUI wizard plugins (`/profile`, `/provider`, `/project`, `/usage`) support internationalization. The language is auto-detected from system locale/environment variables on first use, then stored in `~/.config/opencode/ocp.json`. Each wizard's main menu includes a `🌐 <current language>` option (8 languages) to switch languages on the fly — the menu re-renders in the new language immediately. The stored choice is shared by every OCP surface: already-open windows re-read it the next time a menu opens (no restart needed), and server-side command output picks it up per invocation. Command-palette row labels (`/profile` title/description) are composed once per window and refresh on window restart. Translations are centralized in `plugins/tui/i18n.ts`, one catalog per language under `plugins/tui/i18n/locales/`.
 
 ---
 

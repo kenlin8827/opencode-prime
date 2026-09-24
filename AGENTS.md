@@ -53,7 +53,7 @@ User docs are strictly bilingual: `README.md` + `docs/**` (outside `docs/zh/`) =
 - **Grammar labels stay English forever** (ADR-0.40.0#02): never localized, never per-label parenthesized in records.
 - **Generated files are byte-stable and English-only** (`INDEX.md`, …): locale-following content is forbidden in anything regenerated — it flips bytes per generating session. Locale-following rendering is allowed ONLY in ephemeral TUI output (`/adr glossary [locale]`).
 - **Single source of truth for translations**: `ADR_GLOSSARY` in `plugins/tui/i18n.ts`, complete across all 8 registered locales (en, zh-CN, es, fr, ru, ar, pt, ja). Never hand-copy translation tables into docs, records, or code.
-- **Adding a locale**: register it in `LOCALES` (`i18n.ts`, `as const`) and fill every `ADR_GLOSSARY` meaning — `GlossaryLocale` derives from the registry, so a missing meaning is a compile error; the unit test enforces non-empty values. UI strings (`STRINGS`) may fall back to English via `tr()`; glossary meanings may not.
+- **Adding a locale**: register it in `LOCALES` (`i18n.ts`, `as const`) and fill every `ADR_GLOSSARY` meaning — `GlossaryLocale` derives from the registry, so a missing meaning is a compile error; the unit test enforces non-empty values. Both string surfaces are complete per locale and test-enforced: `STRINGS` by `tests/test-i18n-coverage-unit.ts` (611 keys × 8 locales), glossary meanings at compile time. `tr()` still falls back to English, but only as the runtime net for a key added to `en.ts` before its 7 translations land — never as the shipping state.
 - **Repo docs stay strictly bilingual** (rule above): the 8-locale support is plugin runtime content, never a `docs/`-tree expansion.
 
 ---
