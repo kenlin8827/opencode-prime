@@ -15,6 +15,8 @@
 | 0.40.1 | [Project-level ADR overrides](./0.40.1-project-level-adr-overrides.md) |
 | 0.40.2 | [Rename adr-guard plugin to adr](./0.40.2-rename-adr-guard-plugin-to-adr.md) |
 | 0.40.3 | [已接受决策的可上诉性](./0.40.3-appealability-of-accepted-decisions.md) |
+| 0.41.0 | [大版本升级锁](./0.41.0-major-version-upgrade-lock.md) |
+| 2.0.0 | [让 OpenCode Prime 适配 OpenCode v2 运行时](./2.0.0-adapt-opencode-prime-to-v2-runtime.md) |
 
 ## 标签对照表（一次性解码）
 
