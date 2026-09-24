@@ -329,7 +329,7 @@ $allFiles = @(
     "plugins/auto-advisor/auto-advisor-full-inject.ts",
     "plugins/auto-advisor/auto-advisor-announce.ts",
     "plugins/deepseek-anchor.ts",
-    "plugins/deepseek-anchor/index.ts",
+    "plugins/deepseek-anchor/deepseek-anchor.ts",
     "plugins/deepseek-anchor/deepseek-anchor-config.ts",
     "plugins/deepseek-anchor/deepseek-anchor-command.ts",
     "plugins/project-profiler.ts",
@@ -373,7 +373,7 @@ $allFiles = @(
     "plugins/project-manager/templates/AGENTS.md",
     "plugins/project-manager/templates/dbhub.toml",
     "plugins/md-to-pdf.ts",
-    "plugins/md-to-pdf/index.ts",
+    "plugins/md-to-pdf/md-to-pdf.ts",
     "plugins/md-to-pdf/engine.ts",
     "plugins/md-to-pdf/command.ts",
     "plugins/md-to-pdf/style.ts",
@@ -381,7 +381,7 @@ $allFiles = @(
     "install/src/shared/shell-command.ts",
     "plugins/shared/mermaid-renderer.ts",
     "plugins/md-to-docx.ts",
-    "plugins/md-to-docx/index.ts",
+    "plugins/md-to-docx/md-to-docx.ts",
     "plugins/md-to-docx/engine.ts",
     "plugins/md-to-docx/command.ts",
     "plugins/md-to-docx/postprocess.ts",
@@ -700,7 +700,7 @@ $egPlugin = Get-Content "$PSScriptRoot\..\plugins\env-guard\env-guard.ts" -Raw
 $egConfig = Get-Content "$PSScriptRoot\..\plugins\env-guard\env-guard-config.ts" -Raw
 $egRuntime = Get-Content "$PSScriptRoot\..\plugins\env-guard\env-guard-runtime.ts" -Raw
 $egGuard = Get-Content "$PSScriptRoot\..\plugins\env-guard\env-guard-tool-guard.ts" -Raw
-Check "env-guard.ts: imports Plugin type" ($egPlugin -match "import type.*Plugin.*from.*@opencode-ai/plugin")
+Check "env-guard.ts: imports Plugin type" ($egPlugin -match "import type.*Plugin.*from.*@opencode/plugin")
 Check "env-guard.ts: has tool.execute.before hook" ($egPlugin -match '"tool\.execute\.before"')
 Check "env-guard.ts: injects project directory" ($egPlugin -match "setProjectDir\(directory\)")
 Check "env-guard-config.ts: switch stored in project .ocp/ocp.json (no state file)" ($egConfig -match 'shared/opencode-prime' -and $egConfig -match 'envGuard')
@@ -714,7 +714,7 @@ Check "env-guard-tool-guard.ts: gates bash via leak detection" ($egGuard -match 
 Check "env-guard-tool-guard.ts: reuses adr runtime parsing" ($egGuard -match "adr/adr-runtime")
 
 $egBarrel = Get-Content "$PSScriptRoot\..\plugins\env-guard.ts" -Raw
-Check "env-guard.ts: barrel re-exports EnvGuardPlugin" ($egBarrel -match "export.*EnvGuardPlugin")
+Check "env-guard.ts: barrel re-exports the v2 default plugin" ($egBarrel -match "export { default }")
 
 # E2E adopt plugin checks (plugins/e2e-adopt/ — docs-governance scaffold, retired e2e-guard's successor)
 $e2eAdoptPlugin = Get-Content "$PSScriptRoot\..\plugins\e2e-adopt\e2e-adopt.ts" -Raw
@@ -992,7 +992,9 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-adr-compaction-faults.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
-# Native runtime tests are explicit/optional: require OpenCode and start local servers.
+# Native runtime tests are explicit/optional: they start local OpenCode v2
+# servers (discovery + isolation via tests/helpers/v2-runtime.ts) and print
+# an explicit [SKIP] when no >=2.0.0 runtime is found.
 if ($env:OCP_TEST_NATIVE_ADR -eq "1") {
     & bun "$PSScriptRoot\test-adr-compaction-runtime.ts"
     if ($LASTEXITCODE -ne 0) { $fail++ }

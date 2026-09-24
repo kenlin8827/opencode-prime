@@ -1,10 +1,33 @@
-/** Native command/tool/Question integration. Question replies are server events,
- * never model-provided authorization flags. No client question-creation API exists
- * in SDK 1.18.15: the agent presents exact registered arguments to `question`.
+/** Native command/tool/Question integration. Question replies are server
+ * facts (the native question tool's completed result), never model-provided
+ * authorization flags.
+ *
+ * V2 MAPPING NOTES (v1 → v2):
+ *   • v1 `tool: { adr_context, adr_compaction }` (SDK `tool({...})` with
+ *     zod args) → v2 payloads registered through ctx.tool.transform with
+ *     `options: { codemode: false }` (first-class model tools). Zod 4
+ *     schemas are StandardSchemaV1 — accepted directly as v2 `input`.
+ *     Result shape: v1 returned bare strings; v2 returns
+ *     `Tool.Result { content }` — the JSON payload rides `content`.
+ *   • v1 question authorization rode server events
+ *     `question.asked` / `question.replied` / `question.rejected`. The v2
+ *     plugin Context carries no question event surface; the equivalent
+ *     server-fact proof is the question tool's own execute.after event:
+ *     a completed result's `answers` (output/metadata) are produced by
+ *     the server-side form flow exactly like the v1 reply event, and an
+ *     `error` status is the dismissal the v1 rejected event carried.
+ *     Same security property: only the native tool round-trip — never a
+ *     model argument — can authorize execution.
+ *   • v1 `client.session.prompt({noReply})` reply injection → v2
+ *     session.synthetic (shared/agent-scope.injectReply).
+ *   • v1 toast on apply → shared/notify log line (OCP-V2-GAP: no TUI
+ *     surface in the v2 plugin Context).
  */
-import { tool, type PluginInput, type ToolContext } from "@opencode-ai/plugin"
 import { readdirSync } from "node:fs"
-import { scopedForTool } from "../shared/plugin-scope"
+import { injectReply, scopedForCall, type V2Session } from "../shared/agent-scope"
+import { notify } from "../shared/notify"
+// zod: direct dep, MIT license (AGPL-compatible) — tool parameter schemas.
+import { z } from "zod"
 import { refreshLocale, tr } from "../tui/i18n"
 import { analyzeCompaction, checkCompaction, approveDrafting, applyPlan, candidateBatchSchema, candidateBatchPage, stageCandidate, compactionEvidence, loadPlan, planArchive, reviewPage, sealPlan, startCompaction, submitCandidate, type CompactionOptions, type Plan } from "./adr-compaction"
 import { currentState, queryAdrContext, takeSnapshot } from "./adr-context"
@@ -72,14 +95,21 @@ function questionSignature(value: unknown): string {
     }))
   } catch { return "invalid" }
 }
-interface Pending { budget?: boolean; id: string; seal: string; question: Question; labels: Map<string, "accept" | "drafts" | "cancel" | "modify">; expires: number; callID?: string; requestID?: string }
+interface Pending { budget?: boolean; id: string; seal: string; question: Question; labels: Map<string, "accept" | "drafts" | "cancel" | "modify">; expires: number; callID?: string; authorized?: boolean }
 
-export function createCompactionRuntime(project: string, client: PluginInput["client"]) {
+/** V2 ToolContext subset the execute handlers read. */
+interface ExecuteCtx { sessionID?: string; agent?: string }
+/** V2 Tool.Result — the shape execute handlers return. */
+type ToolResult = { content?: string | ReadonlyArray<unknown>; output?: unknown; metadata?: Record<string, unknown> }
+
+/** V2 minimal structural session view (synthetic + get for the scope gate). */
+export function createCompactionRuntime(project: string, session: V2Session) {
   const pending = new Map<string, Pending>()
   const results = new Map<string, string>()
   const seenEvidence = new Map<string, Set<string>>()
-  const allowed = async (ctx: ToolContext, scope = "adr") => {
-    if (!await scopedForTool(ctx, scope, client)) throw new Error("ADR tools unavailable in this agent scope")
+  const allowed = async (ctx: ExecuteCtx, scope = "adr") => {
+    if (!(await scopedForCall({ sessionID: ctx.sessionID, agent: ctx.agent }, scope, session)))
+      throw new Error("ADR tools unavailable in this agent scope")
   }
   const registerBudget = (p: Plan): { questions: Question[]; instructions: string } => {
     refreshLocale()
@@ -111,61 +141,74 @@ export function createCompactionRuntime(project: string, client: PluginInput["cl
       options: [...labels].map(([label, action]) => ({ label, description: tr(action === "accept" ? "adr.compaction.acceptDesc" : action === "drafts" ? "adr.compaction.draftDesc" : action === "modify" ? "adr.compaction.modifyDesc" : "adr.compaction.cancelDesc") })),
     }
     pending.set(p.sessionID, { id: p.id, seal: p.seal, question, labels, expires: Date.now() + 30 * 60_000 })
-    return { questions: [question], instructions: "Show the review artifacts to the user. Call the native question tool with these exact questions. Only its server reply event can authorize execution. Do not edit the question or claim approval yourself." }
+    return { questions: [question], instructions: "Show the review artifacts to the user. Call the native question tool with these exact questions. Only its completed result (server-produced answers) can authorize execution. Do not edit the question or claim approval yourself." }
   }
   const progress = (p: Plan) => Object.fromEntries(["drafts", "lifecycle", "views", "archive", "relocated-views"].map(stage => {
     const raw = readOptional(project, `${maintenancePath(project)}/${p.id}.${stage}.json`)
     try { return [stage, raw === null ? "not-started" : JSON.parse(raw).complete === true ? "complete" : "pending"] } catch { return [stage, "invalid"] }
   }))
   const reply = async (sessionID: string | undefined, text: string) => {
-    if (!sessionID) return
-    await client.session.prompt({ path: { id: sessionID }, body: { noReply: true, parts: [{ type: "text", text, ignored: true }] } })
+    await injectReply(session, sessionID, text)
   }
-  const tools = {
-    adr_context: tool({
+  // V2 tool payloads registered through ctx.tool.transform (codemode:false →
+  // first-class model tools). execute returns Tool.Result ({ content }); v1
+  // returned bare strings — the JSON payload now rides `content`.
+  const toolPayloads = [
+    {
+      name: "adr_context",
+      options: { codemode: false as const },
       description: "Bounded architecture decision evidence. Select an ID/domain/iteration; current follows accepted successors, history expands archive bodies at most one hop. Read next pages only when evidence is incomplete. Checks CURRENT freshness.",
-      args: { id: tool.schema.string().optional(), domain: tool.schema.string().optional(), iteration: tool.schema.string().optional(), intent: tool.schema.enum(["current", "rationale", "history"]).optional(), cursor: tool.schema.string().optional() },
-      async execute(args, ctx) {
+      input: z.object({ id: z.string().optional(), domain: z.string().optional(), iteration: z.string().optional(), intent: z.enum(["current", "rationale", "history"]).optional(), cursor: z.string().optional() }),
+      execute: async (args: { id?: string; domain?: string; iteration?: string; intent?: "current" | "rationale" | "history"; cursor?: string }, ctx: ExecuteCtx): Promise<ToolResult> => {
         await allowed(ctx, "adr-context-tool")
         const page = queryAdrContext(project, args)
-        const seen = seenEvidence.get(ctx.sessionID) ?? new Set<string>()
+        const seen = seenEvidence.get(ctx.sessionID ?? "") ?? new Set<string>()
         const keys = page.entries.map(e => `${e.hash}:${e.offset}:${e.end}`)
         if (keys.length && keys.every(k => seen.has(k))) page.issues.push("Repeated evidence: stop unless a concrete unresolved question requires rereading.")
-        keys.forEach(k => seen.add(k)); seenEvidence.set(ctx.sessionID, seen)
-        return JSON.stringify(page)
+        keys.forEach(k => seen.add(k)); seenEvidence.set(ctx.sessionID ?? "", seen)
+        return { content: JSON.stringify(page) }
       },
-    }),
-    adr_compaction: tool({
+    },
+    {
+      name: "adr_compaction",
+      options: { codemode: false as const },
       description: "Draft/review a USER-started ADR compaction plan. evidence returns bounded full-source batches; slots returns reserved scaffolds; stage saves a bounded named candidate batch, batches pages saved drafts; submit without candidate assembles batches and validates a candidate and offers native Ask; review pages the complete changes. No model argument can accept a decision or bypass user review. Load adr-compaction skill.",
-      args: { plan: tool.schema.string(), action: tool.schema.enum(["evidence", "slots", "stage", "batches", "submit", "review", "ask", "status"]), cursor: tool.schema.string().optional(), candidate: candidateBatchSchema.optional(), batch: tool.schema.string().optional() },
-      async execute(args, ctx) {
+      input: z.object({ plan: z.string(), action: z.enum(["evidence", "slots", "stage", "batches", "submit", "review", "ask", "status"]), cursor: z.string().optional(), candidate: candidateBatchSchema.optional(), batch: z.string().optional() }),
+      execute: async (args: { plan: string; action: "evidence" | "slots" | "stage" | "batches" | "submit" | "review" | "ask" | "status"; cursor?: string; candidate?: unknown; batch?: string }, ctx: ExecuteCtx): Promise<ToolResult> => {
         await allowed(ctx)
-        const p = loadPlan(project, args.plan, ctx.sessionID)
+        const sessionID = ctx.sessionID ?? ""
+        const p = loadPlan(project, args.plan, sessionID)
         if (["evidence", "stage"].includes(args.action) && !p.costApproval) throw new Error("Drafting cost is not authorized. Use action ask and obtain the native user reply first.")
-        if (args.action === "evidence") return JSON.stringify(compactionEvidence(project, p.id, ctx.sessionID, args.cursor))
+        if (args.action === "evidence") return { content: JSON.stringify(compactionEvidence(project, p.id, sessionID, args.cursor)) }
         if (args.action === "stage") {
           if (!args.batch || !args.candidate) throw new Error("stage requires a batch key and candidate data")
-          const staged = stageCandidate(project, p.id, ctx.sessionID, args.batch, args.candidate)
-          if (staged.revision !== p.revision) pending.delete(ctx.sessionID)
-          return JSON.stringify({ id: staged.id, state: staged.state, revision: staged.revision, batches: Object.keys(staged.batches ?? {}).length, instructions: "Batch saved locally, not accepted. Use batches for paged inspection; submit without candidate assembles all batches and validates complete coverage." })
+          const staged = stageCandidate(project, p.id, sessionID, args.batch, args.candidate as never)
+          if (staged.revision !== p.revision) pending.delete(sessionID)
+          return { content: JSON.stringify({ id: staged.id, state: staged.state, revision: staged.revision, batches: Object.keys(staged.batches ?? {}).length, instructions: "Batch saved locally, not accepted. Use batches for paged inspection; submit without candidate assembles all batches and validates complete coverage." }) }
         }
-        if (args.action === "batches") return JSON.stringify(candidateBatchPage(project, p.id, ctx.sessionID, args.cursor))
+        if (args.action === "batches") return { content: JSON.stringify(candidateBatchPage(project, p.id, sessionID, args.cursor)) }
         if (args.action === "slots") {
           const { evidencePage } = await import("./adr-context")
-          return JSON.stringify(evidencePage(p.slots.map(slot => ({ id: slot.id, path: p.root, status: "reserved", via: "candidate scaffold", hash: p.fingerprint, body: slot.scaffold })), p.fingerprint, `${p.id}:slots`, args.cursor))
+          return { content: JSON.stringify(evidencePage(p.slots.map(slot => ({ id: slot.id, path: p.root, status: "reserved", via: "candidate scaffold", hash: p.fingerprint, body: slot.scaffold })), p.fingerprint, `${p.id}:slots`, args.cursor)) }
         }
-        if (args.action === "review") return JSON.stringify(reviewPage(project, p.id, ctx.sessionID, args.cursor))
+        if (args.action === "review") return { content: JSON.stringify(reviewPage(project, p.id, sessionID, args.cursor)) }
         if (args.action === "submit") {
-          const submitted = submitCandidate(project, p.id, ctx.sessionID, args.candidate)
-          return JSON.stringify(registerReview(submitted))
+          const submitted = submitCandidate(project, p.id, sessionID, args.candidate as never)
+          return { content: JSON.stringify(registerReview(submitted)) }
         }
-        if (args.action === "ask") return JSON.stringify(p.state === "drafting" && !p.costApproval ? registerBudget(p) : registerReview(p))
-        return JSON.stringify({ id: p.id, state: p.state, revision: p.revision, result: p.result, stages: progress(p), selected: p.selected.length, evidenceRecords: p.evidencePaths.length, review: p.seal ? `${maintenancePath(project)}/${p.id}.review.md` : null })
+        if (args.action === "ask") return { content: JSON.stringify(p.state === "drafting" && !p.costApproval ? registerBudget(p) : registerReview(p)) }
+        return { content: JSON.stringify({ id: p.id, state: p.state, revision: p.revision, result: p.result, stages: progress(p), selected: p.selected.length, evidenceRecords: p.evidencePaths.length, review: p.seal ? `${maintenancePath(project)}/${p.id}.review.md` : null }) }
       },
-    }),
-  }
+    },
+  ]
+
+  // Keyed view of the registered payloads (adr_context / adr_compaction) —
+  // production uses toolPayloads via ctx.tool.transform; unit tests reach a
+  // tool's execute() by name through this map.
+  const tools = Object.fromEntries(toolPayloads.map((t) => [t.name, t]))
 
   return {
+    toolPayloads,
     tools,
     async command(input: { command?: string; arguments?: string; sessionID?: string }, output: { parts: Array<unknown> }): Promise<"handled" | "continue" | null> {
       if (input.command !== "adr") return null
@@ -220,53 +263,72 @@ export function createCompactionRuntime(project: string, client: PluginInput["cl
         return "continue"
       } catch (err) { await reply(input.sessionID, `ADR compaction stopped: ${String(err)}`); return "handled" }
     },
-    async before(input: { tool?: string; sessionID?: string; callID?: string }, output: { args?: unknown }) {
-      if (input.tool !== "question" || !input.sessionID) return
-      const p = pending.get(input.sessionID)
+    // V2 tool execute.before: record the question call id and reject a stale
+    // review. The signature gate means only the exact registered Ask passes.
+    async before(e: { tool?: string; sessionID?: string; id?: string; input?: unknown }) {
+      if (e.tool !== "question" || !e.sessionID) return
+      const p = pending.get(e.sessionID)
       if (!p) return
-      const args = output.args as { questions?: unknown } | undefined
+      const args = e.input as { questions?: unknown } | undefined
       if (questionSignature(args?.questions) !== questionSignature([p.question])) return
-      if (Date.now() > p.expires) { pending.delete(input.sessionID); throw new Error("ADR review expired; request a fresh Ask") }
-      p.callID = input.callID
+      if (Date.now() > p.expires) { pending.delete(e.sessionID); throw new Error("ADR review expired; request a new Ask") }
+      p.callID = e.id
     },
+    // V2 event subscription handler: only session teardown cleanup remains
+    // (question authorization moved to the execute.after result path below).
     async event(event: unknown) {
       if (!event || typeof event !== "object") return
       const e = event as { type?: string; properties?: Record<string, unknown>; data?: Record<string, unknown> }
-      const data = e.properties ?? e.data
+      const data = e.data ?? e.properties
       if (!data || typeof data.sessionID !== "string") return
-      const session = data.sessionID, p = pending.get(session)
-      if (e.type === "session.deleted") { pending.delete(session); seenEvidence.delete(session); results.delete(session); return }
-      if (!p) return
-      if (Date.now() > p.expires) { pending.delete(session); return }
-      if (e.type === "question.asked") {
-        const t = data.tool as { callID?: string } | undefined
-        if (p.callID && t?.callID === p.callID && questionSignature(data.questions) === questionSignature([p.question]) && typeof data.id === "string") p.requestID = data.id
-        return
-      }
-      if (!p.requestID || data.requestID !== p.requestID) return
-      if (e.type === "question.rejected") { pending.delete(session); return }
-      if (e.type !== "question.replied") return
-      pending.delete(session) // consume before any write; duplicate event cannot authorize twice
-      const answers = data.answers
-      if (!Array.isArray(answers) || answers.length !== 1 || !Array.isArray(answers[0]) || answers[0].length !== 1) return
-      const choice = p.labels.get(answers[0][0])
-      if (!choice) return
-      if (choice === "modify") { results.set(session, "User requested changes. Revise, resubmit, and obtain a NEW Ask; no source changes applied."); return }
-      try {
-        if (p.budget && choice === "drafts") throw new Error("Invalid cost choice")
-        const actor = `question:${p.requestID};session:${session}`
-        const result = p.budget ? approveDrafting(project, p.id, session, actor, choice === "cancel") : applyPlan(project, p.id, p.seal, actor, choice)
-        results.set(session, `${result.state}: ${result.result ?? (result.costApproval ? "Drafting cost authorized. Retrieve evidence, then present a separate reviewed acceptance Ask." : "Plan cancelled; local candidate retained.")}`)
-      } catch (err) { results.set(session, `ADR application stopped; inspect /adr compaction status ${p.id}. ${String(err)}`) }
-      // Do not append a synthetic user message while question is running: even
-      // noReply can cause the active runtime loop to take an extra model turn.
-      // The question after-hook carries the receipt into its existing tool result.
-      try { await client.tui.showToast({ body: { message: results.get(session)!, variant: "info" } }) } catch { /* Status remains available through the maintenance tool. */ }
+      const session = data.sessionID
+      if (e.type === "session.deleted") { pending.delete(session); seenEvidence.delete(session); results.delete(session) }
     },
-    async after(input: { tool?: string; sessionID?: string }, output: { output: string }) {
-      if (input.tool === "question" && input.sessionID && results.has(input.sessionID)) {
-        output.output += `\n[ADR-COMPACTION] ${results.get(input.sessionID)}`
-        results.delete(input.sessionID)
+    // V2 tool execute.after — question authorization. A completed question
+    // result carries the server-produced answers (the model cannot forge a
+    // tool result), so this is the trusted authorization signal that v1 read
+    // off the question.replied event. `result`/`error` are mutated in place;
+    // the receipt rides back to the model inside the existing tool output.
+    async after(e: {
+      tool?: string
+      sessionID?: string
+      id?: string
+      input?: unknown
+      status: "completed" | "error"
+      result?: { content?: string; output?: { answers?: unknown } }
+    }) {
+      if (e.tool !== "question" || !e.sessionID) return
+      const session = e.sessionID
+      const p = pending.get(session)
+      // Dismissal (error) cancels the armed review.
+      if (e.status !== "completed") { if (p) pending.delete(session); return }
+      if (p && p.callID === e.id && questionSignature((e.input as { questions?: unknown })?.questions) === questionSignature([p.question])) {
+        pending.delete(session) // consume before any write; a duplicate result cannot authorize twice
+        const answers = e.result?.output?.answers
+        if (Array.isArray(answers) && answers.length === 1 && Array.isArray(answers[0]) && answers[0].length === 1) {
+          const choice = p.labels.get(answers[0][0] as string)
+          if (choice) {
+            if (choice === "modify") {
+              results.set(session, "User requested changes. Revise, resubmit, and obtain a NEW Ask; no source changes applied.")
+            } else {
+              try {
+                if (p.budget && choice === "drafts") throw new Error("Invalid cost choice")
+                const actor = `question:${e.id};session:${session}`
+                const r = p.budget ? approveDrafting(project, p.id, session, actor, choice === "cancel") : applyPlan(project, p.id, p.seal, actor, choice)
+                results.set(session, `${r.state}: ${r.result ?? (r.costApproval ? "Drafting cost authorized. Retrieve evidence, then present a separate reviewed acceptance Ask." : "Plan cancelled; local candidate retained.")}`)
+              } catch (err) { results.set(session, `ADR application stopped; inspect /adr compaction status ${p.id}. ${String(err)}`) }
+              // Best-effort announce (v2: server-log line; status also stays
+              // available through the maintenance tool).
+              await notify(results.get(session)!, "info")
+            }
+          }
+        }
+      }
+      // Carry any pending receipt into the question tool's own model-facing
+      // result so the LLM sees the outcome without an extra turn.
+      if (results.has(session) && e.result && typeof e.result.content === "string") {
+        e.result.content += `\n[ADR-COMPACTION] ${results.get(session)}`
+        results.delete(session)
       }
     },
   }

@@ -19,7 +19,8 @@ function check(name: string, ok: boolean) {
 }
 
 // Sandbox project dir so the real project config is never read.
-// MCP disabled across the board so badges not under test stay filtered.
+// MCP disabled across the board (v2 shape: `mcp.servers.<name>.disabled`)
+// so badges not under test stay filtered.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "sidebar-status-"))
 fs.mkdirSync(path.join(tmp, ".ocp"), { recursive: true })
 // The memory badge counts via readPublic(), which resolves through the
@@ -30,9 +31,11 @@ setProjectDir(tmp)
 
 const noMcp = {
   mcp: {
-    codegraph: { enabled: false },
-    gitnexus: { enabled: false },
-    serena: { enabled: false },
+    servers: {
+      codegraph: { disabled: true },
+      gitnexus: { disabled: true },
+      serena: { disabled: true },
+    },
   },
 }
 const row = (label: string) =>
@@ -70,6 +73,40 @@ check(
   buildGuardBadges(tmp).find((b: { label: string }) => b.label === "memory") === undefined,
 )
 
+// ─── MCP enablement: v2 `mcp.servers.<name>` shape ───────────────────
+//
+// Regression guard for the v1 → v2 field miss: mcpEnabledIn() used to read
+// v1's `mcp.<name>.enabled === true`, which can never match a v2 document
+// (servers live under `mcp.servers`, the flag is `disabled`, and its
+// default is false = connect). Every capability badge therefore stuck at
+// OFF, and the model-facing [PROJECT CAPABILITIES] block lied the same way.
+// Capability rows only render for an INIT scaffold — which is why the
+// memory-only assertions above never exercised this path.
+
+const caps = fs.mkdtempSync(path.join(os.tmpdir(), "sidebar-caps-"))
+for (const rel of [path.join(".ocp", "ocp.json"), path.join("docs", "git-commits.md"), "AGENTS.md"]) {
+  const p = path.join(caps, rel)
+  fs.mkdirSync(path.dirname(p), { recursive: true })
+  fs.writeFileSync(p, "{}")
+}
+setProjectDir(caps)
+const badge = (label: string, cfg: unknown) =>
+  buildProjectBadges(caps, cfg as Record<string, unknown>).find((b: { label: string }) => b.label === label)?.state
+const servers = (extra: Record<string, unknown>) => ({
+  mcp: { servers: { gitnexus: { disabled: true }, serena: { disabled: true }, ...extra } },
+})
+
+check("fixture is an INIT scaffold (so capability rows render)", badge("scaffold", null) === "INIT")
+check("v2 disabled:true → row hidden (OFF is filtered as non-actionable)", badge("codegraph", servers({ codegraph: { disabled: true } })) === undefined)
+check("v2 configured, no `disabled`, no index dir → NO INDEX", badge("codegraph", servers({ codegraph: { type: "local" } })) === "NO INDEX")
+fs.mkdirSync(path.join(caps, ".codegraph"))
+check("v2 configured without `disabled` + index dir → READY (v2 default false)", badge("codegraph", servers({ codegraph: { type: "local" } })) === "READY")
+check("v2 disabled:false + index dir → READY", badge("codegraph", servers({ codegraph: { disabled: false } })) === "READY")
+check("serena v2 enabled → READY (live LSP, no index step)", badge("serena", servers({ serena: { type: "local" }, codegraph: { disabled: true } })) === "READY")
+check("v1-shaped `enabled:true` is NOT read as enabled → row stays hidden", badge("codegraph", { mcp: { codegraph: { enabled: true } } }) === undefined)
+check("absent server entry → row hidden", badge("codegraph", { mcp: { servers: {} } }) === undefined)
+
+fs.rmSync(caps, { recursive: true, force: true })
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail === 0 ? 0 : 1)

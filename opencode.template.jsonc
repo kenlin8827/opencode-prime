@@ -1,26 +1,36 @@
 {
-  // Installer-only retirement list: factory agents deleted from the `agent`
+  // Installer-only retirement list: factory agents deleted from the `agents`
   // block below. On upgrade the merger drops them from the preserved target
   // config and tiers.json — without this they would be misread as user-added
   // agents and preserved forever. Consumed by install/src/merger.ts and
   // stripped from the merged output; never reaches the opencode runtime.
   "removed_agents": ["coworker", "explorer"],
   "$schema": "https://opencode.ai/config.json",
-  "snapshot": true,
-  // No root `model`/`small_model` and no per-agent `model` presets below:
-  // a fresh install must work before any profile is applied, so every
-  // agent inherits opencode's own default model. `/profile apply` then
-  // materializes the tiers.json mapping into per-agent model refs and sets
-  // root `model` (tier.standard) + `small_model` (tier.flash).
+  "snapshots": true,
+  // No root `model` and no per-agent `model` presets below: a fresh install
+  // must work before any profile is applied, so every agent inherits
+  // opencode's own default model. `/profile apply` then materializes the
+  // tiers.json mapping into per-agent model refs and sets root `model`
+  // (tier.standard) + `agents.title.model` (tier.flash — the v2-native
+  // replacement for v1's root `small_model`).
   "default_agent": "lite",
-  "permission": "allow",
+  // V2 native permissions: one ordered array of {action, resource, effect}
+  // rules; the LAST matching rule wins and unmatched actions default to ask.
+  // The base policy every agent starts from already allows `*`, but it asks
+  // for external_directory and *.env reads. This explicit allow-all mirrors
+  // the v1 root `"permission": "allow"` (appended after the base policy, so
+  // it wins) — the suite's unattended subagents must never stall on a prompt
+  // nobody can answer.
+  "permissions": [
+    { "action": "*", "resource": "*", "effect": "allow" }
+  ],
   // L0 disclosure layer — injected into EVERY step of EVERY agent. Entries
   // MUST use absolute ~/ paths: opencode resolves relative instruction paths
   // against the current project directory (globUp from the working dir), not
   // the config dir — a relative entry would silently fail to load in any
   // project that lacks a matching instructions/*.md. Keep this array small,
   // static, and ordered (prefix-cache friendly). Role rules live at L1 (agent
-  // prompt {file:} assembly below); scenario rules at L2 (skills/).
+  // system {file:} assembly below); scenario rules at L2 (skills/).
   "instructions": [
     "~/.config/opencode/instructions/rfc-keywords.md",
     "~/.config/opencode/instructions/output-protocol.md",
@@ -28,15 +38,15 @@
     "~/.config/opencode/instructions/routing-index.md",
     "~/.config/opencode/instructions/git-safety.md"
   ],
-  // Default active external npm plugins. Optional plugins (opencode-qoder-bridge,
+  // Default active external plugins. Optional plugins (opencode-qoder-bridge,
   // opencode-mem, etc.) are managed and enabled via install/options.jsonc.
-  // Session titles use opencode's NATIVE title pipeline (built-in `title`
-  // agent). `small_model` is unset until /profile apply writes it (flash
-  // tier), so title generation and other host utility calls run on the
-  // cheapest configured model — resolved with the host's own
-  // protocol/credential handling. If the small-model call fails, opencode
+  // V2 entry shapes: a plain string (package or local path) or
+  // { package, options }. Session titles use opencode's NATIVE title
+  // pipeline (built-in `title` agent) — agents.title.model is materialized
+  // by /profile apply (flash tier); until then host utility calls run on the
+  // host's cheapest resolution. If the small-model call fails, opencode
   // leaves the default title; no plugin involved.
-  "plugin": [],
+  "plugins": [],
   // Serena: LSP-based semantic code retrieval (symbol-level queries instead of
   // full file reads) — shared by all agents, avoids duplicate file reads.
   // CLI provisioning: the install script runs the `install` field automatically
@@ -51,134 +61,144 @@
   // `--open-web-dashboard False`: the dashboard still runs in the background
   // (tray icon / http://localhost:24282/dashboard/) but no UI window pops up
   // per session — without this, every opencode conversation opens one.
-  // If serena is not installed, set "enabled": false — agents fall back to
+  // If serena is not installed, set "disabled": true — agents fall back to
   // grep/glob/file reads per their prompts. Default off: 23 tools cost
   // ~7.7k tok/step; enable when semantic search / refactoring is needed.
+  // V2 shape: servers live under `mcp.servers`, `enabled` becomes the
+  // inverse `disabled`, and `env` becomes `environment`. The `install` key
+  // is OCP-only provisioning metadata: the v2 schema ignores unknown
+  // properties and install/src/installer.ts (mcpProvisionPlan) reads it from
+  // this raw file.
   "mcp": {
-    "serena": {
-      "type": "local",
-      "command": [
-        "node",
-        "-e",
-        "import(require('url').pathToFileURL(require('path').join(require('os').homedir(), '.config/opencode/scripts/serena-workspace-daemon.mjs')).href)"
-      ],
-      "install": "uv tool install -p 3.13 serena-agent@latest --prerelease=allow",
-      "enabled": false
-    },
-    // CodeGraph (default graph backend): pre-indexed code knowledge graph
-    // (Tree-sitter → SQLite). Complements Serena: adds structural macro
-    // queries — "how does X work" / flows, impact/blast radius, dependency
-    // chains, area surveys, framework-aware
-    // routes. MIT licensed. Fixed tool surface: a single `codegraph_explore`.
-    // Index lifecycle: ONE-TIME manual `codegraph init` per repo (MCP does NOT
-    // auto-build a missing index); after that a built-in file watcher keeps it
-    // in sync on every save + reconciliation on reconnect — never stale.
-    // CLI provisioning: the install script runs the `install` field
-    // automatically when `codegraph` is missing (requires npm).
-    // "enabled": false to skip.
-    "codegraph": {
-      "type": "local",
-      "command": ["codegraph", "serve", "--mcp"],
-      "install": "npm install -g @colbymchenry/codegraph",
-      "enabled": true
-    },
-    // GitNexus (optional): deeper graph analysis — arbitrary Cypher, Web UI
-    // visualization, precomputed processes/clusters, multi-repo groups.
-    // NOTE: PolyForm Noncommercial license — commercial use needs licensing.
-    // Requires manual re-index (`gitnexus analyze`) after big changes.
-    // One MCP server serves every indexed repo (registry ~/.gitnexus/).
-    // GITNEXUS_MCP_READ_ONLY=1: read-only graph tools only — edits stay with
-    // the agents' native tools. "enabled": true only if licensed + indexed.
-    // `install` is pre-declared but dormant: while "enabled" stays false the
-    // install script skips it; flipping enabled to true makes the next install
-    // provision the CLI automatically (licensing + per-repo `gitnexus analyze`
-    // remain your decision).
-    "gitnexus": {
-      "type": "local",
-      "command": ["gitnexus", "mcp"],
-      "install": "npm install -g gitnexus",
-      "env": { "GITNEXUS_MCP_READ_ONLY": "1" },
-      "enabled": false
-    },
-    // DBHub (optional): universal database gateway — PostgreSQL, MySQL,
-    // MariaDB, SQL Server, SQLite through one server. Token-efficient:
-    // 2 tools by default (~1.4k tokens). Bytebase project, MIT licensed.
-    // Requires Node >= 22.5. Configuration is PER-PROJECT, not shipped:
-    // dbhub auto-discovers ./dbhub.toml from the working directory (or
-    // --config / DSN env var). TOML values support ${ENV_VAR} interpolation
-    // — keep credentials out of any repo. Read-only is enforced per tool
-    // in the TOML ([[tools]] readonly = true); the old --readonly flag is
-    // removed upstream. Enabled by default in install/options.jsonc, so
-    // installs provision the CLI and flip `enabled` — the false below is
-    // only the shipped template fallback (direct copies without the
-    // installer). dbhub.toml + DSN in each project remain your setup.
-    // Example dbhub.toml in the project root:
-    //   [[sources]]
-    //   id = "default"
-    //   dsn = "${DBHUB_DSN}"
-    //   [[tools]]
-    //   name = "execute_sql"
-    //   source = "default"
-    //   readonly = true
-    "dbhub": {
-      "type": "local",
-      "command": ["dbhub", "--transport", "stdio", "--config", "./dbhub.toml"],
-      "install": "npm install -g @bytebase/dbhub",
-      "enabled": false
-    },
-    // Headroom (optional): local context compression — compresses tool outputs,
-    // logs, and RAG chunks before they reach the LLM; originals stay
-    // retrievable on demand via CCR (`headroom_retrieve`). Apache 2.0,
-    // local-first. Complements rtk, which covers the OUTPUT side —
-    // headroom targets the INPUT side.
-    // MCP mode is agent-driven (compress on
-    // demand); the fully automatic `headroom proxy` mode is NOT wired in here
-    // because it rewrites provider base URLs. Heavy provisioning: uv tool
-    // with Python 3.13, and the first run downloads the ONNX runtime
-    // (cdn.pyke.io) + Kompress compression model (huggingface.co). Flip
-    // "enabled" to true only if you accept those downloads.
-    // Daemon bridge: uses headroom-proxy-daemon.mjs (same pattern as
-    // serena-workspace-daemon.mjs). Checks whether the headroom proxy backend
-    // (127.0.0.1:8787) is running; if not, spawns `headroom proxy` detached
-    // in the background, waits for readiness, then exec's `headroom mcp serve`.
-    // Makes headroom fully out-of-the-box — no manual `headroom proxy` step.
-    "headroom": {
-      "type": "local",
-      "command": [
-        "node",
-        "-e",
-        "import(require('url').pathToFileURL(require('path').join(require('os').homedir(), '.config/opencode/scripts/headroom-proxy-daemon.mjs')).href)"
-      ],
-      "install": "uv tool install --python 3.13 \"headroom-ai[all]\"",
-      "enabled": false
-    },
-    // JetBrains IDE MCP bridge — remote server exposed by the running IDE
-    // (IntelliJ / WebStorm / etc.) on the local stream endpoint. No CLI to
-    // install; the IDE must be running with its MCP server enabled.
-    //
-    // IDE-side setup (one-time per project):
-    //   1. Install the "MCP Server" plugin (JetBrains Marketplace) if not
-    //      already bundled by your IDE version.
-    //   2. Open: Settings (Preferences) → Tools → MCP Server.
-    //   3. Toggle the server ON and apply. The IDE starts listening on
-    //      127.0.0.1:64342/stream — verify the port matches.
-    //   4. Keep the IDE running; this endpoint dies when the IDE closes.
-    //
-    // Then flip "enabled" here (or via install/options.jsonc) to connect.
-    "idea": {
-      "type": "remote",
-      "url": "http://127.0.0.1:64342/stream",
-      "enabled": false
+    "servers": {
+      "serena": {
+        "type": "local",
+        "command": [
+          "node",
+          "-e",
+          "import(require('url').pathToFileURL(require('path').join(require('os').homedir(), '.config/opencode/scripts/serena-workspace-daemon.mjs')).href)"
+        ],
+        "install": "uv tool install -p 3.13 serena-agent@latest --prerelease=allow",
+        "disabled": true
+      },
+      // CodeGraph (default graph backend): pre-indexed code knowledge graph
+      // (Tree-sitter → SQLite). Complements Serena: adds structural macro
+      // queries — "how does X work" / flows, impact/blast radius, dependency
+      // chains, area surveys, framework-aware routes. MIT licensed. Fixed
+      // tool surface: a single `codegraph_explore`. Index lifecycle: ONE-TIME
+      // manual `codegraph init` per repo (MCP does NOT auto-build a missing
+      // index); after that a built-in file watcher keeps it in sync on every
+      // save + reconciliation on reconnect — never stale.
+      // CLI provisioning: the install script runs the `install` field
+      // automatically when `codegraph` is missing (requires npm).
+      // "disabled": true to skip.
+      "codegraph": {
+        "type": "local",
+        "command": ["codegraph", "serve", "--mcp"],
+        "install": "npm install -g @colbymchenry/codegraph",
+        "disabled": false
+      },
+      // GitNexus (optional): deeper graph analysis — arbitrary Cypher, Web UI
+      // visualization, precomputed processes/clusters, multi-repo groups.
+      // NOTE: PolyForm Noncommercial license — commercial use needs licensing.
+      // Requires manual re-index (`gitnexus analyze`) after big changes.
+      // One MCP server serves every indexed repo (registry ~/.gitnexus/).
+      // GITNEXUS_MCP_READ_ONLY=1: read-only graph tools only — edits stay with
+      // the agents' native tools. "disabled": false only if licensed + indexed.
+      // `install` is pre-declared but dormant: while disabled stays true the
+      // install script skips it; flipping it makes the next install provision
+      // the CLI automatically (licensing + per-repo `gitnexus analyze` remain
+      // your decision).
+      "gitnexus": {
+        "type": "local",
+        "command": ["gitnexus", "mcp"],
+        "install": "npm install -g gitnexus",
+        "environment": { "GITNEXUS_MCP_READ_ONLY": "1" },
+        "disabled": true
+      },
+      // DBHub (optional): universal database gateway — PostgreSQL, MySQL,
+      // MariaDB, SQL Server, SQLite through one server. Token-efficient:
+      // 2 tools by default (~1.4k tokens). Bytebase project, MIT licensed.
+      // Requires Node >= 22.5. Configuration is PER-PROJECT, not shipped:
+      // dbhub auto-discovers ./dbhub.toml from the working directory (or
+      // --config / DSN env var). TOML values support ${ENV_VAR} interpolation
+      // — keep credentials out of any repo. Read-only is enforced per tool
+      // in the TOML ([[tools]] readonly = true); the old --readonly flag is
+      // removed upstream. Enabled by default in install/options.jsonc, so
+      // installs provision the CLI and flip `disabled` — the true below is
+      // only the shipped template fallback (direct copies without the
+      // installer). dbhub.toml + DSN in each project remain your setup.
+      // Example dbhub.toml in the project root:
+      //   [[sources]]
+      //   id = "default"
+      //   dsn = "${DBHUB_DSN}"
+      //   [[tools]]
+      //   name = "execute_sql"
+      //   source = "default"
+      //   readonly = true
+      "dbhub": {
+        "type": "local",
+        "command": ["dbhub", "--transport", "stdio", "--config", "./dbhub.toml"],
+        "install": "npm install -g @bytebase/dbhub",
+        "disabled": true
+      },
+      // Headroom (optional): local context compression — compresses tool outputs,
+      // logs, and RAG chunks before they reach the LLM; originals stay
+      // retrievable on demand via CCR (`headroom_retrieve`). Apache 2.0,
+      // local-first. Complements rtk, which covers the OUTPUT side —
+      // headroom targets the INPUT side.
+      // MCP mode is agent-driven (compress on
+      // demand); the fully automatic `headroom proxy` mode is NOT wired in here
+      // because it rewrites provider base URLs. Heavy provisioning: uv tool
+      // with Python 3.13, and the first run downloads the ONNX runtime
+      // (cdn.pyke.io) + Kompress compression model (huggingface.co). Flip
+      // "disabled" to false only if you accept those downloads.
+      // Daemon bridge: uses headroom-proxy-daemon.mjs (same pattern as
+      // serena-workspace-daemon.mjs). Checks whether the headroom proxy backend
+      // (127.0.0.1:8787) is running; if not, spawns `headroom proxy` detached
+      // in the background, waits for readiness, then exec's `headroom mcp serve`.
+      // Makes headroom fully out-of-the-box — no manual `headroom proxy` step.
+      "headroom": {
+        "type": "local",
+        "command": [
+          "node",
+          "-e",
+          "import(require('url').pathToFileURL(require('path').join(require('os').homedir(), '.config/opencode/scripts/headroom-proxy-daemon.mjs')).href)"
+        ],
+        "install": "uv tool install --python 3.13 \"headroom-ai[all]\"",
+        "disabled": true
+      },
+      // JetBrains IDE MCP bridge — remote server exposed by the running IDE
+      // (IntelliJ / WebStorm / etc.) on the local stream endpoint. No CLI to
+      // install; the IDE must be running with its MCP server enabled.
+      //
+      // IDE-side setup (one-time per project):
+      //   1. Install the "MCP Server" plugin (JetBrains Marketplace) if not
+      //      already bundled by your IDE version.
+      //   2. Open: Settings (Preferences) → Tools → MCP Server.
+      //   3. Toggle the server ON and apply. The IDE starts listening on
+      //      127.0.0.1:64342/stream — verify the port matches.
+      //   4. Keep the IDE running; this endpoint dies when the IDE closes.
+      //
+      // Then flip "disabled" here (or via install/options.jsonc) to connect.
+      "idea": {
+        "type": "remote",
+        "url": "http://127.0.0.1:64342/stream",
+        "disabled": true
+      }
     }
   },
-  // L1 disclosure layer: each agent prompt = its own prompts/*.md plus the
-  // rule files its role actually needs, assembled via {file:} markers (order
-  // fixed: agent prompt first, then rules). {file:} resolves ONLY inside this
-  // config's prompt fields (verified v1.18.25). Prompt fragments MUST NOT live
-  // under agents/ in the installed config: opencode auto-discovers agents/*.md
-  // as agent DEFINITIONS whose frontmatter/body silently override this block
-  // (mergeDeep, md wins) — that killed every permission and {file:} assembly
-  // here before v0.17.0. prompts/ is not auto-discovered. Routing matrix:
+  // L1 disclosure layer: each agent system prompt = its own prompts/*.md plus
+  // the rule files its role actually needs, assembled via {file:} markers
+  // (order fixed: agent prompt first, then rules). {file:} substitution runs
+  // over the whole config document in v2 too (core/src/config/variable.ts —
+  // {env:} and {file:} with ~/ expansion; a reference that cannot resolve
+  // fails the config load, so paths must exist in the installed tree).
+  // Prompt fragments MUST NOT live under agents/ in the installed config:
+  // opencode auto-discovers agents/*.md as agent DEFINITIONS whose
+  // frontmatter/body silently override this block — that killed every
+  // permission and {file:} assembly here before v0.17.0. prompts/ is not
+  // auto-discovered. Routing matrix:
   //   coding pack (coding-principles + comment-strategy + edit-protocol +
   //   test-scope): code, fast-coder, the six language devs, devops, qa
   //   coding pack + sql-migration: dba
@@ -188,17 +208,24 @@
   //   coding-principles only (review criteria): architect, advisor, security
   //   zero additions: build, plan, scout, explore, researcher, tech-writer, vision
   //
-  // Block field order (convention): description, prompt, then tuning
-  // metadata (mode/model/temperature/steps/variant), permission/tools last.
+  // Block field order (convention): description, system, then tuning
+  // metadata (mode/steps/request), permissions last.
   //
   // Per-step visibility & tool-face policy lives HERE, on the agent blocks
-  // below, as native opencode `permission`/`tools` fields. Semantics
-  // (opencode v1.18.25, verified against permission/index.ts):
-  // `"<prefix>*": { "*": "deny" }` hides MCP tools AND the server's
-  // <mcp_instructions> block; skill "*" deny empties the skills block;
-  // tools <name>:false removes a native tool schema entirely (permission
-  // denies on native tools save zero tokens). Protocol-injector gating (an
-  // opencode gap) lives in plugin-scope.json (repo root), enforced at
+  // below, as native v2 `permissions` arrays (agent rules are appended AFTER
+  // the global array — last match wins). V2 action names: bash→shell,
+  // task→subagent, write/patch→edit; MCP tools keep `<server>_<tool>`
+  // (core/src/tool/mcp.ts name()). V2 differs from v1 in ONE structural way:
+  // there is no `tools` schema-visibility map — tool gating is purely
+  // permission enforcement, and most tools (incl. MCP) are folded behind the
+  // code-mode `execute` dispatcher, so a deny costs ~0 resident tokens by
+  // architecture. Whitelist agents (lite/build/plan) express "deny-all, then
+  // allow the set" with rule ORDER: {action:"*"} deny first, allows after;
+  // external_directory re-allowed last because the v1 tools map never touched
+  // it and the trailing wildcard deny would otherwise stomp the global allow.
+  // The v1 `todowrite` tool has no v2 action (dropped from allow-lists);
+  // per-agent `temperature` moved into request.body. Protocol-injector gating
+  // (an opencode gap) lives in plugin-scope.json (repo root), enforced at
   // runtime by plugins/shared/plugin-scope.ts. Quantify any change with
   // scripts/measure-prompts.ts before releasing.
   //
@@ -206,12 +233,12 @@
   // agent block is independent. Full six-server deny (serena/codegraph/
   // gitnexus/dbhub/idea/headroom) is duplicated across: build, plan,
   // advisor, architect, researcher, tech-writer, vision, code-review, and
-  // code-review-fast (lite uses "*":deny instead — it has a tools whitelist).
-  // Role-based partials: code/qa/devops/*-dev/fast-coder keep serena+
-  // codegraph and deny gitnexus/dbhub/idea/headroom; explore keeps serena+
-  // codegraph; dba/security keep dbhub (DB work); graph scouts expose one
-  // backend query each. Adding/removing an MCP server here → grep "serena_\*"
-  // across this file to update ALL deny blocks in one pass.
+  // code-review-fast (lite uses {action:"*"} deny instead — it is a
+  // whitelist agent). Role-based partials: code/qa/devops/*-dev/fast-coder
+  // keep serena+codegraph and deny gitnexus/dbhub/idea/headroom; explore
+  // keeps serena+codegraph; dba/security keep dbhub (DB work); graph scouts
+  // expose one backend query each. Adding/removing an MCP server here → grep
+  // "serena_" across this file to update ALL deny blocks in one pass.
   //
   // L2 layer: `lite` is the default agent — overhead-free primary, inline
   // prompt, skills scoped to the agent-less handoff + Git commands,
@@ -220,714 +247,645 @@
   // sentinel). plugins/tool-compress.ts compresses tool descriptions for
   // COMPRESS_AGENTS = {lite, build} on the shared tool set
   // (bash/read/edit/write/grep/glob/webfetch/websearch/todowrite/question)
-  // plus per-agent task/skill rosters (lite five-assist vs build full team)
-  // — measured on lite: stock ≈ 8.4k → ≈ 1.7k tok/step). tgrep_search is
-  // owned by `plugins/tgrep.ts` itself, which
+  // plus per-agent task/skill rosters (lite five-assist vs build full team).
+  // tgrep_search is owned by `plugins/tgrep.ts` itself, which
   // loads its description from `plugins/tgrep/tgrep-tool-description.md`
   // — no tool-compress override needed (the canonical text already lives in
   // the right place).
-  // Lite handles 80% of daily work (quick fixes, Q&A, lookups, small edits)
-  // at ~2.3k tok/step — 62% cheaper than code's ~5.4k. Escalation table in
-  // lite.md routes complex work to @code/@build/@code-review-fast/@code-review/
-  // @advisor when out of scope.
-  "agent": {
+  // Lite handles 80% of daily work (quick fixes, Q&A, lookups, small edits,
+  // drafting, analysis). Escalation table in lite.md routes complex work to
+  // @code/@build/@code-review-fast/@code-review/@advisor when out of scope.
+  "agents": {
     // Native subagents disabled: `explore`'s role is owned by the factory
     // `explore` agent below (the name captures models' training priors —
     // Claude Code/opencode convention; formerly our agent was `explorer` and
     // models kept picking the native one instead), and `general` overlaps
-    // the build team. Natives carry no `model` config, so the task tool's
-    // fallback (`next.model ?? parent message model`, verified v1.18.25)
-    // would silently run them on the host's model instead of a tier preset.
-    "general": { "disable": true },
+    // the build team. Natives carry no `model` config, so the subagent
+    // dispatch would silently run them on the host's model instead of a tier
+    // preset.
+    "general": { "disabled": true },
     "lite": {
       "description": "Lite — default primary agent. Lean, capable, ready for anything: quick fixes, lookups, Q&A, small edits, drafting, analysis. Escalates to @code/@build when out of scope. No L0/MCP; skills limited to handoff, memory-summarize, and git-merge/git-pick/git-pull/git-push/git-rebase.",
-      "prompt": "<!-- lite-mode -->\n{file:~/.config/opencode/prompts/lite.md}",
+      "system": "<!-- lite-mode -->\n{file:~/.config/opencode/prompts/lite.md}",
       "mode": "primary",
-      "temperature": 0.3,
+      "request": { "body": { "temperature": 0.3 } },
       // No variant pin: lite's slimness comes from prompt surgery (no L0/MCP,
       // skills scoped to two, compressed tool schemas), not model quality — it rides the standard
       // tier and inherits the model's native default (ChatGPT-style auto/standard,
       // Kimi-style thinking-on). Forcing "low" would demote a user-facing daily
-      // primary; throughput agents (explore, fast-coder) keep their explicit low.
-      // Cost-shrinking: "*": { "*": "deny" } hides all MCP tool definitions
-      // plus <mcp_instructions>. tools:false drops every heavy native schema;
-      // the whitelist keeps the minimal capable set lite needs (read/edit/
-      // write/bash/grep/glob/webfetch/websearch/todowrite/task/question/
-      // memory_note — lite.md tells lite to record reusable project rules).
-      // `question` (interactive ask) is back on lite after token measurement
-      // showed it costs only ~216 tok/step with the tool-compress description
-      // override (schema ~198 tok + one-line desc) — worth it because lite is
-      // the default primary and its git-safety flow promises Proceed/Cancel.
-      // Discipline lives in lite.md: at most one blocking question per task.
-      // No `list` — opencode has no such tool; `read` auto-lists directories.
-      // tool-compress.ts compresses only the description (the bulk — bash's
-      // usage guide alone is ~1.8k tok). Parameters/jsonSchema stay native:
-      // they're already small (~100 tok/tool) and hand-overriding them risks
-      // field-name mismatches that break tool calls at runtime. task whitelists
-      // assists: @explore, @code-review-fast, @code-review, @advisor, @vision (last match wins).
-      // Dispatch policy is hardcoded in the prompt: assists fire only on
-      // explicit user request, sole exception @vision for images beyond lite's
-      // own sight (zero-alternative path). Lite is a leaf — heavy or
-      // multi-domain coding escalates to @code or @build by the user.
-      "permission": {
-        "*": { "*": "deny" },
-        // external_directory (any path outside the project worktree, %TEMP%
-        // included) needs this explicit punch-through: the catch-all above is
-        // the last matching rule for it (last-match-wins), so without it lite
-        // hard-denies read/edit/glob/grep on external paths. opencode's native
-        // default is "ask"; every other agent here inherits the root
-        // "permission": "allow" and needs no such key.
-        "external_directory": { "*": "allow" },
-        // Scoped skill access: /handoff and the five Git commands have no
-        // `agent:` frontmatter (follow the current agent — lite is the
-        // default); /memory-summarize is `agent: lite` and must load too.
-        // Allow exactly those seven skills; every other skill stays
-        // denied so the skills block remains minimal (token economy). The more
-        // specific `skill` key overrides the catch-all `"*"` above; inside it
-        // the allows beat `"*": "deny"` (last-match-wins, same rule as
-        // explore's bash gate).
-        "skill": {
-          "*": "deny",
-          "handoff": "allow",
-          "memory-summarize": "allow",
-          "git-merge": "allow",
-          "git-pick": "allow",
-          "git-pull": "allow",
-          "git-rebase": "allow",
-          "git-push": "allow"
-        }
-      },
-      "tools": {
-        "*": false,
-        "read": true,
-        "edit": true,
-        "write": true,
-        "bash": true,
-        "grep": true,
-        "glob": true,
-        "webfetch": true,
-        "websearch": true,
-        "todowrite": true,
-        "task": true,
-        "skill": true,
-        "question": true,
-        "tgrep_search": true,
-        "memory_note": true
-      }
+      // primary; throughput agents (explore, fast-coder) keep their tier
+      // defaults. Cost-shrinking: the {action:"*"} deny hides every tool from
+      // execution (and code mode — `execute` matches the wildcard; the v2
+      // native surface needs no explicit entry per allow). tools:false drops
+      // every heavy native schema; the whitelist keeps the minimal capable
+      // set lite needs (read/edit/shell/grep/glob/webfetch/websearch/
+      // subagent/skill/question/tgrep_search/memory_note — lite.md tells lite
+      // to record reusable project rules). `question` (interactive ask) is
+      // back on lite after token measurement showed it costs only ~216
+      // tok/step with the tool-compress description override (schema ~198 tok
+      // + one-line desc) — worth it because lite is the default primary and
+      // its git-safety flow promises Proceed/Cancel. Discipline lives in
+      // lite.md: at most one blocking question per task.
+      // task whitelists assists: @explore, @code-review-fast, @code-review,
+      // @advisor, @vision (last match wins). Dispatch policy is hardcoded in
+      // the prompt: assists fire only on explicit user request, sole exception
+      // @vision for images beyond lite's own sight (zero-alternative path).
+      // Lite is a leaf — heavy or multi-domain coding escalates to @code or
+      // @build by the user. external_directory needs an explicit allow:
+      // opencode v2's base policy asks for it and the wildcard rules below
+      // re-decide it; keep it after the {action:"*"} deny so it stays the
+      // last match (any path outside the project worktree, %TEMP% included).
+      // Scoped skill access: /handoff and the five Git commands have no
+      // `agent:` frontmatter (follow the current agent — lite is the
+      // default); /memory-summarize is `agent: lite` and must load too.
+      // Allow exactly those seven skills; every other skill stays denied so
+      // the skills block remains minimal (token economy). Inside the skill
+      // group the allows beat `"*"` deny (last match wins).
+      "permissions": [
+        { "action": "*", "resource": "*", "effect": "deny" },
+        { "action": "external_directory", "resource": "*", "effect": "allow" },
+        { "action": "read", "resource": "*", "effect": "allow" },
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "shell", "resource": "*", "effect": "allow" },
+        { "action": "grep", "resource": "*", "effect": "allow" },
+        { "action": "glob", "resource": "*", "effect": "allow" },
+        { "action": "webfetch", "resource": "*", "effect": "allow" },
+        { "action": "websearch", "resource": "*", "effect": "allow" },
+        { "action": "subagent", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "allow" },
+        { "action": "tgrep_search", "resource": "*", "effect": "allow" },
+        { "action": "memory_note", "resource": "*", "effect": "allow" },
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "handoff", "effect": "allow" },
+        { "action": "skill", "resource": "memory-summarize", "effect": "allow" },
+        { "action": "skill", "resource": "git-merge", "effect": "allow" },
+        { "action": "skill", "resource": "git-pick", "effect": "allow" },
+        { "action": "skill", "resource": "git-pull", "effect": "allow" },
+        { "action": "skill", "resource": "git-rebase", "effect": "allow" },
+        { "action": "skill", "resource": "git-push", "effect": "allow" }
+      ]
     },
     "code": {
       "description": "Code — direct developer. Primary agent that does the coding work itself: implement, fix, refactor, test. Never proactively delegates; manual delegation allowed only for assists (advisor, explore, code-review-fast, code-review, vision). For single-domain tasks; suggests @build when multi-domain.",
-      "prompt": "{file:~/.config/opencode/prompts/code.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
+      "system": "{file:~/.config/opencode/prompts/code.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
       "mode": "primary",
-      "temperature": 0.3,
-      "variant": "medium",
+      "request": { "body": { "temperature": 0.3 } },
       // Hands-on primary: keep serena + codegraph (symbol/impact work the
       // coder does itself). Hide the optional servers — GitNexus evidence
       // via Scouts, DB via @dba, IDE/Headroom not part of this role.
       // Skill roster explicit like build/plan (open primary contract).
-      "permission": {
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" },
-        "skill": { "*": "allow" }
-      }
+      "permissions": [
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "*", "effect": "allow" }
+      ]
     },
     "build": {
       "description": "Build — multi-domain orchestrator with full capability. Defaults to dispatching specialists (plan first on 3+ domains); may do bounded direct work when a round-trip costs more than the fix. Coordinates multi-step workflows, integrates results, verifies the final state.",
-      "prompt": "{file:~/.config/opencode/prompts/build.md}",
+      "system": "{file:~/.config/opencode/prompts/build.md}",
       "mode": "primary",
-      "temperature": 0.3,
-      "variant": "medium",
-      // Token trim only: hide the MCP tool surface (~10.9k tok/step) —
-      // serena/codegraph when on, plus optional graph/DB/IDE/compression
-      // servers (DB queries belong to @dba; graph evidence via Scouts on L3).
-      // Skills: full allow (`*`) — max capability so /prd /sdd /git-* /
-      // /handoff /clean-dead-code all work under agent=build; no maintain
-      // list to forget when adding a skill.
-      // Native tool descriptions compress via plugins/tool-compress.ts
-      // (build ∈ COMPRESS_AGENTS with lite).
-      // Tools: full native surface (dispatch/verify/ask + edit/write/grep/
-      // glob/web*) — capability matches "max orchestrator", not a leaf.
-      // Discipline lives in build.md: default dispatch, multi-domain plan
-      // first; direct edits only when dispatch overhead exceeds the fix.
-      "permission": {
-        "serena_*": { "*": "deny" },
-        "codegraph_*": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" },
-        "skill": { "*": "allow" }
-      },
-      "tools": {
-        "*": false,
-        "task": true,
-        "read": true,
-        "edit": true,
-        "write": true,
-        "bash": true,
-        "grep": true,
-        "glob": true,
-        "webfetch": true,
-        "websearch": true,
-        "todowrite": true,
-        "skill": true,
-        "question": true,
-        "tgrep_search": true,
-        "memory_note": true
-      }
+      "request": { "body": { "temperature": 0.3 } },
+      // Token trim only: hide the MCP tool surface — serena/codegraph when
+      // on, plus optional graph/DB/IDE/compression servers (DB queries belong
+      // to @dba; graph evidence via Scouts on L3). Skills: full allow (`*`) —
+      // max capability so /prd /sdd /git-* // /handoff /clean-dead-code all
+      // work under agent=build; no maintain list to forget when adding a
+      // skill. Native tool descriptions compress via plugins/tool-compress.ts
+      // (build ∈ COMPRESS_AGENTS with lite). Tools: full native surface
+      // (dispatch/verify/ask + edit/write/grep/glob/web*) — the wildcard deny
+      // then allow-list mirrors the v1 whitelist; external_directory is
+      // re-allowed after the deny (v1 root permission allowed it and the
+      // trailing deny would otherwise stomp that). Discipline lives in
+      // build.md: default dispatch, multi-domain plan first; direct edits
+      // only when dispatch overhead exceeds the fix.
+      "permissions": [
+        { "action": "serena_*", "resource": "*", "effect": "deny" },
+        { "action": "codegraph_*", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "allow" },
+        { "action": "read", "resource": "*", "effect": "allow" },
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "shell", "resource": "*", "effect": "allow" },
+        { "action": "grep", "resource": "*", "effect": "allow" },
+        { "action": "glob", "resource": "*", "effect": "allow" },
+        { "action": "webfetch", "resource": "*", "effect": "allow" },
+        { "action": "websearch", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "allow" },
+        { "action": "tgrep_search", "resource": "*", "effect": "allow" },
+        { "action": "memory_note", "resource": "*", "effect": "allow" },
+        { "action": "external_directory", "resource": "*", "effect": "allow" },
+        { "action": "skill", "resource": "*", "effect": "allow" }
+      ]
     },
     "plan": {
       "description": "Plan orchestrator — coordinator that dispatches analysis tasks to specialists, persists structured plan artifacts (docs/plan/<topic>.md), and provides clean execution handoffs.",
-      "prompt": "{file:~/.config/opencode/prompts/plan.md}",
+      "system": "{file:~/.config/opencode/prompts/plan.md}",
       "mode": "primary",
-      "temperature": 0.3,
-      "variant": "medium",
+      "request": { "body": { "temperature": 0.3 } },
       // Plan dispatches analysis to specialists — no direct code-intel calls;
       // optional graph/DB/IDE/compression servers stay hidden too. SDD stays:
       // /prd /adr /plan /impl run from here (skill roster open like build).
-      // Tools: explicit whitelist WITHOUT bash — plan never runs commands
-      // (specialists do); edit/write cover docs/plan artifacts only, source
-      // read-only via plan.md hard rules.
-      "permission": {
-        "serena_*": { "*": "deny" },
-        "codegraph_*": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" },
-        "skill": { "*": "allow" }
-      },
-      "tools": {
-        "*": false,
-        "task": true,
-        "read": true,
-        "edit": true,
-        "write": true,
-        "grep": true,
-        "glob": true,
-        "webfetch": true,
-        "websearch": true,
-        "todowrite": true,
-        "skill": true,
-        "question": true,
-        "tgrep_search": true,
-        "memory_note": true
-      }
+      // Allow-list WITHOUT shell — plan never runs commands (specialists do);
+      // edit covers docs/plan artifacts only, source stays read-only per
+      // plan.md hard rules. external_directory re-allowed after the wildcard
+      // deny (see build).
+      "permissions": [
+        { "action": "serena_*", "resource": "*", "effect": "deny" },
+        { "action": "codegraph_*", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "allow" },
+        { "action": "read", "resource": "*", "effect": "allow" },
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "grep", "resource": "*", "effect": "allow" },
+        { "action": "glob", "resource": "*", "effect": "allow" },
+        { "action": "webfetch", "resource": "*", "effect": "allow" },
+        { "action": "websearch", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "allow" },
+        { "action": "tgrep_search", "resource": "*", "effect": "allow" },
+        { "action": "memory_note", "resource": "*", "effect": "allow" },
+        { "action": "external_directory", "resource": "*", "effect": "allow" },
+        { "action": "skill", "resource": "*", "effect": "allow" }
+      ]
     },
-    // Task delegation policy: subagents are leaf nodes — task:false on every subagent; delegation belongs to the primaries (build/plan/code).
-    // Ordering = dispatch frequency: explore leads (it opens almost every workflow), so it also heads the task tool's candidate list.
+    // Task delegation policy: subagents are leaf nodes — {action:"subagent"}
+    // deny on every subagent; delegation belongs to the primaries
+    // (build/plan/code). Ordering = dispatch frequency: explore leads (it
+    // opens almost every workflow), so it also heads the subagent tool's
+    // candidate list.
     "scout": {
       "description": "Scout — built-in override for short, read-only reconnaissance. Locates files, symbols, and direct dependencies; routes review or audit requests to @build. Never reviews or calls graph MCP tools.",
-      "prompt": "{file:~/.config/opencode/prompts/scout.md}",
+      "system": "{file:~/.config/opencode/prompts/scout.md}",
       "mode": "subagent",
-      "temperature": 0.2,
+      "request": { "body": { "temperature": 0.2 } },
       "steps": 12,
-      "variant": "low",
-      "permission": {
-        "edit": "deny",
-        "bash": {
-          "*": "deny",
-          "git diff*": "allow",
-          "git status*": "allow"
-        },
-        "webfetch": "deny",
-        "websearch": "deny",
-        "skill": { "*": "deny" },
-        "serena_*": { "*": "deny" },
-        "codegraph_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "git diff*", "effect": "allow" },
+        { "action": "shell", "resource": "git status*", "effect": "allow" },
+        { "action": "webfetch", "resource": "*", "effect": "deny" },
+        { "action": "websearch", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "serena_*", "resource": "*", "effect": "deny" },
+        { "action": "codegraph_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "explore": {
       "description": "Fast read-only codebase explorer. Use for quick code search, file location by pattern, keyword search, codebase Q&A, architecture overviews, and intent & design questions — any thoroughness from targeted lookup to thorough analysis. Structural lookups (definitions, references, symbol outlines) go to Serena MCP tools; multi-hop call paths and impact analysis go to CodeGraph instead.",
-      "prompt": "{file:~/.config/opencode/prompts/explore.md}",
+      "system": "{file:~/.config/opencode/prompts/explore.md}",
       "mode": "subagent",
-      "temperature": 0.2,
+      "request": { "body": { "temperature": 0.2 } },
       "steps": 40,
-      "variant": "low",
-      // Read-only enforced via granular bash: only read-only git inspection
+      // Read-only enforced via granular shell: only read-only git inspection
       // survives (last match wins); every other command is denied.
-      "permission": {
-        "edit": "deny",
-        "bash": {
-          "*": "deny",
-          "git log*": "allow",
-          "git show*": "allow",
-          "git diff*": "allow",
-          "git blame*": "allow",
-          "git status*": "allow",
-          "rtk git log*": "allow",
-          "rtk git show*": "allow",
-          "rtk git diff*": "allow",
-          "rtk git status*": "allow"
-        },
-        "webfetch": "deny",
-        "websearch": "deny",
-        "skill": { "*": "deny" },
-        // Structural/multi-hop lookups are core to explore (see description);
-        // hide GitNexus/DB/IDE/Headroom — graph cross-checks go through the
-        // dedicated Scouts when L3 evidence is needed.
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      // Structural/multi-hop lookups are core to explore (see description);
+      // hide GitNexus/DB/IDE/Headroom — graph cross-checks go through the
+      // dedicated Scouts when L3 evidence is needed.
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "git log*", "effect": "allow" },
+        { "action": "shell", "resource": "git show*", "effect": "allow" },
+        { "action": "shell", "resource": "git diff*", "effect": "allow" },
+        { "action": "shell", "resource": "git blame*", "effect": "allow" },
+        { "action": "shell", "resource": "git status*", "effect": "allow" },
+        { "action": "shell", "resource": "rtk git log*", "effect": "allow" },
+        { "action": "shell", "resource": "rtk git show*", "effect": "allow" },
+        { "action": "shell", "resource": "rtk git diff*", "effect": "allow" },
+        { "action": "shell", "resource": "rtk git status*", "effect": "allow" },
+        { "action": "webfetch", "resource": "*", "effect": "deny" },
+        { "action": "websearch", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "advisor": {
       "description": "Decision advisor — provides independent second-opinion analysis on blocking decisions. Invoke when the orchestrator needs a second perspective before presenting a blocking decision to the user.",
-      "prompt": "{file:~/.config/opencode/prompts/advisor.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}",
+      "system": "{file:~/.config/opencode/prompts/advisor.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}",
       "mode": "subagent",
-      "temperature": 0.3,
+      "request": { "body": { "temperature": 0.3 } },
       "steps": 25,
-      "variant": "high",
-      "permission": {
-        "edit": "deny",
-        "bash": "deny",
-        "webfetch": "allow",
-        "websearch": "allow",
-        "skill": { "*": "deny" },
-        "serena_*": { "*": "deny" },
-        "codegraph_*": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" },
+        { "action": "webfetch", "resource": "*", "effect": "allow" },
+        { "action": "websearch", "resource": "*", "effect": "allow" },
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "serena_*", "resource": "*", "effect": "deny" },
+        { "action": "codegraph_*", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "researcher": {
       "description": "Tech researcher — evaluates technologies, compares alternatives, produces feasibility studies and trade-off reports. Invoke for research, compare, evaluate, benchmark, or 'which should we use?' questions.",
-      "prompt": "{file:~/.config/opencode/prompts/researcher.md}",
+      "system": "{file:~/.config/opencode/prompts/researcher.md}",
       "mode": "subagent",
-      "temperature": 0.3,
-      "variant": "medium",
+      "request": { "body": { "temperature": 0.3 } },
       // Web/tech research runs outside the codebase — hide the MCP tool
       // surface (including the optional graph/DB/IDE servers if enabled).
-      // bash stays: benchmarks and trial CLIs are core research work.
-      "permission": {
-        "edit": "deny",
-        "skill": { "*": "deny" },
-        "serena_*": { "*": "deny" },
-        "codegraph_*": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      // shell stays: benchmarks and trial CLIs are core research work.
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "serena_*", "resource": "*", "effect": "deny" },
+        { "action": "codegraph_*", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "architect": {
       "description": "Tech lead / software architect — system design, ADRs, task decomposition, trade-off analysis, API contract design. Invoke for architecture, system design, task breakdown, or 'how should we design this?'",
-      "prompt": "{file:~/.config/opencode/prompts/architect.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}",
+      "system": "{file:~/.config/opencode/prompts/architect.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}",
       "mode": "subagent",
-      "temperature": 0.4,
-      "variant": "high",
+      "request": { "body": { "temperature": 0.4 } },
       // Advisory role — environment facts arrive via explore/researcher; no
       // direct execution. Skill roster matches DEVELOPING: sdd-workflow +
       // adr-* only (not the full open roster).
-      "permission": {
-        "edit": "deny",
-        "bash": "deny",
-        "skill": {
-          "*": "deny",
-          "sdd-workflow": "allow",
-          "adr-protocol": "allow",
-          "adr-context": "allow",
-          "adr-compaction": "allow"
-        },
-        "serena_*": { "*": "deny" },
-        "codegraph_*": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "sdd-workflow", "effect": "allow" },
+        { "action": "skill", "resource": "adr-protocol", "effect": "allow" },
+        { "action": "skill", "resource": "adr-context", "effect": "allow" },
+        { "action": "skill", "resource": "adr-compaction", "effect": "allow" },
+        { "action": "serena_*", "resource": "*", "effect": "deny" },
+        { "action": "codegraph_*", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "dba": {
       "description": "Database architect — schema design, SQL optimization, index strategy, query analysis, migration planning, sharding/partitioning. Invoke for database, SQL, schema, migration, index, or query optimization.",
-      "prompt": "{file:~/.config/opencode/prompts/dba.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}\n\n{file:~/.config/opencode/instructions/sql-migration.md}",
+      "system": "{file:~/.config/opencode/prompts/dba.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}\n\n{file:~/.config/opencode/instructions/sql-migration.md}",
       "mode": "subagent",
-      "temperature": 0.2,
-      "variant": "medium",
+      "request": { "body": { "temperature": 0.2 } },
       // dbhub stays visible — this is THE DB role (write/query via MCP is
       // core work). Serena helps read app code around the schema; hide the
       // graph/IDE/Headroom servers.
-      "permission": {
-        "skill": { "*": "deny" },
-        "serena_*": { "*": "allow" },
-        "codegraph_*": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "allow" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "serena_*", "resource": "*", "effect": "allow" },
+        { "action": "codegraph_*", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "allow" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "security": {
       "description": "Security engineer — vulnerability assessment, security architecture review, OWASP analysis, dependency scanning, compliance. Invoke for security, vulnerability, OWASP, encryption, or 'is this secure?'",
-      "prompt": "{file:~/.config/opencode/prompts/security.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}",
+      "system": "{file:~/.config/opencode/prompts/security.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}",
       "mode": "subagent",
-      "temperature": 0.2,
-      "variant": "high",
-      // bash stays: dependency scanners (npm audit, pip-audit, trivy, gitleaks)
-      // are core security work; edits stay denied. CodeGraph stays visible for
-      // blast-radius / reachability during assessments (gitnexus remains
-      // Scout-only); dbhub allowed for DB-security checks when enabled.
-      "permission": {
-        "edit": "deny",
-        "skill": { "*": "deny" },
-        "serena_*": { "*": "allow" },
-        "codegraph_*": { "*": "allow" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "allow" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "request": { "body": { "temperature": 0.2 } },
+      // shell stays: dependency scanners (npm audit, pip-audit, trivy,
+      // gitleaks) are core security work; edits stay denied. CodeGraph stays
+      // visible for blast-radius / reachability during assessments (gitnexus
+      // remains Scout-only); dbhub allowed for DB-security checks when
+      // enabled.
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "serena_*", "resource": "*", "effect": "allow" },
+        { "action": "codegraph_*", "resource": "*", "effect": "allow" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "allow" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     // Six language devs: coding pack keeps serena + codegraph; deny GitNexus
     // (Scout-only), dbhub (@dba), idea, Headroom.
     "java-dev": {
       "description": "Java/Spring Boot engineer — Java, Spring Boot, Spring Security, JPA/Hibernate, Maven/Gradle, JUnit. Invoke for Java, Spring, JPA, Hibernate, Maven, Gradle, or JVM tasks.",
-      "prompt": "{file:~/.config/opencode/prompts/java-dev.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
+      "system": "{file:~/.config/opencode/prompts/java-dev.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
       "mode": "subagent",
-      "temperature": 0.3,
-      "variant": "medium",
-      "permission": {
-        "skill": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "request": { "body": { "temperature": 0.3 } },
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "python-dev": {
       "description": "Python engineer — FastAPI, Django, Flask, async Python, pandas/numpy, scripting, pytest. Invoke for Python, FastAPI, Django, Flask, pandas, numpy, or pip tasks.",
-      "prompt": "{file:~/.config/opencode/prompts/python-dev.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
+      "system": "{file:~/.config/opencode/prompts/python-dev.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
       "mode": "subagent",
-      "temperature": 0.3,
-      "variant": "medium",
-      "permission": {
-        "skill": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "request": { "body": { "temperature": 0.3 } },
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "go-dev": {
       "description": "Go engineer — Gin, Echo, Fiber, gRPC, protobuf, Cobra, microservices, goroutines. Invoke for Go, Golang, Gin, gRPC, protobuf, or Cobra tasks.",
-      "prompt": "{file:~/.config/opencode/prompts/go-dev.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
+      "system": "{file:~/.config/opencode/prompts/go-dev.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
       "mode": "subagent",
-      "temperature": 0.3,
-      "variant": "medium",
-      "permission": {
-        "skill": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "request": { "body": { "temperature": 0.3 } },
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "rust-dev": {
       "description": "Rust engineer — Cargo, Axum, Actix, Tokio, serde, WASM, systems programming. Invoke for Rust, Cargo, Tokio, Axum, Actix, serde, or wasm tasks.",
-      "prompt": "{file:~/.config/opencode/prompts/rust-dev.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
+      "system": "{file:~/.config/opencode/prompts/rust-dev.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
       "mode": "subagent",
-      "temperature": 0.3,
-      "variant": "medium",
-      "permission": {
-        "skill": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "request": { "body": { "temperature": 0.3 } },
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "node-dev": {
       "description": "Node.js/TypeScript engineer — NestJS, Express, Fastify, Prisma, TypeORM, npm/pnpm. Invoke for Node.js, NestJS, Express, Fastify, Prisma, TypeORM, or npm/pnpm tasks.",
-      "prompt": "{file:~/.config/opencode/prompts/node-dev.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
+      "system": "{file:~/.config/opencode/prompts/node-dev.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
       "mode": "subagent",
-      "temperature": 0.3,
-      "variant": "medium",
-      "permission": {
-        "skill": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "request": { "body": { "temperature": 0.3 } },
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "frontend-dev": {
       "description": "Frontend engineer — React/Vue/Svelte/Next.js, TypeScript, CSS/Tailwind, accessibility, performance. Invoke for frontend, React, Vue, Svelte, CSS, Tailwind, UI, or component work.",
-      "prompt": "{file:~/.config/opencode/prompts/frontend-dev.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
+      "system": "{file:~/.config/opencode/prompts/frontend-dev.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
       "mode": "subagent",
-      "temperature": 0.3,
-      "variant": "medium",
-      "permission": {
-        "skill": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "request": { "body": { "temperature": 0.3 } },
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "qa": {
       "description": "QA engineer — test planning, test generation, coverage analysis, E2E strategy, quality gates. Invoke for testing, QA, coverage, E2E, integration tests, or regression.",
-      "prompt": "{file:~/.config/opencode/prompts/qa.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
+      "system": "{file:~/.config/opencode/prompts/qa.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
       "mode": "subagent",
-      "temperature": 0.3,
-      "variant": "medium",
+      "request": { "body": { "temperature": 0.3 } },
       // serena + codegraph stay: coverage/test-impact analysis is structural
       // work. Hide GitNexus (Scout-only), dbhub (@dba), idea, Headroom.
-      "permission": {
-        "webfetch": "allow",
-        "skill": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "permissions": [
+        { "action": "webfetch", "resource": "*", "effect": "allow" },
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "code-review": {
       "description": "Code reviewer — reviews git diffs, PRs, staged/unstaged changes, specific files. Invoke for code review, PR review, or feedback on code quality, correctness, security, or best practices.",
-      "prompt": "{file:~/.config/opencode/prompts/code-review.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
+      "system": "{file:~/.config/opencode/prompts/code-review.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
       "mode": "subagent",
-      "temperature": 0.3,
+      "request": { "body": { "temperature": 0.3 } },
       "steps": 30,
-      "variant": "high",
       // Review context needs git archaeology (log/blame/show/diff) and CVE/doc
-      // lookups — allow those; deny every other bash command.
-      "permission": {
-        "edit": "deny",
-        "bash": {
-          "*": "deny",
-          "git log*": "allow",
-          "git show*": "allow",
-          "git diff*": "allow",
-          "git blame*": "allow",
-          "git status*": "allow",
-          "git grep*": "allow",
-          "rtk git log*": "allow",
-          "rtk git show*": "allow",
-          "rtk git diff*": "allow",
-          "rtk git status*": "allow"
-        },
-        "webfetch": "allow",
-        "websearch": "allow",
-        "skill": { "*": "deny" },
-        "serena_*": { "*": "deny" },
-        "codegraph_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      // lookups — allow those; deny every other shell command.
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "git log*", "effect": "allow" },
+        { "action": "shell", "resource": "git show*", "effect": "allow" },
+        { "action": "shell", "resource": "git diff*", "effect": "allow" },
+        { "action": "shell", "resource": "git blame*", "effect": "allow" },
+        { "action": "shell", "resource": "git status*", "effect": "allow" },
+        { "action": "shell", "resource": "git grep*", "effect": "allow" },
+        { "action": "shell", "resource": "rtk git log*", "effect": "allow" },
+        { "action": "shell", "resource": "rtk git show*", "effect": "allow" },
+        { "action": "shell", "resource": "rtk git diff*", "effect": "allow" },
+        { "action": "shell", "resource": "rtk git status*", "effect": "allow" },
+        { "action": "webfetch", "resource": "*", "effect": "allow" },
+        { "action": "websearch", "resource": "*", "effect": "allow" },
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "serena_*", "resource": "*", "effect": "deny" },
+        { "action": "codegraph_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "codegraph-scout": {
       "description": "CodeGraph Scout — produces compact, source-free relationship evidence for an L3 code review. Dispatch only for a cross-module, public-contract, or otherwise unclear graph-impact question; never as a general code reader or reviewer.",
-      "prompt": "{file:~/.config/opencode/prompts/codegraph-scout.md}",
+      "system": "{file:~/.config/opencode/prompts/codegraph-scout.md}",
       "mode": "subagent",
-      "temperature": 0.1,
+      "request": { "body": { "temperature": 0.1 } },
       "steps": 6,
-      "variant": "medium",
       // CodeGraph returns source with every answer. This leaf agent is the
       // compression boundary: it may call only CodeGraph and forwards a
       // bounded relationship map, never retrieved source, to the reviewer.
-      "permission": {
-        "edit": "deny",
-        "bash": "deny",
-        "webfetch": "deny",
-        "websearch": "deny",
-        "skill": { "*": "deny" },
-        "serena_*": { "*": "deny" },
-        "codegraph_*": { "*": "deny" },
-        "codegraph_codegraph_explore": { "*": "allow" },
-        "headroom_*": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" }
-      },
-      "tools": {
-        "task": false,
-        "bash": false,
-        "read": false,
-        "glob": false,
-        "grep": false,
-        "edit": false,
-        "write": false,
-        "webfetch": false,
-        "websearch": false,
-        "tgrep_search": false
-      }
+      // The native read/glob/grep/shell surface is denied outright (v1 tools
+      // map); the one-backend rule is {action:"codegraph_*"} deny then the
+      // exact-tool allow (last match wins).
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" },
+        { "action": "read", "resource": "*", "effect": "deny" },
+        { "action": "glob", "resource": "*", "effect": "deny" },
+        { "action": "grep", "resource": "*", "effect": "deny" },
+        { "action": "webfetch", "resource": "*", "effect": "deny" },
+        { "action": "websearch", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "serena_*", "resource": "*", "effect": "deny" },
+        { "action": "codegraph_*", "resource": "*", "effect": "deny" },
+        { "action": "codegraph_codegraph_explore", "resource": "*", "effect": "allow" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "tgrep_search", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "gitnexus-scout": {
       "description": "GitNexus Scout — produces compact, source-free process or cross-repository relationship evidence for an L3 code review. Dispatch only when GitNexus is indexed and a process, group, or cross-repository question needs its unique capability; never as a general code reader or reviewer.",
-      "prompt": "{file:~/.config/opencode/prompts/gitnexus-scout.md}",
+      "system": "{file:~/.config/opencode/prompts/gitnexus-scout.md}",
       "mode": "subagent",
-      "temperature": 0.1,
+      "request": { "body": { "temperature": 0.1 } },
       "steps": 6,
-      "variant": "medium",
       // The query tool returns relationship metadata without source by default.
       // Keep the expensive GitNexus surface to one focused query and forward
       // only the bounded evidence map to the deep reviewer.
-      "permission": {
-        "edit": "deny",
-        "bash": "deny",
-        "webfetch": "deny",
-        "websearch": "deny",
-        "skill": { "*": "deny" },
-        "serena_*": { "*": "deny" },
-        "codegraph_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "gitnexus_query": { "*": "allow" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" }
-      },
-      "tools": {
-        "task": false,
-        "bash": false,
-        "read": false,
-        "glob": false,
-        "grep": false,
-        "edit": false,
-        "write": false,
-        "webfetch": false,
-        "websearch": false,
-        "tgrep_search": false
-      }
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" },
+        { "action": "read", "resource": "*", "effect": "deny" },
+        { "action": "glob", "resource": "*", "effect": "deny" },
+        { "action": "grep", "resource": "*", "effect": "deny" },
+        { "action": "webfetch", "resource": "*", "effect": "deny" },
+        { "action": "websearch", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "serena_*", "resource": "*", "effect": "deny" },
+        { "action": "codegraph_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_query", "resource": "*", "effect": "allow" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "tgrep_search", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "code-review-fast": {
       "description": "Fast code reviewer — triages ordinary diffs for P0/P1 correctness and security issues. Use for the default review pass; escalate sensitive paths or uncertain critical findings to code-review.",
-      "prompt": "{file:~/.config/opencode/prompts/code-review.md}\n\n{file:~/.config/opencode/prompts/code-review-fast.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}",
+      "system": "{file:~/.config/opencode/prompts/code-review.md}\n\n{file:~/.config/opencode/prompts/code-review-fast.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}",
       "mode": "subagent",
-      "temperature": 0.3,
+      "request": { "body": { "temperature": 0.3 } },
       "steps": 15,
-      "variant": "medium",
-      "permission": {
-        "edit": "deny",
-        "bash": {
-          "*": "deny",
-          "git log*": "allow",
-          "git show*": "allow",
-          "git diff*": "allow",
-          "git blame*": "allow",
-          "git status*": "allow",
-          "git grep*": "allow",
-          "rtk git log*": "allow",
-          "rtk git show*": "allow",
-          "rtk git diff*": "allow",
-          "rtk git status*": "allow"
-        },
-        "webfetch": "allow",
-        "websearch": "allow",
-        "skill": { "*": "deny" },
-        "serena_*": { "*": "deny" },
-        "codegraph_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "git log*", "effect": "allow" },
+        { "action": "shell", "resource": "git show*", "effect": "allow" },
+        { "action": "shell", "resource": "git diff*", "effect": "allow" },
+        { "action": "shell", "resource": "git blame*", "effect": "allow" },
+        { "action": "shell", "resource": "git status*", "effect": "allow" },
+        { "action": "shell", "resource": "git grep*", "effect": "allow" },
+        { "action": "shell", "resource": "rtk git log*", "effect": "allow" },
+        { "action": "shell", "resource": "rtk git show*", "effect": "allow" },
+        { "action": "shell", "resource": "rtk git diff*", "effect": "allow" },
+        { "action": "shell", "resource": "rtk git status*", "effect": "allow" },
+        { "action": "webfetch", "resource": "*", "effect": "allow" },
+        { "action": "websearch", "resource": "*", "effect": "allow" },
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "serena_*", "resource": "*", "effect": "deny" },
+        { "action": "codegraph_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "devops": {
       "description": "DevOps/SRE engineer — Docker, Kubernetes, CI/CD, Terraform, monitoring, deployment. Invoke for Docker, K8s, deploy, CI/CD, pipeline, Terraform, or infrastructure.",
-      "prompt": "{file:~/.config/opencode/prompts/devops.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
+      "system": "{file:~/.config/opencode/prompts/devops.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
       "mode": "subagent",
-      "temperature": 0.2,
-      "variant": "medium",
+      "request": { "body": { "temperature": 0.2 } },
       // serena stays for IaC/app code context; hide GitNexus (Scout-only),
       // dbhub (@dba), idea, Headroom.
-      "permission": {
-        "skill": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "tech-writer": {
       "description": "Technical writer — README, API docs, architecture docs, ADRs, changelogs, user guides. Invoke for documentation, README, changelog, ADR, or developer guide tasks.",
-      "prompt": "{file:~/.config/opencode/prompts/tech-writer.md}",
+      "system": "{file:~/.config/opencode/prompts/tech-writer.md}",
       "mode": "subagent",
-      "temperature": 0.3,
-      "variant": "medium",
+      "request": { "body": { "temperature": 0.3 } },
       // Docs work reads rendered text, not symbol graphs — hide the MCP
       // tool surface (including the optional graph/DB/IDE servers if enabled).
-      "permission": {
-        "skill": { "*": "deny" },
-        "serena_*": { "*": "deny" },
-        "codegraph_*": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "serena_*", "resource": "*", "effect": "deny" },
+        { "action": "codegraph_*", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "vision": {
       "description": "Visual / vision analyst — screenshot analysis, UI critique, OCR, diagram interpretation. Invoke for image, screenshot, OCR, or visual analysis tasks.",
-      "prompt": "{file:~/.config/opencode/prompts/vision.md}",
+      "system": "{file:~/.config/opencode/prompts/vision.md}",
       "mode": "subagent",
-      "temperature": 0.2,
+      "request": { "body": { "temperature": 0.2 } },
       "steps": 30,
-      "variant": "medium",
       // Image analysis has no use for code graphs or DB/IDE bridges —
       // hide the MCP tool surface.
-      "permission": {
-        "edit": "deny",
-        "bash": "deny",
-        "webfetch": "deny",
-        "websearch": "deny",
-        "skill": { "*": "deny" },
-        "serena_*": { "*": "deny" },
-        "codegraph_*": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" },
+        { "action": "webfetch", "resource": "*", "effect": "deny" },
+        { "action": "websearch", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "serena_*", "resource": "*", "effect": "deny" },
+        { "action": "codegraph_*", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     },
     "fast-coder": {
       "description": "Flash Coder — agile, high-throughput full-stack coding subagent powered by Flash/Lite model tiers. Dispatched for rapid coding and iterative review loops.",
-      "prompt": "{file:~/.config/opencode/prompts/fast-coder.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
+      "system": "{file:~/.config/opencode/prompts/fast-coder.md}\n\n{file:~/.config/opencode/instructions/coding-principles.md}\n\n{file:~/.config/opencode/instructions/comment-strategy.md}\n\n{file:~/.config/opencode/instructions/edit-protocol.md}\n\n{file:~/.config/opencode/instructions/test-scope.md}",
       "mode": "subagent",
-      "temperature": 0.2,
-      // medium (not low): fast-coder produces production-grade code (zero mocks,
-      // zero unhandled errors per its prompt) — /dev-quick ships with ZERO review,
-      // so low variant on a flash-tier model would silently degrade code quality.
-      // explore keeps low (retrieval, not reasoning); fast-coder needs reasoning.
-      "variant": "medium",
+      "request": { "body": { "temperature": 0.2 } },
       // Coding leaf — align with the six language devs: serena + codegraph
       // stay (schema/impact while coding); hide GitNexus (Scout-only),
       // dbhub (@dba), idea, Headroom.
-      "permission": {
-        "skill": { "*": "deny" },
-        "gitnexus_*": { "*": "deny" },
-        "dbhub_*": { "*": "deny" },
-        "idea_*": { "*": "deny" },
-        "headroom_*": { "*": "deny" }
-      },
-      "tools": { "task": false }
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "gitnexus_*", "resource": "*", "effect": "deny" },
+        { "action": "dbhub_*", "resource": "*", "effect": "deny" },
+        { "action": "idea_*", "resource": "*", "effect": "deny" },
+        { "action": "headroom_*", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "*", "effect": "deny" }
+      ]
     }
   }
 }

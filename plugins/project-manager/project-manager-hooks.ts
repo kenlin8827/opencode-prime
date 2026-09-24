@@ -100,7 +100,7 @@ function isBackendActive(backend: string, cli: string, probe: BackendProbe): boo
 }
 
 function inactiveReason(backend: string, cli: string, probe: BackendProbe): string {
-  // The <name>Enabled flags come from mcp.<name>.enabled in
+  // The <name>Enabled flags come from mcp.servers.<name>.disabled in
   // ~/.config/opencode/opencode.jsonc — name the right file.
   if (backend === "gitnexus") return !probe.gitnexusEnabled ? "gitnexus disabled in opencode.jsonc" : "gitnexus CLI not installed"
   if (backend === "codegraph") return !probe.codegraphEnabled ? "codegraph disabled in opencode.jsonc" : "codegraph CLI not installed"

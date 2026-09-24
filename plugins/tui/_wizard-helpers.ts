@@ -1,19 +1,21 @@
 /**
- * Shared wizard helpers — private to the project-wizard plugin.
+ * Shared wizard helpers — private to the TUI wizard plugins.
  *
- * These functions were inlined in `project-wizard.ts` (874 lines) before the
- * Phase 1A refactor. They are extracted here as private helpers (no formal
- * framework, no plugin-scope gating, no shared `wizard-framework/` directory
- * by user direction). Provider-wizard and profile-wizard may adopt these
- * later; for now they are owned by project-wizard.
+ * v2 TUI plugin API: helpers take the plugin `Context` explicitly (no
+ * global api), dialogs are promise-based (`ctx.ui.dialog.select/confirm/
+ * prompt/alert`) so wizard flows are plain async control flow instead of
+ * v1's dialog-stack replace chains.
  *
  * Conventions:
  *   - Pure functions where possible (no module state).
- *   - TuiPluginApi is passed explicitly; no global api.
+ *   - Context is passed explicitly; no global ctx.
  *   - Functions exported here are not part of the public TUI plugin API.
  */
 
-import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
+import type { Context } from "@opencode/plugin/tui/context"
+// Programmatically create JSX elements via the SolidJS factory — avoids
+// tsconfig jsxImportSource complications in .ts files.
+import { jsx } from "@opentui/solid/jsx-runtime"
 import { tr } from "./i18n"
 import type { BackendResult } from "../project-manager/project-manager-index"
 import type { HookResult } from "../project-manager/project-manager-hooks"
@@ -22,19 +24,19 @@ import type { ScaffoldResult } from "../project-manager/project-manager-scaffold
 // ─── Project root resolution ─────────────────────────────────────────
 
 /**
- * Project root for scaffolding: opencode's resolved project directory.
- * process.cwd() is the TUI process launch cwd (e.g. C:\Windows\System32
+ * Project root for scaffolding: the location this plugin instance loaded
+ * at. process.cwd() is the TUI process launch cwd (e.g. C:\Windows\System32
  * when started from a Windows shortcut) and MUST NOT be trusted.
  */
-export function projectRoot(api: TuiPluginApi): string {
-  return api.state.path.directory || process.cwd()
+export function projectRoot(ctx: Context): string {
+  return ctx.location?.directory || ctx.data.location.default().directory || process.cwd()
 }
 
 // ─── Breadcrumb ──────────────────────────────────────────────────────
 
 /**
  * The wizard sub-dialogs that use a breadcrumb header (the ones with
- * their own DialogSelect screen). Order matches their lifecycle position.
+ * their own select screen). Order matches their lifecycle position.
  *
  * Multi-field groups have their own sub-dialog + "💾 Save & Apply Changes"
  * button (multiple fields to compose before persisting). Single-field
@@ -56,8 +58,8 @@ export type WizardGroupId = (typeof WIZARD_GROUPS)[number]
  *
  *   ●Project guards │ ADR │ Tooling
  *
- * Used as a title prefix on sub-dialogs. The root menu (showGroupMenu)
- * IS the navigation — no prefix needed there.
+ * Used as a title prefix on sub-dialogs. The root menu IS the navigation —
+ * no prefix needed there.
  *
  * The separator `│` is punctuation glyph, not localizable.
  */
@@ -71,60 +73,70 @@ export function breadcrumbHeader(active: WizardGroupId): string {
 
 /** Show a toast; swallow ui.toast failures so the wizard keeps running. */
 export function toast(
-  api: TuiPluginApi,
+  ctx: Context,
   message: string,
   variant: "info" | "success" | "warning" | "error" = "info",
 ): void {
   try {
-    api.ui.toast({ title: tr("project.toastTitle"), message, variant })
+    ctx.ui.toast.show({ title: tr("project.toastTitle"), message, variant })
   } catch {
-    // safe fallback if ui.toast is unsupported
+    // safe fallback if toast is unsupported
   }
 }
 
 // ─── Alert modal ─────────────────────────────────────────────────────
 
 /**
- * Renders a `DialogAlert` modal and safely returns to wizard upon confirm
- * or Esc.
- *
- * DialogAlert only has onConfirm (no onCancel), so we use dialog.replace's
- * second argument (onClose) to catch the Esc key. A navigated flag is
- * flipped before any navigation to prevent double-firing: the dialog stack
- * invokes onClose again while clearing/replacing the stack, and pops the
- * stack only after onClose returns (so re-rendering must be deferred).
+ * Shows an alert dialog and runs the dismiss path once it closes.
+ * v2's `dialog.alert` resolves on both confirm and Esc — the v1
+ * onConfirm/onDismiss split only mattered because the compat host's
+ * Alert lacked a cancel button; flows that need a real Yes/No use
+ * `ctx.ui.dialog.confirm` instead.
  */
-export function showAlertModal(
-  api: TuiPluginApi,
+export async function showAlertModal(
+  ctx: Context,
   params: {
     title: string
     message: string
-    onDismiss: () => void
-    onConfirm?: () => void
+    onDismiss: () => void | Promise<void>
+    onConfirm?: () => void | Promise<void>
   },
+): Promise<void> {
+  await ctx.ui.dialog.alert({ title: params.title, message: params.message })
+  await (params.onConfirm ?? params.onDismiss)()
+}
+
+// ─── Busy modal ──────────────────────────────────────────────────────
+
+/**
+ * Replaces the current dialog with a non-dismissable busy placeholder
+ * while an async operation runs. v2 has no busy prop on the built-in
+ * dialogs, so this draws a minimal panel via dialog.show; the operation's
+ * result dialog (alert/select/prompt) replaces it through the normal
+ * single-active-dialog model. Escape while busy is swallowed — the
+ * result always lands.
+ */
+export function showBusyModal(
+  ctx: Context,
+  params: { title: string; message: string; busyText?: string },
 ): void {
-  let navigated = false
-  api.ui.dialog.replace(
-    () =>
-      api.ui.DialogAlert({
-        title: params.title,
-        message: params.message,
-        onConfirm: () => {
-          navigated = true
-          setTimeout(() => {
-            ;(params.onConfirm ?? params.onDismiss)()
-          }, 20)
-        },
-      }),
-    () => {
-      if (navigated) return
-      navigated = true
-      // Defer: stack pops after onClose returns; sync re-render is wiped and re-fires onClose
-      setTimeout(() => {
-        params.onDismiss()
-      }, 20)
-    },
+  ctx.ui.dialog.show(() =>
+    busyPanel(ctx, params.title, params.message, params.busyText ?? tr("common.working")),
   )
+}
+
+// Minimal text panel for the busy state.
+function busyPanel(ctx: Context, title: string, message: string, busyText: string) {
+  const theme = ctx.theme
+  return jsx("box", {
+    style: { flexDirection: "column", paddingLeft: 1, paddingRight: 1 },
+    children: [
+      jsx("text", { style: { fg: theme.text.base }, children: jsx("span", { children: title }) }),
+      ...message.split("\n").map((line) =>
+        jsx("text", { style: { fg: theme.text.muted }, children: jsx("span", { children: line }) })),
+      jsx("text", { style: { fg: theme.text.feedback.info.base }, children: jsx("span", { children: `⏳ ${busyText}` }) }),
+    ],
+  })
 }
 
 // ─── Badge formatters ────────────────────────────────────────────────

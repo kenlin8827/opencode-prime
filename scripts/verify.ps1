@@ -100,7 +100,7 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
             param($p)
             $norm = $p -replace '\\', '/'
             if ($norm -eq 'install/versions/history.manifest.txt') { return $true }
-            if ($minVer -and $norm -match '^install/versions/(\d+(?:\.\d+)+)\.manifest\.txt$') {
+            if ($minVer -and $norm -match '^install/versions/(\d+(?:\.\d+)+)\.(manifest\.txt|notes\.md)$') {
                 return (Compare-VersionLt $matches[1] $minVer)
             }
             return $false

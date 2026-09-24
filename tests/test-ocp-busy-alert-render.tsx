@@ -27,6 +27,11 @@ process.env.OCP_CONFIG_PATH = path.join(home, 'ocp.json')
 process.env.HOME = home
 process.env.USERPROFILE = home
 
+// Harness guard (parity with test-ocp-ui-render.tsx): a failing assert with an
+// open renderer hangs the event loop — report and exit red instead.
+process.on('uncaughtException', (error) => { console.error(String((error as { message?: string })?.message ?? error)); process.exit(1) })
+process.on('unhandledRejection', (error) => { console.error(String((error as { message?: string })?.message ?? error)); process.exit(1) })
+
 const { ensureSolidTransformPlugin } = await import('../install/node_modules/@opentui/solid/scripts/solid-plugin.js')
 ensureSolidTransformPlugin()
 

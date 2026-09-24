@@ -1,18 +1,23 @@
 import { strict as assert } from "node:assert"
 import projectWizard, { applyAdrSuiteToSwitches, detectAdrSuite } from "../plugins/tui/project-wizard"
-import { createTuiHost } from "../install/src/ui/tui-host"
 
-const host = createTuiHost()
-const commands: string[] = []
-await projectWizard.tui({
-  ui: {},
-  keymap: { registerLayer(layer: { commands?: Array<{ name: string }> }) { commands.push(...(layer.commands ?? []).map((command) => command.name)) } },
-  kv: { get: <T>(_key: string, fallback?: T) => fallback, set() {} },
-} as any, undefined, {} as any)
+// v2 plugin entry: default export is Plugin.define({ id, setup }) — a fake
+// Context harness captures the keymap commands without a renderer.
+const commandIds: string[] = []
+const layerThunks: Array<() => { commands?: Array<{ id?: string }> }> = []
+const fakeCtx = {
+  keymap: {
+    layer(input: () => { commands?: Array<{ id?: string }> }) {
+      layerThunks.push(input)
+      for (const command of input().commands ?? []) if (command.id) commandIds.push(command.id)
+    },
+  },
+}
+await projectWizard.setup(fakeCtx as never)
 
 assert.equal(projectWizard.id, "opencode-prime.project-wizard")
-assert.deepEqual(commands, ["project.wizard"])
-assert.equal(host.dispatch("missing"), false)
+assert.deepEqual(commandIds, ["project.wizard"])
+assert.equal(layerThunks.length, 1)
 
 // applyAdrSuiteToSwitches — the /adr init bundles land on the wizard state.
 const standard = applyAdrSuiteToSwitches({} as never, "standard")

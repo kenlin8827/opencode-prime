@@ -1,7 +1,11 @@
 /**
- * Hook: tool.execute.after — finalize advisor's response.
+ * Hook: ctx.tool.hook("execute.after") — finalize advisor's response.
  *
- *   - safeHook: exceptions never crash the user's session.
+ *   - V2 event shape: one mutable object `{ tool, sessionID, input, status,
+ *     result }`. `result` is the Tool.Result (mutable); we append directives
+ *     to its content in place. `status: "error"` carries no result — treated
+ *     as the lite flow (NO auto-execute), same stance as v1's output.error.
+ *   - fail-open: exceptions never crash the user's session.
  *   - isDispatchTool: skip non-dispatch tools (perf).
  *   - Format validation: warn on unparseable confidence/class.
  *   - Frequency limit: max MAX_AUTO_ANSWERS per session.
@@ -11,7 +15,6 @@
  * fires — shouldAuto requires mode === "full".
  */
 
-import type { PluginInput } from "@opencode-ai/plugin"
 import { getMode } from "./auto-advisor-config"
 import { advisorFailureWarning, fullDirective, fallbackWarning } from "./auto-advisor-instructions"
 import {
@@ -24,33 +27,45 @@ import {
   detectQuestionClass,
   extractQuestionText,
   extractResponseText,
-  extractSessionId,
   getAdvisorFailureReason,
   isAdvisorDispatch,
   isDispatchTool,
-  isModelFallback,
   isRedTeamOutput,
+  isModelFallback,
   makeLogger,
   parseConfidence,
   recordAutoAnswer,
-  safeHook,
   setAutoAnswer,
 } from "./auto-advisor-runtime"
 
-type Log = ReturnType<typeof makeLogger>
+/** V2 execute.after event fields this hook reads. */
+interface ToolAfterEvent {
+  tool?: string
+  sessionID?: string
+  input?: unknown
+  status: "completed" | "error"
+  result?: { content?: string | ReadonlyArray<unknown>; output?: unknown; metadata?: Record<string, unknown> }
+}
 
-export function makeFullInjectHook(client: PluginInput["client"]) {
-  const log: Log = makeLogger(client, "auto-advisor-mode")
+export function makeFullInjectHook() {
+  const log = makeLogger("auto-advisor-mode")
 
-  return safeHook(
-    async (input: unknown, output: unknown) => {
+  return async (e: ToolAfterEvent): Promise<void> => {
+    // Fail-open: never crash the session over advisor post-processing.
+    try {
       const mode = getMode()
-      if (!isDispatchTool(input)) return
+      if (!isDispatchTool(e)) return
+      if (!isAdvisorDispatch(e.input) && !isAdvisorDispatch(e.result)) return
 
-      if (!isAdvisorDispatch(input) && !isAdvisorDispatch(output)) return
+      // An errored tool call has no model-facing result to shape.
+      if (e.status !== "completed") {
+        await log("warn", "advisor: dispatch failed (tool error) — falling back to lite flow, NO auto-execute")
+        return
+      }
 
+      const output = e.result
       const text = extractResponseText(output)
-      const questionText = extractQuestionText(input)
+      const questionText = extractQuestionText(e.input)
 
       const failureReason = getAdvisorFailureReason(output)
       if (failureReason) {
@@ -76,7 +91,7 @@ export function makeFullInjectHook(client: PluginInput["client"]) {
         questionClass = "PREFERENCE"
       }
       const factual = questionClass === "FACTUAL"
-      const sessionId = extractSessionId(output)
+      const sessionId = typeof e.sessionID === "string" && e.sessionID ? e.sessionID : "default"
 
       if (confidence === 0) {
         await log("warn", "confidence score not parsed — check advisor output format")
@@ -117,7 +132,8 @@ export function makeFullInjectHook(client: PluginInput["client"]) {
       } else if (mode === "full" && confidence >= CONFIDENCE_THRESHOLD && factual && !fallback) {
         await log("warn", `auto-answer skipped — quota reached (${MAX_AUTO_ANSWERS}/${MAX_AUTO_ANSWERS})`)
       }
-    },
-    log,
-  )
+    } catch {
+      // Fail-open: advisor post-processing must never crash the session.
+    }
+  }
 }

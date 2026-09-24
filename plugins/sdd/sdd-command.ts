@@ -1,5 +1,14 @@
 /**
- * Hook: command.execute.before — handle `/sdd`, `/prd`, `/plan`, `/impl`.
+ * Prompt-hook handler — side effects for `/sdd`, `/prd`, `/plan`, `/impl`.
+ *
+ * V2 MAPPING NOTE (v1 → v2): v1 used `command.execute.before`. These four
+ * commands are template-defined (commands/*.md launchers, owned outside
+ * this plugin), and the v1 handler NEVER cancelled them — it only announced
+ * scaffolding via noReply synthetic messages and let the template proceed.
+ * The faithful v2 equivalent is therefore the "prompt" hook matching the
+ * leading "/<name>" text (ctx.command.transform would REPLACE the template
+ * command — wrong intent). Prompt hook callbacks fire before durable
+ * admission, like the v1 before-hook.
  *
  * SDD lifecycle:
  *   /prd  → Product Requirements Document (docs/prd/<topic>.md)
@@ -9,7 +18,7 @@
  *   /sdd  → Lifecycle status, artifact discovery, and workflow navigation
  */
 
-import type { PluginInput } from "@opencode-ai/plugin"
+import { injectReply, type V2Session } from "../shared/agent-scope"
 import {
   listSddArtifacts,
   scaffoldPlan,
@@ -35,7 +44,11 @@ Commands:
 - /sdd handoff [msg] → Compact current SDD state and pause for next session
 - /sdd help          → Show this help guide`
 
-export function makeSddCommandHook(client: PluginInput["client"]) {
+/** V2 prompt-hook handler. Announcements go through the synthetic-message
+ *  channel (v1 equivalent: session.prompt({noReply, ignored})). The
+ *  directory is injected so the handler does not depend on the plugin
+ *  host's process.cwd() (v1 behavior — preserved: same value source). */
+export function makeSddCommandHook(session: V2Session | undefined) {
   return async (input: { command?: string; arguments?: string; sessionID?: string }) => {
     const cwd = process.cwd()
     const args = (input.arguments || "").trim()
@@ -43,14 +56,8 @@ export function makeSddCommandHook(client: PluginInput["client"]) {
     // 1. /sdd command handler
     if (input.command === SDD_COMMAND) {
       if (!args || args === "help" || args === "--help" || args === "-h") {
-        if (client?.session?.prompt && input.sessionID) {
-          await client.session.prompt({
-            path: { id: input.sessionID },
-            body: {
-              parts: [{ type: "text", text: HELP_TEXT, ignored: true }],
-              noReply: true,
-            },
-          })
+        if (input.sessionID) {
+          await injectReply(session, input.sessionID, HELP_TEXT)
           return
         }
       }
@@ -65,56 +72,30 @@ Project: ${cwd}
 
 Lifecycle: /prd → /adr → /plan → /impl`
 
-        if (client?.session?.prompt && input.sessionID) {
-          await client.session.prompt({
-            path: { id: input.sessionID },
-            body: {
-              parts: [{ type: "text", text: report, ignored: true }],
-              noReply: true,
-            },
-          })
+        if (input.sessionID) {
+          await injectReply(session, input.sessionID, report)
           return
         }
       }
 
       if (args === "handoff" || args.startsWith("handoff ")) {
-        if (client?.session?.prompt && input.sessionID) {
-          await client.session.prompt({
-            path: { id: input.sessionID },
-            body: {
-              parts: [{ type: "text", text: `[SDD] 📦 Generating SDD Handoff Package... Compacting active stage, artifacts, and next steps into .ocp/handoffs/.`, ignored: true }],
-              noReply: true,
-            },
-          })
-        }
+        await injectReply(session, input.sessionID, `[SDD] 📦 Generating SDD Handoff Package... Compacting active stage, artifacts, and next steps into .ocp/handoffs/.`)
       }
     }
 
     // 2. /prd command handler (scaffold file if topic provided, then let LLM draft)
     if (input.command === PRD_COMMAND && args) {
       const { relPath, created } = scaffoldPrd(cwd, args)
-      if (created && client?.session?.prompt && input.sessionID) {
-        await client.session.prompt({
-          path: { id: input.sessionID },
-          body: {
-            parts: [{ type: "text", text: `[SDD] 📄 Scaffolding PRD template at ${relPath}...`, ignored: true }],
-            noReply: true,
-          },
-        })
+      if (created) {
+        await injectReply(session, input.sessionID, `[SDD] 📄 Scaffolding PRD template at ${relPath}...`)
       }
     }
 
     // 3. /plan command handler (scaffold file if topic provided, then let LLM draft)
     if (input.command === PLAN_COMMAND && args) {
       const { relPath, created } = scaffoldPlan(cwd, args)
-      if (created && client?.session?.prompt && input.sessionID) {
-        await client.session.prompt({
-          path: { id: input.sessionID },
-          body: {
-            parts: [{ type: "text", text: `[SDD] 📋 Scaffolding Implementation Plan at ${relPath}...`, ignored: true }],
-            noReply: true,
-          },
-        })
+      if (created) {
+        await injectReply(session, input.sessionID, `[SDD] 📋 Scaffolding Implementation Plan at ${relPath}...`)
       }
     }
 

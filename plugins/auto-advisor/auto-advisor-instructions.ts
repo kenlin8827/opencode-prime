@@ -38,7 +38,7 @@ export const MODE_MARKER: Record<AdvisorMode, string> = {
 
 /**
  * Build the prompt fragment for the active mode. The plugin appends this to
- * the system prompt via the experimental.chat.system.transform hook.
+ * the system prompt via the v2 "context" session hook.
  *
  * For "off", the protocol is included so the LLM knows the dispatch template
  * and output format when the user explicitly @advisor. The OFF marker tells

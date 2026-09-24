@@ -7,9 +7,9 @@
  *   - stripModelRefs: removes exactly those fields, keeps everything else
  *   - parseProfileSubcommand: ctx shapes (data.args / payload / input),
  *     leading command-name tokens skipped, case-insensitive
- *   - /profile reset end-to-end via mock TUI host: confirm dialog gate,
- *     config rewrite without model refs, .bak backup, .active-profile
- *     removed, success toast
+ *   - /profile reset end-to-end via a mock v2 plugin Context: confirm
+ *     dialog gate, config rewrite without model refs, .bak backup,
+ *     .active-profile removed, location reload, success toast
  *   - unknown subcommand → usage warning toast; no arg → main menu
  *
  * Run: bun run tests/test-profile-reset-unit.ts
@@ -80,6 +80,47 @@ section("01: listModelRefs — read-only listing")
   assert(refs.length === 0, "empty config → no refs")
 }
 
+// ─── 01b: listModelRefs on a v2-native config ─────────────────────────────
+
+{
+  const refs = listModelRefs({
+    model: "anthropic/claude-sonnet-5",
+    agents: {
+      build: { model: "anthropic/claude-sonnet-5#high", system: "S" },
+      title: { model: "anthropic/claude-haiku-4-5" },
+      explore: {},
+    },
+  } as never)
+  assert(refs.length === 3, `native config lists 3 refs (got ${refs.length})`)
+  assert(refs[0] === "model → anthropic/claude-sonnet-5", "native: root model listed first")
+  assert(refs.includes("agents.build → anthropic/claude-sonnet-5#high"), "native: agents.build listed with #variant ref")
+  assert(refs.includes("agents.title → anthropic/claude-haiku-4-5"), "native: agents.title (small slot) listed")
+}
+
+// ─── 02b: stripModelRefs on a v2-native config ────────────────────────────
+
+{
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const config: any = {
+    model: "p/m1",
+    small_model: "p/m0",
+    agents: {
+      build: { model: "p/m1", system: "S" },
+      title: { model: "p/m0" },
+      explore: {},
+    },
+    provider: { p: { models: { m1: {} } } },
+  }
+  const removed = stripModelRefs(config)
+  assert(removed === 4, `native+residual removed count is 4 (got ${removed})`)
+  assert(!("model" in config), "native: root model removed")
+  assert(!("small_model" in config), "native: residual small_model removed")
+  assert(!("model" in config.agents.build), "native: agents.build.model removed")
+  assert(!("model" in config.agents.title), "native: agents.title.model removed")
+  assert(config.agents.build.system === "S", "native: agents.build.system kept")
+  assert(!!config.provider.p, "native: provider section untouched")
+}
+
 // ─── 02: stripModelRefs (mutating) ─────────────────────────────────────────
 
 section("02: stripModelRefs — exact field removal")
@@ -140,47 +181,72 @@ writeFileSync(CONFIG_FILE, SAMPLE_CONFIG, "utf-8")
 writeFileSync(STATE_FILE, "anthropic", "utf-8")
 
 const toasts: { title?: string; message?: string; variant?: string }[] = []
-const confirmProps: { title: string; message: string; onConfirm: () => void; onCancel: () => void }[] = []
-const selectRenders: unknown[] = []
-let dialogCleared = 0
+const confirmProps: { title: string; message: string }[] = []
+const confirmAnswers: boolean[] = []
+const selectProps: { title: string }[] = []
+let reloads = 0
 
-const fakeApi = {
-  kv: { get: () => undefined, set: () => undefined },
-  ui: {
-    toast: (t: { title?: string; message?: string; variant?: string }) => { toasts.push(t) },
-    dialog: {
-      replace: (render: () => unknown) => { render() },
-      clear: () => { dialogCleared++ },
+type Command = { id?: string; slash?: { name: string }; run: (input?: string) => unknown }
+const registeredCommands: Command[] = []
+
+const fakeCtx = {
+  keymap: {
+    layer: (input: () => { commands?: Command[] }) => {
+      registeredCommands.push(...(input().commands ?? []))
     },
-    DialogConfirm: (props: unknown) => { confirmProps.push(props as never) },
-    DialogSelect: (props: unknown) => { selectRenders.push(props) },
-    DialogPrompt: () => undefined,
-    DialogAlert: () => undefined,
   },
-  keymap: { registerLayer: (layer: { commands?: unknown[] }) => { registeredCommands.push(...((layer.commands ?? []) as typeof registeredCommands)) } },
+  ui: {
+    toast: { show: (t: { title?: string; message?: string; variant?: string }) => { toasts.push(t) } },
+    dialog: {
+      confirm: async (o: { title: string; message: string }) => {
+        confirmProps.push(o)
+        return confirmAnswers.length ? confirmAnswers.shift() : true
+      },
+      select: async (o: { title: string }) => {
+        selectProps.push(o)
+        return undefined // Esc — wizard loops terminate cleanly
+      },
+      alert: async () => {},
+      prompt: async () => undefined,
+      show: () => {},
+      clear: () => {},
+      set: () => {},
+    },
+  },
+  client: {
+    location: { reload: async () => { reloads++ } },
+  },
 } as never
 
-const registeredCommands: { slashName?: string; run: (ctx?: unknown) => void }[] = []
-await (plugin.tui as (api: unknown) => Promise<void>)(fakeApi)
+await plugin.setup(fakeCtx)
+// Deterministic English dialog copy regardless of the host locale env.
+const { setLocale } = await import("../plugins/tui/i18n")
+setLocale("en")
 
-const cmd = registeredCommands.find((c) => c.slashName === "profile")
+const cmd = registeredCommands.find((c) => c.slash?.name === "profile")
 assert(!!cmd, "slash command 'profile' registered")
 
-// 4a. reset opens a confirm dialog listing the refs
-cmd!.run({ input: "profile.switch reset" })
+// resetModels is async fire-and-forget from the command — flush the
+// promise chain before asserting.
+const flush = async () => { for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r)) }
+
+// 4a. reset opens a confirm dialog listing the refs (answer: cancel)
+confirmAnswers.push(false)
+cmd!.run("profile.switch reset")
+await flush()
 assert(confirmProps.length === 1, "confirm dialog opened")
 assert(confirmProps[0]?.message.includes("model → anthropic/claude-sonnet-5"), "confirm message lists root model")
 assert(confirmProps[0]?.message.includes("agent.code → anthropic/claude-opus-5"), "confirm message lists agent model")
 assert(confirmProps[0]?.message.includes("tiers.json"), "confirm message states tiers.json is kept")
 
 // 4b. cancel leaves everything untouched
-confirmProps[0].onCancel()
 assert(JSON.parse(readFileSync(CONFIG_FILE, "utf-8")).model === "anthropic/claude-sonnet-5", "cancel: config untouched")
 assert(existsSync(STATE_FILE), "cancel: .active-profile kept")
 
 // 4c. confirm performs the reset
-cmd!.run({ input: "profile.switch reset" })
-confirmProps[1].onConfirm()
+confirmAnswers.push(true)
+cmd!.run("profile.switch reset")
+await flush()
 const after = JSON.parse(readFileSync(CONFIG_FILE, "utf-8")) as Record<string, unknown>
 assert(!("model" in after), "reset: root model removed from file")
 assert(!("small_model" in after), "reset: small_model removed from file")
@@ -189,24 +255,54 @@ assert(!afterAgent.build.model && afterAgent.build.prompt !== undefined, "reset:
 assert(!afterAgent.code.model && afterAgent.code.mode === "primary", "reset: agent.code model removed, mode kept")
 assert(existsSync(CONFIG_FILE + ".bak"), "reset: .bak backup kept")
 assert(!existsSync(STATE_FILE), "reset: .active-profile removed")
-assert(dialogCleared > 0, "reset: dialog cleared")
+assert(reloads > 0, "reset: location reload requested (live refresh)")
 assert(toasts.some((t) => t.variant === "success" && /4/.test(t.message ?? "")), "reset: success toast reports 4 refs")
 
 // 4d. nothing left to reset → info toast, no confirm dialog
 const confirmCount = confirmProps.length
-cmd!.run({ input: "profile.switch reset" })
+cmd!.run("profile.switch reset")
+await flush()
 assert(confirmProps.length === confirmCount, "nothing-to-reset: no confirm dialog")
 assert(toasts.some((t) => t.variant === "info" && /nothing to reset|无需重置/i.test(t.message ?? "")), "nothing-to-reset: info toast (locale-agnostic)")
 
 // 4e. unknown subcommand → usage warning, no dialog
-const selectCount = selectRenders.length
-cmd!.run({ input: "profile.switch banana" })
+const selectCount = selectProps.length
+cmd!.run("profile.switch banana")
+await flush()
 assert(toasts.some((t) => t.variant === "warning" && (t.message ?? "").includes("banana")), "unknown sub: warning toast")
-assert(selectRenders.length === selectCount, "unknown sub: no dialog opened")
+assert(selectProps.length === selectCount, "unknown sub: no dialog opened")
 
 // 4f. bare /profile still opens the main menu
-cmd!.run({ input: "profile.switch" })
-assert(selectRenders.length > selectCount, "bare /profile opens the main menu")
+cmd!.run("profile.switch")
+await flush()
+assert(selectProps.length > selectCount, "bare /profile opens the main menu")
+
+// 4g. v2-native config end-to-end: agents.* + title slot stripped in place
+{
+  writeFileSync(
+    CONFIG_FILE,
+    `{
+  "model": "anthropic/claude-sonnet-5",
+  "agents": {
+    "build": { "system": "S", "model": "anthropic/claude-sonnet-5#high" },
+    "title": { "model": "anthropic/claude-haiku-4-5" },
+    "explore": {}
+  }
+}`,
+    "utf-8",
+  )
+  writeFileSync(STATE_FILE, "anthropic", "utf-8")
+  confirmAnswers.push(true)
+  cmd!.run("profile.switch reset")
+  await flush()
+  const afterNative = JSON.parse(readFileSync(CONFIG_FILE, "utf-8")) as Record<string, any>
+  assert(!("model" in afterNative), "native reset: root model removed from file")
+  assert("agents" in afterNative && !("model" in afterNative.agents.build), "native reset: agents.build.model removed, section kept")
+  assert(afterNative.agents.build.system === "S", "native reset: agents.build.system kept")
+  assert(!("model" in afterNative.agents.title), "native reset: agents.title slot removed")
+  assert(!existsSync(STATE_FILE), "native reset: .active-profile removed")
+  assert(toasts.some((t) => t.variant === "success" && /3/.test(t.message ?? "")), "native reset: success toast reports 3 refs")
+}
 
 // ─── Cleanup + summary ─────────────────────────────────────────────────────
 

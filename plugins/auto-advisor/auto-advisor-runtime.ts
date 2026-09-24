@@ -3,8 +3,6 @@
  * Single source of truth for utilities every hook reuses.
  */
 
-import type { PluginInput } from "@opencode-ai/plugin"
-
 // ─── Constants ───────────────────────────────────────────────────────
 
 const CONFIDENCE_THRESHOLD = 8
@@ -426,8 +424,17 @@ export function extractSessionId(output: unknown): string {
 export { CONFIDENCE_THRESHOLD, MAX_AUTO_ANSWERS }
 
 // ─── Log helper ──────────────────────────────────────────────────────
+// V2: console-backed server log (v1 routed through client.app.log; the v2
+// plugin Context has no log domain — console reaches the same server log).
 
-export function makeLogger(client: PluginInput["client"], service: string) {
-  return (level: "info" | "warn", message: string) =>
-    client.app.log({ body: { service, level, message } })
+export function makeLogger(service: string) {
+  return async (level: "info" | "warn", message: string): Promise<void> => {
+    try {
+      const line = `[ocp:${service}][${level}] ${message}`
+      if (level === "warn") console.warn(line)
+      else console.log(line)
+    } catch {
+      // Logging must never fail a hook.
+    }
+  }
 }

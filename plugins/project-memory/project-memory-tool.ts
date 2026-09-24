@@ -26,7 +26,7 @@
  * rules / confidence semantics). The tool does NOT enforce a confidence
  * floor — soft guidance beats hard refusal.
  *
- * Tool gate: the `execute` handler runs `scopedForTool()` against the
+ * Tool gate: the `execute` handler runs `scopedForCall()` against the
  * `project-memory-note-tool` policy in plugin-scope.json. Utility sessions
  * (OpenCode's title generator) are denied — title tasks are too narrow to
  * discover reusable rules and a stray note pollutes public.md / private.md
@@ -40,16 +40,50 @@
  * contract.
  */
 
-import { tool } from "@opencode-ai/plugin"
-import { scopedForTool, type SessionClient } from "../shared/plugin-scope"
+import { scopedForCall, type V2Session } from "../shared/agent-scope"
 import { appendLesson, type LessonScope } from "./project-memory-config"
 
 export const TOOL_NAME = "memory_note"
 
 type Confidence = "low" | "medium" | "high"
 
-export function makeCaptureTool(client: SessionClient) {
-  return tool({
+/** V2 tool payload for `ctx.tool.transform(editor.add(...))`.
+ *  `input` is a JSON Schema (v2 ValueSchema); the platform validates
+ *  arguments against it — execute still guards defensively because a
+ *  non-conforming host would otherwise hand us `unknown`.
+ *  `options.codemode: false` exposes it as a first-class model tool
+ *  (v1 `tool({...})` default). v1's `{title, output, metadata}` result
+ *  maps to v2 `{content, metadata}` — the title rides in metadata
+ *  (OCP-V2-GAP: v2 Tool.Result has no `title` field; TUIs read
+ *  metadata.title as the historical convention). */
+export function memoryNoteTool(session: V2Session | undefined) {
+  return {
+    name: TOOL_NAME,
+    options: { codemode: false as const },
+    input: {
+      type: "object",
+      properties: {
+        lesson: {
+          type: "string",
+          description:
+            "The lesson text. One sentence. State the rule, not the story. " +
+            "Dated-bullet prefix is added automatically.",
+        },
+        scope: {
+          type: "string",
+          enum: ["public", "private"],
+          description:
+            "'public' (default, committed to git) or 'private' (gitignored, only the current user sees it).",
+        },
+        confidence: {
+          type: "string",
+          enum: ["low", "medium", "high"],
+          description:
+            "Self-rated durability/reusability of this lesson (default: medium). Metadata only — not gated.",
+        },
+      },
+      required: ["lesson"],
+    },
     description:
       "Note a durable 'lesson learned' to this project's memory. Two scopes — pick the one that fits:\n\n" +
       "SCOPE HEURISTIC: 'Will another developer at this same machine, on this project, tomorrow find this useful?'\n" +
@@ -63,81 +97,74 @@ export function makeCaptureTool(client: SessionClient) {
       "one-off bug fixes, or speculative guesses that haven't been validated against real code.\n\n" +
       "Confidence is metadata only — the tool does not gate on it. " +
       "Rating (default medium): high = rule you will act on next session; low = a hunch, prefer to surface to the user instead of silently filing.",
-    args: {
-      lesson: tool.schema
-        .string()
-        .describe(
-          "The lesson text. One sentence. State the rule, not the story. " +
-            "Dated-bullet prefix is added automatically.",
-        ),
-      scope: tool.schema
-        .enum(["public", "private"])
-        .optional()
-        .describe("'public' (default, committed to git) or 'private' (gitignored, only the current user sees it)."),
-      confidence: tool.schema
-        .enum(["low", "medium", "high"])
-        .optional()
-        .describe("Self-rated durability/reusability of this lesson (default: medium). Metadata only — not gated."),
-    },
-    execute: async (args, ctx) => {
+    execute: async (args: unknown, context: { agent?: string; sessionID?: string }) => {
+      // Defensive boundary check (JSON Schema is enforced host-side; a
+      // non-conforming host must not crash the write path silently).
+      // Empty/whitespace lessons flow into the failed-result path below,
+      // matching v1 behavior (appendLesson sanitizes and throws -> caught).
+      const a = (args ?? {}) as { lesson?: unknown; scope?: unknown; confidence?: unknown }
+      if (typeof a.lesson !== "string")
+        throw new Error("memory_note: `lesson` must be a string")
+      const scope: LessonScope = a.scope === "private" ? "private" : "public"
+      const conf: Confidence =
+        a.confidence === "low" || a.confidence === "high" ? a.confidence : "medium"
+
       // Tool-context gate: deny utility sessions (title generator can't
       // discover reusable rules; a stray note pollutes public.md /
       // private.md with noise). Subagents and primary sessions pass.
-      // `client` is the plugin-level client captured at registration
-      // (OpenCode's ToolContext doesn't carry it) — used for subagent
-      // detection via parentID when no agent name hits.
-      const gate = await scopedForTool(
-        { sessionID: ctx?.sessionID, agent: ctx?.agent },
+      // `session` is the plugin-level domain client captured at
+      // registration (the v2 ToolContext carries no client) — used for
+      // subagent detection via parentID when no agent name hits.
+      const gate = await scopedForCall(
+        { sessionID: context?.sessionID, agent: context?.agent },
         "project-memory-note-tool",
-        client,
+        session,
       )
       if (!gate) {
         return {
-          title: "Memory note denied",
-          output:
-            `memory_note is not available in this agent context (${ctx?.agent ?? "unknown"}). ` +
+          content:
+            `memory_note is not available in this agent context (${context?.agent ?? "unknown"}). ` +
             `Utility sessions (title generator) are denied because title tasks are too narrow to discover reusable rules. ` +
             `Run /memory note "<lesson>" from a normal agent session instead.`,
           metadata: {
+            title: "Memory note denied",
             denied: true,
-            scope: args.scope ?? "public",
-            agent: ctx?.agent ?? null,
-            sessionID: ctx?.sessionID ?? null,
-            lesson: args.lesson,
+            scope,
+            agent: context?.agent ?? null,
+            sessionID: context?.sessionID ?? null,
+            lesson: a.lesson,
           },
         }
       }
 
-      const scope: LessonScope = (args.scope ?? "public") as LessonScope
-      const conf: Confidence = (args.confidence ?? "medium") as Confidence
       try {
-        const path = appendLesson(scope, args.lesson)
+        const path = appendLesson(scope, String(a.lesson))
         return {
-          title: `Memory noted (${scope}, ${conf})`,
-          output:
+          content:
             `Saved to ${path}\n` +
             `Scope: ${scope} | Confidence: ${conf}\n` +
             `Injected into the system prompt on the next chat request (while projectMemory is on).`,
           metadata: {
+            title: `Memory noted (${scope}, ${conf})`,
             path,
             scope,
             confidence: conf,
             confidenceRank: conf === "high" ? 3 : conf === "medium" ? 2 : 1,
-            lesson: args.lesson,
+            lesson: a.lesson,
           },
         }
       } catch (err) {
         return {
-          title: `Memory note failed`,
-          output: `Failed to write ${scope} memory: ${String(err)}`,
+          content: `Failed to write ${scope} memory: ${String(err)}`,
           metadata: {
+            title: "Memory note failed",
             error: String(err),
             scope,
             confidence: conf,
-            lesson: args.lesson,
+            lesson: a.lesson,
           },
         }
       }
     },
-  })
+  }
 }

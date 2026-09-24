@@ -3,20 +3,22 @@
  *
  * Centralizes locale detection, storage, and all translation strings
  * for profile-wizard, provider-wizard, queue-manager,
- * and usage. The standalone OpenTUI host (`ocp provider|profile`) loads
- * the same wizard plugins through a TuiPluginApi-compatible adapter.
+ * and usage. This module is the single source of truth for the locale
+ * registry (`LOCALES`) and the ADR glossary (`ADR_GLOSSARY`); headless
+ * CLI entry points share it via `initI18nHeadless` / `refreshLocale`.
  *
  * The chosen language is persisted as the "language" key of the shared
  * user config (~/.config/opencode/ocp.json, via plugins/shared/ocp-config).
- * A legacy api.kv value is migrated on first init.
  *
- * Usage in plugins:
- *   import { initI18n, tr, registerLangCommand } from "./i18n"
- *   // in plugin entry: initI18n(api); registerLangCommand(api)
+ * Usage in plugins (v2 TUI API):
+ *   import { initI18n, tr } from "./i18n"
+ *   // in plugin setup(ctx): initI18n()
  *   // in dialog code:  tr("profile.mainTitle")
+ *   // language switch:  await switchLanguage(ctx)  — the caller's menu
+ *   // loop re-presents itself afterwards.
  */
 
-import type { TuiPluginApi, TuiDialogSelectOption } from "@opencode-ai/plugin/tui"
+import type { Context, DialogSelectOption } from "@opencode/plugin/tui/context"
 import { readOcpField, writeOcpField } from "../shared/ocp-config"
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -50,9 +52,11 @@ export type GlossaryLocale = (typeof LOCALES)[number]["code"]
 const FALLBACK_LOCALE: Locale = "en"
 
 /**
- * Convenience alias for dialog option objects used by all wizards.
+ * Convenience alias for dialog option objects used by all wizards
+ * (v2 TUI plugin API shape — value, not the full option, comes back
+ * from `ctx.ui.dialog.select`).
  */
-export type DialogOption<V = string> = TuiDialogSelectOption<V>
+export type DialogOption<V = string> = DialogSelectOption<V>
 
 type StringEntry = Partial<Record<Locale, string>> & { en: string }
 
@@ -87,12 +91,17 @@ function detectLocale(): Locale {
 
 /** "language" key in the shared user config (~/.config/opencode/ocp.json). */
 const CONFIG_KEY = "language"
-/** Pre-ocp-config storage; read once for migration, no longer written. */
-const LEGACY_KV_KEY = "opencode.locale"
 
 let initialized = false
 
-export function initI18n(api: TuiPluginApi): void {
+/**
+ * Resolve the locale from the shared user config, else environment
+ * detection. Needs no plugin context — ocp.json is the single source of
+ * truth across TUI and server processes (v1's api.kv legacy migration is
+ * gone: the kv store died with the v1 host and pre-ocp.json users have
+ * long since been migrated).
+ */
+export function initI18n(): void {
   // Guard against repeated calls from multiple plugins —
   // only the first call performs detection & persistence.
   if (initialized) return
@@ -101,13 +110,6 @@ export function initI18n(api: TuiPluginApi): void {
   const fromFile = readOcpField<Locale>(CONFIG_KEY)
   if (isRegistered(fromFile)) {
     currentLocale = fromFile
-    return
-  }
-  // Legacy migration: an api.kv choice made before ocp.json existed.
-  const legacy = api.kv?.get<Locale>(LEGACY_KV_KEY)
-  if (isRegistered(legacy)) {
-    currentLocale = legacy
-    writeOcpField(CONFIG_KEY, currentLocale)
     return
   }
   // Env detection is not a user choice — don't persist it.
@@ -137,7 +139,7 @@ export function refreshLocale(): Locale {
   return currentLocale
 }
 
-export function setLocale(api: TuiPluginApi, locale: Locale): void {
+export function setLocale(locale: Locale): void {
   currentLocale = locale
   // Keep the in-memory value even if the file write fails (read-only home).
   writeOcpField(CONFIG_KEY, locale)
@@ -149,9 +151,9 @@ export function nextLocale(): Locale {
   return LOCALES[(idx + 1) % LOCALES.length].code
 }
 
-export function toggleLocale(api: TuiPluginApi): Locale {
+export function toggleLocale(): Locale {
   const next = nextLocale()
-  setLocale(api, next)
+  setLocale(next)
   return next
 }
 
@@ -653,15 +655,11 @@ export const STRINGS = {
   // ── Queue manager ──────────────────────────────────────────────
   // ════════════════════════════════════════════════════════════════
   "queue.cmdTitle": { en: "Manage queued messages", "zh-CN": "管理排队消息" },
-  "queue.cmdDesc": { en: "View, edit, or cancel queued messages in the current session", "zh-CN": "查看、编辑或取消当前会话的排队消息" },
+  "queue.cmdDesc": { en: "View, steer, or cancel queued messages in the current session", "zh-CN": "查看、转向或取消当前会话的排队消息" },
   "queue.toastTitle": { en: "Queue manager", "zh-CN": "队列管理" },
-  "queue.editTitle": { en: "Edit queued message", "zh-CN": "编辑排队消息" },
-  "queue.editPlaceholder": { en: "New text for this queued message (replaces all text parts)", "zh-CN": "此排队消息的新文本（替换所有文本部分）" },
   "queue.cancelTitle": { en: "Cancel queued message", "zh-CN": "取消排队消息" },
   "queue.fullTextTitle": { en: "Queued message — full text", "zh-CN": "排队消息 — 完整文本" },
   "queue.entryTitle": { en: "Queued message ({age})", "zh-CN": "排队消息 ({age})" },
-  "queue.editAction": { en: "( Edit text… )", "zh-CN": "( 编辑文本… )" },
-  "queue.editActionDesc": { en: "Rewrite this message before it is processed", "zh-CN": "在消息处理前重写内容" },
   "queue.cancelAction": { en: "( Cancel message )", "zh-CN": "( 取消消息 )" },
   "queue.viewAction": { en: "( View full text )", "zh-CN": "( 查看全文 )" },
   "queue.viewActionDesc": { en: "Show the complete message text", "zh-CN": "显示完整消息文本" },
@@ -671,36 +669,30 @@ export const STRINGS = {
   "queue.actionsHeader": { en: "Actions", "zh-CN": "操作" },
   "queue.sessionBusy": { en: " (session busy)", "zh-CN": " (会话忙碌)" },
   "queue.sessionIdle": { en: " (session idle)", "zh-CN": " (会话空闲)" },
-  "queue.listPlaceholder": { en: "Pick a queued message to edit or cancel (Esc closes)", "zh-CN": "选择排队消息进行编辑或取消 (Esc 关闭)" },
+  "queue.listPlaceholder": { en: "Pick a queued message to inspect, steer, or cancel (Esc closes)", "zh-CN": "选择排队消息进行查看、转向或取消 (Esc 关闭)" },
   "queue.cancelAll": { en: "( Cancel ALL queued messages )", "zh-CN": "( 取消全部排队消息 )" },
   "queue.cancelAllTitle": { en: "Cancel ALL queued messages", "zh-CN": "取消全部排队消息" },
-  "queue.editSaved": { en: "Edit saved — takes effect when this message's turn arrives.", "zh-CN": "编辑已保存 — 轮到该消息时生效。" },
-  "queue.editFailed": { en: "Edit failed: {err}", "zh-CN": "编辑失败: {err}" },
-  "queue.cancelled": { en: "Queued message cancelled.", "zh-CN": "排队消息已取消。" },
-  "queue.cancelFailed": { en: "Cancel failed: {err}", "zh-CN": "取消失败: {err}" },
-  "queue.allCancelled": { en: "All {count} queued message{s} cancelled.", "zh-CN": "已取消全部 {count} 条排队消息。" },
-  "queue.loadMessagesFailed": { en: "Failed to load messages (HTTP {status}).", "zh-CN": "加载消息失败 (HTTP {status})。" },
-  "queue.loadMessagesError": { en: "Failed to load messages: {err}", "zh-CN": "加载消息失败: {err}" },
-  "queue.deleteFailedHttp": { en: "Delete failed (HTTP {status}).", "zh-CN": "删除失败 (HTTP {status})。" },
-  "queue.deleteFailed": { en: "Delete failed: {err}", "zh-CN": "删除失败: {err}" },
-  "queue.busyStripFailed": { en: "Busy-strip failed: {err}", "zh-CN": "忙碌剥离失败: {err}" },
-  "queue.noTextParts": { en: "This message has no editable text parts.", "zh-CN": "此消息没有可编辑的文本部分。" },
-  "queue.emptyText": { en: "Empty text — use Cancel instead.", "zh-CN": "文本为空 — 请改用取消。" },
-  "queue.unchanged": { en: "Unchanged.", "zh-CN": "未更改。" },
   "queue.noQueuedMessages": { en: "No queued messages in this session.", "zh-CN": "此会话中没有排队消息。" },
   "queue.cancelResult": { en: "Cancelled {ok}/{total} queued messages.", "zh-CN": "已取消 {ok}/{total} 条排队消息。" },
   "queue.openSessionFirst": { en: "Open a session first — the queue is per-session.", "zh-CN": "请先打开一个会话 — 队列是按会话隔离的。" },
   "queue.noCurrentSession": { en: "No current session.", "zh-CN": "没有当前会话。" },
   "queue.attachmentOnly": { en: "[attachment only — no text]", "zh-CN": "[仅附件 — 无文本]" },
-  "queue.busyStripWarning": { en: "Session busy — attachment-only messages can't be stripped safely. Wait for idle, then cancel again.", "zh-CN": "会话忙碌 — 仅附件消息无法安全剥离。请等待空闲后再取消。" },
-  "queue.busyStripResult": { en: "Session busy — message content stripped (tombstone kept). It will not send instructions.", "zh-CN": "会话忙碌 — 消息内容已剥离（保留墓碑标记）。不会发送指令。" },
-  "queue.confirmCancelBusy": { en: "Cancel this queued message?\n\n\"{preview}\"\n\nThe session is BUSY: the message cannot be deleted right now — its content will be stripped (tombstone kept) instead.", "zh-CN": "取消此排队消息？\n\n\"{preview}\"\n\n会话忙碌：消息无法立即删除 — 其内容将被剥离（保留墓碑标记）。" },
-  "queue.confirmCancelIdle": { en: "Cancel this queued message?\n\n\"{preview}\"\n\nThe session is idle: the message will be deleted permanently.", "zh-CN": "取消此排队消息？\n\n\"{preview}\"\n\n会话空闲：消息将被永久删除。" },
-  "queue.confirmCancelAllBusy": { en: "Strip all {count} queued messages? The session is BUSY — contents are replaced with tombstones (messages stay visible but send no instructions).", "zh-CN": "剥离全部 {count} 条排队消息？会话忙碌 — 内容将被替换为墓碑标记（消息保持可见但不发送指令）。" },
+  "queue.loadMessagesError": { en: "Failed to load messages: {err}", "zh-CN": "加载消息失败: {err}" },
+  "queue.deleteFailed": { en: "Delete failed: {err}", "zh-CN": "删除失败: {err}" },
+  "queue.deliveryFailed": { en: "Delivery change failed: {err}", "zh-CN": "投递方式变更失败: {err}" },
+  "queue.deliveryChanged": { en: "Message {id} will now {delivery}.", "zh-CN": "消息 {id} 现在将以 {delivery} 方式投递。" },
+  "queue.deliverySteer": { en: "steer", "zh-CN": "转向" },
+  "queue.deliveryQueue": { en: "queue", "zh-CN": "排队" },
+  "queue.steerAction": { en: "( ➤ Steer — take priority at the next boundary )", "zh-CN": "( ➤ 转向 — 在下一安全边界优先投递 )" },
+  "queue.enqueueAction": { en: "( ⇣ Queue — keep delivery order )", "zh-CN": "( ⇣ 排队 — 保持投递顺序 )" },
+  "queue.steerActionDesc": { en: "Promote this message ahead of queued work", "zh-CN": "将此消息提升到排队工作之前" },
+  "queue.enqueueActionDesc": { en: "Keep this message in admission order", "zh-CN": "保持此消息的入队顺序" },
+  "queue.confirmCancelBusy": { en: "Cancel this queued message?\n\n\"{preview}\"\n\nThe session is BUSY — the pending item is removed before delivery.", "zh-CN": "取消此排队消息？\n\n\"{preview}\"\n\n会话忙碌 — 待投递项将在投递前移除。" },
+  "queue.confirmCancelIdle": { en: "Cancel this queued message?\n\n\"{preview}\"\n\nThe pending item will be removed permanently.", "zh-CN": "取消此排队消息？\n\n\"{preview}\"\n\n待投递项将被永久移除。" },
+  "queue.confirmCancelAllBusy": { en: "Cancel all {count} queued messages? The session is BUSY — each pending item is removed before delivery.", "zh-CN": "取消全部 {count} 条排队消息？会话忙碌 — 每个待投递项将在投递前移除。" },
   "queue.confirmCancelAllIdle": { en: "Delete all {count} queued messages permanently?", "zh-CN": "永久删除全部 {count} 条排队消息？" },
   "queue.noTextAttachmentsOnly": { en: "(no text — attachments only)", "zh-CN": "(无文本 — 仅附件)" },
-  "queue.stripAllCount": { en: "Strip/delete all {count} queued messages", "zh-CN": "剥离/删除全部 {count} 条排队消息" },
-  "queue.textPartCount": { en: "{count} text part(s)", "zh-CN": "{count} 个文本部分" },
+  "queue.stripAllCount": { en: "Remove all {count} queued messages", "zh-CN": "移除全部 {count} 条排队消息" },
   "queue.attachmentCount": { en: "{count} attachment(s)", "zh-CN": "{count} 个附件" },
 
   // ════════════════════════════════════════════════════════════════
@@ -1009,27 +1001,19 @@ export function tr(key: StringKey, params?: Record<string, string | number>): st
 }
 
 /**
- * Extract the first non-command token from a keymap command context —
- * i.e. the slash argument. `commandTokens` lists every known spelling of
- * the command itself ("my.cmd", "my", "/my") so it gets skipped. Same
- * semantics as usage.ts's parseSubcommand, generalized for any wizard.
+ * Extract the first slash-argument token from a v2 keymap command's raw
+ * input. v2 passes the prompt's trailing text (everything after the
+ * command name) to `run(input)`, so the command-name tokens `commandTokens`
+ * are only skipped defensively — a host variant that prepends the command
+ * name still yields the same result. Returns null when no argument exists.
  */
-export function parseSlashArgs(ctx: unknown, commandTokens: string[]): string | null {
+export function parseSlashArgs(input: string | undefined, commandTokens: string[]): string | null {
+  if (!input || input.trim() === "") return null
   const known = new Set(commandTokens.map((t) => t.toLowerCase()))
-  if (typeof ctx !== "object" || ctx === null) return null
-  const c = ctx as { input?: unknown; payload?: unknown; data?: { args?: unknown } }
-  const sources = [c.data?.args, c.payload, c.input]
-  for (const raw of sources) {
-    const parts = Array.isArray(raw) ? raw : [raw]
-    for (const item of parts) {
-      if (typeof item !== "string" || item.trim() === "") continue
-      const tokens = item.trim().split(/\s+/).map((t) => t.toLowerCase())
-      let i = 0
-      while (i < tokens.length && known.has(tokens[i])) i++
-      if (i < tokens.length) return tokens[i]
-    }
-  }
-  return null
+  const tokens = input.trim().split(/\s+/).map((t) => t.toLowerCase())
+  let i = 0
+  while (i < tokens.length && known.has(tokens[i])) i++
+  return i < tokens.length ? tokens[i] : null
 }
 
 // ─── Language switch (shared by all wizard main menus) ─────────────
@@ -1037,58 +1021,46 @@ export function parseSlashArgs(ctx: unknown, commandTokens: string[]): string | 
 export const SWITCH_LANG = "__switch_lang__"
 
 /**
- * Central language-switch action. With two registered locales it
- * toggles directly (one-click); with more it opens a locale picker.
- * `reopen` re-renders the caller's menu so it refreshes in the new
- * language. Adding a locale requires NO wizard-side changes.
+ * Central language-switch action (v2). With two registered locales it
+ * toggles directly (one-click); with more it opens a promise-based locale
+ * picker. Returns nothing meaningful — the caller's menu loop simply
+ * re-presents itself afterwards, which is what "reopen" did in v1.
+ * Adding a locale requires NO wizard-side changes.
  *
  * Usage:
  *   import { languageOption, switchLanguage, SWITCH_LANG } from "./i18n"
- *   // in options array:  languageOption(api)
- *   // in onSelect:
- *   if (option.value === SWITCH_LANG) {
- *     switchLanguage(api, () => showMainMenu(api))
- *     return
- *   }
+ *   // in options array:  languageOption()
+ *   // in the menu loop:
+ *   if (pick === SWITCH_LANG) { await switchLanguage(ctx); continue }
  */
-export function switchLanguage(api: TuiPluginApi, reopen: () => void): void {
+export async function switchLanguage(ctx: Context): Promise<void> {
   const apply = (code: Locale) => {
-    setLocale(api, code)
-    try {
-      api.ui.toast({ title: tr("common.langTitle"), message: tr("common.langSwitched", { lang: localeName(code) }), variant: "info" })
-    } catch { /* ui.toast unsupported */ }
-    reopen()
+    setLocale(code)
+    ctx.ui.toast.show({
+      title: tr("common.langTitle"),
+      message: tr("common.langSwitched", { lang: localeName(code) }),
+      variant: "info",
+    })
   }
   if (LOCALES.length <= 2) {
     apply(nextLocale())
     return
   }
-  let navigated = false
-  api.ui.dialog.replace(
-    () =>
-      api.ui.DialogSelect<Locale>({
-        title: tr("common.langTitle"),
-        placeholder: tr("common.langPickPlaceholder"),
-        options: LOCALES.map((l) => ({ title: l.name, value: l.code })),
-        current: currentLocale,
-        onSelect: (option) => {
-          navigated = true
-          apply(option.value)
-        },
-      }),
-    () => {
-      // Esc closes the picker — return to the caller's menu; the host
-      // clears the dialog first, so delay one beat before re-opening.
-      if (!navigated) setTimeout(reopen, 0)
-    },
-  )
+  const code = await ctx.ui.dialog.select<Locale>({
+    title: tr("common.langTitle"),
+    placeholder: tr("common.langPickPlaceholder"),
+    options: LOCALES.map((l) => ({ title: l.name, value: l.code })),
+    current: currentLocale,
+  })
+  // Esc on the picker = no change; the caller's menu loop re-opens either way.
+  if (code) apply(code)
 }
 
 /**
  * Menu option for language switching, inserted into any wizard's main
- * DialogSelect options array. Handle it via `switchLanguage` above.
+ * select dialog options array. Handle it via `switchLanguage` above.
  */
-export function languageOption(_api: TuiPluginApi): DialogOption<string> {
+export function languageOption(): DialogOption<string> {
   // two locales → show the direct toggle target; more → the picker decides
   const title = LOCALES.length <= 2
     ? `🌐 ${localeName(currentLocale)} → ${localeName(nextLocale())}`

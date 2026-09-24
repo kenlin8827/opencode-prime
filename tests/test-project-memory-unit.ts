@@ -34,7 +34,7 @@ import {
 } from "../plugins/project-memory/project-memory-config"
 import {
   COMMAND_NAME,
-  makeCommandHook,
+  makeCommandHandler,
   parseCaptureArgs,
   statusText,
   formatMtime,
@@ -46,7 +46,8 @@ import {
   buildFragment,
   makeSystemHook,
 } from "../plugins/project-memory/project-memory-system-inject"
-import { TOOL_NAME, makeCaptureTool } from "../plugins/project-memory/project-memory-tool"
+import { TOOL_NAME, memoryNoteTool } from "../plugins/project-memory/project-memory-tool"
+import { ProjectMemoryPlugin } from "../plugins/project-memory/project-memory"
 import { applySwitchesToConfigContent } from "../plugins/project-manager/project-manager-scaffold"
 import {
   ensureOcpGitignore,
@@ -70,27 +71,13 @@ function assertEq(actual: unknown, expected: unknown, label: string) {
   assert(actual === expected, `${label} (got ${JSON.stringify(actual)}, want ${JSON.stringify(expected)})`)
 }
 
-// session.get stub lets scopedForTool's parentID subagent detection run
-// (returns no parentID → "not a subagent"); required by the tool gate.
-const fakeClient = {
-  app: { log: async () => {} },
-  session: {
-    prompt: async () => {},
-    get: async () => ({ data: {} }),
-  },
+// V2 session view: synthetic() carries user-visible replies (v1 noReply
+// prompt); get() feeds scopedForCall's parentID subagent detection (no
+// parentID -> not a subagent).
+const fakeSession = {
+  synthetic: async () => {},
+  get: async () => ({}),
 } as any
-
-const handled = () => {
-  throw new Error("handled")
-}
-const runHandled = async (fn: () => Promise<unknown>) => {
-  try {
-    await fn()
-    return false
-  } catch (err) {
-    return String((err as Error).message) === "handled"
-  }
-}
 
 // ─── normalizeState ──────────────────────────────────────────────────
 
@@ -273,7 +260,13 @@ console.log("\n== system hook ==")
 writeFileSync(switchFile, `{ "projectMemory": "on" }`)
 writeFileSync(publicPath(), "- public L\n", "utf-8")
 rmSync(privatePath(), { force: true })
-const systemHook = makeSystemHook(fakeClient)
+const systemHookV2 = makeSystemHook(fakeSession)
+// Adapter preserving the v1 (input, output) call sites: the SAME system
+// array reference is handed to the v2 single-event hook, so in-place
+// mutations stay visible to the assertions.
+const systemHook = async (input: { sessionID?: string }, output: { system: string[] }) => {
+  await systemHookV2({ sessionID: input.sessionID, system: output.system })
+}
 
 const stPub = { system: ["Base."] }
 await systemHook({ sessionID: undefined }, stPub)
@@ -354,62 +347,73 @@ assertEq(
   "whitespace inside the lesson body is not collapsed",
 )
 
-const cmdHook = makeCommandHook(fakeClient, handled)
-assert(!(await runHandled(() => cmdHook({ command: "other", arguments: "x" }))), "non-/memory commands ignored")
+// V2: the plugin entry (editor.add) filters by command name — the handler
+// itself is always /memory. Registration is asserted via the plugin setup.
+{
+  const added: Array<{ name: string; description?: string }> = []
+  const toolAdds: Array<{ name: string }> = []
+  const ctx: any = {
+    location: { directory: process.cwd() },
+    session: { hook: async () => ({ dispose: async () => {} }) },
+    command: { transform: async (cb: any) => { cb({ add: (d: any) => added.push(d) }); return { dispose: async () => {} } } },
+    tool: { transform: async (cb: any) => { cb({ add: (d: any) => toolAdds.push(d) }); return { dispose: async () => {} } } },
+  }
+  await ProjectMemoryPlugin.setup(ctx)
+  assert(added.some((c) => c.name === COMMAND_NAME), "v2 entry registers /memory via command transform")
+  assert((added.find((c) => c.name === COMMAND_NAME)?.description ?? "").includes("memory"), "command description present")
+  assert(toolAdds.some((t) => t.name === TOOL_NAME), "v2 entry registers memory_note via tool transform")
+}
 
 let replied = ""
-const promptClient = {
-  app: { log: async () => {} },
-  session: {
-    prompt: async ({ body }: any) => {
-      replied = body.parts[0].text
-    },
-  },
+// Synthetic-capturing session: v2 replies ride session.synthetic({text}).
+const replySession = {
+  synthetic: async ({ text }: any) => { replied = text },
+  get: async () => ({}),
 } as any
-const cmdHook2 = makeCommandHook(promptClient, handled)
+const cmdHook2 = makeCommandHandler(replySession)
 
 // Default → public
 rmSync(publicPath(), { force: true })
 rmSync(privatePath(), { force: true })
-await runHandled(() => cmdHook2({ command: COMMAND_NAME, arguments: 'note "public rule"', sessionID: "s1" }))
+await cmdHook2({ arguments: 'note "public rule"', sessionID: "s1" })
 assert(replied.includes("Noted"), "public note confirms")
 assert(readFileSync(publicPath(), "utf-8").includes("public rule"), "public note writes to public.md")
 assert(!existsSync(privatePath()), "public note does NOT touch private.md")
 
 // --private → private
-await runHandled(() => cmdHook2({ command: COMMAND_NAME, arguments: 'note --private "private note"', sessionID: "s1" }))
+await cmdHook2({ arguments: 'note --private "private note"', sessionID: "s1" })
 assert(replied.includes("Noted"), "private note confirms")
 assert(readFileSync(privatePath(), "utf-8").includes("private note"), "private note writes to private.md")
 assert(!readFileSync(privatePath(), "utf-8").includes('"private'), "surrounding quotes stripped")
 
 // Empty note → usage hint
-await runHandled(() => cmdHook2({ command: COMMAND_NAME, arguments: "note", sessionID: "s1" }))
+await cmdHook2({ arguments: "note", sessionID: "s1" })
 assert(replied.includes("Nothing to note"), "empty note → usage hint")
 
 // Status reports both scopes
-await runHandled(() => cmdHook2({ command: COMMAND_NAME, arguments: "status", sessionID: "s1" }))
+await cmdHook2({ arguments: "status", sessionID: "s1" })
 assert(replied.includes("gate:"), "status reports gate")
 assert(replied.includes("public:") && replied.includes("private:"), "status reports both scopes")
 
 // /memory show — preview what's injected
 rmSync(publicPath(), { force: true })
 rmSync(privatePath(), { force: true })
-const showEmpty = (await runHandled(() => cmdHook2({ command: COMMAND_NAME, arguments: "show", sessionID: "s1" })))
-  ? replied : ""
+await cmdHook2({ arguments: "show", sessionID: "s1" })
+const showEmpty = replied
 assert(showEmpty.includes("No memory captured yet"), "show with empty files → 'No memory captured yet'")
 assert(showEmpty.includes("public.md") && showEmpty.includes("private.md"), "show empty mentions both file paths")
 
 writeFileSync(publicPath(), "# Project memory — public lessons (committed)\n\n- [2026-09-12] rule A\n- [2026-09-12] rule B\n", "utf-8")
-const showPublicOnly = (await runHandled(() => cmdHook2({ command: COMMAND_NAME, arguments: "show", sessionID: "s1" })))
-  ? replied : ""
+await cmdHook2({ arguments: "show", sessionID: "s1" })
+const showPublicOnly = replied
 assert(showPublicOnly.includes("=== Public"), "show with public only → Public section header")
 assert(showPublicOnly.includes("rule A") && showPublicOnly.includes("rule B"), "show lists public entries")
 assert(showPublicOnly.includes("2 entries"), "show counts public entries")
 assert(!showPublicOnly.includes("=== Private"), "show with public only omits Private section header")
 
 writeFileSync(privatePath(), "# Project memory — private notes (gitignored)\n\n- [2026-09-12] note P\n", "utf-8")
-const showBoth = (await runHandled(() => cmdHook2({ command: COMMAND_NAME, arguments: "show", sessionID: "s1" })))
-  ? replied : ""
+await cmdHook2({ arguments: "show", sessionID: "s1" })
+const showBoth = replied
 assert(showBoth.includes("=== Public") && showBoth.includes("=== Private"), "show with both → both section headers")
 assert(showBoth.includes("rule A") && showBoth.includes("note P"), "show lists both scope contents")
 assert(showBoth.includes("last edited"), "show includes last-edited timestamp")
@@ -436,7 +440,7 @@ writeFileSync(join(tmp, "ocp.json"), `{ "language": "zh-CN" }`)
 const zhStatus = statusText()
 assert(zhStatus.includes("gate: on") && zhStatus.includes("ACTIVE"), "zh status keeps locale-invariant tokens")
 assert(zhStatus.includes("公开") && zhStatus.includes("私人"), "zh status prose shows public/private in Chinese")
-await runHandled(() => cmdHook2({ command: COMMAND_NAME, arguments: 'note --private "中文笔记"', sessionID: "s1" }))
+await cmdHook2({ arguments: 'note --private "中文笔记"', sessionID: "s1" })
 assert(replied.includes("已记入"), "zh private note confirms in Chinese")
 writeFileSync(join(tmp, "ocp.json"), `{ "language": "en" }`)
 
@@ -451,7 +455,7 @@ assert(absent.includes('"projectMemory": "on"'), "absent key → appended before
 // ─── memory_note tool (2-scope) ───────────────────────────────────────
 
 console.log("\n== memory_note tool ==")
-const captureTool = makeCaptureTool(fakeClient)
+const captureTool = memoryNoteTool(fakeSession)
 rmSync(publicPath(), { force: true })
 rmSync(privatePath(), { force: true })
 
@@ -462,11 +466,11 @@ assert(/scope.*public.*private/is.test(captureTool.description), "description ex
 assert(/confidence/i.test(captureTool.description), "description explains confidence")
 assert(/public\.md/.test(captureTool.description) && /private\.md/.test(captureTool.description), "description names both files")
 
-const mockContext = { metadata: () => {} } as any
+const mockContext = {} as any
 
 // Default scope = public
 const r1 = await captureTool.execute({ lesson: "use bun not node", confidence: "high" }, mockContext)
-assert(typeof r1 === "object" && r1.title.includes("public") && r1.title.includes("high"), "default scope=public, confidence=high")
+assert(typeof r1 === "object" && r1.metadata.title.includes("public") && r1.metadata.title.includes("high"), "default scope=public, confidence=high")
 assert(typeof r1 === "object" && r1.metadata.path === publicPath(), "default-scope metadata.path is public.md")
 assert(typeof r1 === "object" && r1.metadata.scope === "public", "metadata.scope = public")
 assert(typeof r1 === "object" && r1.metadata.confidenceRank === 3, "rank = 3 for high")
@@ -474,7 +478,7 @@ assert(readFileSync(publicPath(), "utf-8").includes("use bun not node"), "public
 
 // Explicit private scope
 const r2 = await captureTool.execute({ lesson: "VPN slow", scope: "private", confidence: "medium" }, mockContext)
-assert(typeof r2 === "object" && r2.title.includes("private"), "explicit scope=private")
+assert(typeof r2 === "object" && r2.metadata.title.includes("private"), "explicit scope=private")
 assert(typeof r2 === "object" && r2.metadata.path === privatePath(), "private metadata.path is private.md")
 assert(typeof r2 === "object" && r2.metadata.scope === "private", "metadata.scope = private")
 assert(typeof r2 === "object" && r2.metadata.confidenceRank === 2, "rank = 2 for medium")
@@ -482,7 +486,7 @@ assert(readFileSync(privatePath(), "utf-8").includes("VPN slow"), "private entry
 
 // Low confidence still accepted (no hard floor)
 const r3 = await captureTool.execute({ lesson: "hunch", scope: "public", confidence: "low" }, mockContext)
-assert(typeof r3 === "object" && r3.title.includes("low"), "low confidence accepted")
+assert(typeof r3 === "object" && r3.metadata.title.includes("low"), "low confidence accepted")
 assert(typeof r3 === "object" && r3.metadata.confidenceRank === 1, "rank = 1 for low")
 
 assertEq(TOOL_NAME, "memory_note", "tool id is stable")
@@ -493,8 +497,8 @@ assertEq(TOOL_NAME, "memory_note", "tool id is stable")
 const ctxUtility = { agent: "title-generator", metadata: () => {}, sessionID: "utility-sess" } as any
 rmSync(publicPath(), { force: true })
 const rUtil = await captureTool.execute({ lesson: "should never be saved", scope: "public" }, ctxUtility)
-assert(typeof rUtil === "object" && rUtil.title.includes("denied"), "utility agent → title contains 'denied'")
-assert(typeof rUtil === "object" && rUtil.output.includes("not available"), "utility agent → output explains denial")
+assert(typeof rUtil === "object" && rUtil.metadata.title.includes("denied"), "utility agent → title contains 'denied'")
+assert(typeof rUtil === "object" && rUtil.content.includes("not available"), "utility agent → output explains denial")
 assert(typeof rUtil === "object" && rUtil.metadata.denied === true, "utility agent → metadata.denied = true")
 assert(typeof rUtil === "object" && rUtil.metadata.agent === "title-generator", "utility agent → metadata.agent recorded")
 assert(!existsSync(publicPath()), "utility agent → no file written (gate prevented append)")
@@ -502,46 +506,46 @@ assert(!existsSync(publicPath()), "utility agent → no file written (gate preve
 // Title agent name variant → also denied (substring match)
 const ctxTitle = { agent: "title", metadata: () => {}, sessionID: "title-sess" } as any
 const rTitle = await captureTool.execute({ lesson: "x" }, ctxTitle)
-assert(typeof rTitle === "object" && rTitle.title.includes("denied"), "'title' agent name also denied")
+assert(typeof rTitle === "object" && rTitle.metadata.title.includes("denied"), "'title' agent name also denied")
 
 // Whitespace-only lesson → tool try/catch surfaces the sanitize throw
 rmSync(publicPath(), { force: true })
 const rEmpty = await captureTool.execute({ lesson: "  \n\t " }, mockContext)
-assert(typeof rEmpty === "object" && rEmpty.title.includes("failed"), "whitespace-only lesson → capture fails")
+assert(typeof rEmpty === "object" && rEmpty.metadata.title.includes("failed"), "whitespace-only lesson → capture fails")
 assert(!existsSync(publicPath()), "whitespace-only lesson → no file written")
 
 // Embedded-newline lesson via the tool → still exactly one bullet on disk
 const rForge = await captureTool.execute({ lesson: "rule A\n- [2020-01-01] rule B" }, mockContext)
-assert(typeof rForge === "object" && rForge.title.includes("public"), "newline lesson accepted by tool")
+assert(typeof rForge === "object" && rForge.metadata.title.includes("public"), "newline lesson accepted by tool")
 assertEq(countEntries(readFileSync(publicPath(), "utf-8")), 1, "newline lesson → single bullet persisted")
 
 // Client threading: non-title agent with sessionID triggers scopedForTool's
 // parentID lookup (session.get) — proves `client` reached the gate.
 let getCalls = 0
-const countingClient = { ...fakeClient, session: { ...fakeClient.session, get: async () => { getCalls++; return { data: {} } } } }
-const countingTool = makeCaptureTool(countingClient)
+const countingSession = { ...fakeSession, get: async () => { getCalls++; return {} } }
+const countingTool = memoryNoteTool(countingSession)
 const ctxPlain = { agent: "some-agent", metadata: () => {}, sessionID: "plain-sess" } as any
 await countingTool.execute({ lesson: "client path ran" }, ctxPlain)
-assert(getCalls > 0, "tool gate invoked client.session.get (parentID subagent detection active)")
+assert(getCalls > 0, "tool gate invoked session.get (parentID subagent detection active)")
 
 // Lite agent → allowed (default behavior)
 const ctxLite = { agent: "lite", metadata: () => {}, sessionID: "lite-sess" } as any
 rmSync(publicPath(), { force: true })
 const rLite = await captureTool.execute({ lesson: "lite allowed this" }, ctxLite)
-assert(typeof rLite === "object" && rLite.title.includes("public"), "lite agent → allowed, title is success")
+assert(typeof rLite === "object" && rLite.metadata.title.includes("public"), "lite agent → allowed, title is success")
 assert(readFileSync(publicPath(), "utf-8").includes("lite allowed this"), "lite agent → entry written")
 
 // Primary agent (build / code / etc., non-title non-lite) → allowed
 const ctxBuild = { agent: "build", metadata: () => {}, sessionID: "build-sess" } as any
 rmSync(publicPath(), { force: true })
 const rBuild = await captureTool.execute({ lesson: "primary build agent allowed" }, ctxBuild)
-assert(typeof rBuild === "object" && rBuild.title.includes("public"), "build (primary) agent → allowed")
+assert(typeof rBuild === "object" && rBuild.metadata.title.includes("public"), "build (primary) agent → allowed")
 assert(readFileSync(publicPath(), "utf-8").includes("primary build agent allowed"), "primary agent → entry written")
 
 // No agent field (fail-open) → allowed
 rmSync(publicPath(), { force: true })
 const rNoCtx = await captureTool.execute({ lesson: "no-ctx allowed" }, { metadata: () => {} } as any)
-assert(typeof rNoCtx === "object" && rNoCtx.title.includes("public"), "no ctx.agent → fail-open allowed")
+assert(typeof rNoCtx === "object" && rNoCtx.metadata.title.includes("public"), "no ctx.agent → fail-open allowed")
 
 // ─── §3 migration: memory rename + merge-append (pin e) ──────────────
 

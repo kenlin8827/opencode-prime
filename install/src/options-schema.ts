@@ -43,7 +43,8 @@ export function parseDynamicOptionsSchema(content: string, repoDir?: string): Dy
     // would list subagent-only prompts (mode: "subagent") that can never be
     // the primary agent. "all" also qualifies as selectable.
     const template = readJsoncFile<Record<string, any>>(path.join(repoDir, 'opencode.template.jsonc'));
-    const agentMap = template?.agent;
+    // V2-native `agents` (fallback keeps v1-shaped repo forks working).
+    const agentMap = template?.agents ?? template?.agent;
     if (agentMap && typeof agentMap === 'object') {
       schema.defaultAgent.choices = Object.entries(agentMap)
         .filter(([, def]) => {

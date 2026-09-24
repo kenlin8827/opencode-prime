@@ -1,5 +1,5 @@
 /**
- * Hook: tool.execute.before — the secret-file gate.
+ * Hook: tool execute.before — the secret-file gate (v2 plugin API).
  *
  * When the guard is on for this project, blocks tool calls that would put
  * secret-bearing .env* contents into the LLM context:
@@ -14,12 +14,12 @@
  *
  * `.env.example` is always allowed — it is the sanctioned scaffold.
  *
- * NOT wrapped in safeHook — throws are the blocking mechanism and must
- * propagate. All predicates are null-safe, so unexpected errors are
- * unlikely.
+ * v2 failure contract: only execute.before may reject, and only with a
+ * Tool.Error-shaped throw (the deny path). Everything else — a guard
+ * defect, a broken predicate — must fail open silently-with-log, because
+ * a hook defect aborts the whole request flow, not just the one call.
  */
 
-import type { PluginInput } from "@opencode-ai/plugin"
 import { extractBashCommand } from "../adr/adr-runtime"
 import { isEnabled } from "./env-guard-config"
 import {
@@ -31,32 +31,66 @@ import {
 
 const FILE_TOOLS = new Set(["read", "edit", "write", "patch", "multiedit"])
 
-export function makeToolGuardHook(client: PluginInput["client"]) {
-  const log = (level: "info" | "warn", message: string) =>
-    client.app.log({ body: { service: "env-guard", level, message } })
+/**
+ * The v2 deny shape: a Tool.Error-tagged rejection (mirrors
+ * @opencode/schema/tool Tool.Error: message + optional metadata). Thrown
+ * from execute.before the tool never runs; the message is what the model
+ * sees as the failed call.
+ */
+export class ToolRejection extends Error {
+  readonly _tag = "Tool.Error" as const
+  readonly metadata: Record<string, unknown> | undefined
 
-  // NOT wrapped in safeHook — intentional throws must propagate to block
-  // tool execution. safeHook would swallow them and defeat the guard.
-  return async (input: { tool?: string }, output: { args?: unknown }) => {
+  constructor(message: string, metadata?: Record<string, unknown>) {
+    super(message)
+    this.metadata = metadata
+  }
+}
+
+/** Structural slice of the v2 execute.before event the guard consumes. */
+export interface ToolBeforeEvent {
+  readonly tool: string
+  readonly input: unknown
+}
+
+/**
+ * The block reason for one tool call, or null to let it through.
+ * Pure decision — the hook wraps this so an unexpected defect can only
+ * fail open, never masquerade as a deny.
+ */
+function classify(event: ToolBeforeEvent): string | null {
+  const tool = String(event.tool ?? "").toLowerCase()
+
+  if (FILE_TOOLS.has(tool) || tool === "grep") {
+    const path = extractFilePath(event.input)
+    if (path && isSensitiveEnvPath(path)) return `${tool} on secret file: ${path}`
+    return null
+  }
+
+  if (tool === "bash" || tool === "shell") {
+    const command = extractBashCommand(event.input)
+    if (command && bashLeaksEnv(command)) return "shell command reading/copying a secret .env file"
+  }
+
+  return null
+}
+
+export function makeToolGuardHook() {
+  // v2 has no structured plugin log API (v1 client.app.log is gone);
+  // server-side console is the documented replacement.
+  return async (event: ToolBeforeEvent): Promise<void> => {
     if (!isEnabled()) return
 
-    const tool = String(input?.tool ?? "").toLowerCase()
-
-    if (FILE_TOOLS.has(tool) || tool === "grep") {
-      const path = extractFilePath(output?.args)
-      if (path && isSensitiveEnvPath(path)) {
-        await log("warn", `blocked ${tool} on secret file: ${path}`)
-        throw new Error(blockMessage(`${tool} on ${path}`))
-      }
+    let reason: string | null
+    try {
+      reason = classify(event)
+    } catch (err) {
+      console.warn(`[env-guard] check failed open: ${String(err)}`)
       return
     }
+    if (!reason) return
 
-    if (tool === "bash" || tool === "shell") {
-      const command = extractBashCommand(output?.args)
-      if (command && bashLeaksEnv(command)) {
-        await log("warn", `blocked bash leaking secret file: "${command}"`)
-        throw new Error(blockMessage("shell command reading/copying a secret .env file"))
-      }
-    }
+    console.warn(`[env-guard] blocked ${reason}`)
+    throw new ToolRejection(blockMessage(reason))
   }
 }

@@ -1,5 +1,9 @@
+import { mkdtempSync, mkdirSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import {
   MARKER,
+  buildProfile,
   mcpEnabledFrom,
   profileKey,
   renderProfileBlock,
@@ -27,8 +31,31 @@ assert(block.includes("CodeGraph=ready"), "indexed CodeGraph is a compact ready 
 assert(block.includes("GitNexus=unavailable"), "absent GitNexus is an explicit unavailable capability")
 assert(block.includes("tgrep=ready"), "ready tgrep is exposed separately as a text index")
 assert(block.includes(MARKER), "renderProfileBlock emits the [PROJECT CAPABILITIES] marker")
-assert(mcpEnabledFrom('{"mcp":{"codegraph":{"enabled":false}}}', "codegraph") === false, "explicit disabled MCP is unavailable")
+// V2 enablement shape: servers live under `mcp.servers`, the flag is
+// `disabled`, and only an explicit `disabled: true` turns a backend off.
+// (The plugin-side `ctx.mcp.list()` cannot be the source: measured on
+// v2.0.15 it returns `{ data: [] }` for every call shape a plugin can make.)
+assert(mcpEnabledFrom('{"mcp":{"servers":{"codegraph":{"disabled":true}}}}', "codegraph") === false, "explicit disabled:true is unavailable")
+assert(mcpEnabledFrom('{"mcp":{"servers":{"codegraph":{"disabled":false}}}}', "codegraph") === true, "explicit disabled:false is available")
+assert(mcpEnabledFrom('{"mcp":{"servers":{"codegraph":{"type":"local"}}}}', "codegraph") === true, "configured without `disabled` is available (v2 default false)")
 assert(mcpEnabledFrom('{"mcp":{}}', "codegraph") === false, "unconfigured MCP is unavailable")
+assert(mcpEnabledFrom('{"mcp":{"codegraph":{"enabled":true}}}', "codegraph") === false, "a v1-shaped document is not read as enabled")
+
+// An indexed backend is ready only when the index exists AND the server is
+// enabled; Serena is live LSP, so enablement alone is enough. The enablement
+// reader is injected so this stays deterministic (no home-config dependency).
+const sandbox = mkdtempSync(join(tmpdir(), "prof-cap-"))
+const on = (name: string) => name === "codegraph" || name === "serena"
+try {
+  assert(buildProfile(sandbox, on).codegraph === "unavailable", "enabled but no index dir is not ready")
+  mkdirSync(join(sandbox, ".codegraph"))
+  assert(buildProfile(sandbox, on).codegraph === "ready", "enabled + index dir is ready")
+  assert(buildProfile(sandbox, () => false).codegraph === "unavailable", "index dir without enablement is not ready")
+  assert(buildProfile(sandbox, on).serena === "ready", "serena needs only enablement (live LSP)")
+  assert(buildProfile(sandbox, on).gitnexus === "unavailable", "unenabled gitnexus stays unavailable")
+} finally {
+  rmSync(sandbox, { recursive: true, force: true })
+}
 
 // ── profileKey: stable hash for equal profiles, distinct for different ──
 //

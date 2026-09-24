@@ -1,36 +1,24 @@
 /**
  * Project Wizard — TUI dialog-based project initialization and switch configuration.
  *
- * Phase 1A refactor (2026-09-11):
- *   - First screen is now a group picker, not a flat action list.
- *   - Each group has its own sub-wizard; cross-group actions go through showAlertModal.
- *   - Helpers (toast / showAlertModal / projectRoot / badge formatters / report lines)
- *     extracted to `./_wizard-helpers.ts`; not a separate framework directory by design.
- *   - Phase 1B refactor (2026-09-11): "git-workflow" group renamed and split into
- *     three meaningful units:
- *       - `projectGuards`→ sub-dialog (envGuard + adrGuard, on/off guards)
- *       - `adr`          → sub-dialog (suite quick-pick at top: standard /
- *                          evolution, then adrDir + adrLayout + ADL fields:
- *                          adrStyle / adrNumbering / adrGovernance)
- *       - `autoAdvisor`  → inline row on the main menu (1 field, single value)
- *   - Phase 1C refactor (2026-09-11): responsibility separation + UX scaling.
- *     1. Single-field groups (`projectMemory`, `autoAdvisor`) stay as
- *        INLINE rows on the main menu. Picking a value auto-saves in
- *        one step (no sub-dialog, no explicit Save button) via
- *        `saveInlineField`. Multi-step sub-dialog flow was tried and
- *        abandoned as too deep (5 clicks for one value).
- *     2. Multi-field groups (`projectGuards`, `adr`) open a sub-dialog
- *        with a "💾 Save & Apply Changes" button so users can
- *        accumulate multiple field edits before persisting.
- *     3. The main-menu button is now "🏗 Initialize / Update Project
- *        Skeleton" — its responsibility is the FILE skeleton
- *        (AGENTS.md, docs/git-commits.md, .ocp/ocp.json structure,
- *        one-shot legacy migration, backends, hooks). It
- *        is NOT a save-switches action.
- *     4. Both save flows (`saveInlineField`, `runSaveSwitches`) call
- *        `updateSwitches` → scaffold layer's `updateSwitchesOnly`:
- *        runs the §3 legacy migration, then writes only the switch
- *        values to .ocp/ocp.json, never touches the other baseline files.
+ * v2 migration: dialog chains are async control flow over the promise
+ * based `ctx.ui.dialog` API (select/confirm/alert/prompt). Each menu
+ * level is an async loop — a pick dispatches, Esc returns to the parent
+ * loop, and re-rendering happens by continuing the loop, replacing v1's
+ * `dialog.replace` chains + `navigated` flags + setTimeout deferrals.
+ *
+ * History (kept for context):
+ *   - Phase 1A (2026-09-11): group picker first screen; helpers extracted
+ *     to `./_wizard-helpers.ts`.
+ *   - Phase 1B: "git-workflow" split into projectGuards / adr sub-dialogs
+ *     and the inline autoAdvisor row.
+ *   - Phase 1C: responsibility separation — single-field groups
+ *     (`projectMemory`, `autoAdvisor`) are INLINE rows on the main menu
+ *     with one-step auto-save (`saveInlineField`); multi-field groups
+ *     (`projectGuards`, `adr`) open a sub-dialog with "💾 Save & Apply
+ *     Changes" (`runSaveSwitches`, config-only writes). The main-menu
+ *     button is the FILE skeleton (AGENTS.md, docs/git-commits.md,
+ *     .ocp/ocp.json, one-shot legacy migration, backends, hooks).
  *     Schema files: `plugins/tui/wizard-schema/{project-memory,
  *     auto-advisor,project-guards,adr}.json`.
  *     `.ocp/ocp.json` is the ONLY runtime source of truth for switch
@@ -38,21 +26,20 @@
  *     describe the wizard picker UI.
  *
  * Menu selection flow:
- *   - Each group opens a dedicated DialogSelect dialog with clear choices.
- *   - The OpenCode TUI host provides built-in type-to-filter; we keep that on
- *     (no skipFilter) so power users can jump by typing the first letters.
- *     Arrow-key navigation still works for users who prefer discovery.
- *   - When the project already exists, loads existing configuration and echoes
- *     the active/commented switches in the dialog.
+ *   - Each group is a select dialog with clear choices; the host provides
+ *     built-in type-to-filter (kept on).
+ *   - When the project already exists, loads existing configuration and
+ *     echoes the active/commented switches in the dialog.
  *
- * Registered via `tui.json` → `plugin` array.
+ * Registered as a CLI-only plugin in `cli.json` (v2 TUI plugin list).
  */
 
 /// <reference types="bun" />
-import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
+import type { Context } from "@opencode/plugin/tui/context"
+import { Plugin } from "@opencode/plugin/tui"
 import { migrateLegacyProjectArtifacts, type MigrationReport } from "../shared/opencode-prime"
 import { tr, initI18n, languageOption, switchLanguage, SWITCH_LANG, type DialogOption, type StringKey } from "./i18n"
-import { CONFIG_REL, getProjectDir, setProjectDir } from "../project-manager/project-manager-config"
+import { CONFIG_REL, setProjectDir } from "../project-manager/project-manager-config"
 import {
   ADR_SUITES,
   normalizeAdrGovernance,
@@ -68,7 +55,7 @@ import type { ProjectSwitches } from "../project-manager/project-manager-scaffol
 import {
   projectRoot,
   toast,
-  showAlertModal,
+  showBusyModal,
   backendLine,
   initReport,
   breadcrumbHeader,
@@ -172,11 +159,11 @@ export interface WizardState {
   currentSelection?: string
 }
 
-export function startProjectWizard(
-  api: TuiPluginApi,
+export async function startProjectWizard(
+  ctx: Context,
   stateOverride?: WizardState,
-): void {
-  const rootDir = projectRoot(api)
+): Promise<void> {
+  const rootDir = projectRoot(ctx)
   setProjectDir(rootDir)
 
   // B1 (ADR 0004 §3): run the idempotent migration BEFORE detecting switch
@@ -187,14 +174,14 @@ export function startProjectWizard(
   // §3.5 visibility: the report rides a toast; a no-op open stays silent.
   const openMigration = migrateLegacyProjectArtifacts(rootDir)
   const migNote = migrationSuffix(openMigration).trim().replace(/\n+/g, " ")
-  if (migNote) toast(api, migNote, "info")
+  if (migNote) toast(ctx, migNote, "info")
 
   const detected = detectCurrentSwitches(rootDir)
   const isExisting = stateOverride ? stateOverride.exists : detected.exists
   const configRel = stateOverride ? stateOverride.configRelPath : detected.configRelPath
   const current: ProjectSwitches = stateOverride ? stateOverride.switches : detected.switches
 
-  showGroupMenu(api, {
+  await showGroupMenu(ctx, {
     switches: current,
     exists: isExisting,
     configRelPath: configRel,
@@ -204,14 +191,8 @@ export function startProjectWizard(
 
 // ─── Group menu (Level 1) ────────────────────────────────────────────
 
-function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
+function buildMenuItems(ctx: Context, state: WizardState): DialogOption<string>[] {
   const { switches: current, exists: isExisting, configRelPath: configRel } = state
-  const activeSelection = state.currentSelection ?? "__action_init__"
-
-  const dialogTitle = isExisting
-    ? tr("project.setupExisting", { config: configRel ?? CONFIG_REL })
-    : tr("project.newProject")
-
   const skeletonHeader = tr("project.skeletonHeader")
   const conventionsHeader = tr("project.conventionsHeader")
   const maintenanceHeader = tr("project.maintenanceHeader")
@@ -223,7 +204,7 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
   const projectGuardsSummary = `env:${current.envGuard ?? "def"} · adr:${current.adrGuard ?? "def"}`
   const adrSummary = `layout:${current.adrLayout ?? "def"} · style:${current.adrStyle ?? "def"} · gov:${current.adrGovernance ?? "def"}`
 
-  const dprintPlan = planDprintSetup(projectRoot(api))
+  const dprintPlan = planDprintSetup(projectRoot(ctx))
   const toolingSummary = dprintPlan.status === "eligible"
     ? tr("project.tooling.summaryEligible")
     : tr("project.tooling.summaryNotEligible")
@@ -235,7 +216,7 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
   const memoryInlineTitle = `${memoryField.icon} ${tr("project.groups.projectMemory")}: ${badgeFor(memoryField, current.projectMemory)}`
   const advisorInlineTitle = `${advisorField.icon} ${tr("project.groups.autoAdvisor")}: ${badgeFor(advisorField, current.autoAdvisorMode)}`
 
-  const items: DialogOption<string>[] = [
+  return [
     {
       title: isExisting ? tr("project.applyUpdate") : tr("project.applyInit"),
       value: "__action_init__",
@@ -258,7 +239,7 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
     },
     {
       title: `🛡️ ${tr("project.groups.projectGuards")}`,
-      value: "__group_project_guards__",
+      value: "__group_projectGuards__",
       description: projectGuardsSummary,
       category: conventionsHeader,
     },
@@ -292,300 +273,178 @@ function showGroupMenu(api: TuiPluginApi, state: WizardState): void {
       description: tr("project.exitWizardDesc"),
       category: systemHeader,
     },
-    { ...languageOption(api), category: systemHeader },
+    { ...languageOption(), category: systemHeader },
   ]
-
-  let navigated = false
-  api.ui.dialog.replace(
-    () =>
-      api.ui.DialogSelect<string>({
-        title: dialogTitle,
-        placeholder: tr("project.firstScreenPlaceholder"),
-        current: activeSelection,
-        options: items,
-        onSelect: async (option) => {
-          navigated = true
-          switch (option.value) {
-            case SWITCH_LANG: {
-              switchLanguage(api, () => showGroupMenu(api, state))
-              return
-            }
-            case "__action_exit__": {
-              api.ui.dialog.clear()
-              break
-            }
-            case "__action_init__": {
-              await runInitOrUpdate(api, state, projectRoot(api), isExisting)
-              break
-            }
-            case "__action_sync__": {
-              runSyncAction(api, state, projectRoot(api))
-              break
-            }
-            case "__action_index__": {
-              await runIndexRefresh(api, state)
-              break
-            }
-            case "__field_projectMemory": {
-              renderSchemaField(
-                api,
-                memoryField,
-                current.projectMemory,
-                (newValue) => {
-                  const prev = current.projectMemory
-                  current.projectMemory = newValue as ProjectSwitches["projectMemory"]
-                  saveInlineField(
-                    api,
-                    state,
-                    projectRoot(api),
-                    "projectMemory",
-                    "__field_projectMemory",
-                  ).catch(() => {
-                    // Revert the optimistic local mutation so the badge on
-                    // re-entry reflects what is actually on disk.
-                    current.projectMemory = prev
-                  })
-                },
-                () => showGroupMenu(api, { ...state, currentSelection: "__field_projectMemory" }),
-              )
-              break
-            }
-            case "__field_autoAdvisorMode": {
-              renderSchemaField(
-                api,
-                advisorField,
-                current.autoAdvisorMode,
-                (newValue) => {
-                  const prev = current.autoAdvisorMode
-                  current.autoAdvisorMode = newValue as ProjectSwitches["autoAdvisorMode"]
-                  saveInlineField(
-                    api,
-                    state,
-                    projectRoot(api),
-                    "autoAdvisorMode",
-                    "__field_autoAdvisorMode",
-                  ).catch(() => {
-                    current.autoAdvisorMode = prev
-                  })
-                },
-                () => showGroupMenu(api, { ...state, currentSelection: "__field_autoAdvisorMode" }),
-              )
-              break
-            }
-            case "__group_project_guards__": {
-              showSchemaGroup(api, state, "projectGuards", PROJECT_GUARDS_SCHEMA)
-              break
-            }
-            case "__group_adr__": {
-              showSchemaGroup(api, state, "adr", ADR_SCHEMA)
-              break
-            }
-            case "__group_tooling__": {
-              showToolingGroup(api, state)
-              break
-            }
-          }
-        },
-      }),
-      () => {
-      if (navigated) return
-      navigated = true
-      api.ui.dialog.clear()
-    },
-  )
 }
-
 
 /**
- * Replaces the current dialog with a busy DialogAlert placeholder. The
- * host renders a ⏳ spinner and busyText in the footer, and swallows every
- * key until the wizard replaces the frame with a result alert. Use for
- * async operations that take more than a tick (init, dprint setup, index
- * refresh) — otherwise the menu sits there with no feedback.
- *
- * Pair pattern:
- *
- *   showBusyModal(api, { title, message, busyText })
- *   try {
- *     const result = await heavyOp(...)
- *     showAlertModal(api, { title, message: report, onDismiss })
- *   } catch (err) {
- *     showAlertModal(api, { title: errorTitle, message: errorMsg, onDismiss })
- *   }
- *
- * Note (2026-09-11, post-recovery): wired into all 4 async sites —
- * runInitOrUpdate (skeleton), runIndexRefresh (index), runDprintSetup
- * (dprint), and runSaveSwitches (save — per-group, config only).
- * runSyncAction (sync) is sync-only and intentionally unwired — the
- * spinner would just flash. The dismiss callback in runIndexRefresh
- * was also fixed (was `__group_index__`, stale post-refactor — now
- * `__action_index__`). Phase 1C separated responsibilities: main-menu
- * skeleton action stays in place (file scaffolding + backends + hooks),
- * sub-dialog Save is config-only (writeSwitchValues, no file scaffold).
+ * Level 1 loop: pick → dispatch → re-present. Esc at this level closes
+ * the wizard (v1's dialog.clear onDismiss). `selection` tracks the last
+ * pick so re-entry lands the cursor on the row the user came back from.
  */
-function showBusyModal(
-  api: TuiPluginApi,
-  params: { title: string; message: string; busyText?: string },
-): void {
-  // @opencode-ai/plugin 1.18.15's TuiDialogAlertProps lacks busy/busyText
-  // (they exist only on Prompt); the OCP host accepts and renders them
-  // (install/src/ui/app.tsx CompatAlertProps). Same compat cast as app.tsx.
-  const busyAlert = api.ui.DialogAlert as (props: {
-    title: string
-    message: string
-    busy?: boolean
-    busyText?: string
-  }) => ReturnType<typeof api.ui.DialogAlert>
-  api.ui.dialog.replace(
-    () =>
-      busyAlert({
-        title: params.title,
-        message: params.message,
-        busy: true,
-        busyText: params.busyText ?? tr("common.working"),
-      }),
-    () => {
-      // Busy modals cannot be dismissed by the user — the wizard always
-      // replaces the frame with the operation's result. If Esc ever
-      // reaches this callback (e.g. during the replacement tick), drop
-      // the stack silently rather than running the previous frame's
-      // onDismiss and landing on an empty stack with a still-pending
-      // setTimeout-driven result.
-    },
-  )
-}
+async function showGroupMenu(ctx: Context, state: WizardState): Promise<void> {
+  let selection = state.currentSelection ?? "__action_init__"
+  const rootDir = projectRoot(ctx)
+  for (;;) {
+    const dialogTitle = state.exists
+      ? tr("project.setupExisting", { config: state.configRelPath ?? CONFIG_REL })
+      : tr("project.newProject")
+    const pick = await ctx.ui.dialog.select<string>({
+      title: dialogTitle,
+      placeholder: tr("project.firstScreenPlaceholder"),
+      current: selection,
+      options: buildMenuItems(ctx, state),
+    })
+    if (pick === undefined) return
+    selection = pick
 
+    if (pick === SWITCH_LANG) {
+      await switchLanguage(ctx)
+      continue
+    }
+    if (pick === "__action_exit__") return
+
+    if (pick === "__action_init__") {
+      await runInitOrUpdate(ctx, state, rootDir, state.exists)
+      continue
+    }
+    if (pick === "__action_sync__") {
+      await runSyncAction(ctx, state, rootDir)
+      continue
+    }
+    if (pick === "__action_index__") {
+      await runIndexRefresh(ctx, state, rootDir)
+      continue
+    }
+    if (pick === "__field_projectMemory" || pick === "__field_autoAdvisorMode") {
+      const fieldKey = pick === "__field_projectMemory" ? "projectMemory" : "autoAdvisorMode"
+      const field = pick === "__field_projectMemory"
+        ? PROJECT_MEMORY_SCHEMA.fields[0]!
+        : AUTO_ADVISOR_SCHEMA.fields[0]!
+      const prev = state.switches[fieldKey] as string | undefined
+      const next = await renderSchemaField(ctx, field, prev)
+      if (next === undefined) continue
+      ;(state.switches as Record<string, unknown>)[fieldKey] = next
+      await saveInlineField(ctx, state, rootDir, fieldKey)
+      continue
+    }
+    if (pick === "__group_projectGuards__") {
+      await showSchemaGroup(ctx, state, "projectGuards", PROJECT_GUARDS_SCHEMA)
+      continue
+    }
+    if (pick === "__group_adr__") {
+      await showSchemaGroup(ctx, state, "adr", ADR_SCHEMA)
+      continue
+    }
+    if (pick === "__group_tooling__") {
+      await showToolingGroup(ctx, state)
+      continue
+    }
+  }
+}
 
 // ─── Group: schema-driven sub-dialog ─────────────────────────────────
 
 /**
- * Renders any schema-driven group as a sub-dialog. Items are driven entirely
- * by the JSON schema; adding a new switch = adding a row to the schema file,
- * no wizard code change.
+ * Renders any schema-driven group as a sub-dialog loop. Items are driven
+ * entirely by the JSON schema; adding a new switch = adding a row to the
+ * schema file, no wizard code change.
  *
- * Each group is identified by its `groupId` (also used as the i18n key prefix
- * for `project.<groupId>.title` / `.placeholder`) and the schema it renders.
- * The current selection tag for the parent menu (`__group_<groupId>__`) is
- * computed locally so the back navigation always lands on the same row.
+ * Each group is identified by its `groupId` (also used as the i18n key
+ * prefix for `project.<groupId>.title` / `.placeholder`). Esc or
+ * "← Back to main" returns to the parent menu loop.
  */
-function showSchemaGroup(
-  api: TuiPluginApi,
+async function showSchemaGroup(
+  ctx: Context,
   state: WizardState,
   groupId: WizardGroupId,
   schema: WizardGroupSchema,
-): void {
-  const rootDir = projectRoot(api)
-  const { switches: current, exists: isExisting, configRelPath: configRel } = state
-  const firstFieldKey = schema.fields[0]?.key
-  const activeSelection = state.currentSelection ?? `__field_${firstFieldKey}`
+): Promise<void> {
+  const rootDir = projectRoot(ctx)
+  let selection = `__field_${schema.fields[0]?.key}`
+  for (;;) {
+    const { switches: current, exists: isExisting, configRelPath: configRel } = state
+    const guardsCat = tr("project.guardsHeader")
+    const adrCat = tr("project.adrConfigHeader")
+    const advisorCat = tr("project.advisorHeader")
+    const suiteCat = tr("project.suiteHeader")
+    const actionsCat = tr("project.actionsHeader")
+    const navCat = tr("project.navigationHeader")
 
-  const guardsCat = tr("project.guardsHeader")
-  const adrCat = tr("project.adrConfigHeader")
-  const advisorCat = tr("project.advisorHeader")
-  const suiteCat = tr("project.suiteHeader")
-  const actionsCat = tr("project.actionsHeader")
-  const navCat = tr("project.navigationHeader")
+    const items: DialogOption<string>[] = schema.fields.map((field) => {
+      const displayName = field.nameKey ? tr(field.nameKey) : field.key
+      return {
+        title: `${field.icon} ${displayName}:${" ".repeat(Math.max(1, 15 - displayName.length))} ${badgeFor(field, current[field.key as keyof ProjectSwitches] as string | undefined)}`,
+        value: `__field_${field.key}`,
+        description: tr(field.descriptionKey),
+        // Style/numbering/governance are configuration, not guards — the adr
+        // group gets its own category header; guardsHeader stays for the
+        // projectGuards group.
+        category: groupId === "adr" ? adrCat : field.badgeKind === "advisor" ? advisorCat : guardsCat,
+      }
+    })
 
-  const items: DialogOption<string>[] = schema.fields.map((field) => {
-    const displayName = field.nameKey ? tr(field.nameKey) : field.key
-    return {
-      title: `${field.icon} ${displayName}:${" ".repeat(Math.max(1, 15 - displayName.length))} ${badgeFor(field, current[field.key as keyof ProjectSwitches] as string | undefined)}`,
-      value: `__field_${field.key}`,
-      description: tr(field.descriptionKey),
-      // Style/numbering/governance are configuration, not guards — the adr
-      // group gets its own category header; guardsHeader stays for the
-      // projectGuards group.
-      category: groupId === "adr" ? adrCat : field.badgeKind === "advisor" ? advisorCat : guardsCat,
+    // Suite quick-pick (adr group only): own category at the TOP of the
+    // dialog, bundles listed directly — selecting one applies AND saves
+    // immediately (saveAdrSuite), no 💾 Save round-trip. Cross-field logic is
+    // deliberately outside the schema-driven renderer (Phase 1 scope,
+    // schema-driven.ts); the current suite gets a marker.
+    if (groupId === "adr") {
+      const currentSuite = detectAdrSuite(current)
+      items.unshift(
+        ...ADR_SUITE_ROWS.map((row) => ({
+          title: `${row.icon} ${row.value}${currentSuite === row.value ? tr("project.currentMarker") : ""}`,
+          value: `__adr_suite_${row.value}__`,
+          description: tr(row.descKey),
+          category: suiteCat,
+        })),
+      )
     }
-  })
-
-  // Suite quick-pick (adr group only): own category at the TOP of the
-  // dialog, bundles listed directly — selecting one applies AND saves
-  // immediately (saveAdrSuite), no 💾 Save round-trip. Cross-field logic is
-  // deliberately outside the schema-driven renderer (Phase 1 scope,
-  // schema-driven.ts); the current suite gets a marker.
-  if (groupId === "adr") {
-    const currentSuite = detectAdrSuite(current)
-    items.unshift(
-      ...ADR_SUITE_ROWS.map((row) => ({
-        title: `${row.icon} ${row.value}${currentSuite === row.value ? tr("project.currentMarker") : ""}`,
-        value: `__adr_suite_${row.value}__`,
-        description: tr(row.descKey),
-        category: suiteCat,
-      })),
+    items.push(
+      {
+        title: tr("project.saveApply"),
+        value: "__save_switches__",
+        description: tr("project.saveApplyDesc"),
+        category: actionsCat,
+      },
+      {
+        title: tr("project.backToMain"),
+        value: "__switch_back__",
+        description: tr("project.backToMainDesc"),
+        category: navCat,
+      },
     )
-  }
-  items.push(
-    {
-      title: tr("project.saveApply"),
-      value: "__save_switches__",
-      description: tr("project.saveApplyDesc"),
-      category: actionsCat,
-    },
-    {
-      title: tr("project.backToMain"),
-      value: "__switch_back__",
-      description: tr("project.backToMainDesc"),
-      category: navCat,
-    },
-  )
 
-  const groupSelectionValue = `__group_${groupId}__`
-  let navigated = false
-  api.ui.dialog.replace(
-    () =>
-      api.ui.DialogSelect<string>({
-        title: `${breadcrumbHeader(groupId)} — ${tr(`project.${groupId}.title`, {
-          config: configRel ?? CONFIG_REL,
-        })}`,
-        placeholder: tr(`project.${groupId}.placeholder`),
-        current: activeSelection,
-        options: items,
-        onSelect: async (option) => {
-          navigated = true
-          if (option.value === "__save_switches__") {
-            await runSaveSwitches(api, state, rootDir, isExisting, groupId, schema)
-            return
-          }
-          if (option.value.startsWith("__adr_suite_")) {
-            const suite = option.value.slice("__adr_suite_".length, -"__".length)
-            if (suite in ADR_SUITES) {
-              saveAdrSuite(api, state, rootDir, suite, groupId, schema).catch(() => {
-                // saveAdrSuite already surfaced the error alert.
-              })
-            }
-            return
-          }
-          if (option.value === "__switch_back__") {
-            showGroupMenu(api, { ...state, currentSelection: groupSelectionValue })
-            return
-          }
-          if (option.value.startsWith("__field_")) {
-            const fieldKey = option.value.slice("__field_".length)
-            const field = schema.fields.find((f) => f.key === fieldKey)
-            if (!field) return
-            const currentValue = current[field.key as keyof ProjectSwitches] as string | undefined
-            renderSchemaField(
-              api,
-              field,
-              currentValue,
-              (newValue) => {
-                ;(current as Record<string, string | undefined>)[field.key] = newValue
-                showSchemaGroup(api, state, groupId, schema)
-              },
-              () => showSchemaGroup(api, state, groupId, schema),
-            )
-          }
-        },
-      }),
-    () => {
-      if (!navigated)
-        setTimeout(
-          () => showGroupMenu(api, { ...state, currentSelection: groupSelectionValue }),
-          0,
-        )
-    },
-  )
+    const pick = await ctx.ui.dialog.select<string>({
+      title: `${breadcrumbHeader(groupId)} — ${tr(`project.${groupId}.title`, {
+        config: configRel ?? CONFIG_REL,
+      })}`,
+      placeholder: tr(`project.${groupId}.placeholder`),
+      current: selection,
+      options: items,
+    })
+    if (pick === undefined || pick === "__switch_back__") return
+    selection = pick
+
+    if (pick === "__save_switches__") {
+      await runSaveSwitches(ctx, state, rootDir, isExisting, groupId, schema)
+      continue
+    }
+    if (pick.startsWith("__adr_suite_")) {
+      const suite = pick.slice("__adr_suite_".length, -"__".length)
+      if (suite in ADR_SUITES) await saveAdrSuite(ctx, state, rootDir, suite, groupId, schema)
+      continue
+    }
+    if (pick.startsWith("__field_")) {
+      const fieldKey = pick.slice("__field_".length)
+      const field = schema.fields.find((f) => f.key === fieldKey)
+      if (!field) continue
+      const currentValue = current[fieldKey as keyof ProjectSwitches] as string | undefined
+      const next = await renderSchemaField(ctx, field, currentValue)
+      if (next !== undefined) (current as Record<string, string | undefined>)[fieldKey] = next
+      continue
+    }
+  }
 }
 
 // ─── ADR suite quick-pick (inside the adr sub-dialog) ────────────────
@@ -607,7 +466,7 @@ const ADR_SUITE_ROWS: ReadonlyArray<{ value: string; icon: string; descKey: Stri
  * reverted and the error is surfaced.
  */
 async function saveAdrSuite(
-  api: TuiPluginApi,
+  ctx: Context,
   state: WizardState,
   rootDir: string,
   suite: string,
@@ -637,81 +496,63 @@ async function saveAdrSuite(
     state.switches.adrGovernance = detected.switches.adrGovernance
     state.switches.adrLayout = detected.switches.adrLayout
     toast(
-      api,
+      ctx,
       tr("project.configSavedToast") + migrationSuffix(result.migration).trim().replace(/\n+/g, " "),
       "success",
     )
-    showSchemaGroup(api, { ...state, exists: true, currentSelection: `__adr_suite_${suite}__` }, groupId, schema)
+    state.exists = true
   } catch (err) {
     Object.assign(state.switches, prev)
-    showAlertModal(api, {
+    await ctx.ui.dialog.alert({
       title: tr("project.saveFailed"),
       message: tr("project.saveFailedMsg", { err: (err as Error).message }),
-      onDismiss: () => showSchemaGroup(api, { ...state, currentSelection: "__save_switches__" }, groupId, schema),
     })
   }
 }
 
 // ─── Group: Project tooling ──────────────────────────────────────────
 
-function showToolingGroup(api: TuiPluginApi, state: WizardState): void {
-  const rootDir = projectRoot(api)
-  const dprintPlan = planDprintSetup(rootDir)
-  const actionsCat = tr("project.actionsHeader")
-  const navCat = tr("project.navigationHeader")
-  const activeSelection = state.currentSelection ?? "__tool_dprint__"
+async function showToolingGroup(ctx: Context, state: WizardState): Promise<void> {
+  const rootDir = projectRoot(ctx)
+  let selection = "__tool_dprint__"
+  for (;;) {
+    const dprintPlan = planDprintSetup(rootDir)
+    const actionsCat = tr("project.actionsHeader")
+    const navCat = tr("project.navigationHeader")
 
-  const items: DialogOption<string>[] = []
-  if (dprintPlan.status === "eligible") {
+    const items: DialogOption<string>[] = []
+    if (dprintPlan.status === "eligible") {
+      items.push({
+        title: tr("project.setupDprint"),
+        value: "__tool_dprint__",
+        description: tr("project.setupDprintDesc"),
+        category: actionsCat,
+      })
+    } else {
+      items.push({
+        title: tr("project.tooling.dprintNotEligibleTitle"),
+        value: "__tool_dprint_disabled__",
+        description: tr("project.tooling.dprintNotEligibleDesc"),
+        category: actionsCat,
+      })
+    }
     items.push({
-      title: tr("project.setupDprint"),
-      value: "__tool_dprint__",
-      description: tr("project.setupDprintDesc"),
-      category: actionsCat,
+      title: tr("project.backToMain"),
+      value: "__tool_back__",
+      description: tr("project.backToMainDesc"),
+      category: navCat,
     })
-  } else {
-    items.push({
-      title: tr("project.tooling.dprintNotEligibleTitle"),
-      value: "__tool_dprint_disabled__",
-      description: tr("project.tooling.dprintNotEligibleDesc"),
-      category: actionsCat,
+
+    const pick = await ctx.ui.dialog.select<string>({
+      title: `${breadcrumbHeader("tooling")} — ${tr("project.tooling.title")}`,
+      placeholder: tr("project.tooling.placeholder"),
+      current: selection,
+      options: items,
     })
+    if (pick === undefined || pick === "__tool_back__") return
+    selection = pick
+    if (pick === "__tool_dprint__") await runDprintSetup(ctx, state, rootDir)
   }
-  items.push({
-    title: tr("project.backToMain"),
-    value: "__tool_back__",
-    description: tr("project.backToMainDesc"),
-    category: navCat,
-  })
-
-  let navigated = false
-  api.ui.dialog.replace(
-    () =>
-      api.ui.DialogSelect<string>({
-        title: `${breadcrumbHeader("tooling")} — ${tr("project.tooling.title")}`,
-        placeholder: tr("project.tooling.placeholder"),
-        current: activeSelection,
-        options: items,
-        onSelect: async (option) => {
-          navigated = true
-          switch (option.value) {
-            case "__tool_back__":
-              showGroupMenu(api, { ...state, currentSelection: "__group_tooling__" })
-              break
-            case "__tool_dprint__":
-              runDprintSetup(api, state, rootDir)
-              break
-          }
-        },
-      }),
-    () => {
-      if (!navigated)
-        setTimeout(
-          () => showGroupMenu(api, { ...state, currentSelection: "__group_tooling__" }),
-          0,
-        )
-    },
-  )
 }
 
 // ─── Action: init / update (skeleton only — switches live in sub-dialog Save) ──
@@ -724,6 +565,48 @@ function showToolingGroup(api: TuiPluginApi, state: WizardState): void {
 // skeleton, not switch editing — switch editing lives in each sub-dialog's
 // "💾 Save & Apply Changes" button (runSaveSwitches → updateSwitchesOnly,
 // which writes the config WITHOUT touching the other baseline files).
+
+/**
+ * Busy feedback for async operations (init, dprint setup, index refresh):
+ * `showBusyModal` paints a placeholder dialog; the operation's result
+ * dialog replaces it through the single-active-dialog model. The v1
+ * busy-workaround cast (compat-host `busy`/`busyText` props on
+ * DialogAlert) is dead — v2 needs no cast because the busy panel is
+ * plugin-drawn.
+ */
+async function runInitOrUpdate(
+  ctx: Context,
+  state: WizardState,
+  rootDir: string,
+  isExisting: boolean,
+): Promise<void> {
+  showBusyModal(ctx, {
+    title: isExisting ? tr("project.updateWorkingTitle") : tr("project.initWorkingTitle"),
+    message: isExisting ? tr("project.updateWorking") : tr("project.initWorking"),
+    busyText: isExisting ? tr("project.updateBusyText") : tr("project.initBusyText"),
+  })
+  try {
+    const result = await initProject({ root: rootDir, switches: state.switches })
+    const report = initReport(result.files, result.backends, result.hooks, rootDir) + migrationSuffix(result.migration)
+    toast(
+      ctx,
+      isExisting ? tr("project.configUpdated") : tr("project.initSuccess"),
+      "success",
+    )
+    state.exists = true
+    await ctx.ui.dialog.alert({
+      title: isExisting ? tr("project.updateResult") : tr("project.initResult"),
+      message: report,
+    })
+  } catch (err) {
+    await ctx.ui.dialog.alert({
+      title: tr("project.initFailed"),
+      message: tr("project.operationFailed", { err: (err as Error).message }),
+    })
+  }
+}
+
+// ─── Action: sync ────────────────────────────────────────────────────
 
 /**
  * Wizard suffix for the §3 migration report: one "migrated N switch(es),
@@ -744,42 +627,6 @@ function migrationSuffix(migration: MigrationReport): string {
   return lines.length > 0 ? `\n\n${lines.join("\n")}` : ""
 }
 
-async function runInitOrUpdate(
-  api: TuiPluginApi,
-  state: WizardState,
-  rootDir: string,
-  isExisting: boolean,
-): Promise<void> {
-  showBusyModal(api, {
-    title: isExisting ? tr("project.updateWorkingTitle") : tr("project.initWorkingTitle"),
-    message: isExisting ? tr("project.updateWorking") : tr("project.initWorking"),
-    busyText: isExisting ? tr("project.updateBusyText") : tr("project.initBusyText"),
-  })
-  try {
-    const result = await initProject({ root: rootDir, switches: state.switches })
-    const report = initReport(result.files, result.backends, result.hooks, rootDir) + migrationSuffix(result.migration)
-    toast(
-      api,
-      isExisting ? tr("project.configUpdated") : tr("project.initSuccess"),
-      "success",
-    )
-    showAlertModal(api, {
-      title: isExisting ? tr("project.updateResult") : tr("project.initResult"),
-      message: report,
-      onDismiss: () =>
-        showGroupMenu(api, { ...state, exists: true, currentSelection: "__action_init__" }),
-    })
-  } catch (err) {
-    showAlertModal(api, {
-      title: tr("project.initFailed"),
-      message: tr("project.operationFailed", { err: (err as Error).message }),
-      onDismiss: () => showGroupMenu(api, { ...state, currentSelection: "__action_init__" }),
-    })
-  }
-}
-
-// ─── Action: sync ────────────────────────────────────────────────────
-
 /** Raw ⚠️ lines for migration warnings (paths — not localizable), appended
  * to EVERY `/project sync` outcome: an all-failed run must not read as
  * "up to date" in silence. Sync reports carry their own counts. */
@@ -789,7 +636,7 @@ function migrationWarnings(migration: MigrationReport): string {
     : ""
 }
 
-function runSyncAction(api: TuiPluginApi, state: WizardState, rootDir: string): void {
+async function runSyncAction(ctx: Context, state: WizardState, rootDir: string): Promise<void> {
   try {
     const res = syncProject(rootDir)
     let syncMsg = ""
@@ -804,25 +651,22 @@ function runSyncAction(api: TuiPluginApi, state: WizardState, rootDir: string): 
       })
     }
     syncMsg += migrationWarnings(res.migration)
-    showAlertModal(api, {
+    await ctx.ui.dialog.alert({
       title: tr("project.syncResult"),
       message: syncMsg,
-      onDismiss: () => showGroupMenu(api, { ...state, currentSelection: "__action_sync__" }),
     })
   } catch (err) {
-    showAlertModal(api, {
+    await ctx.ui.dialog.alert({
       title: tr("project.syncError"),
       message: tr("project.syncFailed", { err: (err as Error).message }),
-      onDismiss: () => showGroupMenu(api, { ...state, currentSelection: "__action_sync__" }),
     })
   }
 }
 
 // ─── Action: index refresh ───────────────────────────────────────────
 
-async function runIndexRefresh(api: TuiPluginApi, state: WizardState): Promise<void> {
-  const rootDir = projectRoot(api)
-  showBusyModal(api, {
+async function runIndexRefresh(ctx: Context, state: WizardState, rootDir: string): Promise<void> {
+  showBusyModal(ctx, {
     title: tr("project.indexWorkingTitle"),
     message: tr("project.indexWorking"),
     busyText: tr("project.indexBusyText"),
@@ -830,16 +674,14 @@ async function runIndexRefresh(api: TuiPluginApi, state: WizardState): Promise<v
   try {
     const results = await indexProject(rootDir)
     const msg = results.map(backendLine).join("\n") || tr("project.noBackends")
-    showAlertModal(api, {
+    await ctx.ui.dialog.alert({
       title: tr("project.indexResult"),
       message: msg,
-      onDismiss: () => showGroupMenu(api, { ...state, currentSelection: "__action_index__" }),
     })
   } catch (err) {
-    showAlertModal(api, {
+    await ctx.ui.dialog.alert({
       title: tr("project.indexError"),
       message: tr("project.indexFailed", { err: (err as Error).message }),
-      onDismiss: () => showGroupMenu(api, { ...state, currentSelection: "__action_index__" }),
     })
   }
 }
@@ -853,7 +695,7 @@ async function runIndexRefresh(api: TuiPluginApi, state: WizardState): Promise<v
 //     (`projectMemory`, `autoAdvisor`). One-step UX — pick a value,
 //     commit, persist. No sub-dialog, no explicit Save.
 //   - `runSaveSwitches`: multi-field sub-dialogs (`projectGuards`,
-//     `ADR`). User accumulates multiple field edits in a DialogSelect
+//     `ADR`). User accumulates multiple field edits in a select dialog
 //     then clicks "💾 Save & Apply Changes" to persist.
 // Neither flow touches AGENTS.md / docs/git-commits.md — that's the
 // main-menu skeleton's job (runInitOrUpdate → initProject).
@@ -861,11 +703,10 @@ async function runIndexRefresh(api: TuiPluginApi, state: WizardState): Promise<v
 // ─── Action: save inline (single-field auto-save on commit) ──────────
 
 async function saveInlineField(
-  api: TuiPluginApi,
+  ctx: Context,
   state: WizardState,
   rootDir: string,
   fieldKey: keyof ProjectSwitches,
-  returnSelection: string,
 ): Promise<void> {
   // Write ONLY the committed field. Sub-dialog edits live in
   // `state.switches` without auto-persist until the user clicks "💾 Save
@@ -880,31 +721,31 @@ async function saveInlineField(
     // skeleton button. Always use the saved-config toast to avoid the
     // misleading "Project initialized" wording. The §3 migration ran with
     // the save — surface its line whenever it moved anything.
-    toast(api, tr("project.configSavedToast") + migrationSuffix(result.migration).trim().replace(/\n+/g, " "), "success")
-    showGroupMenu(api, { ...state, exists: true, currentSelection: returnSelection })
+    toast(ctx, tr("project.configSavedToast") + migrationSuffix(result.migration).trim().replace(/\n+/g, " "), "success")
+    state.exists = true
   } catch (err) {
-    showAlertModal(api, {
+    await ctx.ui.dialog.alert({
       title: tr("project.saveFailed"),
       message: tr("project.saveFailedMsg", { err: (err as Error).message }),
-      onDismiss: () => showGroupMenu(api, { ...state, currentSelection: returnSelection }),
     })
-    // Re-throw so the caller's optimistic local mutation is reverted — the
-    // in-memory `current` must reflect what is actually on disk.
-    throw err
+    // Revert the optimistic local mutation so the badge on re-entry
+    // reflects what is actually on disk.
+    const detected = detectCurrentSwitches(rootDir)
+    ;(state.switches as Record<string, unknown>)[fieldKey] = detected.switches[fieldKey]
   }
 }
 
 // ─── Action: save switches (sub-dialog "💾 Save & Apply Changes") ────
 
 async function runSaveSwitches(
-  api: TuiPluginApi,
+  ctx: Context,
   state: WizardState,
   rootDir: string,
   isExisting: boolean,
   groupId: WizardGroupId,
   schema: WizardGroupSchema,
 ): Promise<void> {
-  showBusyModal(api, {
+  showBusyModal(ctx, {
     title: tr("project.saveWorkingTitle"),
     message: tr("project.saveWorking"),
     busyText: tr("project.saveBusyText"),
@@ -913,87 +754,77 @@ async function runSaveSwitches(
     const result = await updateSwitches({ root: rootDir, switches: state.switches })
     const fileLine = scaffoldLine(result.file)
     toast(
-      api,
+      ctx,
       isExisting ? tr("project.configSavedToast") : tr("project.initSuccess"),
       "success",
     )
-    showAlertModal(api, {
+    state.exists = true
+    await ctx.ui.dialog.alert({
       title: isExisting ? tr("project.saveResult") : tr("project.initResult"),
       message: `Target: ${result.root}\n\nFiles:\n  ${fileLine}` + migrationSuffix(result.migration),
-      onDismiss: () =>
-        showSchemaGroup(api, { ...state, exists: true, currentSelection: "__save_switches__" }, groupId, schema),
     })
   } catch (err) {
-    showAlertModal(api, {
+    await ctx.ui.dialog.alert({
       title: tr("project.saveFailed"),
       message: tr("project.saveFailedMsg", { err: (err as Error).message }),
-      onDismiss: () =>
-        showSchemaGroup(api, { ...state, currentSelection: "__save_switches__" }, groupId, schema),
     })
   }
 }
 
 // ─── Action: dprint setup ────────────────────────────────────────────
 
-function runDprintSetup(api: TuiPluginApi, state: WizardState, rootDir: string): void {
-  showAlertModal(api, {
+async function runDprintSetup(ctx: Context, state: WizardState, rootDir: string): Promise<void> {
+  // v1 rendered this as a busy-less Alert (OK = proceed, Esc = back); the
+  // v2 confirm dialog names both paths explicitly — same decision, clearer UX.
+  const proceed = await ctx.ui.dialog.confirm({
     title: tr("project.setupDprintConfirmTitle"),
     message: tr("project.setupDprintConfirm"),
-    onConfirm: () => {
-      showBusyModal(api, {
-        title: tr("project.setupDprintWorkingTitle"),
-        message: tr("project.setupDprintWorking"),
-        busyText: tr("project.setupDprintBusyText"),
-      })
-      void setupDprint(rootDir).then(
-        () => {
-          toast(api, tr("project.setupDprintDone"), "success")
-          showAlertModal(api, {
-            title: tr("project.setupDprintConfirmTitle"),
-            message: tr("project.setupDprintDone"),
-            onDismiss: () => showToolingGroup(api, { ...state, currentSelection: "__tool_dprint__" }),
-          })
-        },
-        (err) =>
-          showAlertModal(api, {
-            title: tr("project.setupDprintFailed"),
-            message: tr("project.operationFailed", { err: (err as Error).message }),
-            onDismiss: () => showToolingGroup(api, { ...state, currentSelection: "__tool_dprint__" }),
-          }),
-      )
-    },
-    onDismiss: () => showToolingGroup(api, { ...state, currentSelection: "__tool_dprint__" }),
   })
+  if (proceed !== true) return
+  showBusyModal(ctx, {
+    title: tr("project.setupDprintWorkingTitle"),
+    message: tr("project.setupDprintWorking"),
+    busyText: tr("project.setupDprintBusyText"),
+  })
+  try {
+    await setupDprint(rootDir)
+    toast(ctx, tr("project.setupDprintDone"), "success")
+    await ctx.ui.dialog.alert({
+      title: tr("project.setupDprintConfirmTitle"),
+      message: tr("project.setupDprintDone"),
+    })
+  } catch (err) {
+    await ctx.ui.dialog.alert({
+      title: tr("project.setupDprintFailed"),
+      message: tr("project.operationFailed", { err: (err as Error).message }),
+    })
+  }
 }
 
 // ─── Plugin entry ───────────────────────────────────────────────────
 
-const tui: TuiPlugin = async (api) => {
-  initI18n(api)
-  api.keymap.registerLayer({
-    commands: [
-      {
-        name: "project.wizard",
-        title: tr("project.cmdTitle"),
-        desc: tr("project.cmdDesc"),
-        category: "Project",
-        namespace: "palette",
-        // /project is also a server-side slash command (project-manager: init|index|sync).
-        // The TUI keymap owns the slash entry — typing `/project` opens the wizard
-        // menu (which itself dispatches init/index/sync via its own buttons).
-        // The server hook remains as the headless / `ocp project <sub>` entry point.
-        slashName: "project",
-        run() {
-          startProjectWizard(api)
-        },
-      },
-    ],
-  })
-}
-
-const plugin: TuiPluginModule & { id: string } = {
+export default Plugin.define({
   id: PLUGIN_ID,
-  tui,
-}
-
-export default plugin
+  setup(ctx: Context) {
+    initI18n()
+    ctx.keymap.layer(() => ({
+      commands: [
+        {
+          id: "project.wizard",
+          title: tr("project.cmdTitle"),
+          description: tr("project.cmdDesc"),
+          group: "Project",
+          palette: true,
+          // /project is also a server-side slash command (project-manager: init|index|sync).
+          // The TUI keymap owns the slash entry — typing `/project` opens the wizard
+          // menu (which itself dispatches init/index/sync via its own buttons).
+          // The server hook remains as the headless / `ocp project <sub>` entry point.
+          slash: { name: "project" },
+          run() {
+            void startProjectWizard(ctx)
+          },
+        },
+      ],
+    }))
+  },
+})

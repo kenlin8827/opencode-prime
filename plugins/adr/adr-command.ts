@@ -13,7 +13,6 @@
  *   /adr help
  */
 
-import type { PluginInput } from "@opencode-ai/plugin"
 import { refreshLocale, tr, getLocale } from "../tui/i18n"
 import {
   analyzeAdrComplexity,
@@ -110,20 +109,20 @@ function migrationLabels(): AdrStyleMigrationLabels {
   }
 }
 
-export function makeCommandHook(client: PluginInput["client"], handled: () => never) {
-  const log: Log = makeLogger(client, "adr")
+export function makeCommandHandler() {
+  const log: Log = makeLogger("adr")
 
   return async (input: { command?: string; arguments?: string; sessionID?: string }) => {
     // `/adr-guard` remains a first-class alias of `/adr guard <state>`.
     if (input.command === COMMAND_NAME) {
-      await handleGuardCommand(client, input.arguments || "", input.sessionID, log)
-      return handled()
+      await handleGuardCommand(input.arguments || "", input.sessionID, log)
+      return "handled" as const
     }
 
     if (input.command === ADR_COMMAND) {
-      const res = await handleAdrCommand(client, input.arguments || "", input.sessionID, log)
+      const res = await handleAdrCommand(input.arguments || "", input.sessionID, log)
       if (res?.handled) {
-        return handled()
+        return "handled" as const
       }
       return
     }
@@ -135,7 +134,6 @@ export function makeCommandHook(client: PluginInput["client"], handled: () => ne
  * `reset` removes it (back to default off); bare or unrecognized args
  * print the status report. */
 async function handleGuardCommand(
-  client: PluginInput["client"],
   rawArgs: string | undefined,
   sessionID: string | undefined,
   log: Log,
@@ -148,7 +146,7 @@ async function handleGuardCommand(
         ? "adrGuard field removed — reverted to default off"
         : "reset failed — project config not writable",
     )
-    await announceStatus(client, sessionID)
+    await announceStatus(sessionID)
   } else {
     const state = parseStateArg(rawArgs)
     if (state) {
@@ -159,15 +157,14 @@ async function handleGuardCommand(
           ? `state=${state.toUpperCase()} — project .ocp/ocp.json written`
           : `state=${state.toUpperCase()} — project config write failed (not writable)`,
       )
-      await announceSwitch(client, state, sessionID)
+      await announceSwitch(state, sessionID)
     } else {
-      await announceStatus(client, sessionID)
+      await announceStatus(sessionID)
     }
   }
 }
 
 async function handleAdrCommand(
-  client: PluginInput["client"],
   rawArgs: string,
   sessionID: string | undefined,
   log: Log,
@@ -177,7 +174,7 @@ async function handleAdrCommand(
   const trimmed = rawArgs.trim()
   if (!trimmed || trimmed === "help") {
     const helpText = tr("guard.adr.help", { mode: getAdrLayout() })
-    await announce(client, helpText, "info", sessionID)
+    await announce(helpText, "info", sessionID)
     return { handled: true }
   }
 
@@ -186,7 +183,7 @@ async function handleAdrCommand(
   const rest = trimmed.slice(parts[0].length).trim()
 
   if (sub === "guard") {
-    await handleGuardCommand(client, rest, sessionID, log)
+    await handleGuardCommand(rest, sessionID, log)
     return { handled: true }
   }
 
@@ -194,7 +191,6 @@ async function handleAdrCommand(
     if (!rest) {
       const layout = getAdrLayout()
       await announce(
-        client,
         tr("guard.adr.layoutCurrent", { mode: layout }),
         "info",
         sessionID,
@@ -204,7 +200,6 @@ async function handleAdrCommand(
     const targetLayout = normalizeAdrLayout(rest)
     if (!targetLayout) {
       await announce(
-        client,
         tr("guard.adr.layoutInvalid", { rest }),
         "warning",
         sessionID,
@@ -227,7 +222,7 @@ async function handleAdrCommand(
     }
 
     await announce(
-      client,
+
       tr("guard.adr.layoutSet", { mode: targetLayout }) + extraNotice,
       "info",
       sessionID,
@@ -236,7 +231,7 @@ async function handleAdrCommand(
   }
 
   if (sub === "config") {
-    return handleAdrConfigCommand(client, rest, sessionID, log)
+    return handleAdrConfigCommand(rest, sessionID, log)
   }
 
   if (sub === "migrate" || sub === "refactor") {
@@ -249,13 +244,13 @@ async function handleAdrCommand(
       const targetRaw = (toFlag[2] ?? toFlag[1].replace(/^["']|["']$/g, "")).trim().toLowerCase()
       const targetStyle = normalizeAdrStyle(targetRaw)
       if (!targetStyle || !findAdrStyleAdapter(targetStyle)) {
-        await announce(client, tr("guard.adr.migrateStyleInvalid", { style: targetRaw }), "warning", sessionID)
+        await announce(tr("guard.adr.migrateStyleInvalid", { style: targetRaw }), "warning", sessionID)
         return { handled: true }
       }
       if (targetStyle === "ocp") {
         // The container grammar is not reachable by per-file conversion
         // (planAdrStyleMigration throws); surface adoption guidance here.
-        await announce(client, tr("guard.adr.migrateStyleOcp"), "warning", sessionID)
+        await announce(tr("guard.adr.migrateStyleOcp"), "warning", sessionID)
         return { handled: true }
       }
       const isConfirm = /(?:^|\s)(--confirm|-y)(?:\s|$)/.test(rest)
@@ -264,7 +259,6 @@ async function handleAdrCommand(
 
       if (plan.records.length === 0) {
         await announce(
-          client,
           tr("guard.adr.migrateStyleNone", { to: targetStyle, count: plan.skippedPaths.length }),
           "info",
           sessionID,
@@ -278,7 +272,7 @@ async function handleAdrCommand(
         preview += renderMigrationReport(plan, labels)
         preview += tr("guard.adr.migrateNoWrite")
         preview += `\`\`\`bash\n/adr migrate --to ${targetStyle} --confirm\n\`\`\``
-        await announce(client, preview, "info", sessionID)
+        await announce(preview, "info", sessionID)
         return { handled: true }
       }
 
@@ -296,7 +290,7 @@ async function handleAdrCommand(
           msg += `- ❌ \`[${iss.type}]\` **${iss.file}**: ${iss.message}\n`
         }
       }
-      await announce(client, msg, result.verification.ok ? "info" : "warning", sessionID)
+      await announce(msg, result.verification.ok ? "info" : "warning", sessionID)
       return { handled: true }
     }
 
@@ -308,7 +302,6 @@ async function handleAdrCommand(
 
     if (plan.moves.length === 0) {
       await announce(
-        client,
         tr("guard.adr.migrateNone", { cur: plan.currentLayout, target: plan.targetLayout }),
         "info",
         sessionID,
@@ -323,7 +316,7 @@ async function handleAdrCommand(
       for (const m of plan.moves) {
         msg += `- \`${m.fromRelPath}\` $\\to$ \`${m.toRelPath}\`\n`
       }
-      await announce(client, msg, "info", sessionID)
+      await announce(msg, "info", sessionID)
     } else {
       let preview = tr("guard.adr.migratePreviewHead", { cur: plan.currentLayout, target: plan.targetLayout, count: plan.moves.length })
       preview += tr("guard.adr.migrateTableHead")
@@ -332,7 +325,7 @@ async function handleAdrCommand(
       }
       preview += tr("guard.adr.migrateNoWrite")
       preview += `\`\`\`bash\n/adr migrate ${targetLayout} --confirm\n\`\`\``
-      await announce(client, preview, "info", sessionID)
+      await announce(preview, "info", sessionID)
     }
     return { handled: true }
   }
@@ -345,15 +338,15 @@ async function handleAdrCommand(
     const byRaw = byFlag ? (byFlag[2] ?? byFlag[1].replace(/^["']|["']$/g, "")).trim().toLowerCase() : undefined
     if (byRaw !== undefined) {
       if (!ADR_TREE_GROUP_BY.includes(byRaw as AdrTreeGroupBy)) {
-        await announce(client, tr("guard.adr.treeByInvalid", { by: byRaw }), "warning", sessionID)
+        await announce(tr("guard.adr.treeByInvalid", { by: byRaw }), "warning", sessionID)
         return { handled: true }
       }
       const view = renderTreeView(getNormalizedAdrs(projectDir), "docs/adr", byRaw as AdrTreeGroupBy)
-      await announce(client, view, "info", sessionID)
+      await announce(view, "info", sessionID)
       return { handled: true }
     }
     const map = generateDecisionMap(projectDir)
-    await announce(client, map, "info", sessionID)
+    await announce(map, "info", sessionID)
     return { handled: true }
   }
 
@@ -363,13 +356,13 @@ async function handleAdrCommand(
     // plus forward `supersededBy`, cross-style safe (§9.5 rule 4).
     const ref = rest.replace(/^["']|["']$/g, "").trim()
     if (!ref) {
-      await announce(client, tr("guard.adr.historyUsage"), "warning", sessionID)
+      await announce(tr("guard.adr.historyUsage"), "warning", sessionID)
       return { handled: true }
     }
     const records = getNormalizedAdrs(projectDir)
     const history = buildAdrHistory(records, ref)
     if (!history) {
-      await announce(client, tr("guard.adr.historyNotFound", { ref }), "warning", sessionID)
+      await announce(tr("guard.adr.historyNotFound", { ref }), "warning", sessionID)
       return { handled: true }
     }
     // Section-level annotation edges around the chain (§7 amendment):
@@ -377,7 +370,7 @@ async function handleAdrCommand(
     // readability, never promoted to graph edges.
     const chainIds = new Set(history.entries.map((e) => e.record.id))
     const sectionEdges = buildSectionEdges(records).filter((e) => chainIds.has(e.toContainer))
-    await announce(client, renderAdrHistory(history, sectionEdges), "info", sessionID)
+    await announce(renderAdrHistory(history, sectionEdges), "info", sessionID)
     return { handled: true }
   }
 
@@ -387,7 +380,7 @@ async function handleAdrCommand(
     // session language). TUI-only surface: generated INDEX files stay
     // English-only (byte-stable contract, §13 Phase 5 / §15).
     const requested = rest.replace(/^["']|["']$/g, "").trim() || getLocale()
-    await announce(client, renderLabelGlossaryLocalized(requested), "info", sessionID)
+    await announce(renderLabelGlossaryLocalized(requested), "info", sessionID)
     return { handled: true }
   }
 
@@ -399,7 +392,7 @@ async function handleAdrCommand(
       ? (profileFlag[2] ?? profileFlag[1].replace(/^["']|["']$/g, "")).trim().toLowerCase()
       : undefined
     if (profile && profile !== EVOLUTION_PROFILE_NAME) {
-      await announce(client, tr("guard.adr.profileUnknown", { profile }), "warning", sessionID)
+      await announce(tr("guard.adr.profileUnknown", { profile }), "warning", sessionID)
       return { handled: true }
     }
     // Style audit (§13 Phase 5): `--report-style` lists every document's
@@ -453,7 +446,7 @@ async function handleAdrCommand(
       report += tr("guard.adr.complexityRun", { mode: complexity.recommendation.suggestedLayout })
     }
 
-    await announce(client, report, issues.length + profileFindings.length > 0 ? "warning" : "info", sessionID)
+    await announce(report, issues.length + profileFindings.length > 0 ? "warning" : "info", sessionID)
     return { handled: true }
   }
 
@@ -478,10 +471,10 @@ async function handleAdrCommand(
       regenerateIterationIndex(projectDir)
       const ctx = buildIterationContext(getNormalizedAdrs(projectDir), iteration)
       if (ctx.matched.length === 0) {
-        await announce(client, tr("guard.adr.contextNotFound", { iteration }), "warning", sessionID)
+        await announce(tr("guard.adr.contextNotFound", { iteration }), "warning", sessionID)
         return { handled: true }
       }
-      await announce(client, renderIterationContext(ctx), "info", sessionID)
+      await announce(renderIterationContext(ctx), "info", sessionID)
       return { handled: true }
     }
 
@@ -491,20 +484,20 @@ async function handleAdrCommand(
       const selector = domain ? ({ kind: "domain", value: domain } as const) : ({ kind: "id", value: idArg } as const)
       const bundle = buildAdrContext(records, selector)
       if (!bundle) {
-        await announce(client, tr("guard.adr.contextNoMatch", { target: domain ?? idArg }), "warning", sessionID)
+        await announce(tr("guard.adr.contextNoMatch", { target: domain ?? idArg }), "warning", sessionID)
         return { handled: true }
       }
-      await announce(client, renderAdrContext(bundle), "info", sessionID)
+      await announce(renderAdrContext(bundle), "info", sessionID)
       return { handled: true }
     }
 
-    await announce(client, tr("guard.adr.contextUsage"), "warning", sessionID)
+    await announce(tr("guard.adr.contextUsage"), "warning", sessionID)
     return { handled: true }
   }
 
 
   if (sub === "init") {
-    return handleAdrInit(client, rest, projectDir, sessionID, log)
+    return handleAdrInit(rest, projectDir, sessionID, log)
   }
 
 
@@ -517,15 +510,15 @@ async function handleAdrCommand(
     const ref = (spaceIdx === -1 ? rest : rest.slice(0, spaceIdx)).trim().replace(/^["']|["']$/g, "")
     const note = (spaceIdx === -1 ? "" : rest.slice(spaceIdx + 1).trim()).replace(/^["']|["']$/g, "")
     if (!ref) {
-      await announce(client, tr("guard.adr.decideUsage"), "warning", sessionID)
+      await announce(tr("guard.adr.decideUsage"), "warning", sessionID)
       return { handled: true }
     }
     try {
       const result = decideAdr(projectDir, ref, note)
       await log("info", `decided ADR: ${result.id} (${result.relPath})`)
-      await announce(client, tr("guard.adr.decided", { id: result.id, file: result.relPath }), "info", sessionID)
+      await announce(tr("guard.adr.decided", { id: result.id, file: result.relPath }), "info", sessionID)
     } catch (err) {
-      await announce(client, tr("guard.adr.decideFail", { err: String(err) }), "warning", sessionID)
+      await announce(tr("guard.adr.decideFail", { err: String(err) }), "warning", sessionID)
     }
     return { handled: true }
   }
@@ -536,21 +529,21 @@ async function handleAdrCommand(
     // business (scan parsed sections, never cross-file ID guessing).
     const spaceIdx = rest.indexOf(" ")
     if (spaceIdx === -1) {
-      await announce(client, tr("guard.adr.sectionUsage"), "warning", sessionID)
+      await announce(tr("guard.adr.sectionUsage"), "warning", sessionID)
       return { handled: true }
     }
     const containerRef = rest.slice(0, spaceIdx).trim().replace(/^["']|["']$/g, "")
     const title = rest.slice(spaceIdx + 1).trim().replace(/^["']|["']$/g, "")
     if (!title) {
-      await announce(client, tr("guard.adr.sectionMissingTitle"), "warning", sessionID)
+      await announce(tr("guard.adr.sectionMissingTitle"), "warning", sessionID)
       return { handled: true }
     }
     try {
       const appended = appendAdrSection(projectDir, containerRef, title)
       await log("info", `appended section: ${appended.id} → ${appended.relPath}`)
-      await announce(client, tr("guard.adr.sectionDone", { id: appended.id, file: appended.relPath }), "info", sessionID)
+      await announce(tr("guard.adr.sectionDone", { id: appended.id, file: appended.relPath }), "info", sessionID)
     } catch (err) {
-      await announce(client, tr("guard.adr.sectionFail", { err: String(err) }), "warning", sessionID)
+      await announce(tr("guard.adr.sectionFail", { err: String(err) }), "warning", sessionID)
     }
     return { handled: true }
   }
@@ -582,7 +575,6 @@ async function handleAdrCommand(
 
     if (!cleanRest) {
       await announce(
-        client,
         tr("guard.adr.newUsage"),
         "warning",
         sessionID,
@@ -618,7 +610,7 @@ async function handleAdrCommand(
       // requires --baseline/--iteration.
       const style = explicitStyle?.toLowerCase() ?? getAdrConfig().style
       if (!findAdrStyleAdapter(style)) {
-        await announce(client, tr("guard.adr.styleUnavailable", { style }), "warning", sessionID)
+        await announce(tr("guard.adr.styleUnavailable", { style }), "warning", sessionID)
         return { handled: true }
       }
       const normalizedNumbering = normalizeAdrNumbering(numbering) ?? undefined
@@ -657,16 +649,16 @@ async function handleAdrCommand(
 
       if (isEmptyOnly) {
         const successMsg = tr("guard.adr.createdScaffold", { id: created.id, layer, file: created.relPath }) + warningNote
-        await announce(client, successMsg, "info", sessionID)
+        await announce(successMsg, "info", sessionID)
         return { handled: true }
       } else {
         const successMsg = tr("guard.adr.created", { id: created.id, layer, file: created.relPath }) + warningNote
-        await announce(client, successMsg, "info", sessionID)
+        await announce(successMsg, "info", sessionID)
         // Return handled: false so OpenCode dispatches the prompt to LLM!
         return { handled: false }
       }
     } catch (err) {
-      await announce(client, tr("guard.adr.createFail", { err: String(err) }), "warning", sessionID)
+      await announce(tr("guard.adr.createFail", { err: String(err) }), "warning", sessionID)
       return { handled: true }
     }
   }
@@ -678,7 +670,6 @@ async function handleAdrCommand(
     const spaceIdx = cleanRest.indexOf(" ")
     if (spaceIdx === -1) {
       await announce(
-        client,
         tr("guard.adr.supUsage"),
         "warning",
         sessionID,
@@ -691,7 +682,6 @@ async function handleAdrCommand(
 
     if (!newTitle) {
       await announce(
-        client,
         tr("guard.adr.supMissingTitle"),
         "warning",
         sessionID,
@@ -705,22 +695,21 @@ async function handleAdrCommand(
 
       if (isEmptyOnly) {
         const successMsg = tr("guard.adr.supDoneScaffold", { old: oldAdr.id, new: newAdr.id, oldPath: oldAdr.relPath, newPath: newAdr.relPath })
-        await announce(client, successMsg, "info", sessionID)
+        await announce(successMsg, "info", sessionID)
         return { handled: true }
       } else {
         const successMsg = tr("guard.adr.supDone", { old: oldAdr.id, new: newAdr.id, oldPath: oldAdr.relPath, newPath: newAdr.relPath })
-        await announce(client, successMsg, "info", sessionID)
+        await announce(successMsg, "info", sessionID)
         // Return handled: false so OpenCode dispatches the prompt to LLM!
         return { handled: false }
       }
     } catch (err) {
-      await announce(client, tr("guard.adr.supFail", { err: String(err) }), "warning", sessionID)
+      await announce(tr("guard.adr.supFail", { err: String(err) }), "warning", sessionID)
       return { handled: true }
     }
   }
 
   await announce(
-    client,
     tr("guard.adr.unknown", { sub }),
     "warning",
     sessionID,
@@ -734,14 +723,13 @@ async function handleAdrCommand(
  * style/numbering/layout/governance and follow the same read=fallback,
  * write=upsert, reset=clear conventions. */
 async function handleAdrConfigCommand(
-  client: PluginInput["client"],
   rawArgs: string,
   sessionID: string | undefined,
   log: Log,
 ): Promise<{ handled: boolean }> {
   const trimmed = rawArgs.trim()
   if (!trimmed) {
-    await announce(client, renderAdrConfigList(), "info", sessionID)
+    await announce(renderAdrConfigList(), "info", sessionID)
     return { handled: true }
   }
 
@@ -751,23 +739,23 @@ async function handleAdrConfigCommand(
   if (first === "reset") {
     const key = [...ADR_CONFIG_KEYS].find(k => k.toLowerCase() === (parts[1] ?? "").toLowerCase())
     if (!key) {
-      await announce(client, tr("guard.adr.configUsage"), "warning", sessionID)
+      await announce(tr("guard.adr.configUsage"), "warning", sessionID)
       return { handled: true }
     }
     const ok = clearAdrConfigKey(key)
-    await announce(client, tr("guard.adr.configReset", { key, ok: String(ok) }), ok ? "info" : "warning", sessionID)
+    await announce(tr("guard.adr.configReset", { key, ok: String(ok) }), ok ? "info" : "warning", sessionID)
     return { handled: true }
   }
 
   const key = [...ADR_CONFIG_KEYS].find(k => k.toLowerCase() === first)
   if (!key) {
-    await announce(client, tr("guard.adr.configUnknownKey", { key: first }), "warning", sessionID)
+    await announce(tr("guard.adr.configUnknownKey", { key: first }), "warning", sessionID)
     return { handled: true }
   }
 
   const value = trimmed.slice(parts[0].length).trim()
   if (!value) {
-    await announce(client, renderAdrConfigKeyDetail(key), "info", sessionID)
+    await announce(renderAdrConfigKeyDetail(key), "info", sessionID)
     return { handled: true }
   }
   const ok = setAdrConfigKey(key, value)
@@ -777,7 +765,7 @@ async function handleAdrConfigCommand(
       ? `adr.${key} written to project config`
       : `failed to write adr.${key} (invalid value)`,
   )
-  await announce(client, tr("guard.adr.configSet", { key, value, ok: String(ok) }), ok ? "info" : "warning", sessionID)
+  await announce(tr("guard.adr.configSet", { key, value, ok: String(ok) }), ok ? "info" : "warning", sessionID)
   return { handled: true }
 }
 
@@ -871,7 +859,6 @@ function renderAdrConfigKeyDetail(key: AdrConfigKey): string {
  * legacy keys (adrGuard/adrDir/adrLayout) are never touched here.
  */
 async function handleAdrInit(
-  client: PluginInput["client"],
   rest: string,
   projectDir: string,
   sessionID: string | undefined,
@@ -894,7 +881,7 @@ async function handleAdrInit(
   // is not registered — that would break every later `/adr new` that
   // resolves adr.style (§6).
   if (style && !isAdrStyleAvailable(style)) {
-    await announce(client, tr("guard.adr.styleUnavailable", { style }), "warning", sessionID)
+    await announce(tr("guard.adr.styleUnavailable", { style }), "warning", sessionID)
     return { handled: true }
   }
   const numbering = normalizeAdrNumbering(flag("--numbering"))
@@ -905,7 +892,7 @@ async function handleAdrInit(
   const governanceRaw = flag("--governance")
   const governance = normalizeAdrGovernance(governanceRaw)
   if (governanceRaw !== undefined && !governance) {
-    await announce(client, tr("guard.adr.governanceInvalid", { value: governanceRaw }), "warning", sessionID)
+    await announce(tr("guard.adr.governanceInvalid", { value: governanceRaw }), "warning", sessionID)
     return { handled: true }
   }
   if (style) overrides.style = style
@@ -916,7 +903,7 @@ async function handleAdrInit(
   if (!suiteArg) {
     // Reconnaissance only — pre-select, never apply.
     await announce(
-      client,
+
       tr("guard.adr.initRecommend", {
         suite: signals.recommendedSuite,
         agent: signals.hasAgentConfig ? "yes" : "no",
@@ -930,7 +917,7 @@ async function handleAdrInit(
   }
 
   if (suiteArg === "custom" && Object.keys(overrides).length === 0) {
-    await announce(client, tr("guard.adr.initCustomFlags"), "info", sessionID)
+    await announce(tr("guard.adr.initCustomFlags"), "info", sessionID)
     return { handled: true }
   }
 
@@ -941,7 +928,6 @@ async function handleAdrInit(
     written ? `/adr init ${suiteArg}: adr.* config written` : `/adr init ${suiteArg}: project config write failed (not writable)`,
   )
   await announce(
-    client,
     tr("guard.adr.initApplied", {
       suite: suiteArg,
       style: selection.fields.style ?? "-",

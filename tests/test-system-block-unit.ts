@@ -35,12 +35,20 @@ function check(name: string, ok: boolean) {
   check("appendBlock: empty array pushes block as sole entry", sys.length === 1 && sys[0] === "[BLOCK]")
 }
 
-// All-object array: pushes block at the end.
+// All-text-part array (V2 SystemPart[]): appends THROUGH the last part's
+// .text in place — part identity (and cache hints) must survive.
 {
   const sys: unknown[] = [{ type: "text", text: "root" }, { type: "text", text: "extra" }]
   appendBlock(sys, "[BLOCK]")
-  check("appendBlock: all-object array keeps objects and appends block", sys.length === 3 && sys[2] === "[BLOCK]")
-  check("appendBlock: object entries are not mutated", typeof sys[0] === "object" && typeof sys[1] === "object")
+  check("appendBlock: text-part array appends through the last part text", (sys[1] as any).text === "extra[BLOCK]")
+  check("appendBlock: text-part array does not push or replace entries", sys.length === 2 && typeof sys[0] === "object" && typeof sys[1] === "object")
+}
+
+// All-non-text array: pushes block as a fresh entry (defensive fallback).
+{
+  const sys: unknown[] = [{ role: "x" }]
+  appendBlock(sys, "[BLOCK]")
+  check("appendBlock: non-text entries are skipped, block pushed", sys.length === 2 && sys[1] === "[BLOCK]")
 }
 
 // Mixed array: appends to the LAST string entry, leaves objects alone.

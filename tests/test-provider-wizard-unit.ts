@@ -195,33 +195,31 @@ assert(
 )
 assert(parsed[1]?.limit === undefined, "missing max_completion_tokens → no limit")
 
-section("SDK model.list payload (boolean maps or arrays) is decoded")
+section("v2 ModelInfo catalog entries are decoded")
 
-const sdkBoolMap = sdkCatalogModels({
-  data: {
-    data: [
-      { id: "anthropic/claude-sonnet-5", capabilities: { input: { text: true, image: true, video: false }, output: { text: true } }, limit: { context: 1000000, output: 64000 } },
-      { id: "xai/grok-4" },
-      null,
-      { id: 42 },
-    ],
-  },
-})
-assert(sdkBoolMap.length === 2, "SDK envelope decoded, malformed skipped")
+const sdkModels = sdkCatalogModels([
+  {
+    id: "anthropic/claude-sonnet-5", modelID: "claude-sonnet-5", providerID: "anthropic", name: "Claude Sonnet 5",
+    capabilities: { tools: true, input: ["text", "image", "file"], output: ["text"] },
+    limit: { context: 1000000, output: 64000 },
+    variants: [{ id: "low", settings: {} }, { id: "high" }],
+  } as never,
+  { id: "xai/grok-4", modelID: "grok-4", providerID: "xai", name: "Grok 4", capabilities: { tools: true, input: ["text"], output: ["text"] }, limit: { context: 1, output: 2 } } as never,
+])
+assert(sdkModels.length === 2, "ModelInfo list decoded")
 assert(
-  JSON.stringify(sdkBoolMap[0]?.capabilities) === JSON.stringify({ input: ["text", "image"], output: ["text"] }),
-  "boolean-map capabilities normalized to modality arrays",
+  JSON.stringify(sdkModels[0]?.capabilities) === JSON.stringify({ input: ["text", "image"], output: ["text"] }),
+  "unknown modality values dropped, known modalities kept",
 )
 assert(
-  JSON.stringify(sdkBoolMap[0]?.limit) === JSON.stringify({ context: 1000000, output: 64000 }),
-  "SDK limit pair normalized",
+  JSON.stringify(sdkModels[0]?.limit) === JSON.stringify({ context: 1000000, output: 64000 }),
+  "limit pair normalized",
 )
 assert(
-  JSON.stringify(sdkCatalogModels({ data: { all: [{ id: "a/b", modalities: { input: ["text", "image"], output: ["text"] } }] } })[0]?.capabilities)
-    === JSON.stringify({ input: ["text", "image"], output: ["text"] }),
-  "{ all } envelope and modalities-style entries also decode",
+  (sdkModels[0]?.variants as Record<string, unknown>)?.high !== undefined,
+  "variants array becomes a name-keyed record",
 )
-assert(sdkCatalogModels(undefined).length === 0 && sdkCatalogModels({ data: {} }).length === 0, "missing SDK catalog yields empty, never throws")
+assert(sdkCatalogModels([]).length === 0, "empty catalog decodes to empty, never throws")
 
 section("importedModelDef + enrichModelDef apply catalog-proven data only")
 

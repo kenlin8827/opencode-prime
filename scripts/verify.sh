@@ -52,8 +52,8 @@ fi
 # (re)write the CURRENT version's file. Any modification or deletion of a
 # previously committed manifest means generate was run against a stale
 # version.json — restore the file from git before releasing.
-# Legitimate exceptions: deleting manifests below `minVersion` and rewriting
-# history.manifest.txt — that is the intended compaction flow.
+# Legitimate exceptions: deleting manifests/notes below `minVersion` and
+# rewriting history.manifest.txt — that is the intended compaction flow.
 if command -v git >/dev/null 2>&1 && git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
     CUR_REL="install/versions/$VER.manifest.txt"
     MIN_VER="$(sed -n 's/.*"minVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$VERSION_JSON" | head -n 1 | tr -d ' \r')"
@@ -64,7 +64,7 @@ if command -v git >/dev/null 2>&1 && git -C "$REPO_ROOT" rev-parse --git-dir >/d
         [[ -z "$v" || "$v" == "$CUR_REL" ]] && continue
         # legal compaction: history manifest rewrite, or deletion below the floor
         [[ "$v" == "install/versions/history.manifest.txt" ]] && continue
-        if [[ -n "$MIN_VER" && "$v" =~ ^install/versions/([0-9]+(\.[0-9]+)+)\.manifest\.txt$ ]]; then
+        if [[ -n "$MIN_VER" && "$v" =~ ^install/versions/([0-9]+(\.[0-9]+)+)\.(manifest\.txt|notes\.md)$ ]]; then
             if printf '%s\n%s\n' "${BASH_REMATCH[1]}" "$MIN_VER" | sort -C -V; then
                 [[ "${BASH_REMATCH[1]}" != "$MIN_VER" ]] && continue
             fi

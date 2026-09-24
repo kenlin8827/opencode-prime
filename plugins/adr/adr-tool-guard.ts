@@ -39,7 +39,6 @@
  * unlikely.
  */
 
-import type { PluginInput } from "@opencode-ai/plugin"
 import { refreshLocale, tr } from "../tui/i18n"
 import { getAdrConfig, getAdrDir, getAdrLayout, getProjectDir, isEnabled } from "./adr-config"
 import { discoverAdrDirectories } from "./adr-engine"
@@ -111,16 +110,21 @@ function strictGateMessage(): string {
   )
 }
 
-export function makeToolGuardHook(client: PluginInput["client"]) {
-  const log: Log = makeLogger(client, "adr")
+/** V2 `ctx.tool.hook("execute.before")` handler — single mutable event
+ *  (`{ tool, input }`; v1's (input, output) pair collapsed, output.args →
+ *  event.input). The deliberate throws ARE the blocking mechanism:
+ *  execute.before is the one v2 hook allowed to reject, so this handler is
+ *  NOT wrapped fail-open and unexpected errors must not be swallowed. */
+export function makeToolGuardHook() {
+  const log = makeLogger("adr")
 
   // NOT wrapped in safeHook — intentional throws must propagate to block
   // tool execution. safeHook would swallow them and defeat the guard.
-  return async (input: { tool?: string }, output: { args?: unknown }) => {
-    const tool = String(input?.tool ?? "").toLowerCase()
-    if (tool !== "bash" && tool !== "shell") return
+  return async (event: { tool?: string; input?: unknown }) => {
+    const tool = String(event?.tool ?? "").toLowerCase()
+    if (tool !== "bash" && tool !== "shell" && tool !== "execute") return
 
-    const command = extractBashCommand(output?.args)
+    const command = extractBashCommand(event?.input)
     if (!command) return
 
     // One argument-token segment per `git commit` invocation — chained

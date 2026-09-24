@@ -1,10 +1,10 @@
 /**
  * Barrel entry — re-exports the project-manager plugin from the subdirectory.
  *
- * OpenCode auto-discovers plugins by scanning the `plugins/` root directory
- * for `.ts` files. Each file is loaded as a module and its exported plugin
- * functions are registered. This thin file ensures OpenCode picks it up.
+ * V2 loader contract: each root-level `plugins/*.ts` file must
+ * DEFAULT-export `{ id, setup }` (Plugin.define). Helpers stay in the
+ * submodule; tests import them from `plugins/project-manager/*.ts` directly.
  *
  * See: plugins/project-manager/project-manager.ts
  */
-export { ProjectManagerPlugin } from "./project-manager/project-manager"
+export { ProjectManagerPlugin, ProjectManagerPlugin as default } from "./project-manager/project-manager"

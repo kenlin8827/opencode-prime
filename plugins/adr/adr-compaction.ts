@@ -4,7 +4,8 @@
  */
 import { randomBytes } from "node:crypto"
 import { basename } from "node:path"
-import { tool } from "@opencode-ai/plugin"
+// zod: direct dep, MIT license (AGPL-compatible) — tool parameter schemas.
+import { z } from "zod"
 import { getAdrConfig, getAdrLayout } from "./adr-config"
 import { renderAdrFilename, slugify } from "./adr-engine"
 import { getAdrStyleAdapter } from "./adr-style-registry"
@@ -16,7 +17,6 @@ import { applyJournal, atomicWrite, digest, maintenancePath, projectPath, readOp
 import { planPublication } from "./adr-publication"
 import { inverseArchive, planArchiveChanges } from "./adr-archive"
 
-const z = tool.schema
 export const candidateSchema = z.object({
   summary: z.array(z.object({ text: z.string().min(1).max(12000), sources: z.array(z.string()).min(1) })).min(1),
   replacements: z.array(z.object({ id: z.string(), title: z.string().min(1).max(200), content: z.string().min(1).max(200000) })).default([]),

@@ -10,13 +10,14 @@ import {
   getInstalledVersion,
   isBinaryOnPath,
   loadToolRegistry,
+  requiredRuntimeMajor,
   apiMirrorUrls,
   rawMirrorUrls,
   resolveInstallCommand,
   runInstallCommand,
   type ToolRegistry,
 } from './installer';
-import { isCrossMajorVersion, isNewerVersion, parseVersionPayload } from './manifest';
+import { isCrossMajorVersion, majorOf, isNewerVersion, parseVersionPayload } from './manifest';
 import { findPackageManager, globalAddCommand } from './package-manager';
 import { installMethodFromPath, localBinaryVersion, resolveBinPath } from './shared/opencode-detect';
 
@@ -54,14 +55,31 @@ export function shouldSkipUpgradeDownload(
 /**
  * Pure decision helper for the major-version upgrade lock: true when
  * local → latest is an upgrade that crosses the major boundary (e.g.
- * opencode 1.18.32 → 2.0.0, OCP 0.45.0 → 1.0.0). Such upgrades are refused
- * by `ocp update` / `ocp upgrade` for every locked component. Downgrades
- * and same-major bumps are never "blocked major upgrades" — the former are
+ * 1.18.32 → 2.0.0, OCP 2.0.1 → 3.0.0). Such upgrades are refused by
+ * `ocp update` / `ocp upgrade` for every locked component. Downgrades and
+ * same-major bumps are never "blocked major upgrades" — the former are
  * already refused by isNewerVersion, the latter are exactly what remains
  * allowed.
+ *
+ * The opencode runtime row carries a deliberate exception (see
+ * probeToolFromRegistry): crossing UP to the major this OCP line requires
+ * (v1 → v2) is the compat fix itself, so it is offered, not refused. The
+ * apply path (@script:opencode) pins the newest tag WITHIN the required
+ * major, so unlocking the decision can never overshoot into an untested
+ * future major.
  */
 export function isBlockedMajorUpgrade(local: string, latest: string): boolean {
   return isNewerVersion(latest, local) && isCrossMajorVersion(local, latest);
+}
+
+/**
+ * Pure decision for the opencode row's lock: crossing up to the required
+ * runtime major is the fix (unlocked); every other cross stays locked.
+ */
+export function opencodeRowLocked(local: string, requiredMajor: number, baseLocked: boolean): boolean {
+  const major = majorOf(local);
+  if (!baseLocked || Number.isNaN(major)) return baseLocked;
+  return !(major < requiredMajor);
 }
 
 /**
@@ -573,12 +591,16 @@ async function probeToolFromRegistry(repoDir: string, name: string, def: ToolEnt
   // Major-version lock resolution: per-tool update_check.lock_major wins,
   // otherwise the registry-wide update_policy.lock_major_default applies
   // (locked when the policy block is absent — the safe default).
-  const base = {
-    key: name,
-    label: name,
-    majorLocked: majorLockEnabled(def.update_check?.lock_major, majorLockPolicyDefault(repoDir)),
-  };
+  let locked = majorLockEnabled(def.update_check?.lock_major, majorLockPolicyDefault(repoDir));
   const local = localBinaryVersion(def.binary);
+  // The opencode row is the runtime the compat gate depends on: crossing up
+  // to the major this OCP line requires (v1 → v2) is the FIX, not a lock
+  // violation — offer it (the @script:opencode pin bounds the apply to the
+  // required major, so no overshoot). Every other major cross stays locked.
+  if (name === 'opencode' && local) {
+    locked = opencodeRowLocked(local, requiredRuntimeMajor(getCurrentRepoVersion(repoDir)), locked);
+  }
+  const base = { key: name, label: name, majorLocked: locked };
 
   if (!local) {
     // Still probe latest so the row shows what the user is missing instead of

@@ -82,7 +82,75 @@ function section(title: string): void {
 }
 
 // Fake client — only the log surface is exercised in unit tests.
-const fakeClient: any = { app: { log: async () => {} } }
+// ─── V2 test harness ──────────────────────────────────────────────────
+// loadAdrPlugin runs AdrPlugin.setup() against a fake ctx and returns a
+// v1-shaped plugin facade so the historical call sites keep working:
+//   * plugin["command.execute.before"](input)  -> the registered command
+//     execute(); a "handled" result re-throws Error("handled") to mirror
+//     v1's empty-204 throw convention the assertions check.
+//   * toasts -> shared/notify writes "[ocp:notify][variant] message" lines
+//     to console (v2 has no toast surface); the spy below routes them into
+//     the active per-test toasts array instead of stdout.
+//   * session.prompt -> v1-shaped args ({ body: { parts: [{ text }] } })
+//     so prompt-fall-through capture keeps its old shape.
+const fakeSession: any = { synthetic: async () => {}, prompt: async () => {}, get: async () => ({}) }
+
+type Toast = { message: string; level: string }
+let activeToasts: Toast[] = []
+const origLog = console.log
+const origWarn = console.warn
+function notifySpy(orig: (...a: unknown[]) => void, args: unknown[]): void {
+  const line = String(args[0] ?? "")
+  const m = /\[ocp:notify\]\[(\w+)\]\s*([\s\S]*)/.exec(line)
+  if (m) { activeToasts.push({ message: m[2], level: m[1] }); return }
+  orig(...args)
+}
+console.log = (...args: unknown[]) => notifySpy(origLog, args)
+console.warn = (...args: unknown[]) => notifySpy(origWarn, args)
+
+async function loadAdrPlugin(directory: string, toasts: Toast[] = [], promptedCalls: any[] = []) {
+  activeToasts = toasts
+  const commands = new Map<string, (inv: any) => Promise<"handled" | "dispatched" | void>>()
+  const added: Array<{ name: string; description?: string }> = []
+  const hookNames = new Set<string>()
+  const ctx: any = {
+    location: { directory },
+    session: {
+      hook: async (name: string) => { hookNames.add("session:" + name); return { dispose: async () => {} } },
+      synthetic: async () => {},
+      get: async () => ({}),
+      // v1-shaped capture of template fall-through / continue dispatches.
+      prompt: async ({ text }: any) => { promptedCalls.push({ body: { parts: [{ text }] } }) },
+    },
+    tool: {
+      hook: async (name: string) => { hookNames.add("tool:" + name); return { dispose: async () => {} } },
+      transform: async () => { hookNames.add("tool:transform"); return { dispose: async () => {} } },
+    },
+    command: {
+      transform: async (cb: any) => {
+        cb({ add: (d: any) => { commands.set(d.name, d.execute); added.push(d) } })
+        return { dispose: async () => {} }
+      },
+    },
+    event: { subscribe: () => ({ [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }) }) },
+  }
+  const cleanup = await AdrPlugin.setup(ctx)
+  return {
+    "command.execute.before": async (input: { command?: string; arguments?: string; sessionID?: string }) => {
+      const exec = commands.get(input.command ?? "")
+      if (!exec) return
+      const invocation = { sessionID: input.sessionID ?? "t", prompt: { text: input.arguments ?? "" } }
+      await exec(invocation)
+      if ((invocation as { __status?: string }).__status === "handled") throw new Error("handled")
+    },
+    "tool.execute.before": true,
+    "experimental.chat.system.transform": true,
+    commands,
+    added,
+    hookNames,
+    cleanup,
+  }
+}
 
 // ═════════════════════════════════════════════════════════════════════════
 //  1. Tokenizer
@@ -235,7 +303,7 @@ async function test05b_GuardCommandRouting() {
   }
   const tmp = mkdtempSync(join(tmpdir(), "adr-guard-route-"))
   try {
-    const plugin = (await AdrPlugin({ client: mockClient, directory: tmp } as any)) as any
+    const plugin = (await loadAdrPlugin(tmp, toasts)) as any
     const cmdHook = plugin["command.execute.before"]
 
     // `/adr guard on` — routed subcommand: handled (204) + switch flipped
@@ -288,7 +356,12 @@ async function test05b_GuardCommandRouting() {
 
 async function test06_SystemHook() {
   section("06: System hook inject / idempotency / strip (Phase 7.8)")
-  const hook = makeSystemHook(fakeClient)
+  const hookV2 = makeSystemHook(fakeSession)
+  // v1 (input, output) call convention over the v2 single-event hook;
+  // the SAME system array reference is shared so assertions see the flips.
+  const hook = async (input: any, output: { system: string[] }) => {
+    await hookV2({ sessionID: input?.sessionID, system: output.system })
+  }
 
   // Phase 7.8: the hook injects hint + config on EVERY turn regardless
   // of the adrGuard switch (the switch now only gates the tool guard).
@@ -344,7 +417,7 @@ async function test06_SystemHook() {
 
 async function test07_ToolGuard() {
   section("07: Tool guard block/allow matrix")
-  const guard = makeToolGuardHook(fakeClient)
+  const guard = makeToolGuardHook()
 
   const rootT7 = mkdtempSync(join(tmpdir(), "adr-guard-t7-"))
   const git = (args: string[]) =>
@@ -361,7 +434,7 @@ async function test07_ToolGuard() {
 
   async function call(command: string): Promise<string | null> {
     try {
-      await guard({ tool: "bash" } as any, { args: { command } } as any)
+      await guard({ tool: "bash", input: { command } } as any)
       return null
     } catch (err) {
       return String((err as Error).message)
@@ -391,7 +464,7 @@ async function test07_ToolGuard() {
   assert((await call(`git commit`)) === null, "no inline message → fail open")
   assert((await call(`git status`)) === null, "non-commit bash allowed")
   assert(
-    (await guard({ tool: "edit" } as any, { args: {} } as any)) === undefined,
+    (await guard({ tool: "edit", input: {} } as any)) === undefined,
     "non-bash tool untouched",
   )
 
@@ -408,34 +481,25 @@ async function test07_ToolGuard() {
 // ═════════════════════════════════════════════════════════════════════════
 
 async function test08_ConfigHook() {
-  section("08: Config hook — command registration")
-  const plugin = (await AdrPlugin({ client: fakeClient, directory: REPO_ROOT } as any)) as any
-  const cfg: any = {}
-  await plugin["config"](cfg)
-  assert(!!cfg.command, "cfg.command created")
-  assert(!!cfg.command[COMMAND_NAME], "command registered")
-  assert(cfg.command[COMMAND_NAME].description.includes("ADR"), "description mentions ADR")
-  assert(!!plugin["tool.execute.before"], "tool guard hook present")
-  assert(!!plugin["experimental.chat.system.transform"], "system hook present")
-  assert(!!plugin["command.execute.before"], "command hook present")
+  section("08: V2 registration — commands, hooks, tools")
+  const plugin = await loadAdrPlugin(REPO_ROOT)
+  assert(plugin.commands.has(COMMAND_NAME), "/adr-guard alias registered (editor.add)")
+  assert(plugin.commands.has("adr"), "/adr command registered (editor.add)")
+  const guardCmd = plugin.added.find((c) => c.name === COMMAND_NAME)
+  assert((guardCmd?.description ?? "").includes("ADR"), "alias description mentions ADR")
+  assert(plugin.hookNames.has("session:context"), "system injection -> v2 context hook present")
+  assert(plugin.hookNames.has("tool:execute.before"), "tool guard hook present")
+  assert(plugin.hookNames.has("tool:execute.after"), "question-authorization after-hook present")
+  assert(plugin.hookNames.has("tool:transform"), "adr tools registered via tool transform")
+  await plugin.cleanup()
 }
 
 async function test09_AdrCommandAutoDraft() {
   section("09: /adr new auto-draft vs --empty flag")
   let promptedCalls: any[] = []
-  const mockClient: any = {
-    app: { log: async () => {} },
-    tui: { showToast: async () => {} },
-    session: {
-      prompt: async (args: any) => {
-        promptedCalls.push(args)
-      },
-    },
-  }
-
   const tmpTestDir = mkdtempSync(join(tmpdir(), "adr-test-draft-"))
   try {
-    const plugin = (await AdrPlugin({ client: mockClient, directory: tmpTestDir } as any)) as any
+    const plugin = await loadAdrPlugin(tmpTestDir, [], promptedCalls)
     const cmdHook = plugin["command.execute.before"]
 
     // Test 1: /adr new with default auto-drafting
@@ -488,17 +552,9 @@ async function test09_AdrCommandAutoDraft() {
 
 async function test10_AdrSupersede() {
   section("10: /adr supersede linking, index & auto-draft")
-  const mockClient: any = {
-    app: { log: async () => {} },
-    tui: { showToast: async () => {} },
-    session: {
-      prompt: async () => {},
-    },
-  }
-
   const tmpTestDir = mkdtempSync(join(tmpdir(), "adr-test-super-"))
   try {
-    const plugin = (await AdrPlugin({ client: mockClient, directory: tmpTestDir } as any)) as any
+    const plugin = await loadAdrPlugin(tmpTestDir)
     const cmdHook = plugin["command.execute.before"]
 
     // Step 1: Create initial ADR 0001
@@ -564,7 +620,7 @@ async function test10_AdrSupersede() {
 
 async function test11_StrictGovernance() {
   section("11: Strict governance — decide flow, ledger, commit gate")
-  const guard = makeToolGuardHook(fakeClient)
+  const guard = makeToolGuardHook()
   const toasts: { message: string; level: string }[] = []
   const mockClient: any = {
     app: { log: async () => {} },
@@ -590,7 +646,7 @@ async function test11_StrictGovernance() {
 
     async function call(command: string): Promise<string | null> {
       try {
-        await guard({ tool: "bash" } as any, { args: { command } } as any)
+        await guard({ tool: "bash", input: { command } } as any)
         return null
       } catch (err) {
         return String((err as Error).message)
@@ -662,7 +718,7 @@ async function test11_StrictGovernance() {
     assert(setAdrConfigFields({ governance: "strict" }), "governance restored to strict")
 
     // Command surface: /adr decide via the plugin command hook
-    const plugin = (await AdrPlugin({ client: mockClient, directory: root } as any)) as any
+    const plugin = (await loadAdrPlugin(root, toasts)) as any
     const cmdHook = plugin["command.execute.before"]
     toasts.length = 0
     let handledThrown: any = null

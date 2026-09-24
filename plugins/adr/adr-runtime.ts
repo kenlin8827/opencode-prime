@@ -5,7 +5,6 @@
  */
 
 import { spawnSync } from "node:child_process"
-import type { PluginInput } from "@opencode-ai/plugin"
 
 // ─── Try-catch wrapper ───────────────────────────────────────────────
 // Plugin hooks must NEVER crash the user's session. The tool guard does
@@ -25,10 +24,19 @@ export function safeHook<H extends (...args: never[]) => Promise<unknown>>(
 }
 
 // ─── Log helper ──────────────────────────────────────────────────────
+// V2: console-backed server log (v1 routed through client.app.log; the v2
+// plugin Context has no log domain — console reaches the same server log).
 
-export function makeLogger(client: PluginInput["client"], service: string) {
-  return (level: "info" | "warn", message: string) =>
-    client.app.log({ body: { service, level, message } })
+export function makeLogger(service: string) {
+  return async (level: "info" | "warn", message: string): Promise<void> => {
+    try {
+      const line = `[ocp:${service}][${level}] ${message}`
+      if (level === "warn") console.warn(line)
+      else console.log(line)
+    } catch {
+      // Logging must never fail a hook.
+    }
+  }
 }
 
 // ─── Bash command extraction ─────────────────────────────────────────

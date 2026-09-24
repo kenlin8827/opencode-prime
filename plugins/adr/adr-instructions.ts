@@ -261,7 +261,7 @@ export async function getAdrConfigRuntimeFragmentWithHistory(
         }
         // Also try a direct scan of already-injected system history if the
         // caller passed an explicit buffer (not available here — keep the
-        // hook's own `output.system` scan as a second fallback below if needed).
+        // hook's own `e.system` scan as a second fallback below if needed).
       } catch { /* fail open */ }
     }
     return renderFromParsedOrDefault(null)
@@ -272,7 +272,7 @@ export async function getAdrConfigRuntimeFragmentWithHistory(
 }
 
 /** Extract the last `[ADR-CONFIG-RUNTIME]` block from a system prompt
- *  history array (output.system shape). Pure helper for history fallback
+ *  history array (v2 `e.system` shape). Pure helper for history fallback
  *  when `client.session.messages` is unavailable but the current system
  *  array already carries a prior good block from an earlier transform.
  *  Delegates to `shared/last-good:extractLastMarkerBlock`. */

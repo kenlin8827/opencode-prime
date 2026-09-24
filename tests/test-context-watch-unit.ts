@@ -16,7 +16,7 @@
  *   - /usage header banner: tier 30/60/100 + compactions stacking
  *     behave the way the LLM-side reminder does
  *
- * Run: bun run tests/test-context-watch-unit.ts
+ * Run: bun test ./tests/test-context-watch-unit.ts  (v2 plugin contract)
  */
 
 import { ContextWatchPlugin, CONTEXT_TIERS } from "../plugins/context-watch/context-watch"
@@ -54,28 +54,28 @@ function makeMessages(opts: {
   assistants: number
   trailingUser?: boolean
   sessionID?: string
-}): { messages: { info: object; parts: { type?: string; text?: string }[] }[] } {
-  const out: { info: object; parts: { type?: string; text?: string }[] }[] = []
+}): { messages: { role: string; content: { type?: string; text?: string }[] }[] } {
+  const out: { role: string; content: { type?: string; text?: string }[] }[] = []
   for (let i = 0; i < opts.assistants; i++) {
     out.push({
-      info: { role: "assistant", sessionID: opts.sessionID ?? "test-session" },
-      parts: [{ type: "text", text: `assistant ${i}` }],
+      role: "assistant",
+      content: [{ type: "text", text: `assistant ${i}` }],
     })
   }
   if (opts.trailingUser !== false) {
     out.push({
-      info: { role: "user", sessionID: opts.sessionID ?? "test-session" },
-      parts: [{ type: "text", text: "user latest" }],
+      role: "user",
+      content: [{ type: "text", text: "user latest" }],
     })
   }
   return { messages: out }
 }
 
 /** Sum the text of all text parts on the last user message. */
-function lastUserText(messages: { info: { role?: string }; parts: { type?: string; text?: string }[] }[]): string {
+function lastUserText(messages: { role?: string; content?: { type?: string; text?: string }[] }[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].info.role === "user") {
-      return messages[i].parts
+    if (messages[i].role === "user") {
+      return (messages[i].content ?? [])
         .filter((p) => p?.type === "text" && typeof p.text === "string")
         .map((p) => p.text)
         .join("\n")
@@ -87,41 +87,49 @@ function lastUserText(messages: { info: { role?: string }; parts: { type?: strin
 /** Count how many reminders (lines starting with "[CONTEXT WATCH]") appear
  *  anywhere in the messages array. Used to assert the monotonic-escalation
  *  guarantee: even after many turns, only the latest tier's marker exists. */
-function countReminders(messages: { parts: { type?: string; text?: string }[] }[]): number {
+function countReminders(messages: { content?: { type?: string; text?: string }[] }[]): number {
   let n = 0
   for (const m of messages) {
-    for (const p of m.parts) {
+    for (const p of m.content ?? []) {
       if (p?.type === "text" && typeof p.text === "string" && p.text.includes("[CONTEXT WATCH]")) n++
     }
   }
   return n
 }
 
-async function loadPlugin(): Promise<any> {
-  // Pass a minimal fake client. The plugin only calls `client.event?.subscribe`
-  // at init time; an undefined event API is fine (we don't need session.created
-  // events for the tier/placement tests).
-  return (await ContextWatchPlugin({} as any)) as any
+async function loadPlugin(): Promise<(e: { sessionID?: string; messages: unknown[] }) => Promise<void>> {
+  // V2 fake ctx: capture the "context" hook callback; session.get
+  // returns a parent-less session (not a subagent); event.subscribe is
+  // an empty iterator (tier tests do not need session.deleted).
+  const hooks = new Map<string, (e: any) => Promise<void>>()
+  const ctx = {
+    session: {
+      hook: async (name: string, cb: (e: any) => Promise<void>) => { hooks.set(name, cb); return { dispose: async () => {} } },
+      get: async () => ({ id: "s", parentID: undefined }),
+    },
+    event: { subscribe: () => ({ [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }) }) },
+  }
+  await ContextWatchPlugin.setup(ctx as never)
+  const hook = hooks.get("context")
+  if (!hook) throw new Error("context hook not registered")
+  return hook
 }
-
-/** Invoke the transform with the sessionID-as-input shape. Mirrors the
- *  production call: `hook({ sessionID }, output)`. */
+/** Invoke the v2 context hook. Mirrors production: one mutable event
+ *  object carrying sessionID + messages. */
 async function runHook(
-  hook: (input: { sessionID?: string } | undefined, output: any) => Promise<void>,
+  hook: (e: any) => Promise<void>,
   sessionID: string | undefined,
   out: any,
 ): Promise<void> {
-  await hook(sessionID ? { sessionID } : undefined, out)
+  await hook({ sessionID, messages: out.messages })
 }
-
 // ═════════════════════════════════════════════════════════════════════════
 //  1. Tier boundaries — single source of truth
 // ═════════════════════════════════════════════════════════════════════════
 
 async function test01_TierBoundaries() {
   section("01: Tier boundaries — pickTier returns the right level")
-  const plugin = await loadPlugin()
-  const hook = plugin["experimental.chat.messages.transform"]
+  const hook = await loadPlugin()
 
   const cases: Array<[number, string | null]> = [
     [0, null], // below soft → silent
@@ -173,8 +181,7 @@ async function test01_TierBoundaries() {
 
 async function test02_MonotonicEscalation() {
   section("02: Monotonic escalation — past hard, no further reminders")
-  const plugin = await loadPlugin()
-  const hook = plugin["experimental.chat.messages.transform"]
+  const hook = await loadPlugin()
   const sessionID = "t2-session"
 
   // Step 1: 30 assistant turns → first reminder (soft) injected.
@@ -233,8 +240,7 @@ async function test02_MonotonicEscalation() {
 
 async function test03_PerSessionIsolation() {
   section("03: Per-session isolation — each session is independent")
-  const plugin = await loadPlugin()
-  const hook = plugin["experimental.chat.messages.transform"]
+  const hook = await loadPlugin()
 
   const sessionA = "t3-A"
   const sessionB = "t3-B"
@@ -271,8 +277,7 @@ async function test03_PerSessionIsolation() {
 
 async function test04_Placement() {
   section("04: Placement — attaches to last user message (not assistant)")
-  const plugin = await loadPlugin()
-  const hook = plugin["experimental.chat.messages.transform"]
+  const hook = await loadPlugin()
 
   // No trailing user message — should silently no-op (no target).
   const outNoUser = makeMessages({ assistants: 50, trailingUser: false })
@@ -285,9 +290,9 @@ async function test04_Placement() {
   // its content).
   const outAssistantLast = {
     messages: [
-      { info: { role: "user", sessionID: "t4" }, parts: [{ type: "text", text: "old user" }] },
-      { info: { role: "assistant", sessionID: "t4" }, parts: [{ type: "text", text: "assistant 1" }] },
-      { info: { role: "assistant", sessionID: "t4" }, parts: [{ type: "text", text: "last assistant" }] },
+      { role: "user", content: [{ type: "text", text: "old user" }] },
+      { role: "assistant", content: [{ type: "text", text: "assistant 1" }] },
+      { role: "assistant", content: [{ type: "text", text: "last assistant" }] },
     ],
   }
   await runHook(hook, undefined, outAssistantLast)
@@ -301,8 +306,7 @@ async function test04_Placement() {
 
 async function test05_FailOpen() {
   section("05: Fail-open — empty/invalid input")
-  const plugin = await loadPlugin()
-  const hook = plugin["experimental.chat.messages.transform"]
+  const hook = await loadPlugin()
 
   // Empty messages — no-op
   await runHook(hook, undefined, { messages: [] })

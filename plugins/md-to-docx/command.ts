@@ -1,5 +1,4 @@
-import type { PluginInput } from "@opencode-ai/plugin"
-import { HttpServerResponse } from "effect/unstable/http"
+import { injectReply, type V2Session } from "../shared/agent-scope"
 import { relative } from "node:path"
 import {
   convertSingleFile,
@@ -11,10 +10,13 @@ import {
 
 export const COMMAND_NAMES = ["md-to-docx"] as const
 
-export function makeCommandHook(client: PluginInput["client"], projectDir: string) {
-  return async (input: { command?: string; arguments?: string; sessionID?: string }) => {
-    if (!input.command || !COMMAND_NAMES.includes(input.command as any)) return
-
+/** V2 command handler (registered per COMMAND_NAMES via
+ *  ctx.command.transform in index.ts). All user feedback rides the
+ *  synthetic-message channel (v1 equivalent: session.prompt({noReply,
+ *  ignored})); returning from execute() consumes the command (v1
+ *  equivalent: throw the empty-204 response — the LLM never sees a turn). */
+export function makeCommandHandler(session: V2Session | undefined, projectDir: string) {
+  return async (input: { arguments?: string; sessionID?: string }) => {
     const argsStr = (input.arguments || "").trim()
 
     // Show help if no arguments provided
@@ -39,16 +41,8 @@ Examples:
   /md-to-docx docs/materials/system-design.md dist/design.docx
   /md-to-docx report.md --style=custom-theme.css`
 
-      if (input.sessionID) {
-        await client.session.prompt({
-          path: { id: input.sessionID },
-          body: {
-            parts: [{ type: "text", text: help, ignored: true }],
-            noReply: true,
-          },
-        })
-      }
-      throw HttpServerResponse.empty({ status: 204 })
+      await injectReply(session, input.sessionID, help)
+      return
     }
 
     if (argsStr === "--doctor" || argsStr === "doctor") {
@@ -63,16 +57,8 @@ Examples:
 
 ${!pandocOk || !chromiumOk ? "👉 Run `/md-to-docx --install-deps` to auto-install missing tools or view install guide.\n" : "✨ All DOCX typography, CSS theme & Mermaid engines are ready!"}`
 
-      if (input.sessionID) {
-        await client.session.prompt({
-          path: { id: input.sessionID },
-          body: {
-            parts: [{ type: "text", text: doctorReport, ignored: true }],
-            noReply: true,
-          },
-        })
-      }
-      throw HttpServerResponse.empty({ status: 204 })
+      await injectReply(session, input.sessionID, doctorReport)
+      return
     }
 
     if (argsStr === "--install-deps") {
@@ -98,16 +84,8 @@ ${!pandocOk || !chromiumOk ? "👉 Run `/md-to-docx --install-deps` to auto-inst
         reportLines.push("• Pandoc Markdown Parser: ✅ Already installed.")
       }
 
-      if (input.sessionID) {
-        await client.session.prompt({
-          path: { id: input.sessionID },
-          body: {
-            parts: [{ type: "text", text: reportLines.join("\n"), ignored: true }],
-            noReply: true,
-          },
-        })
-      }
-      throw HttpServerResponse.empty({ status: 204 })
+      await injectReply(session, input.sessionID, reportLines.join("\n"))
+      return
     }
 
     // Normal conversion invocation
@@ -126,43 +104,18 @@ ${!pandocOk || !chromiumOk ? "👉 Run `/md-to-docx --install-deps` to auto-inst
       }
     }
 
-    if (input.sessionID) {
-      await client.session.prompt({
-        path: { id: input.sessionID },
-        body: {
-          parts: [{ type: "text", text: `⏳ Converting \`${inputPath}\` to publication-quality Word (DOCX)...`, ignored: true }],
-          noReply: true,
-        },
-      })
-    }
+    await injectReply(session, input.sessionID, `⏳ Converting \`${inputPath}\` to publication-quality Word (DOCX)...`)
 
     try {
       const res = await convertSingleFile({ inputPath, outputPath, stylePath }, projectDir)
       const successMsg = `🎉 Word document generated successfully!\n• Source: \`${res.inputPath}\`\n• Output: \`${res.outputPath}\`\n• Size: ${(res.fileSizeBytes / 1024).toFixed(1)} KB`
 
-      if (input.sessionID) {
-        await client.session.prompt({
-          path: { id: input.sessionID },
-          body: {
-            parts: [{ type: "text", text: successMsg, ignored: true }],
-            noReply: true,
-          },
-        })
-      }
+      await injectReply(session, input.sessionID, successMsg)
     } catch (err) {
-      const errorMsg = (err as Error).message
-
-      if (input.sessionID) {
-        await client.session.prompt({
-          path: { id: input.sessionID },
-          body: {
-            parts: [{ type: "text", text: errorMsg, ignored: true }],
-            noReply: true,
-          },
-        })
-      }
+      const message = (err as Error).message
+      await injectReply(session, input.sessionID, message)
     }
 
-    throw HttpServerResponse.empty({ status: 204 })
+    return
   }
 }

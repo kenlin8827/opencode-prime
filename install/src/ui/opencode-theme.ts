@@ -79,14 +79,18 @@ function loadThemeFile(file: string): ThemeFile | undefined {
   return undefined
 }
 
-/** Read the user's chosen theme name from tui.jsonc / tui.json (config dir). */
+/** Read the user's chosen theme name. V2 keeps client config in one global
+ *  cli.json with `theme: { name }`; the layered v1 tui.json(c) string form
+ *  remains a fallback for not-yet-migrated installs. */
 export function readTuiThemeName(configDir: string): string {
-  for (const file of ['tui.jsonc', 'tui.json']) {
+  for (const file of ['cli.json', 'tui.jsonc', 'tui.json']) {
     const full = path.join(configDir, file)
     if (!existsSync(full)) continue
     try {
       const parsed = JSON.parse(stripJsonc(readFileSync(full, 'utf8'))) as { theme?: unknown }
       if (typeof parsed.theme === 'string' && parsed.theme) return parsed.theme
+      const name = (parsed.theme as { name?: unknown } | undefined)?.name
+      if (typeof name === 'string' && name) return name
     } catch { /* ignore malformed config */ }
   }
   return 'opencode'

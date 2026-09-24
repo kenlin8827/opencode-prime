@@ -21,7 +21,7 @@
  * Other wizards migrate in a later phase.
  */
 
-import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
+import type { Context } from "@opencode/plugin/tui/context"
 import { tr, type StringKey } from "./i18n"
 import {
   formatGuardBadge,
@@ -95,145 +95,97 @@ export function badgeFor(field: SchemaField, value: string | undefined): string 
 // ─── Renderer entry point ───────────────────────────────────────────
 
 /**
- * Render a field's picker. Calls onCommit with the chosen value, or
- * onCancel if the user backs out (Esc on every dialog level).
- *
- * Both callbacks are invoked at most once.
+ * Render a field's picker (v2: promise-based dialogs). Resolves with the
+ * committed value, or `undefined` when the user backs out (cancel row or
+ * Esc on every dialog level).
  */
-export function renderSchemaField(
-  api: TuiPluginApi,
+export async function renderSchemaField(
+  ctx: Context,
   field: SchemaField,
   currentValue: string | undefined,
-  onCommit: (newValue: string) => void,
-  onCancel: () => void,
-): void {
+): Promise<string | undefined> {
   if (field.type === "enum") {
-    renderEnumPicker(api, field, currentValue, onCommit, onCancel)
-  } else if (field.type === "enum-with-custom") {
-    renderEnumWithCustomPicker(api, field, currentValue, onCommit, onCancel)
-  } else {
-    // Unknown field type — fail closed by going back.
-    onCancel()
+    return renderEnumPicker(ctx, field, currentValue)
   }
+  if (field.type === "enum-with-custom") {
+    return renderEnumWithCustomPicker(ctx, field, currentValue)
+  }
+  // Unknown field type — fail closed by going back.
+  return undefined
 }
 
 // ─── enum picker ─────────────────────────────────────────────────────
 
-function renderEnumPicker(
-  api: TuiPluginApi,
+async function renderEnumPicker(
+  ctx: Context,
   field: SchemaField,
   currentValue: string | undefined,
-  onCommit: (newValue: string) => void,
-  onCancel: () => void,
-): void {
-  let navigated = false
+): Promise<string | undefined> {
   const initialValue = currentValue ?? field.default ?? field.values[0]?.value ?? ""
-  api.ui.dialog.replace(
-    () =>
-      api.ui.DialogSelect<string>({
-        title: tr(field.labelKey),
-        placeholder: tr("project.currentValue", { value: initialValue }),
-        current: initialValue,
-        options: [
-          ...field.values.map((v) => ({
-            title: `${iconForValueKind(field, v.value)} ${v.value}${currentValue === v.value ? tr("project.currentMarker") : ""}`,
-            value: v.value,
-            description: tr(v.labelKey),
-          })),
-          { title: tr("project.cancel"), value: "__cancel__", description: tr("project.cancelDesc") },
-        ],
-        onSelect: (sel) => {
-          navigated = true
-          if (sel.value === "__cancel__") {
-            onCancel()
-          } else {
-            onCommit(sel.value)
-          }
-        },
-      }),
-    () => {
-      if (!navigated) setTimeout(onCancel, 0)
-    },
-  )
+  const pick = await ctx.ui.dialog.select<string>({
+    title: tr(field.labelKey),
+    placeholder: tr("project.currentValue", { value: initialValue }),
+    current: initialValue,
+    options: [
+      ...field.values.map((v) => ({
+        title: `${iconForValueKind(field, v.value)} ${v.value}${currentValue === v.value ? tr("project.currentMarker") : ""}`,
+        value: v.value,
+        description: tr(v.labelKey),
+      })),
+      { title: tr("project.cancel"), value: "__cancel__", description: tr("project.cancelDesc") },
+    ],
+  })
+  if (pick === undefined || pick === "__cancel__") return undefined
+  return pick
 }
 
 // ─── enum-with-custom picker ────────────────────────────────────────
 
-function renderEnumWithCustomPicker(
-  api: TuiPluginApi,
+async function renderEnumWithCustomPicker(
+  ctx: Context,
   field: SchemaField,
   currentValue: string | undefined,
-  onCommit: (newValue: string) => void,
-  onCancel: () => void,
-): void {
-  let navigated = false
+): Promise<string | undefined> {
   const initialValue = currentValue ?? field.default ?? field.values[0]?.value ?? ""
-  api.ui.dialog.replace(
-    () =>
-      api.ui.DialogSelect<string>({
-        title: tr(field.labelKey),
-        placeholder: tr("project.currentValue", { value: initialValue }),
-        current: initialValue,
-        options: [
-          ...field.values.map((v) => ({
-            title: `📁 ${v.value}${currentValue === v.value ? tr("project.currentMarker") : ""}`,
-            value: v.value,
-            description: tr(v.labelKey),
-          })),
-          ...(field.allowCustom
-            ? [{
-                title: tr("project.valueAdrDirCustom"),
-                value: "__custom__",
-                description: tr("project.valueAdrDirCustomDesc"),
-              }]
-            : []),
-          { title: tr("project.cancel"), value: "__cancel__", description: tr("project.cancelDesc") },
-        ],
-        onSelect: (sel) => {
-          navigated = true
-          if (sel.value === "__cancel__") {
-            onCancel()
-          } else if (sel.value === "__custom__") {
-            renderCustomPrompt(api, field, initialValue, onCommit, onCancel)
-          } else {
-            onCommit(sel.value)
-          }
-        },
-      }),
-    () => {
-      if (!navigated) setTimeout(onCancel, 0)
-    },
-  )
+  const pick = await ctx.ui.dialog.select<string>({
+    title: tr(field.labelKey),
+    placeholder: tr("project.currentValue", { value: initialValue }),
+    current: initialValue,
+    options: [
+      ...field.values.map((v) => ({
+        title: `📁 ${v.value}${currentValue === v.value ? tr("project.currentMarker") : ""}`,
+        value: v.value,
+        description: tr(v.labelKey),
+      })),
+      ...(field.allowCustom
+        ? [{
+            title: tr("project.valueAdrDirCustom"),
+            value: "__custom__",
+            description: tr("project.valueAdrDirCustomDesc"),
+          }]
+        : []),
+      { title: tr("project.cancel"), value: "__cancel__", description: tr("project.cancelDesc") },
+    ],
+  })
+  if (pick === undefined || pick === "__cancel__") return undefined
+  if (pick === "__custom__") return renderCustomPrompt(ctx, field, initialValue)
+  return pick
 }
 
-function renderCustomPrompt(
-  api: TuiPluginApi,
+async function renderCustomPrompt(
+  ctx: Context,
   field: SchemaField,
   initialValue: string,
-  onCommit: (value: string) => void,
-  onCancel: () => void,
-): void {
-  let navPrompt = false
-  api.ui.dialog.replace(
-    () =>
-      api.ui.DialogPrompt({
-        title: tr(field.customPromptKey ?? "project.promptAdrDirTitle"),
-        placeholder: tr(field.customPlaceholderKey ?? "project.promptAdrDirPlaceholder"),
-        value: initialValue,
-        onConfirm: (val) => {
-          navPrompt = true
-          const trimmed = val.trim()
-          onCommit(trimmed === "" ? initialValue : trimmed)
-        },
-        onCancel: () => {
-          navPrompt = true
-          setTimeout(onCancel, 0)
-        },
-      }),
-    () => {
-      if (!navPrompt) setTimeout(onCancel, 0)
-    },
-  )
+): Promise<string | undefined> {
+  const val = await ctx.ui.dialog.prompt({
+    title: tr(field.customPromptKey ?? "project.promptAdrDirTitle"),
+    placeholder: tr(field.customPlaceholderKey ?? "project.promptAdrDirPlaceholder"),
+    value: initialValue,
+  })
+  // Esc / blank input backs out; blank with text commits the trimmed value.
+  if (val === undefined) return undefined
+  const trimmed = val.trim()
+  return trimmed === "" ? initialValue : trimmed
 }
 
 // ─── Icon dispatch for enum values ──────────────────────────────────

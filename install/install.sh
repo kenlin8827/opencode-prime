@@ -43,12 +43,13 @@ if [ "$IS_INFO_CMD" = false ] && ! command -v opencode >/dev/null 2>&1; then
     fi
     
     if [ "$INSTALL_OPENCODE" = true ]; then
-        # OCP is locked to opencode major v1 (v2 breaks OCP plugins and the
-        # v1 SDK). The pinned installer resolves the newest v1 release and
-        # refuses when a v2+ binary is on PATH — never the official
-        # "latest" one-liner. Exit 2 = v1 already present but managed
-        # outside ocp (benign, same convention as the other tool scripts).
-        echo -e "\n🚀 Installing OpenCode CLI (pinned to major v1)..."
+        # OCP v2 requires the opencode v2 runtime (V2 config/plugin contract).
+        # The pinned installer resolves the newest v2 release and upgrades a
+        # v1 binary in the user profile — never the official "latest"
+        # one-liner, and never past a newer untested major (v3+ is refused).
+        # Exit 2 = binary present but managed outside ocp (benign, same
+        # convention as the other tool scripts).
+        echo -e "\n🚀 Installing OpenCode CLI (pinned to major v2)..."
         _ocp_status=0
         bash "$SCRIPT_DIR/scripts/tools/opencode.sh" || _ocp_status=$?
         if [ "$_ocp_status" -eq 0 ]; then
@@ -58,7 +59,7 @@ if [ "$IS_INFO_CMD" = false ] && ! command -v opencode >/dev/null 2>&1; then
             export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$PATH"
             echo -e "✔ OpenCode CLI already present (managed outside ocp).\n"
         else
-            echo "⚠️ Automatic installation encountered an issue. Install the newest opencode v1 manually from https://github.com/anomalyco/opencode/releases (v2 is NOT supported by OCP)"
+            echo "⚠️ Automatic installation encountered an issue. Install the newest opencode v2 manually from https://github.com/anomalyco/opencode/releases (v1 cannot load OCP v2)"
         fi
         unset _ocp_status
     else
@@ -66,21 +67,21 @@ if [ "$IS_INFO_CMD" = false ] && ! command -v opencode >/dev/null 2>&1; then
     fi
 fi
 
-# 0b. A v2+ opencode on PATH is refused outright: OCP plugins and the v1 SDK
-# are incompatible with v2. Never auto-touch it here (silently downgrading a
-# user's binary would be destructive) — the TS installer (provisionTools)
-# repeats this refusal and skips the opencode-dependent setup steps.
+# 0b. A v3+ opencode on PATH is refused outright: OCP v2 pins the v2 runtime
+# contract and cannot promise v3 compatibility. A v1 binary is NOT refused
+# here — it is the upgrade target of the pinned installer above (and of the
+# TS installer's provisionTools phase). Never auto-downgrade a user's binary.
 if [ "$IS_INFO_CMD" = false ] && command -v opencode >/dev/null 2>&1; then
     _ocp_ver="$(opencode --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)"
     _ocp_major="$(printf '%s' "$_ocp_ver" | cut -d. -f1)"
-    if [ -n "$_ocp_major" ] && [ "$_ocp_major" != "1" ]; then
+    if [ -n "$_ocp_major" ] && [ "$_ocp_major" -gt 2 ]; then
         echo ""
         echo "============================================================"
-        echo "  ⚠️  opencode v$_ocp_ver detected — OCP requires opencode v1"
+        echo "  ⚠️  opencode v$_ocp_ver detected — OCP v2 requires opencode v2.x"
         echo "============================================================"
         echo ""
-        echo "OpenCode Prime is locked to opencode major v1 (v2 breaks OCP plugins and the v1 SDK)."
-        echo "Uninstall v$_ocp_ver, install the newest v1 from https://github.com/anomalyco/opencode/releases, then re-run."
+        echo "OpenCode Prime v2 targets the opencode v2 runtime contract and cannot run on v$_ocp_major."
+        echo 'Install the newest opencode v2 from https://github.com/anomalyco/opencode/releases (or run "ocp update"), then re-run.'
         echo ""
     fi
     unset _ocp_ver _ocp_major

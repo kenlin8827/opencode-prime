@@ -1,5 +1,5 @@
 /**
- * Hook: experimental.chat.system.transform — inject the ADR system hint
+ * Hook: ctx.session.hook("context") — inject the ADR system hint
  * + live runtime config into the system prompt on EVERY chat request.
  * Stale markers are stripped defensively on every turn.
  *
@@ -16,7 +16,7 @@
  *      `/adr config <key> <value>` edits without restart.
  *
  * Opencode runtime note (verified 2026-09-11, see ADR 0002): the
- * runtime rebuilds `output.system` per chat request — output.system
+ * runtime rebuilds `e.system` per chat request — e.system
  * never contains fragments injected on a previous step. Behavior:
  *
  *   - fresh prompt → strip no-op + inject hint + inject config.
@@ -33,8 +33,8 @@
  * the hint's command list.
  */
 
-import type { PluginInput } from "@opencode-ai/plugin"
-import { scoped } from "../shared/plugin-scope"
+import { scopedForAgent, type V2Session } from "../shared/agent-scope"
+import { systemTexts } from "../shared/plugin-scope"
 import { appendBlock } from "../shared/system-block"
 import {
   getAdrConfigRuntimeFragmentWithHistory,
@@ -52,9 +52,24 @@ type Log = ReturnType<typeof makeLogger>
 const ANY_MARKER = "[ADR"
 
 function hasAnyMarker(system: Array<unknown>): boolean {
-  return system.some(
-    (s) => typeof s === "string" && (s.includes(MARKER_HINT) || s.includes(MARKER_CONFIG) || s.includes(ANY_MARKER)),
+  return systemTexts(system).some(
+    (s) => s.includes(MARKER_HINT) || s.includes(MARKER_CONFIG) || s.includes(ANY_MARKER),
   )
+}
+
+/** Read a system entry's text; supports v1 strings and v2 SystemPart objects. */
+function entryText(entry: unknown): string | null {
+  if (typeof entry === "string") return entry
+  if (entry && typeof entry === "object" && typeof (entry as { text?: unknown }).text === "string")
+    return (entry as { text: string }).text
+  return null
+}
+
+function setEntryText(system: Array<unknown>, i: number, text: string): void {
+  const entry = system[i]
+  if (entry && typeof entry === "object" && typeof (entry as { text?: unknown }).text === "string")
+    (entry as { text: string }).text = text
+  else system[i] = text
 }
 
 /** Strip every ADR block we own from `system` in place. Each injected
@@ -65,8 +80,8 @@ function hasAnyMarker(system: Array<unknown>): boolean {
 function stripAllMarkers(system: Array<unknown>): { hint: boolean; config: boolean } {
   const found = { hint: false, config: false }
   for (let i = 0; i < system.length; i++) {
-    const raw = system[i]
-    if (typeof raw !== "string") continue
+    const raw = entryText(system[i])
+    if (raw === null) continue
     let s = raw
     for (;;) {
       // Locate the leftmost ADR marker and the span end (the next ADR
@@ -93,38 +108,46 @@ function stripAllMarkers(system: Array<unknown>): { hint: boolean; config: boole
       s = head + s.substring(end)
       found[kind] = true
     }
-    system[i] = s
+    setEntryText(system, i, s)
   }
   return found
 }
 
-export function makeSystemHook(client: PluginInput["client"]) {
-  const log: Log = makeLogger(client, "adr")
+/** V2 "context" hook (replaces v1 experimental.chat.system.transform).
+ *  Fail-open internally — a session-hook throw must never abort the flow.
+ *  `session` (v2 ctx.session) is forwarded to the last-good history scan,
+ *  which duck-types it and never throws. */
+export function makeSystemHook(session: V2Session | undefined) {
+  const log = makeLogger("adr")
 
-  return async (input: { sessionID?: string } | undefined, output: { system: string[] }) => {
-    // Lite mode: bare-prompt contract — no iron-law protocol for @lite.
-    if (!await scoped(input, output.system, "adr", client)) return
+  return async (e: { agent?: string | null; system?: Array<unknown>; sessionID?: string }): Promise<void> => {
+    try {
+      const system = Array.isArray(e.system) ? e.system : []
+      // Lite mode: bare-prompt contract — no iron-law protocol for @lite.
+      if (!(await scopedForAgent(e, "adr", session))) return
 
-    // Defensive strip — correct under Scenario B (hypothetical
-    // prompt-persistence), no-op under Scenario A (verified current
-    // runtime, see ADR 0002).
-    const hadMarker = hasAnyMarker(output.system)
-    if (hadMarker) stripAllMarkers(output.system)
+      // Defensive strip — correct under Scenario B (hypothetical
+      // prompt-persistence), no-op under Scenario A (verified current
+      // runtime, see ADR 0002).
+      if (hasAnyMarker(system)) stripAllMarkers(system)
 
-    // 1. Hint block — ~117 tokens, stable for the whole session.
-    //    appendBlock's marker-absence check keeps this idempotent
-    //    within a turn.
-    const hintPrompt = getGuardHintPrompt()
-    const hintChanged = appendBlock(output.system, hintPrompt)
-    if (hintChanged) await log("info", "system prompt: ADR hint injected")
+      // 1. Hint block — ~117 tokens, stable for the whole session.
+      //    appendBlock's marker-absence check keeps this idempotent
+      //    within a turn.
+      const hintPrompt = getGuardHintPrompt()
+      const hintChanged = appendBlock(system, hintPrompt)
+      if (hintChanged) await log("info", "system prompt: ADR hint injected")
 
-    // 2. Runtime config block — re-rendered every turn from .ocp/ocp.json.
-    //    No cache at this layer: a project edit or `/adr config <key>
-    //    <value>` mid-session shows up on the next chat request.
-    //    On corrupt+Map-miss (restart) we low-frequency try to recover the
-    //    last good block from the session history via shared/last-good.
-    const configBlock = await getAdrConfigRuntimeFragmentWithHistory(client, input?.sessionID)
-    const configChanged = appendBlock(output.system, configBlock)
-    if (configChanged) await log("info", "system prompt: runtime config block injected")
+      // 2. Runtime config block — re-rendered every turn from .ocp/ocp.json.
+      //    No cache at this layer: a project edit or `/adr config <key>
+      //    <value>` mid-session shows up on the next chat request.
+      //    On corrupt+Map-miss (restart) we low-frequency try to recover the
+      //    last good block from the session history via shared/last-good.
+      const configBlock = await getAdrConfigRuntimeFragmentWithHistory(session, e.sessionID)
+      const configChanged = appendBlock(system, configBlock)
+      if (configChanged) await log("info", "system prompt: runtime config block injected")
+    } catch {
+      // Fail-open: never abort a request over an injector.
+    }
   }
 }

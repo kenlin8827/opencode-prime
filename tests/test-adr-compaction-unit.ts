@@ -22,6 +22,13 @@ function fixture() {
   writeFileSync(join(dir, ".ocp/ocp.json"), JSON.stringify({ adr: { style: "nygard", numbering: "sequential", layout: "flat", governance: "strict" } }))
   return dir
 }
+// Windows without Developer Mode denies unprivileged symlink creation (EPERM).
+// The symlink assertions below are OS-capability-gated so the suite fails only
+// where the guard is actually broken, not on every permission-less runner.
+function canSymlink(probeRoot: string): boolean {
+  const link = join(probeRoot, `.symlink-probe-${Date.now()}`)
+  try { symlinkSync(join(probeRoot, ".ocp/ocp.json"), link); return true } catch { return false } finally { rmSync(link, { force: true }) }
+}
 function content(id: string, status = "accepted", decision = "Use explicit boundaries.") {
   return `---\nstyle: nygard\nstatus: ${status}\ndate: 2026-09-19\nlayer: system\ndomain: runtime\n---\n\n# ${id.replace("ADR-", "")}. Runtime boundaries\n\n## Context\n\nWe need predictable integration.\n\n## Decision\n\n${decision}\n\n## Consequences\n\nExtra validation preserves boundaries.\n`
 }
@@ -41,8 +48,10 @@ function candidate(p: Plan, selected: string[], untouched: string[] = []): Candi
     coverage: [...selected.map(source => ({ source, disposition: id ? "replace" as const : "retain" as const, targets: id ? [id] : [], note: "Preserved without semantic change." })), ...untouched.map(source => ({ source, disposition: "retain" as const, targets: [], note: "Unchanged independent decision." }))],
   }
 }
-const client = { tui: { showToast: async () => ({}) }, session: { prompt: async () => ({}), get: async () => ({ data: {} }) }, app: { log: async () => ({}) } } as any
-const ctx = { sessionID: "s", messageID: "m", agent: "build", directory: "", worktree: "", abort: new AbortController().signal, ask: async () => {}, metadata: () => {} } as any
+// V2 session domain view (synthetic/prompt/get) — replaces the v1 SDK surface.
+const session: any = { synthetic: async () => ({}), prompt: async () => ({}), get: async () => ({}) }
+// V2 ToolContext subset: execute handlers read { sessionID, agent, signal, progress }.
+const ctx: any = { sessionID: "s", messageID: "m", agent: "build", signal: new AbortController().signal, progress: async () => {} }
 
 await test("strict CLI, mutually exclusive options and safe default", () => {
   assert.equal(parseCompactionArgs("").action, "analyze")
@@ -190,21 +199,22 @@ await test("Ask requires matching native call, request, session, exact answer; r
   const dir = fixture()
   try {
     source(dir, "0001")
-    const runtime = createCompactionRuntime(dir, client)
+    const runtime = createCompactionRuntime(dir, session)
     const p = startCompaction(dir, "s", { mode: "summary" }); readAll(dir, p)
     const output = await runtime.tools.adr_compaction.execute({ plan: p.id, action: "submit", candidate: candidate(p, p.selected) }, ctx)
-    const ask = JSON.parse(String(output))
-    await runtime.event({ type: "question.replied", properties: { sessionID: "s", requestID: "forged", answers: [[ask.questions[0].options[0].label]] } })
+    const ask = JSON.parse(output.content)
+    // V2: authorization rides the question tool's own execute.after result
+    // (server-produced answers); no matching before()-recorded call id -> inert.
+    await runtime.after({ tool: "question", sessionID: "s", id: "forged", status: "completed", result: { output: { answers: [[ask.questions[0].options[0].label]] }, content: "" } })
     assert.equal(loadPlan(dir, p.id).state, "review")
-    await runtime.before({ tool: "question", sessionID: "s", callID: "call" }, { args: { questions: ask.questions } })
-    await runtime.event({ type: "question.asked", properties: { sessionID: "s", id: "q", tool: { callID: "call" }, questions: ask.questions } })
-    await runtime.event({ type: "question.replied", properties: { sessionID: "wrong", requestID: "q", answers: [[ask.questions[0].options[0].label]] } })
+    await runtime.before({ tool: "question", sessionID: "s", id: "call", input: { questions: ask.questions } })
+    await runtime.after({ tool: "question", sessionID: "wrong", id: "call", status: "completed", input: { questions: ask.questions }, result: { output: { answers: [[ask.questions[0].options[0].label]] }, content: "" } })
     assert.equal(loadPlan(dir, p.id).state, "review")
-    const event = { type: "question.replied", properties: { sessionID: "s", requestID: "q", answers: [[ask.questions[0].options[0].label]] } }
-    await runtime.event(event)
+    const replied = { tool: "question", sessionID: "s", id: "call", status: "completed", input: { questions: ask.questions }, result: { output: { answers: [[ask.questions[0].options[0].label]] }, content: "" } }
+    await runtime.after(replied)
     assert.equal(loadPlan(dir, p.id).state, "complete")
     const first = readOptional(dir, "docs/adr/CURRENT.md")
-    await runtime.event(event)
+    await runtime.after(replied)
     assert.equal(readOptional(dir, "docs/adr/CURRENT.md"), first)
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
@@ -214,14 +224,14 @@ await test("guard is opt-in; supported archive reads block, code reads and disco
   try {
     source(dir, "0001", "deprecated")
     mkdirSync(join(dir, "docs/adr/archive")); writeFileSync(join(dir, "docs/adr/archive/0002-old.md"), content("0002", "deprecated"))
-    const guard = createReadGuard(dir, client)
-    await guard({ tool: "read", sessionID: "s" }, { args: { filePath: "docs/adr/archive/0002-old.md" } })
+    const guard = createReadGuard(dir, session)
+    await guard({ tool: "read", sessionID: "s", input: { filePath: "docs/adr/archive/0002-old.md" } })
     assert.ok(setAdrConfigKey("readGuard", "guard"))
-    await assert.rejects(guard({ tool: "read", sessionID: "s" }, { args: { filePath: "docs/adr/archive/0002-old.md" } }), /ADR-READ-GUARD/)
-    await assert.rejects(guard({ tool: "grep", sessionID: "s" }, { args: { path: ".", pattern: "decision" } }), /ADR-READ-GUARD/)
-    await guard({ tool: "grep", sessionID: "s" }, { args: { path: ".", output_mode: "files_with_matches", pattern: "decision" } })
-    await guard({ tool: "read", sessionID: "s" }, { args: { filePath: "src/app.ts" } })
-    await assert.rejects(guard({ tool: "bash", sessionID: "s" }, { args: { command: "cat docs/adr/archive/0002-old.md" } }), /ADR-READ-GUARD/)
+    await assert.rejects(guard({ tool: "read", sessionID: "s", input: { filePath: "docs/adr/archive/0002-old.md" } }), /ADR-READ-GUARD/)
+    await assert.rejects(guard({ tool: "grep", sessionID: "s", input: { path: ".", pattern: "decision" } }), /ADR-READ-GUARD/)
+    await guard({ tool: "grep", sessionID: "s", input: { path: ".", output_mode: "files_with_matches", pattern: "decision" } })
+    await guard({ tool: "read", sessionID: "s", input: { filePath: "src/app.ts" } })
+    await assert.rejects(guard({ tool: "bash", sessionID: "s", input: { command: "cat docs/adr/archive/0002-old.md" } }), /ADR-READ-GUARD/)
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
 
@@ -303,16 +313,17 @@ await test("stale native Ask, cancel, modified choice, reordered Question event 
     const dir = fixture()
     try {
       source(dir, "0001")
-      const runtime = createCompactionRuntime(dir, client)
+      const runtime = createCompactionRuntime(dir, session)
       const p = startCompaction(dir, "s", { mode: "summary" }); readAll(dir, p)
-      const ask = JSON.parse(String(await runtime.tools.adr_compaction.execute({ plan: p.id, action: "submit", candidate: candidate(p, p.selected) }, ctx)))
-      await runtime.before({ tool: "question", sessionID: "s", callID: "call" }, { args: { questions: ask.questions } })
+      const ask = JSON.parse((await runtime.tools.adr_compaction.execute({ plan: p.id, action: "submit", candidate: candidate(p, p.selected) }, ctx)).content)
+      await runtime.before({ tool: "question", sessionID: "s", id: "call", input: { questions: ask.questions } })
       const q = ask.questions[0]
+      // Reordered keys keep the same signature — the round-trip still matches.
       const reordered = { question: q.question, header: q.header, options: q.options, multiple: q.multiple }
-      await runtime.event({ type: "question.asked", data: { sessionID: "s", id: "q", tool: { callID: "call" }, questions: [reordered] } })
       if (kind === "stale") source(dir, "0002")
       const label = kind === "cancel" ? q.options.at(-1).label : kind === "modify" ? q.options[1].label : q.options[0].label
-      await runtime.event({ type: kind === "reject" ? "question.rejected" : "question.replied", data: { sessionID: "s", requestID: "q", answers: [[label]] } })
+      if (kind === "reject") await runtime.after({ tool: "question", sessionID: "s", id: "call", status: "error" })
+      else await runtime.after({ tool: "question", sessionID: "s", id: "call", status: "completed", input: { questions: [reordered] }, result: { output: { answers: [[label]] }, content: "" } })
       assert.ok(!existsSync(join(dir, "docs/adr/CURRENT.md")))
       assert.equal(loadPlan(dir, p.id).state, kind === "cancel" ? "cancelled" : "review")
     } finally { rmSync(dir, { recursive: true, force: true }) }
@@ -389,10 +400,12 @@ await test("iteration identities are explicit; stale reviewed indexes and symlin
     writeFileSync(join(dir, "docs/adr/INDEX.md"), "editor content")
     assert.throws(() => applyPlan(dir, ready.id, ready.seal!, "question", "accept"), /Reviewed view changed/)
     assert.equal(takeSnapshot(dir).records.length, 1)
-    symlinkSync(join(dir, "docs/adr/0001-runtime.md"), join(dir, "docs/adr/0002-alias.md"))
-    assert.throws(() => projectPath(dir, "docs/adr/0002-alias.md"), /symlink/i)
-    symlinkSync(join(dir, "missing-target"), join(dir, "dangling"))
-    assert.throws(() => projectPath(dir, "dangling/new.md"), /symlink/i)
+    if (canSymlink(dir)) {
+      symlinkSync(join(dir, "docs/adr/0001-runtime.md"), join(dir, "docs/adr/0002-alias.md"))
+      assert.throws(() => projectPath(dir, "docs/adr/0002-alias.md"), /symlink/i)
+      symlinkSync(join(dir, "missing-target"), join(dir, "dangling"))
+      assert.throws(() => projectPath(dir, "dangling/new.md"), /symlink/i)
+    } else console.log("[SKIP] symlink overwrite-guard assertions: OS denies symlink creation (EPERM — Windows without Developer Mode)")
     assert.equal(takeSnapshot(dir).records.length, 1)
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
@@ -401,21 +414,20 @@ await test("cost gate cannot be skipped, expires, and cancellation authorizes no
   const dir = fixture()
   try {
     source(dir, "0001")
-    const runtime = createCompactionRuntime(dir, client), p = startCompaction(dir, "s", { mode: "summary" })
+    const runtime = createCompactionRuntime(dir, session), p = startCompaction(dir, "s", { mode: "summary" })
     await assert.rejects(() => runtime.tools.adr_compaction.execute({ plan: p.id, action: "evidence" }, ctx), /not authorized/)
     await assert.rejects(() => runtime.tools.adr_compaction.execute({ plan: p.id, action: "stage", batch: "premature", candidate: candidate(p, p.selected) }, ctx), /not authorized/)
-    const ask = JSON.parse(String(await runtime.tools.adr_compaction.execute({ plan: p.id, action: "ask" }, ctx)))
-    await runtime.before({ tool: "question", sessionID: "s", callID: "cost" }, { args: ask })
-    await runtime.event({ type: "question.asked", data: { sessionID: "s", id: "cost-q", tool: { callID: "cost" }, questions: ask.questions } })
-    await runtime.event({ type: "question.replied", data: { sessionID: "s", requestID: "cost-q", answers: [[ask.questions[0].options[1].label]] } })
+    const ask = JSON.parse((await runtime.tools.adr_compaction.execute({ plan: p.id, action: "ask" }, ctx)).content)
+    await runtime.before({ tool: "question", sessionID: "s", id: "cost", input: ask })
+    await runtime.after({ tool: "question", sessionID: "s", id: "cost", status: "completed", input: ask, result: { output: { answers: [[ask.questions[0].options[1].label]] }, content: "" } })
     assert.equal(loadPlan(dir, p.id).state, "cancelled")
     assert.equal(loadPlan(dir, p.id).read.length, 0)
     const next = startCompaction(dir, "s", { mode: "summary" })
-    const expiry = JSON.parse(String(await runtime.tools.adr_compaction.execute({ plan: next.id, action: "ask" }, ctx)))
+    const expiry = JSON.parse((await runtime.tools.adr_compaction.execute({ plan: next.id, action: "ask" }, ctx)).content)
     const now = Date.now
     try {
       Date.now = () => now() + 31 * 60_000
-      await assert.rejects(() => runtime.before({ tool: "question", sessionID: "s", callID: "late" }, { args: expiry }), /expired/)
+      await assert.rejects(() => runtime.before({ tool: "question", sessionID: "s", id: "late", input: expiry }), /expired/)
     } finally { Date.now = now }
     assert.equal(loadPlan(dir, next.id).costApproval, undefined)
   } finally { rmSync(dir, { recursive: true, force: true }) }
@@ -428,8 +440,8 @@ await test("publication blockers remove acceptance without preventing proposed d
     source(dir, "0001")
     writeFileSync(join(dir, "docs/adr/CURRENT.md"), "user-owned architecture notes")
     const p = startCompaction(dir, "s", { mode: "consolidate" }); readAll(dir, p)
-    const runtime = createCompactionRuntime(dir, client)
-    const ask = JSON.parse(String(await runtime.tools.adr_compaction.execute({ plan: p.id, action: "submit", candidate: candidate(p, p.selected) }, ctx)))
+    const runtime = createCompactionRuntime(dir, session)
+    const ask = JSON.parse((await runtime.tools.adr_compaction.execute({ plan: p.id, action: "submit", candidate: candidate(p, p.selected) }, ctx)).content)
     assert.equal(ask.questions[0].options.length, 3)
     const ready = loadPlan(dir, p.id)
     assert.throws(() => applyPlan(dir, ready.id, ready.seal!, "question", "accept"), /blockers/)

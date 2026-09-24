@@ -33,8 +33,10 @@ process.env.OCP_CONFIG_PATH = globalCfg
 
 // OCP_CONFIG_PATH is read at call time by ocpConfigPath() (see
 // plugins/shared/ocp-config.ts), so setting it here before any
-// plugin call is sufficient — ESM hoists the imports regardless.
-import { DeepSeekAnchorPlugin } from "../plugins/deepseek-anchor/index"
+// v2 migration: hooks are captured from Plugin.setup(fakeCtx); the shim
+// returned by loadPlugin preserves each section's v1 call convention.
+// ESM hoists the imports regardless.
+import { DeepSeekAnchorPlugin, handleAnchorEvent } from "../plugins/deepseek-anchor/deepseek-anchor"
 import {
   isEnabled,
   getMode,
@@ -75,9 +77,76 @@ function makeModel(opts: { providerID?: string; modelID?: string; apiID?: string
   }
 }
 
-async function loadPlugin(client: any = {}): Promise<any> {
-  // Global config only — no project pinning needed.
-  return (await DeepSeekAnchorPlugin({ client } as any)) as any
+type Hook = (e: any) => Promise<void>
+const pluginCleanups: Array<() => Promise<unknown>> = []
+async function loadPlugin(session: any = {}): Promise<any> {
+  // V2: run setup() against a fake ctx, capture the registered hooks, and
+  // expose v1-shaped call conveniences (the sections keep their assertions):
+  //   sysHook(input, output)  -> "context" hook with mutable SystemPart[]
+  //   toolHook(event)         -> tool execute.before (same fields in v2)
+  //   eventHook({event})      -> push into the ctx.event.subscribe loop
+  //   commands                -> editor.add payloads from ctx.command.transform
+  const sessionHooks = new Map<string, Hook>()
+  const toolHooks = new Map<string, Hook>()
+  const commands: Array<{ name: string; description?: string; execute: (i: any) => Promise<void> }> = []
+  const eventQueue: unknown[] = []
+  const ctx: any = {
+    location: { directory: process.cwd() },
+    session: {
+      hook: async (name: string, cb: Hook) => { sessionHooks.set(name, cb); return { dispose: async () => {} } },
+      get: session.get,
+      synthetic: async () => {},
+    },
+    tool: {
+      hook: async (name: string, cb: Hook) => { toolHooks.set(name, cb); return { dispose: async () => {} } },
+      transform: async () => ({ dispose: async () => {} }),
+    },
+    command: {
+      transform: async (cb: (editor: { add: (d: never) => void }) => void) => {
+        cb({ add: (d: never) => { commands.push(d as never) } })
+        return { dispose: async () => {} }
+      },
+    },
+    event: {
+      // Finite iterator: the entry loop drains the preloaded queue and
+      // exits; event() dispatches handleAnchorEvent directly (same
+      // function the loop body calls in production).
+      subscribe: () => ({
+        [Symbol.asyncIterator]: () => ({
+          next: async (): Promise<IteratorResult<unknown>> =>
+            eventQueue.length
+              ? { done: false, value: eventQueue.shift() }
+              : { done: true, value: undefined },
+        }),
+      }),
+    },
+  }
+  const cleanup = await DeepSeekAnchorPlugin.setup(ctx)
+  // Teardown: release the pending event subscription first so the plugin's
+  // for-await loop exits, then run the plugin's own cleanup.
+  pluginCleanups.push(cleanup)
+  const realContext = sessionHooks.get("context")!
+  const sysHook = async (input: any, output: { system: string[] }): Promise<void> => {
+    const parts = output.system.map((text) => ({ type: "text" as const, text }))
+    // Host mapping: v1 model triple -> v2 Model.Ref {id, providerID}.
+    // First NON-EMPTY of modelID/id/api.id (the v1 mock fills only one leg).
+    const nonEmpty = (...vals: unknown[]): string | undefined =>
+      vals.find((v): v is string => typeof v === "string" && v !== "")
+    const model = input.model
+      ? { providerID: nonEmpty(input.model.providerID), id: nonEmpty(input.model.modelID, input.model.id, input.model.api?.id) }
+      : undefined
+    await realContext({ sessionID: input.sessionID, agent: input.agent, model, system: parts })
+    parts.forEach((p, i) => { output.system[i] = p.text })
+  }
+  return {
+    "experimental.chat.system.transform": sysHook,
+    "tool.execute.before": toolHooks.get("execute.before")!,
+    event: async (input: { event: unknown }) => {
+      handleAnchorEvent(input.event)
+    },
+    commands,
+    cleanup,
+  }
 }
 
 function resetGlobalConfig(): void {
@@ -367,14 +436,13 @@ async function test08_ConfigAndCommand() {
 //  9. Config hook — command registration
 // ═════════════════════════════════════════════════════════════════════════
 
-async function test09_ConfigHook() {
-  section("09: Config hook — command registration")
+async function test09_CommandRegistration() {
+  section("09: Command registration (v2 ctx.command.transform)")
   const plugin = await loadPlugin()
-  const cfg: any = {}
-  await plugin["config"](cfg)
-  assert(!!cfg.command, "cfg.command created")
-  assert(!!cfg.command[COMMAND_NAME], "Command registered")
-  assert(cfg.command[COMMAND_NAME].description.includes("DeepSeek"), "Description includes 'DeepSeek'")
+  const cmd = plugin.commands.find((c: any) => c.name === COMMAND_NAME)
+  assert(!!cmd, "Command registered via editor.add")
+  assert((cmd?.description ?? "").includes("DeepSeek"), "Description includes 'DeepSeek'")
+  assert(typeof cmd?.execute === "function", "execute() present")
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -424,24 +492,22 @@ async function test10_ConfigResolution() {
 }
 
 // ═════════════════════════════════════════════════════════════════════════
-//  11. Event hook — session.deleted cleanup + subagent filter via scoped()
+//  11. Event hook — session.deleted cleanup + subagent filter via scopedForAgent()
 // ═════════════════════════════════════════════════════════════════════════
 
 async function test11_EventHook() {
-  section("11: Event hook — session.deleted cleanup + subagent filter via scoped()")
-  // scoped() (plugin-scope.json `*` deny "subagent:*") is the sole source
+  section("11: Event hook — session.deleted cleanup + subagent filter via scopedForAgent()")
+  // scopedForAgent() (plugin-scope.json `*` deny "subagent:*") is the sole source
   // of subagent filtering — session.get returns parentID for subagent
   // detection. Primary sessions (parentID="") get the anchor; subagent
   // sessions (parentID set) do not.
   const parentMap: Record<string, string> = { s2: "p1" } // s2 is a subagent
-  const mockClient: any = {
-    session: {
-      prompt: async () => {},
-      get: async (req: any) => ({ data: { parentID: parentMap[req.path.id] ?? "" } }),
-    },
-    tui: { showToast: async () => {} },
+  // V2 session view: scopedForCall/parentID detection uses session.get({sessionID}).
+  const mockSession: any = {
+    synthetic: async () => {},
+    get: async ({ sessionID }: { sessionID: string }) => ({ parentID: parentMap[sessionID] ?? "" }),
   }
-  const plugin = (await DeepSeekAnchorPlugin({ client: mockClient } as any)) as any
+  const plugin = await loadPlugin(mockSession)
   const eventHook = plugin["event"]
   const sysHook = plugin["experimental.chat.system.transform"]
   const toolHook = plugin["tool.execute.before"]
@@ -586,11 +652,12 @@ async function main() {
     await test06_DisabledNoop()
     await test07_MultiFragment()
     await test08_ConfigAndCommand()
-    await test09_ConfigHook()
+    await test09_CommandRegistration()
     await test10_ConfigResolution()
     await test11_EventHook()
     await test12_StructuralInvariants()
   } finally {
+    for (const c of pluginCleanups) { try { await c() } catch { /* teardown best-effort */ } }
     rmSync(tmp, { recursive: true, force: true })
     delete process.env.OCP_CONFIG_PATH
   }

@@ -1,13 +1,11 @@
 /**
  * Barrel entry — re-exports the Context-Watch plugin from the subdirectory.
  *
- * OpenCode auto-discovers plugins by scanning the `plugins/` root
- * directory for `.ts` files. Each file is loaded as a module and its
- * exported plugin functions are registered.
+ * V2 loader contract: each root-level `plugins/*.ts` file must
+ * DEFAULT-export `{ id, setup }` (Plugin.define). Helper/named exports
+ * stay in the submodule — tests import them from
+ * `plugins/context-watch/context-watch.ts` directly.
  *
- * MUST export plugin functions ONLY: opencode's legacy plugin loader
- * throws "Plugin export is not a function" and drops the ENTIRE file if
- * any export is not a function. See the lite-mode barrel for the long-form
- * rationale.
+ * See: plugins/context-watch/context-watch.ts
  */
-export { ContextWatchPlugin } from "./context-watch/context-watch"
+export { ContextWatchPlugin, ContextWatchPlugin as default } from "./context-watch/context-watch"

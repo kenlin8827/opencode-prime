@@ -29,44 +29,62 @@
  * memory is advisory) and from opencode-mem (auto-captured session history,
  * heavier, different grain). Complementary, not duplicative.
  *
+ * V2 MAPPING NOTES (v1 → v2):
+ *   • v1 `config` hook + `command.execute.before` → v2 `ctx.command.
+ *     transform(editor.add)`: the /memory command is plugin-OWNED (empty
+ *     template in v1, programmatic handling only), so it belongs on the
+ *     v2 command registry directly — execute() resolves with no model
+ *     turn for handled branches (v1's handled()/204-throw equivalent).
+ *   • v1 `experimental.chat.system.transform` → v2 "context" hook.
+ *   • v1 `tool: { memory_note }` → v2 `ctx.tool.transform(editor.add)`
+ *     with `options: { codemode: false }` (first-class model tool).
+ *   • v1 user-visible replies via `client.session.prompt({noReply,
+ *     ignored})` → v2 `session.synthetic` (shared/agent-scope.injectReply).
+ *
  * File layout:
  *   project-memory-config.ts        — switch + paths + lesson append (scoped)
- *   project-memory-command.ts       — command hook (/memory note|on|off|status)
+ *   project-memory-command.ts       — command handler (/memory note|on|off|status)
  *   project-memory-tool.ts          — memory_note tool (agent-driven, scoped)
- *   project-memory-system-inject.ts — system-transform hook: inject both files
+ *   project-memory-system-inject.ts — context hook: inject both files
  */
 
-import type { Plugin } from "@opencode-ai/plugin"
-import { HttpServerResponse } from "effect/unstable/http"
+import { Plugin } from "@opencode/plugin"
+import { commandArgumentText, type V2Session } from "../shared/agent-scope"
 import { setProjectDir } from "./project-memory-config"
-import { COMMAND_NAME, makeCommandHook } from "./project-memory-command"
+import { COMMAND_NAME, makeCommandHandler } from "./project-memory-command"
 import { makeSystemHook } from "./project-memory-system-inject"
-import { TOOL_NAME, makeCaptureTool } from "./project-memory-tool"
+import { memoryNoteTool } from "./project-memory-tool"
 
-// OpenCode's command hook has no cancel/noReply output. Throwing a raw
-// Effect response is handled by OpenCode's HTTP layer as an empty
-// successful command — the LLM never sees the command text. (Same contract
-// as project-manager.)
-const handled = (): never => {
-  throw HttpServerResponse.empty({ status: 204 })
-}
+export const ProjectMemoryPlugin = Plugin.define({
+  id: "project-memory",
+  async setup(ctx) {
+    // Switch + files are project-level: pin paths to this project's directory.
+    const directory = ctx.location.directory
+    setProjectDir(directory)
+    const session = ctx.session as unknown as V2Session
 
-export const ProjectMemoryPlugin: Plugin = async ({ client, directory }) => {
-  // Switch + files are project-level: pin paths to this project's directory.
-  setProjectDir(directory)
-  return {
-    config: async (cfg) => {
-      cfg.command ??= {}
-      cfg.command[COMMAND_NAME] = {
-        template: "",
+    const context = await ctx.session.hook("context", (e) => makeSystemHook(session)(e))
+    const commands = await ctx.command.transform((editor) => {
+      const handler = makeCommandHandler(session)
+      editor.add({
+        name: COMMAND_NAME,
         description:
           "Project memory — two scopes, one gate. /memory note \"<lesson>\" appends a dated entry to .ocp/memory/public.md (committed to git, reviewed via the normal PR flow); /memory note --private \"<note>\" appends to .ocp/memory/private.md (gitignored escape hatch for notes the team should not see); /memory on|off toggles injection of both into the system prompt; /memory status reports gate + public/private entry counts. The agent may also call the `memory_note` tool itself (with scope='public' or 'private').",
-      }
-    },
-    "command.execute.before": makeCommandHook(client, handled),
-    "experimental.chat.system.transform": makeSystemHook(client) as any,
-    tool: {
-      [TOOL_NAME]: makeCaptureTool(client),
-    },
-  }
-}
+        execute: async (invocation) => {
+          await handler({ arguments: commandArgumentText(invocation.prompt?.text, COMMAND_NAME), sessionID: invocation.sessionID })
+        },
+      })
+    })
+    // Custom tool registration: the payload is fully static (schema +
+    // closures over ctx.session) — sync-cheap and idempotent per contract.
+    const tools = await ctx.tool.transform((editor) => {
+      editor.add(memoryNoteTool(session))
+    })
+
+    return async () => {
+      await Promise.allSettled([context.dispose(), commands.dispose(), tools.dispose()])
+    }
+  },
+})
+
+export default ProjectMemoryPlugin

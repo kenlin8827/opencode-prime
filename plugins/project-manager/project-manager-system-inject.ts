@@ -1,5 +1,5 @@
 /**
- * Hook: experimental.chat.system.transform — progressive-disclosure pointer
+ * Hook: ctx.session.hook("context") — progressive-disclosure pointer
  * to the project's commit convention (docs/git-commits.md).
  *
  * Token policy: the convention FILE is never injected into context. Only a
@@ -11,16 +11,17 @@
  * compliance risk here.
  *
  * Opencode runtime note (verified 2026-09-11, see ADR 0002): the
- * runtime rebuilds `output.system` per chat request. See adr
+ * runtime rebuilds `e.system` per chat request. See adr
  * for the full Scenario A / B rationale — same fragment-cache +
  * defensive-strip pattern applies here. Marker match is line-start
  * (rather than substring) to avoid false positives from inline
  * mentions of the marker text elsewhere in the prompt.
  */
 
-import type { PluginInput } from "@opencode-ai/plugin"
-import { scoped } from "../shared/plugin-scope"
+import { scopedForAgent, type V2Session } from "../shared/agent-scope"
+import { systemTexts } from "../shared/plugin-scope"
 import { appendBlock, escapeRegExp, stripBlockByLine } from "../shared/system-block"
+import { makeRuntimeLogger } from "../shared/notify"
 import { GIT_COMMITS_REL, hasConventionFile } from "./project-manager-config"
 
 export const MARKER = "[PROJECT COMMIT CONVENTION]"
@@ -50,24 +51,24 @@ function buildFragment(): string {
 
 // ─── System prompt helpers ───────────────────────────────────────────
 
-function hasMarker(system: string[]): boolean {
+function hasMarker(system: Array<unknown>): boolean {
   // Line-start match — avoids false positives from inline mentions of the
   // marker text elsewhere in the prompt (same as project-profiler). The
   // shared stripBlockByLine uses the exact same regex shape, so this
   // check stays in sync with the strip path's match semantics.
   const re = new RegExp(`\\n${escapeRegExp(MARKER)}`)
-  return system.some((s) => typeof s === "string" && re.test(s))
+  return systemTexts(system).some((s) => re.test(s))
 }
 
-function stripMarker(system: string[]): boolean {
+function stripMarker(system: Array<unknown>): boolean {
   return stripBlockByLine(system, MARKER)
 }
 
-/** Append the fragment to the LAST string entry, with a fallback push when
- * the runtime passes an empty or all-object array. Inherited from
- * `plugins/shared/system-block.ts` so this plugin benefits from the same
- * defensive fix project-profiler landed (see the 2026-09-11 hook regression). */
-function appendFragment(system: string[], fragment: string): boolean {
+/** Append the fragment to the LAST text entry, with a fallback push when
+ * the runtime passes an empty or all-non-text array. Inherited from
+ * `plugins/shared/system-block.ts` (parts-aware: v2 SystemPart objects are
+ * updated through their `.text` field, preserving cache hints). */
+function appendFragment(system: Array<unknown>, fragment: string): boolean {
   return appendBlock(system, fragment)
 }
 
@@ -78,25 +79,31 @@ function appendFragment(system: string[], fragment: string): boolean {
  * fragment doesn't change within a process. */
 let cachedPrompt: string | undefined
 
-export function makeSystemHook(client: PluginInput["client"]) {
-  const log = (level: "info" | "warn", message: string) =>
-    client.app.log({ body: { service: "project-manager", level, message } })
+/** V2 "context" hook (replaces v1 experimental.chat.system.transform).
+ *  Fail-open internally — a session-hook throw must never abort the flow. */
+export function makeSystemHook(session: V2Session | undefined) {
+  const log = makeRuntimeLogger("project-manager")
 
-  return async (input: { sessionID?: string } | undefined, output: { system: string[] }) => {
-    // Lite mode: bare-prompt contract — no convention pointer for @lite.
-    if (!await scoped(input, output.system, "project-manager", client)) return
+  return async (e: { agent?: string | null; system?: Array<unknown>; sessionID?: string }): Promise<void> => {
+    try {
+      // Lite mode: bare-prompt contract — no convention pointer for @lite.
+      if (!(await scopedForAgent(e, "project-manager", session))) return
 
-    // Defensive strip — see adr rationale (Scenario A/B).
-    // Line-start match via the shared helper.
-    const stripped = hasMarker(output.system) ? stripMarker(output.system) : false
+      const system = Array.isArray(e.system) ? e.system : []
+      // Defensive strip — see adr rationale (Scenario A/B).
+      // Line-start match via the shared helper.
+      const stripped = hasMarker(system) ? stripMarker(system) : false
 
-    if (!hasConventionFile()) {
-      if (stripped) await log("info", "system prompt: stale commit-convention block stripped (file missing)")
-      return
+      if (!hasConventionFile()) {
+        if (stripped) await log("info", "system prompt: stale commit-convention block stripped (file missing)")
+        return
+      }
+
+      if (!cachedPrompt) cachedPrompt = buildFragment()
+      const changed = appendFragment(system, cachedPrompt)
+      if (changed) await log("info", "system prompt: commit-convention pointer injected (progressive disclosure)")
+    } catch {
+      // Fail-open: never abort a request over an injector.
     }
-
-    if (!cachedPrompt) cachedPrompt = buildFragment()
-    const changed = appendFragment(output.system, cachedPrompt)
-    if (changed) await log("info", "system prompt: commit-convention pointer injected (progressive disclosure)")
   }
 }

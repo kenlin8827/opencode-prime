@@ -19,7 +19,7 @@
  * Registration: `tui.template.jsonc` → `plugin` array (TUI plugins have no directory
  * auto-discovery — they must be listed there).
  *
- * Slot: `sidebar_content` (session view) — renders as a vertical group
+ * Slot: `sidebar.content` claim (session view) — renders as a vertical group
  * labeled "OCP" inside the right sidebar, mirroring the MCP/LSP section
  * style already used by OpenCode's sidebar.
  *
@@ -45,10 +45,9 @@
  *                        formatter exists) | missing (none) | no-pkg.
  *
  * Model detection (for deepseek-anchor gating):
- *   - Initial: api.state.config.model ("<provider>/<model_id>" → id only)
- *   - Live:    api.event.on("message.updated") carries AssistantMessage /
- *              UserMessage with the actual modelID; refresh the panel when
- *              it changes (tier swap, etc.)
+ *   - Initial: active route's session → ctx.data.session.get(id).model
+ *   - Live:    ctx.data.on("session.model.selected") carries the new
+ *              ModelRef; refresh the panel when it changes (tier swap, etc.)
  *
  * Display rules (the panel is space-conscious — we drop default-empty
  * states and only show actionable signals):
@@ -65,13 +64,9 @@
  *     suffix when an async GitHub probe finds a newer release.
  */
 
-import type {
-  TuiPlugin,
-  TuiPluginApi,
-  TuiPluginModule,
-  TuiSlotContext,
-} from "@opencode-ai/plugin/tui"
-import { createSignal } from "solid-js"
+import type { Context } from "@opencode/plugin/tui/context"
+import { Plugin, usePlugin } from "@opencode/plugin/tui"
+import { createMemo, createSignal, onCleanup } from "solid-js"
 // Programmatically create JSX elements via the SolidJS factory.
 // We use `jsx()` instead of JSX syntax to avoid tsconfig jsxImportSource
 // complications — the @opentui/solid JSX namespace is local, not global.
@@ -88,10 +83,9 @@ import { normalizeOnOff, readOcpField } from "../shared/ocp-config"
 // ─── Theme shape ───────────────────────────────────────────────────
 
 interface ThemeColors {
-  // Semantic colour keys mirror OpenCode's built-in theme palette (see
-  // install/src/ui/builtin-themes.ts — every theme defines `error` as a
-  // red tone distinct from `warning`'s orange/yellow). Aligned with the
-  // right-sidebar MCP/LSP convention:
+  // Semantic colour keys are resolved from the v2 ResolvedTheme by
+  // semantic role (feedback text colors, muted text, base border) —
+  // aligned with the right-sidebar MCP/LSP convention:
   //   error   = broken / unhealthy (most severe — red)
   //   warning = actionable but not broken (orange/yellow)
   //   success = running / available / healthy (green)
@@ -105,6 +99,22 @@ interface ThemeColors {
   text: unknown
   backgroundPanel: unknown
   border: unknown
+}
+
+/** Map the v2 semantic theme surface onto this panel's color slots. */
+function panelTheme(ctx: Context): ThemeColors {
+  const theme = ctx.theme
+  return {
+    error: theme.text.feedback.error.base,
+    warning: theme.text.feedback.warning.base,
+    info: theme.text.feedback.info.base,
+    success: theme.text.feedback.success.base,
+    textMuted: theme.text.muted,
+    borderSubtle: theme.border.base,
+    text: theme.text.base,
+    backgroundPanel: theme.background.raised.base,
+    border: theme.border.base,
+  }
 }
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -211,10 +221,14 @@ function readGlobalConfig(): Record<string, unknown> | null {
   }
 }
 
-/** MCP server enabled in the global config (strict `enabled === true`). */
+/** MCP server enabled in the global config. V2 shape: servers live under
+ *  `mcp.servers` and connect unless `disabled: true` (no `enabled` field in
+ *  v2 — docs: /v2/docs/mcp-servers). Mirrors `mcpEnabledFrom` in
+ *  plugins/project-profiler/project-profiler.ts. */
 function mcpEnabledIn(cfg: Record<string, unknown> | null, name: string): boolean {
-  const mcp = (cfg as { mcp?: Record<string, { enabled?: unknown }> } | null)?.mcp
-  return mcp?.[name]?.enabled === true
+  const servers = (cfg as { mcp?: { servers?: Record<string, { disabled?: unknown }> } } | null)?.mcp?.servers
+  const server = servers?.[name]
+  return server !== undefined && server.disabled !== true
 }
 
 /**
@@ -289,7 +303,7 @@ const TGREP_STATE_LABEL: Record<TgrepCapabilityState, string> = {
 // ─── Model detection (for deepseek-anchor gating) ──────────────────
 //
 // deepseek-anchor only does anything for DeepSeek V4 Pro (see
-// plugins/deepseek-anchor/index.ts TARGET_MODEL_PATTERN). To avoid
+// plugins/deepseek-anchor/deepseek-anchor.ts TARGET_MODEL_PATTERN). To avoid
 // showing a "no-op" ON/OFF row for every other model, we gate the
 // deepseek-anchor badge on a live model-id check.
 
@@ -297,25 +311,13 @@ const TGREP_STATE_LABEL: Record<TgrepCapabilityState, string> = {
  * "mirror each plugin's config module" convention in this file. */
 const DEEPSEEK_V4_PRO_PATTERN = /deepseek[-_ ]?v4[-_ ]?pro/i
 
-/** Initial model id from SdkConfig.model ("<provider>/<model_id>"). */
-function initialModelId(apiConfig: unknown): string | undefined {
-  if (!apiConfig || typeof apiConfig !== "object") return undefined
-  const m = (apiConfig as { model?: unknown }).model
+/** Seed model id from a v2 ModelRef ("<provider>/<model_id>"-style ids are
+ * reduced to the trailing model segment; bare ids pass through). */
+function modelIdFromRef(ref: { id?: string } | undefined): string | undefined {
+  const m = ref?.id
   if (typeof m !== "string" || m === "") return undefined
   const slash = m.lastIndexOf("/")
   return slash >= 0 ? m.slice(slash + 1) : m
-}
-
-/** Extract modelID from a message.updated event's Message payload.
- * Handles both AssistantMessage (flat) and UserMessage (nested under .model).
- * Narrows via Record<string, unknown> to avoid importing SDK types here. */
-function extractModelIdFromMessage(info: unknown): string | undefined {
-  if (!info || typeof info !== "object") return undefined
-  const r = info as Record<string, unknown>
-  if (typeof r.modelID === "string") return r.modelID
-  const nested = r.model as Record<string, unknown> | undefined
-  if (nested && typeof nested.modelID === "string") return nested.modelID
-  return undefined
 }
 
 // ─── Formatter / dprint detection (mirror project-manager-dprint) ────
@@ -436,7 +438,7 @@ function isUpdateAvailable(installed: string, latest: string): boolean {
  * wraps this in `.catch(() => {})` so nothing ever surfaces in the TUI.
  *
  * Robustness:
- *   - `lifecycleSignal` (api.lifecycle.signal) is composed with the
+ *   - `lifecycleSignal` (the panel's owned AbortSignal) is composed with the
  *     per-call timeout so a TUI dispose cancels any in-flight fetch
  *     immediately rather than letting it hang until the 15s timeout.
  *   - Every step (signal creation, fetch, json parse, tag extraction)
@@ -826,44 +828,44 @@ export function renderStatusPanel(
 
 const POLL_INTERVAL_MS = 2000
 
-const tui: TuiPlugin = async (api: TuiPluginApi) => {
+/**
+ * Global config dir for the installed.version probe. Mirrors v2's
+ * global-roots precedence: OPENCODE_CONFIG_DIR override, then
+ * $XDG_CONFIG_HOME/opencode, then ~/.config/opencode.
+ */
+function ocpConfigDir(): string {
+  const override = process.env.OPENCODE_CONFIG_DIR
+  if (override) return override
+  const xdg = process.env.XDG_CONFIG_HOME || join(homedir(), ".config")
+  return join(xdg, "opencode")
+}
+
+/**
+ * The panel component — all reactive state (signals, timers, event
+ * subscriptions) lives here so it mounts/disposes with the slot claim,
+ * not with the plugin setup scope.
+ */
+function SidebarPanel() {
+  const ctx = usePlugin()
   // Poll config files because slash-command toggles write to disk
   // asynchronously — there is no server→TUI event for "config field changed".
   // A 2s interval is cheap (a handful of small file reads) and keeps the
   // panel snappy. Capability checks are existsSync + one global config
   // read — still cheap. Index staleness (git log) is deliberately excluded.
-  const [guards, setGuards] = createSignal<Badge[]>([])
-  const [project, setProject] = createSignal<Badge[]>([])
-  // Track the live model id (see deepseek-anchor gating). Initialized
-  // from the resolved SDK config; refreshed on each message.updated event
-  // when the id actually changes. Empty string = "model not yet known".
+  const [tick, setTick] = createSignal(0)
+  // Track the live model id (see deepseek-anchor gating). Seeded from the
+  // current route's session; refreshed on session.model.selected events.
+  // Empty string = "model not yet known".
   const [currentModelId, setCurrentModelId] = createSignal<string>("")
   // Latest OCP release tag from GitHub (empty = no fetch result yet, or
   // fetch failed). Refreshed on startup and every FETCH_REFRESH_MS.
   // Drives the "↑ vX.Y.Z" suffix on the OCP header.
   const [latestVersion, setLatestVersion] = createSignal<string>("")
-  const projectDir = api.state.path.directory || process.cwd()
-
-  const refresh = () => {
-    try {
-      setGuards(buildGuardBadges(projectDir, currentModelId() || undefined))
-      setProject(buildProjectBadges(projectDir))
-    } catch {
-      // Never crash the TUI — a config read error just means no badges.
-    }
-  }
-
-  // Seed the model id from the resolved SDK config. Real V4 Pro / non-V4 Pro
-  // distinction only becomes precise once the first message.updated fires,
-  // but the default is a reasonable starting point (covers the "user just
-  // opened the TUI and hasn't sent a message yet" case).
-  const initialId = initialModelId(api.state.config)
-  if (initialId) setCurrentModelId(initialId)
+  const projectDir = ctx.location?.directory || ctx.data.location.default().directory || process.cwd()
 
   // Read OCP version from installed.version (written by the installer to
   // the config directory, e.g. ~/.config/opencode/installed.version).
-  const configDir = api.state.path.config
-  const versionFile = join(configDir, "installed.version")
+  const versionFile = join(ocpConfigDir(), "installed.version")
   let ocpVersion = "unknown"
   try {
     if (existsSync(versionFile)) {
@@ -871,27 +873,26 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
     }
   } catch { /* ignore */ }
 
-  refresh()
-  const timer = setInterval(refresh, POLL_INTERVAL_MS)
+  const refresh = () => setTick((t) => t + 1)
 
-  // Refresh when a new session starts — also re-seed the model id from
-  // the (possibly updated) SDK config in case the user changed defaults.
-  const offSessionCreated = api.event.on("session.created", () => {
-    const seeded = initialModelId(api.state.config)
-    if (seeded && seeded !== currentModelId()) setCurrentModelId(seeded)
-    refresh()
-  })
+  // Seed the model id from the session open at mount time. The V4 Pro /
+  // non-V4 Pro distinction is refined by session.model.selected events;
+  // the cache may still be empty at mount, which just means the gated row
+  // appears after the first model selection.
+  const seedRoute = ctx.ui.router.current()
+  if (seedRoute.type === "session") {
+    const seeded = modelIdFromRef(ctx.data.session.get(seedRoute.sessionID)?.model)
+    if (seeded) setCurrentModelId(seeded)
+  }
 
-  // Refresh when the live model id changes (tier swap, agent switch, etc.).
-  // We dedupe by id so the handler is cheap on every step.
-  const offMessageUpdated = api.event.on("message.updated", (event) => {
-    const info = (event as { properties?: { info?: unknown } }).properties?.info
-    const id = extractModelIdFromMessage(info)
-    if (!id) return
-    if (id === currentModelId()) return
+  // Data events — unsubscribe on slot dispose.
+  const offModelSelected = ctx.data.on("session.model.selected", (event) => {
+    const id = modelIdFromRef(event.data.model)
+    if (!id || id === currentModelId()) return
     setCurrentModelId(id)
     refresh()
   })
+  const offSessionCreated = ctx.data.on("session.created", () => refresh())
 
   // Async latest-version probe. Fire-and-forget on startup so we never
   // block the render path; failures are silent (network/CN rate-limit
@@ -902,15 +903,16 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
   //   - Dedupe: skip when a previous fetch is still in-flight (e.g. a
   //     15s timeout still pending while the 30-min interval fires), so
   //     we never queue concurrent fetches.
-  //   - Lifecycle-bound: pass api.lifecycle.signal so an in-flight
-  //     fetch is cancelled immediately on TUI dispose.
+  //   - Lifecycle-bound: an owned AbortSignal cancels any in-flight fetch
+  //     immediately when the slot disposes.
   //   - Silent: every error path inside fetchLatestVersion is wrapped;
   //     the outer .catch on the chain is the final safety net so
   //     checkUpdate() can never throw.
+  const abort = new AbortController()
   let inFlight: Promise<unknown> | null = null
   const checkUpdate = (): void => {
     if (inFlight) return
-    inFlight = fetchLatestVersion(api.lifecycle.signal)
+    inFlight = fetchLatestVersion(abort.signal)
       .then((v) => {
         if (v && v !== latestVersion()) setLatestVersion(v)
       })
@@ -918,44 +920,46 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
       .finally(() => { inFlight = null })
   }
   void checkUpdate()
+
+  const timer = setInterval(refresh, POLL_INTERVAL_MS)
   const fetchTimer = setInterval(checkUpdate, FETCH_REFRESH_MS)
-
-  // Register into sidebar_content so the OCP group appears as a vertical
-  // section inside the right sidebar, just like the MCP/LSP groups.
-  const renderFn = (ctx: Readonly<TuiSlotContext>) => {
-    return renderStatusPanel(guards(), project(), {
-      error: ctx.theme.current.error,
-      warning: ctx.theme.current.warning,
-      info: ctx.theme.current.info,
-      success: ctx.theme.current.success,
-      textMuted: ctx.theme.current.textMuted,
-      borderSubtle: ctx.theme.current.borderSubtle,
-      text: ctx.theme.current.text,
-      backgroundPanel: ctx.theme.current.backgroundPanel,
-      border: ctx.theme.current.border,
-    }, ocpVersion, latestVersion())
-  }
-
-  api.slots.register({
-    slots: {
-      sidebar_content: (ctx: Readonly<TuiSlotContext>, _props: { session_id: string }) => {
-        return renderFn(ctx)
-      },
-    },
-  })
-
-  // Cleanup on plugin dispose.
-  api.lifecycle.onDispose(() => {
+  onCleanup(() => {
     clearInterval(timer)
     clearInterval(fetchTimer)
     offSessionCreated()
-    offMessageUpdated()
+    offModelSelected()
+    abort.abort()
   })
+
+  // Reactive panel tree: tick() forces the badge rebuild, modelId() and
+  // latestVersion() feed the gating / header suffix. Reactive children so
+  // the tree repaints in place without remounting the slot contribution.
+  const view = createMemo(() => {
+    tick()
+    const guards = safeBadges(() => buildGuardBadges(projectDir, currentModelId() || undefined))
+    const project = safeBadges(() => buildProjectBadges(projectDir))
+    return renderStatusPanel(guards, project, panelTheme(ctx), ocpVersion, latestVersion())
+  })
+  return jsx("box", { children: view })
 }
 
-const plugin: TuiPluginModule & { id: string } = {
+/** Never crash the TUI — a config read error just means no badges. */
+function safeBadges(build: () => Badge[]): Badge[] {
+  try {
+    return build()
+  } catch {
+    return []
+  }
+}
+
+export default Plugin.define({
   id: "sidebar-status",
-  tui,
-}
-
-export default plugin
+  setup(ctx: Context) {
+    // Claim the sidebar content slot — the OCP group renders as a vertical
+    // section inside the right sidebar, just like the MCP/LSP groups.
+    return ctx.ui.slot({
+      append: "sidebar.content",
+      render: () => jsx(SidebarPanel, {}),
+    })
+  },
+})

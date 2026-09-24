@@ -7,7 +7,7 @@
   // no index to maintain).
   //
   // Condition grammar (all must pass):
-  //   mcp_enabled:<name>      mcp.<name>.enabled is not false in opencode.jsonc
+  //   mcp_enabled:<name>      mcp.servers.<name> is not `disabled: true` in opencode.jsonc
   //   cli_installed:<name>    the CLI named <name> is on PATH
   //   indexed:<name>          the backend's index exists (codegraph only)
   //   toml_present:<name>     the backend's dbhub.toml exists (dbhub only)

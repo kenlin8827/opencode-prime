@@ -302,11 +302,12 @@ export function copyRepoFiles(repoDir: string, targetDir: string, files: string[
     // opencode.template.jsonc beside the merged config.
     if (relFile === 'opencode.template.jsonc') continue;
 
-    // Same pattern for the TUI template — mergeTuiConfig renders it
-    // (plus preserved user plugins) into the target's tui.jsonc. We can't
+    // Same pattern for the terminal-client template — mergeTuiConfig renders
+    // it (plus preserved user plugins, plus a migrated v1 tui.jsonc on the
+    // first V2 run) into the target's global cli.json. We can't
     // verbatim-copy because users add their own TUI plugins; overwriting
     // would lose them on every reinstall.
-    if (relFile === 'tui.template.jsonc') continue;
+    if (relFile === 'cli.template.jsonc') continue;
 
     const isProviderPreset =
       relFile.startsWith('providers/') && relFile.endsWith('.json');
@@ -345,7 +346,7 @@ export function computeTargetManagedFiles(files: string[], userOwnsProviders: bo
   return files
     .filter((relFile) => {
       if (relFile === 'opencode.template.jsonc') return false;
-      if (relFile === 'tui.template.jsonc') return false;
+      if (relFile === 'cli.template.jsonc') return false;
       if (
         userOwnsProviders &&
         relFile.startsWith('providers/') &&
@@ -373,9 +374,11 @@ function writeTargetInstalledManifest(targetDir: string, files: string[]): void 
 }
 
 /**
- * Major of an `opencode --version` stdout ("opencode 1.18.32" → 1);
- * NaN when no semver-looking token is present. Pure — the shell/PS1
- * installers mirror this parse with grep/regex.
+ * Major of an `opencode --version` stdout ("opencode 1.18.32" / "2.0.15" →
+ * number); NaN when no semver-looking token is present — dev/local builds
+ * report "local" (cli/src/version.ts), which stays unprovable and therefore
+ * fail-open downstream. Pure — the shell/PS1 installers mirror this parse
+ * with grep/regex.
  */
 export function majorOfOpencodeOutput(output: string): number {
   const m = /\d+\.\d+\.\d+/.exec(output ?? '');
@@ -400,6 +403,49 @@ export function installedOpencodeMajor(): number | null {
   } catch {
     return null;
   }
+}
+
+/** The opencode runtime major this OCP line requires: v1 for OCP 0.x/1.x,
+ *  v2 for OCP 2.x (config/plugin contracts differ; either direction mixed
+ *  is broken). */
+export function requiredRuntimeMajor(ocpVersion: string): number {
+  const major = majorOf(ocpVersion);
+  return Number.isNaN(major) || major < 2 ? 1 : 2;
+}
+
+export type RuntimeCompat =
+  | { ok: true }
+  | { ok: false; kind: 'runtime-too-old' | 'runtime-too-new'; message: string };
+
+/**
+ * Both-direction runtime/package compat gate: a v1 runtime must not run the
+ * v2 OCP package and vice versa — plugin API, config schema and the TUI
+ * client contract all changed with the runtime major. Null (absent binary or
+ * an unparseable dev/"local" version) is fail-open: `@script:opencode`
+ * provisioning pins the required major, and `ocp update` surfaces the
+ * runtime row. Unprovable versions are never blocked (same philosophy as
+ * isCrossMajorVersion). Pure — unit-tested.
+ */
+export function checkRuntimeCompat(runtimeMajor: number | null, ocpVersion: string): RuntimeCompat {
+  if (runtimeMajor === null) return { ok: true };
+  const required = requiredRuntimeMajor(ocpVersion);
+  if (runtimeMajor === required) return { ok: true };
+  if (runtimeMajor < required) {
+    return {
+      ok: false,
+      kind: 'runtime-too-old',
+      message:
+        `opencode v${runtimeMajor}.x detected — OpenCode Prime v${required}.x requires opencode v${required}.x (v${required} config/plugin contract). ` +
+        'Upgrade the runtime first: run `ocp update` (or reinstall opencode from https://opencode.ai), then re-run this install.',
+    };
+  }
+  return {
+    ok: false,
+    kind: 'runtime-too-new',
+    message:
+      `opencode v${runtimeMajor}.x detected — this OCP release only supports the v${required}.x runtime. ` +
+      `Install the matching OpenCode Prime line (https://github.com/kenlin8827/opencode-prime/releases) or downgrade opencode to v${required}.x`,
+  };
 }
 
 /**
@@ -486,13 +532,14 @@ export function mcpProvisionPlan(
   options: InstallOptions
 ): Array<{ name: string; install: string }> {
   const template = readJsoncFile<Record<string, any>>(path.join(repoDir, 'opencode.template.jsonc'));
-  const mcp = template?.mcp;
-  if (!mcp || typeof mcp !== 'object' || !options.mcp) return [];
+  // V2 shape: servers live under `mcp.servers` (schema/config/mcp.ts).
+  const servers = template?.mcp?.servers;
+  if (!servers || typeof servers !== 'object' || !options.mcp) return [];
 
   const plan: Array<{ name: string; install: string }> = [];
   for (const [name, enabled] of Object.entries(options.mcp)) {
     if (!enabled) continue;
-    const block = mcp[name];
+    const block = servers[name];
     if (!block || typeof block !== 'object') continue;
     const install = block.install;
     if (typeof install !== 'string' || !install.trim()) continue;
@@ -943,19 +990,26 @@ export function provisionTools(repoDir: string, options: InstallOptions): void {
   for (const [name, def] of Object.entries(registry.tools)) {
     if (!toolEnabled(name, options)) continue;
     if (isBinaryOnPath(def.binary)) {
-      // opencode is major-locked to v1 (see @script:opencode): a v2+ binary
-      // on PATH is refused, never adopted — adopting it would wire OCP's
-      // v1 plugins/SDK against an incompatible runtime. Dependent
-      // post-install steps are skipped below via the same check.
+      // Runtime/package compat gate (both directions): a wrong-major
+      // opencode on PATH is never adopted. An OLDER runtime is upgradeable
+      // right here via @script:opencode (which pins the OCP-required major),
+      // so provisioning continues; a NEWER one (old OCP line, v2 binary) has
+      // no in-place fix on this line — refuse with the upgrade-the-package
+      // instruction. Dependent post-install steps use the same check below.
       if (name === 'opencode') {
         const major = installedOpencodeMajor();
-        if (major !== null && major !== 1) {
-          console.log(colorize.red(`✗ [tool] ${name} v${major}.x detected — OCP requires opencode v1 (v2 breaks OCP plugins and the v1 SDK). Uninstall it, install the newest v1, then re-run; leaving the v${major}.x binary untouched.`));
+        const compat = checkRuntimeCompat(major, getCurrentRepoVersion(repoDir));
+        if (!compat.ok) {
+          console.log(colorize.red(`✗ [tool] ${name}: ${compat.message}`));
+          if (compat.kind === 'runtime-too-new') continue;
+        } else {
+          console.log(colorize.green(`✓ [tool] ${name} (${def.binary}) is present on PATH`));
           continue;
         }
+      } else {
+        console.log(colorize.green(`✓ [tool] ${name} (${def.binary}) is present on PATH`));
+        continue;
       }
-      console.log(colorize.green(`✓ [tool] ${name} (${def.binary}) is present on PATH`));
-      continue;
     }
     const cmd = resolveInstallCommand(def.install);
     if (!cmd) {
@@ -1016,12 +1070,12 @@ function runPostInstall(repoDir: string, name: string, def: ToolRegistry['tools'
     }
 
     // opencode-gated steps (herdr/luvus integration) must not run against a
-    // v2+ binary — the integration would be wired to an incompatible
+    // wrong-major binary — the integration would be wired to an incompatible
     // runtime. Unparseable/absent versions fall through (fail-open).
     if (guard === 'opencode') {
-      const major = installedOpencodeMajor();
-      if (major !== null && major !== 1) {
-        console.log(colorize.yellow(`⏭ [post-install] ${name}: skipping "${stepName}" (requires opencode v1; v${major}.x detected)`));
+      const compat = checkRuntimeCompat(installedOpencodeMajor(), getCurrentRepoVersion(repoDir));
+      if (!compat.ok) {
+        console.log(colorize.yellow(`⏭ [post-install] ${name}: skipping "${stepName}" — ${compat.message}`));
         continue;
       }
     }
@@ -1210,6 +1264,22 @@ export function executeInstall(
       'The major-version lock cannot be bypassed — not even with --force. ' +
       'To jump majors, back up your config, run `ocp init`, then install fresh (see docs/maintenance/ocp-cli.md).',
     );
+  }
+
+  // Runtime/package compat gate (both directions): refuse to wire this OCP
+  // package onto an opencode runtime of the wrong major — the old silent
+  // "install v2 OCP on a v1 runtime" refusal path is gone; the user gets an
+  // explicit instruction. runtime-too-new has no fix on this package line →
+  // hard stop. runtime-too-old is upgradeable in this very run (the Tools
+  // phase pins the required major via @script:opencode) → loud warning,
+  // continue; if that upgrade cannot own the binary (externally managed),
+  // the warning still names the manual step.
+  const runtimeCompat = checkRuntimeCompat(installedOpencodeMajor(), curVersion);
+  if (!runtimeCompat.ok) {
+    if (runtimeCompat.kind === 'runtime-too-new') {
+      throw new Error(`[ocp] ${runtimeCompat.message}`);
+    }
+    console.log(colorize.yellow(`[ocp] ⚠ ${runtimeCompat.message}`));
   }
 
   // Load options: repo defaults < user overrides < explicit customOptions

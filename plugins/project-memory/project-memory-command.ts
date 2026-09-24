@@ -21,12 +21,13 @@
  * plugins are NOT project-scoped; the same pattern doesn't apply here.
  *
  * Note is an explicit user trigger — no auto-capture (noise graveyard →
- * LLM trust erosion, see docs/plan/project-memory.md). Replies use
- * session.prompt({ noReply, ignored }) — visible to the user, invisible to
- * the LLM: noting a lesson must not start a conversation.
+ * LLM trust erosion, see docs/plan/project-memory.md). Replies use the
+ * synthetic-message channel (v2 session.synthetic; v1 equivalent:
+ * session.prompt({ noReply, ignored })) — visible to the user, invisible
+ * to the LLM: noting a lesson must not start a conversation.
  */
 
-import type { PluginInput } from "@opencode-ai/plugin"
+import { injectReply, type V2Session } from "../shared/agent-scope"
 import { refreshLocale, tr } from "../tui/i18n"
 import {
   appendLesson,
@@ -203,21 +204,15 @@ export function showText(): string {
   return lines.join("\n\n")
 }
 
-async function reply(client: PluginInput["client"], sessionID: string | undefined, text: string): Promise<void> {
-  if (!sessionID) return
-  await client.session.prompt({
-    path: { id: sessionID },
-    body: {
-      parts: [{ type: "text", text, ignored: true }],
-      noReply: true,
-    },
-  })
-}
+/** V2 command handler (registered via ctx.command.transform in the plugin
+ *  entry — the entry filters by command name, so `command` is implicit).
+ *  Completing normally = "handled": no model turn happens (v1 equivalent:
+ *  throw the empty-204 response). Replies land as synthetic messages. */
+export function makeCommandHandler(session: V2Session | undefined) {
+  const reply = (sessionID: string | undefined, text: string) =>
+    injectReply(session, sessionID, text)
 
-export function makeCommandHook(client: PluginInput["client"], handled: () => never) {
-  return async (input: { command?: string; arguments?: string; sessionID?: string }) => {
-    if (input.command !== COMMAND_NAME) return
-
+  return async (input: { arguments?: string; sessionID?: string }): Promise<void> => {
     const { sub, rest, scope } = parseCaptureArgs(input.arguments)
 
     let text: string
@@ -258,7 +253,6 @@ export function makeCommandHook(client: PluginInput["client"], handled: () => ne
       text = sub ? `${tr("guard.memory.unknown", { sub })}\n\n${helpText()}` : helpText()
     }
 
-    await reply(client, input.sessionID, text)
-    return handled()
+    await reply(input.sessionID, text)
   }
 }

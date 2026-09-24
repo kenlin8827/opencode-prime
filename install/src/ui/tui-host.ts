@@ -1,4 +1,5 @@
 import { createSignal, type Accessor } from 'solid-js'
+import type { JSX } from '@opentui/solid'
 
 export type DialogOption = { title: string; value: string; description?: string; category?: string }
 export type Dialog =
@@ -6,6 +7,10 @@ export type Dialog =
   | { kind: 'prompt'; title: string; placeholder?: string; value?: string; busy?: boolean; busyText?: string; onConfirm: (value: string) => void; onCancel?: () => void }
   | { kind: 'confirm'; title: string; message: string; confirmLabel?: string; cancelLabel?: string; footer?: string; onConfirm: () => void; onCancel?: () => void }
   | { kind: 'alert'; title: string; message: string; busy?: boolean; busyText?: string; onClose?: () => void }
+  /** V2 `ctx.ui.dialog.show(render, onClose)` — plugin-owned JSX frame
+   *  (wizard busy placeholders, the usage report). Keys: Esc → host.close()
+   *  fires onClose; everything else reaches the plugin's keymap binds. */
+  | { kind: 'custom'; render: () => JSX.Element }
 
 /** Dialog width tiers mirroring opencode's DialogAlert sizes (60/88/116). */
 export type DialogSize = 'medium' | 'large' | 'xlarge'

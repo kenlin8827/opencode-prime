@@ -1,0 +1,23 @@
+{
+  // V2 terminal-client config: ONE global file (~/.config/opencode/cli.json),
+  // owned by the TUI (the background service never loads it) — replacing the
+  // layered v1 tui.json(c). The installer merges this template with the
+  // user's existing cli.json (and migrates a legacy v1 tui.jsonc plugin list
+  // on upgrade); user scalars and plugins are preserved. Every OCP TUI plugin
+  // must be registered here. The standalone OpenTUI CLI (`ocp provider|profile`)
+  // loads the SAME wizard plugin modules through a TuiPluginApi-compatible
+  // host — one wizard, two hosts. v2 renames: plugin→plugins (entries: string
+  // or {package, options}), display_thinking→session.thinking ("show"/"hide").
+  "$schema": "https://opencode.ai/v2/cli.json",
+  "session": {
+    "thinking": "show"
+  },
+  "plugins": [
+    "./plugins/tui/provider-wizard.ts",
+    "./plugins/tui/profile-wizard.ts",
+    "./plugins/tui/project-wizard.ts",
+    "./plugins/tui/queue-manager.ts",
+    "./plugins/tui/sidebar-status.ts",
+    "./plugins/tui/usage.ts"
+  ]
+}

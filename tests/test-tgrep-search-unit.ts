@@ -8,7 +8,7 @@ import { tgrepPolicyFingerprint } from "../plugins/tgrep/tgrep-state"
 import { acquireLeaseLock, hasTgrepCli, isCliMissing, parseTgrepStatusOutput, probeTgrepCapability, resolveTgrepCapability } from "../plugins/tgrep/tgrep-service"
 import { buildTgrepSearchArgs, resolveSearchPath, searchTgrep, summarizeTgrepSearch } from "../plugins/tgrep/tgrep-search"
 import { loadTgrepOptions } from "../plugins/tgrep/tgrep-config"
-import { TgrepPlugin } from "../plugins/tgrep"
+import tgrepPlugin from "../plugins/tgrep"
 import { tgrepLocation } from "../plugins/tgrep/tgrep-output"
 import { validateTgrepMode, OUTPUT_ROW_BUDGET, OUTPUT_CHAR_BUDGET, exceedsDetailBudget, exceedsDetailCharBudget } from "../plugins/tgrep/tgrep-mode"
 import { capSummaryCounts } from "../plugins/tgrep/tgrep-output"
@@ -155,8 +155,17 @@ rmSync(lockRoot, { recursive: true, force: true })
 // whichever way the local machine is configured.
 const cliOnPath = spawnSync("tgrep", ["--version"], { encoding: "utf8", timeout: 5000, windowsHide: true }).status === 0
 const switchOn = loadTgrepOptions(root).enabled
-const hooks = await TgrepPlugin({ directory: root }) as { tool?: { tgrep_search?: unknown } }
-assert(!!hooks?.tool?.tgrep_search === (switchOn && cliOnPath), "tool registration gates on switch AND CLI presence")
+const registeredTools: string[] = []
+await tgrepPlugin.setup({
+  location: { directory: root },
+  tool: {
+    transform: async (callback) => {
+      callback({ list: () => [], get: () => undefined, namespace: () => {}, add: (tool) => registeredTools.push(tool.name), update: () => {}, remove: () => {} })
+      return { dispose: async () => {} }
+    },
+  },
+})
+assert(registeredTools.includes("tgrep_search") === (switchOn && cliOnPath), "tool registration gates on switch AND CLI presence")
 // ─── Parser: tgrep 1.0.5 status emits `Watcher:` (not `Server:`) ───
 // Before this fix the parser only looked for `Server:`, missed the
 // real field name, and the sidebar falsely reported NO WATCHER even

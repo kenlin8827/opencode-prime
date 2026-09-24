@@ -47,38 +47,72 @@
  * the file before committing) and the hard layer (non-conforming commit
  * messages blocked at git commit); delete the file and both deactivate.
  * No separate state file, no on/off command.
+ *
+ * V2 MAPPING NOTES (v1 → v2):
+ *   • v1 `config` hook + `command.execute.before` → v2 `ctx.command.
+ *     transform(editor.add)`: /project is plugin-OWNED (empty template,
+ *     programmatic handling only); returning from execute() consumes the
+ *     command (v1's handled()/empty-204 throw).
+ *   • v1 `experimental.chat.system.transform` → v2 "context" hook.
+ *   • v1 `tool.execute.before` → v2 `ctx.tool.hook("execute.before")`
+ *     (the ONLY hook allowed to reject via throw — the commit gate is a
+ *     deliberate rejection, not a fail-open path).
+ *   • v1 `event` (session.created announce) → v2 `ctx.event.subscribe`
+ *     for-await loop started in setup, aborted in cleanup.
+ *   • v1 announce toast (`client.tui.showToast`) → shared/notify console
+ *     fallback (OCP-V2-GAP: v2 Context exposes no TUI surface).
  */
 
-import type { Plugin } from "@opencode-ai/plugin"
-import { HttpServerResponse } from "effect/unstable/http"
-import { makeAnnounceHook } from "./project-manager-announce"
-import { makeCommandHook } from "./project-manager-command"
+import { Plugin } from "@opencode/plugin"
+import { commandArgumentText, type V2Session } from "../shared/agent-scope"
+import { makeAnnounceHandler } from "./project-manager-announce"
+import { makeCommandHandler } from "./project-manager-command"
 import { COMMAND_NAME, setProjectDir } from "./project-manager-config"
 import { makeSystemHook } from "./project-manager-system-inject"
 import { makeToolGuardHook } from "./project-manager-tool-guard"
 
-// OpenCode's command hook has no cancel/noReply output. Throwing a raw
-// Effect response is handled by OpenCode's HTTP layer as an empty
-// successful command — the LLM never sees an empty prompt.
-const handled = (): never => {
-  throw HttpServerResponse.empty({ status: 204 })
-}
+export const ProjectManagerPlugin = Plugin.define({
+  id: "project-manager",
+  async setup(ctx) {
+    // Scaffolding is project-level: pin target paths to this project's directory.
+    setProjectDir(ctx.location.directory)
+    const session = ctx.session as unknown as V2Session
+    const abort = new AbortController()
 
-export const ProjectManagerPlugin: Plugin = async ({ client, directory }) => {
-  // Scaffolding is project-level: pin target paths to this project's directory.
-  setProjectDir(directory)
-  return {
-    config: async (cfg) => {
-      cfg.command ??= {}
-      cfg.command[COMMAND_NAME] = {
-        template: "",
+    const context = await ctx.session.hook("context", (e) => makeSystemHook(session)(e))
+    const guard = makeToolGuardHook()
+    const toolGuard = await ctx.tool.hook("execute.before", (e) => guard({ tool: e.tool, input: e.input }))
+    const commands = await ctx.command.transform((editor) => {
+      editor.add({
+        name: COMMAND_NAME,
         description:
           "Project scaffolding + index bootstrap — /project init runs the one-shot legacy migration (.opencode/ OCP state into .ocp/), creates missing baseline files (never overwrites) and runs first-time backend init (codegraph init, gitnexus analyze) when each CLI is installed + enabled; /project index manually refreshes existing indexes; /project sync re-runs the legacy migration alone, on demand",
+        execute: async (invocation) => {
+          await makeCommandHandler(session)({
+            arguments: commandArgumentText(invocation.prompt?.text, COMMAND_NAME),
+            sessionID: invocation.sessionID,
+          })
+        },
+      })
+    })
+
+    // session.created announce → event subscription loop.
+    const announce = makeAnnounceHandler()
+    void (async () => {
+      try {
+        for await (const ev of ctx.event.subscribe({ signal: abort.signal })) {
+          await announce(ev)
+        }
+      } catch {
+        // Subscription died with the server — announce state is per-run.
       }
-    },
-    "command.execute.before": makeCommandHook(client, handled),
-    "experimental.chat.system.transform": makeSystemHook(client),
-    "tool.execute.before": makeToolGuardHook(client),
-    event: makeAnnounceHook(client) as any,
-  }
-}
+    })()
+
+    return async () => {
+      abort.abort()
+      await Promise.allSettled([context.dispose(), toolGuard.dispose(), commands.dispose()])
+    }
+  },
+})
+
+export default ProjectManagerPlugin

@@ -28,7 +28,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { setProjectDir } from "../plugins/adr/adr-config"
-import { makeCommandHook } from "../plugins/adr/adr-command"
+import { makeCommandHandler } from "../plugins/adr/adr-command"
 import {
   checkAdrIntegrity,
   createAdr,
@@ -424,22 +424,28 @@ function test06_EvolutionProfile() {
 //  07. Command layer: /adr context --iteration + /adr check --profile
 // ═════════════════════════════════════════════════════════════════════════
 
-const HANDLED = Symbol("handled")
-
+// V2: announce surface is shared/notify (console "[ocp:notify]..." lines;
+// v1 was client.tui.showToast). makeHookSink spies console during a command
+// run and collects the message texts. makeCommandHandler() consumes the
+// command by RETURNING (v1's HANDLED 204-throw is gone).
 function makeHookSink() {
   const toasts: string[] = []
-  const fakeClient = {
-    app: { log: async () => {} },
-    tui: { showToast: async (x: { body: { message: string } }) => void toasts.push(x.body.message) },
-  }
-  const hook = makeCommandHook(fakeClient as never, () => {
-    throw HANDLED
-  })
+  const hook = makeCommandHandler()
   const run = async (args: string): Promise<void> => {
+    const origLog = console.log
+    const origWarn = console.warn
+    const spy = (orig: (...a: unknown[]) => void) => (...a: unknown[]): void => {
+      const m = /\[ocp:notify\]\[\w+\]\s*([\s\S]*)/.exec(String(a[0] ?? ""))
+      if (m) { toasts.push(m[1]); return }
+      orig(...a)
+    }
+    console.log = spy(origLog)
+    console.warn = spy(origWarn)
     try {
       await hook({ command: "adr", arguments: args })
-    } catch (e) {
-      if (e !== HANDLED) throw e
+    } finally {
+      console.log = origLog
+      console.warn = origWarn
     }
   }
   return { toasts, run }

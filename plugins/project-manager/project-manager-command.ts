@@ -1,7 +1,7 @@
 /**
- * Hook: command.execute.before — handle `/project <subcommand>`.
- * The command is registered programmatically via the `config` hook in
- * project-manager.ts — no commands/project.md file is needed.
+ * Command handler — `/project <subcommand>`.
+ * V2: registered through ctx.command.transform in project-manager.ts
+ * (v1 equivalent: the `config` hook + command.execute.before).
  *
  *   /project init   → run the one-shot legacy migration (moves OCP state out
  *                     of .opencode/ into .ocp/, ADR 0004), then scaffold
@@ -22,12 +22,12 @@
  *                     wizard after upgrading
  *   /project        → show help (no subcommand given)
  *
- * Every invocation gets user-visible feedback via
- * session.prompt({ noReply, ignored }) in the main chat UI — visible to the
- * user, invisible to the LLM (no context pollution).
+ * Every invocation gets user-visible feedback via the synthetic-message
+ * channel (v1 equivalent: session.prompt({noReply, ignored})) in the main
+ * chat UI — visible to the user, invisible to the LLM (no context pollution).
  */
 
-import type { PluginInput } from "@opencode-ai/plugin"
+import { injectReply, type V2Session } from "../shared/agent-scope"
 import type { MigrationReport } from "../shared/opencode-prime"
 import { refreshLocale, tr } from "../tui/i18n"
 import {
@@ -131,48 +131,37 @@ function migrationWarningLines(migration: MigrationReport): string {
     : ""
 }
 
-async function reply(client: PluginInput["client"], sessionID: string | undefined, text: string): Promise<void> {
-  if (!sessionID) return
-  await client.session.prompt({
-    path: { id: sessionID },
-    body: {
-      parts: [{ type: "text", text, ignored: true }],
-      noReply: true,
-    },
-  })
-}
+/** V2 command handler (registered via ctx.command.transform in the entry).
+ *  Reports ride the synthetic-message channel (v1 equivalent:
+ *  session.prompt({noReply, ignored})); returning consumes the command
+ *  (v1's handled()/empty-204 throw — the LLM never sees a turn). */
+export function makeCommandHandler(session: V2Session | undefined) {
+  const reply = (sessionID: string | undefined, text: string) =>
+    injectReply(session, sessionID, text)
 
-async function executeInit(client: PluginInput["client"], sessionID?: string): Promise<void> {
-  const result = await initProject({ root: getProjectDir() })
-  await reply(client, sessionID, initReport(result.files, result.backends, result.hooks, result.migration))
-}
-
-export function makeCommandHook(client: PluginInput["client"], handled: () => never) {
-  return async (input: { command?: string; arguments?: string; sessionID?: string }) => {
-    if (input.command !== COMMAND_NAME) return
-
+  return async (input: { arguments?: string; sessionID?: string }): Promise<void> => {
     const sub = parseSubcommand(input.arguments)
 
     // No subcommand or unknown subcommand → help.
     if (sub !== SUBCOMMAND_INIT && sub !== SUBCOMMAND_SETUP && sub !== SUBCOMMAND_INDEX && sub !== SUBCOMMAND_SYNC) {
-      await reply(client, input.sessionID, sub ? `${tr("guard.pm.unknown", { sub })}\n\n${helpText()}` : helpText())
-      return handled()
+      await reply(input.sessionID, sub ? `${tr("guard.pm.unknown", { sub })}\n\n${helpText()}` : helpText())
+      return
     }
 
     try {
       if (sub === SUBCOMMAND_SETUP) {
-        await reply(client, input.sessionID, setupReport())
+        await reply(input.sessionID, setupReport())
       } else if (sub === SUBCOMMAND_INIT) {
-        await executeInit(client, input.sessionID)
+        const result = await initProject({ root: getProjectDir() })
+        await reply(input.sessionID, initReport(result.files, result.backends, result.hooks, result.migration))
       } else if (sub === SUBCOMMAND_SYNC) {
-        await reply(client, input.sessionID, syncReport(syncProject(getProjectDir())))
+        await reply(input.sessionID, syncReport(syncProject(getProjectDir())))
       } else {
         const results = await indexProject(getProjectDir())
-        await reply(client, input.sessionID, indexReport(results))
+        await reply(input.sessionID, indexReport(results))
       }
     } catch (err) {
-      await reply(client, input.sessionID, tr("guard.pm.failed", { sub, err: String(err) }))
+      await reply(input.sessionID, tr("guard.pm.failed", { sub, err: String(err) }))
     }
-    return handled()
   }
 }

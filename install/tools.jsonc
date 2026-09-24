@@ -224,16 +224,18 @@
       }
     },
     "opencode": {
-      "description": "OpenCode — AI coding agent (OCP is locked to major v1; v2 is refused)",
+      "description": "OpenCode — AI coding agent (OCP v2 requires the v2 runtime; v3+ is refused)",
       "binary": "opencode",
       "url": "https://opencode.ai",
-      // Pinned to v1 by install/scripts/tools/opencode.sh|.ps1: the script
-      // resolves the newest v1 release (never "latest overall") and refuses
-      // when a v2+ binary is on PATH. Do NOT revert to the official
-      // one-liner (`curl https://opencode.ai/install | bash` installs
-      // whatever is newest, including v2) — and note the official
-      // install.ps1 endpoint is HTTP 404, so Windows has no official
-      // script to delegate to anyway.
+      // Pinned to v2 by install/scripts/tools/opencode.sh|.ps1: the script
+      // resolves the newest v2 release (never "latest overall"), upgrades a
+      // v1 binary in the user profile (the documented V1→V2 transition),
+      // and refuses a v3+ binary. The major-cross v1→v2 is additionally
+      // unlocked in updater.ts (opencodeRowLocked) — it is the runtime fix
+      // OCP v2 needs. Do NOT revert to the official one-liner (`curl
+      // https://opencode.ai/install | bash` installs whatever is newest,
+      // including a future v3) — and note the official install.ps1 endpoint
+      // is HTTP 404, so Windows has no official script to delegate to anyway.
       "install": "@script:opencode",
       "update_check": {
         "source": {
@@ -241,11 +243,11 @@
           "repo": "anomalyco/opencode"
         },
         // "static" on purpose (NOT "smart"): the smart strategy would run
-        // `npm/bun/pnpm install -g opencode-ai` (unpinned `latest`) whenever
-        // a package manager is on PATH — sailing past the v1 pin straight
-        // into v2. The pinned @script below resolves the newest v1 itself.
-        // `upgrade_package` is kept for verifyPostUpgradeMajor's pin-back
-        // hint only.
+        // `npm/bun/pnpm install -g <pkg>` (unpinned `latest`) whenever a
+        // package manager is on PATH — sailing past the v2 pin into an
+        // untested major. The pinned @script below resolves the newest v2
+        // itself. `upgrade_package` is kept for verifyPostUpgradeMajor's
+        // pin-back hint only.
         "upgrade_strategy": "static",
         "upgrade_package": "opencode-ai",
         "upgrade": "@script:opencode"

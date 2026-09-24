@@ -1,36 +1,38 @@
 /**
- * Usage TUI Plugin — Unit Tests (no host dependency)
+ * Usage plugin — unit tests (v2 TUI plugin API).
  *
- * The plugin is a pure view over opencode server data: /usage queries the
- * conversation via api.client and formats token/cost economics. No local
- * collection or persistence.
+ * Covers:
+ *   - plugin shape: setup(ctx) registers the slash/palette command + the
+ *     modal dialog keymap layer (dimension/scroll/close commands)
+ *   - the aggregation core (formatByDimension over a UsageSource fake):
+ *     token totals, steps (assistant-message proxy), credits, models.dev
+ *     simulated pricing, per-dimension tables
+ *   - view composition (renderDimensionView / renderScrollView / fitDialogSize)
+ *   - dialog lifecycle through a fake ctx (show once, repaint on tab
+ *     switch instead of reopen, close via Enter/clear)
  *
- * Coverage:
- *   - keymap registration (slash name)
- *   - default single-session view: tokens (in/out/reasoning), cost, steps,
- *     compactions via parts, cache hit rate, always-on model breakdown
- *   - /usage all tree view: root session, parentID climbing, children
- *     (subagents), per-session aggregation, totals line, share bars
- *   - /usage model → tree view with per-session model breakdown
- *   - subcommand parsing (name-token skipping, args sources)
- *   - empty tree / server failure → graceful toasts
+ * v1's keypress-interceptor and dialog.replace re-render-count assertions
+ * are replaced: the v2 dialog repaints reactively (no reopen per key), so
+ * the observable surface is dialog.show / dialog.set calls and toasts.
  *
- * Run: bun run tests/test-usage-unit.ts
+ * Run: bun tests/test-usage-unit.ts
  */
-
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { writeFileSync, rmSync } from "node:fs"
-
-type SessionInfo = { id: string; parentID?: string; agent?: string }
-type FakeMessage = { info: any; parts?: any[] }
 
 // Isolate the shared ocp.json user config for this run — set BEFORE the
 // dynamic plugin import below (i18n now persists language there).
 process.env.OCP_CONFIG_PATH = join(tmpdir(), `ocp-usage-test-${process.pid}.json`)
 
-const sessions: Record<string, SessionInfo> = {}
-const messages: Record<string, FakeMessage[]> = {}
+type UsageSessionRow = { id: string; parentID?: string; agent?: string }
+type UsageMessageRow =
+  | { type: "assistant"; agent?: string; providerID?: string; modelID?: string; cost?: number; tokens?: Record<string, never> | { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } } }
+  | { type: "compaction" }
+  | { type: "other" }
+
+const sessions: Record<string, UsageSessionRow> = {}
+const messages: Record<string, UsageMessageRow[]> = {}
 const children: Record<string, string[]> = {}
 
 let passed = 0
@@ -49,248 +51,232 @@ function assertEq(actual: unknown, expected: unknown, label: string) {
   assert(actual === expected, `${label} (got ${JSON.stringify(actual)}, want ${JSON.stringify(expected)})`)
 }
 
-// ─── Mock TUI host ──────────────────────────────────────────────────────────
+// ─── Fake v2 plugin context ──────────────────────────────────────────────
 
-const toasts: any[] = []
-const registeredCommands: any[] = []
-const registeredBindings: any[] = []
-const dialogRenders: Array<() => unknown> = []
+const toasts: Array<{ message: string; variant?: string; title?: string }> = []
+const dialogShows: number[] = [] // one entry per ctx.ui.dialog.show
 const dialogSizes: string[] = []
-const dialogCloseCallbacks: Array<() => void> = []
-
-// Keypress listener tracking for global keyInput interceptor
-const keypressListeners: Array<(e: any) => void> = []
-const keypressEmitter = {
-  on: (_event: string, handler: (e: any) => void) => { keypressListeners.push(handler) },
-  off: (_event: string, handler: (e: any) => void) => {
-    const idx = keypressListeners.indexOf(handler)
-    if (idx >= 0) keypressListeners.splice(idx, 1)
-  },
-}
-function fireKeypress(name: string) {
-  let stopped = false
-  for (const h of [...keypressListeners]) h({ name, stopPropagation: () => { stopped = true } })
-  return stopped
-}
-
+let closeCallbacks: Array<() => void> = []
 let routeSessionID = "s1"
 
-const fakeApi = {
+type Layer = { mode?: string; enabled?: () => boolean; commands?: Array<{ id?: string; bind?: string; run: (input?: string) => unknown }> }
+const layers: Layer[] = []
+
+const fakeCtx = {
   keymap: {
-    registerLayer: (layer: any) => {
-      registeredCommands.push(...(layer.commands || []))
-      registeredBindings.push(...(layer.bindings || []))
+    layer: (input: () => Layer) => {
+      layers.push(input())
     },
   },
   ui: {
-    toast: (t: any) => {
-      toasts.push(t)
-    },
+    toast: { show: (t: { message: string; variant?: string }) => toasts.push(t) },
     dialog: {
-      replace: (render: () => unknown, onClose?: () => void) => {
-        dialogRenders.push(render)
-        if (onClose) dialogCloseCallbacks.push(onClose)
+      set: (o: { size?: string }) => { if (o.size) dialogSizes.push(o.size) },
+      show: (render: () => unknown, onClose?: () => void) => {
+        dialogShows.push(dialogShows.length)
+        void render
+        if (onClose) closeCallbacks.push(onClose)
       },
-      clear: () => {},
-      setSize: (s: string) => { dialogSizes.push(s) },
+      clear: () => {
+        const cbs = closeCallbacks
+        closeCallbacks = []
+        for (const cb of cbs) cb?.()
+      },
     },
-  },
-  kv: (() => {
-    const store = new Map<string, unknown>()
-    return {
-      get: (k: string) => store.get(k),
-      set: (k: string, v: unknown) => store.set(k, v),
-    }
-  })(),
-  route: {
-    get current() {
-      return { name: "session", params: { sessionID: routeSessionID } }
+    router: {
+      current: () => ({ type: "session", sessionID: routeSessionID }),
     },
   },
   client: {
     session: {
-      get: async ({ sessionID }: { sessionID: string }) => ({ data: sessions[sessionID] }),
-      children: async ({ sessionID }: { sessionID: string }) => ({
-        data: (children[sessionID] || []).map((id) => sessions[id]),
+      get: async ({ sessionID }: { sessionID: string }) => sessions[sessionID],
+      list: async ({ parentID }: { parentID?: string } = {}) => ({
+        data: (parentID ? children[parentID] ?? [] : []).map((id) => sessions[id]),
       }),
-      messages: async ({ sessionID }: { sessionID: string }) => ({ data: messages[sessionID] || [] }),
     },
   },
-  renderer: { keyInput: keypressEmitter, height: 30 },
-} as any
+  data: {
+    session: {
+      message: {
+        sync: async () => {},
+        list: (sessionID: string) => messages[sessionID] ?? [],
+      },
+    },
+  },
+  renderer: { height: 30 },
+} as never
 
-// ─── Fixtures: mirror the reference screenshot ──────────────────────────────
+// ─── Fixtures: mirror the reference screenshot ─────────────────────────────
 // s1 = lite@main (4 steps), s2 = explore@sub (3 steps), c0 = child for climb test.
 // Totals (incl. c0: 100 in / $0.0001): 22,853 in / 1,970 out / 27,008 cr / $0.0031 / 8 steps | hit 54.2%
+//
+// v2 steps semantics: one assistant message = one step (v1 counted
+// step-finish parts inside a message). The `steps` fixture arg emits that
+// many assistant messages: the first carries the tokens/cost, the rest are
+// zero-token continuations — same totals, same step counts as v1.
 
-const assistant = (over: Record<string, unknown>, steps = 1): FakeMessage => ({
-  info: { role: "assistant", ...over },
-  parts: Array.from({ length: steps }, () => ({ type: "step-finish" })),
-})
+function assistant(over: Record<string, unknown>, steps = 1): UsageMessageRow[] {
+  const first: UsageMessageRow = { type: "assistant", ...over }
+  const rest: UsageMessageRow[] = Array.from({ length: Math.max(0, steps - 1) }, () => ({
+    type: "assistant",
+    ...over,
+    cost: 0,
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+  }))
+  return [first, ...rest]
+}
 
 // lite@main: 11,702 in / 984 out / 7,232 cr / $0.001 / 4 steps → hit 38.2%
 sessions.s1 = { id: "s1", agent: "build" }
 messages.s1 = [
-  assistant({ mode: "lite", agent: "lite", providerID: "anthropic", modelID: "claude-pro", cost: 0.0006, tokens: { input: 5851, output: 492, reasoning: 0, cache: { read: 3616, write: 0 } } }, 2),
-  assistant({ mode: "lite", agent: "lite", providerID: "anthropic", modelID: "claude-pro", cost: 0.0004, tokens: { input: 5851, output: 492, reasoning: 0, cache: { read: 3616, write: 0 } } }, 2),
+  ...assistant({ agent: "lite", providerID: "anthropic", modelID: "claude-pro", cost: 0.0006, tokens: { input: 5851, output: 492, reasoning: 0, cache: { read: 3616, write: 0 } } }, 2),
+  ...assistant({ agent: "lite", providerID: "anthropic", modelID: "claude-pro", cost: 0.0004, tokens: { input: 5851, output: 492, reasoning: 0, cache: { read: 3616, write: 0 } } }, 2),
 ]
 
 // explore@sub: 11,051 in / 976 out / 19,776 cr / $0.002 / 3 steps → hit 64.2%
 sessions.s2 = { id: "s2", parentID: "s1", agent: "task" }
 messages.s2 = [
-  assistant({ mode: "explore", agent: "explore", providerID: "google", modelID: "gemini", cost: 0.0015, tokens: { input: 6000, output: 500, reasoning: 10, cache: { read: 10000, write: 0 } } }, 2),
-  assistant({ mode: "explore", agent: "explore", providerID: "google", modelID: "gemini-flash", cost: 0.0005, tokens: { input: 5051, output: 476, reasoning: 0, cache: { read: 9776, write: 0 } } }, 1),
-]
-// 2 compaction parts → exercise the compactions counter in the single view
-messages.s2[0].parts.push({ type: "compaction" })
-messages.s2[1].parts.push({ type: "compaction" })
+  ...assistant({ agent: "explore", providerID: "google", modelID: "gemini", cost: 0.0015, tokens: { input: 6000, output: 500, reasoning: 10, cache: { read: 10000, write: 0 } } }, 2),
+  ...assistant({ agent: "explore", providerID: "google", modelID: "gemini-flash", cost: 0.0005, tokens: { input: 5051, output: 476, reasoning: 0, cache: { read: 9776, write: 0 } } }, 1),
+  { type: "compaction" },
+  { type: "compaction" },
+] as UsageMessageRow[]
+// 2 compaction messages → exercise the compactions counter in the single view
 
 // child session of s1 (exercises parentID climbing when it is the route target)
 sessions.c0 = { id: "c0", parentID: "s1", agent: "code" }
-messages.c0 = [assistant({ mode: "code", agent: "code", providerID: "anthropic", modelID: "claude-pro", cost: 0.0001, tokens: { input: 100, output: 10, reasoning: 0, cache: { read: 0, write: 0 } } }, 1)]
+messages.c0 = assistant({ agent: "code", providerID: "anthropic", modelID: "claude-pro", cost: 0.0001, tokens: { input: 100, output: 10, reasoning: 0, cache: { read: 0, write: 0 } } }, 1)
 
 children.s1 = ["s2", "c0"]
 
 const plugin = (await import("../plugins/tui/usage")).default
 
-await plugin.tui!(fakeApi, undefined, {} as any)
+await plugin.setup(fakeCtx)
 
 // Force "en" after initI18n's env detection so string assertions are
 // deterministic regardless of the host LANG/LC_ALL.
 const { setLocale } = await import("../plugins/tui/i18n")
-setLocale(fakeApi, "en")
+setLocale("en")
 
-const runUsage = (args?: string) => registeredCommands[0].run({ input: args } as any)
+const allCommands = layers.flatMap((layer) => layer.commands ?? [])
+const command = (id: string) => allCommands.find((c) => c.id === id)
+const runUsage = (args?: string) => command("usage.show")!.run(args)
 const lastToast = () => toasts[toasts.length - 1]
-// openTable is fire-and-forget; let its promise chain settle before asserting.
-const tick = () => new Promise((r) => setTimeout(r, 0))
+// openDimension is fire-and-forget; let its promise chain settle before asserting.
+const tick = async () => { for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0)) }
+// Simulate the host tearing down dialogs: fire every registered onClose
+// (this flips the plugin's dialogOpen flag; dispatching modal commands
+// directly without closing first would leave it stuck open).
+const closeAll = () => {
+  ;(fakeCtx as { ui: { dialog: { clear: () => void } } }).ui.dialog.clear()
+}
 
 // --- plugin shape checks ---
 assertEq(plugin.id, "usage", "plugin id")
-assert(typeof plugin.tui === "function", "tui entry exported")
-assertEq(registeredCommands.length, 6, "usage.show + 3 dimensions + prev/next registered")
-assertEq(registeredCommands[0].slashName, "usage", "slash name registered (bare, TUI prepends /)")
+assertEq(typeof plugin.setup, "function", "setup entry exported")
+assertEq(layers.length, 2, "two keymap layers (global commands + dialog modal layer)")
+for (const id of ["usage.show", "usage.dim.session", "usage.dim.agent", "usage.dim.model"]) {
+  assert(allCommands.some((c) => c.id === id), `command "${id}" registered`)
+}
+for (const id of ["usage.key.session", "usage.key.agent", "usage.key.model", "usage.dim.prev", "usage.dim.next", "usage.scroll.up", "usage.scroll.down", "usage.scroll.j", "usage.scroll.k", "usage.close"]) {
+  assert(allCommands.some((c) => c.id === id), `dialog command "${id}" registered`)
+}
+const modalLayer = layers.find((layer) => layer.mode === "modal")
+assert(modalLayer !== undefined, "dialog commands live in a modal-mode layer")
+const showCmd = command("usage.show")!
+assertEq(showCmd.slash?.name, "usage", "slash name registered (bare, TUI prepends /)")
+assertEq(showCmd.slash?.arguments, true, "slash keeps raw input for subcommands")
+assertEq(command("usage.key.agent")!.bind, "2", "tab hotkey bound to 2")
 
 // --- /usage: shows the session view in a dialog ---
 toasts.length = 0
-dialogRenders.length = 0
-dialogCloseCallbacks.length = 0
-await runUsage("usage.show")
+dialogShows.length = 0
+dialogSizes.length = 0
+closeCallbacks = []
+await runUsage(undefined)
 await tick()
 assertEq(toasts.length, 0, "/usage with data shows no toast")
-assertEq(dialogRenders.length, 1, "usage dialog opened")
+assertEq(dialogShows.length, 1, "usage dialog opened")
+assertEq(dialogSizes.length, 1, "dialog size set once on open")
 
-// --- dimension commands are no-ops when dialog is closed (dialogOpen guard) ---
-for (const cb of dialogCloseCallbacks) cb()
-dialogCloseCallbacks.length = 0
-const dimCmd = registeredCommands.find((c: any) => c.name === "usage.dim.agent")
-const prevCmd = registeredCommands.find((c: any) => c.name === "usage.dim.prev")
-dialogRenders.length = 0
-dimCmd!.run()
+// --- dimension commands are no-ops when dialog is closed ---
+closeAll()
+assertEq(modalLayer!.enabled!(), false, "modal layer disabled after host close")
+dialogShows.length = 0
+dialogSizes.length = 0
+command("usage.dim.agent")!.run()
 await tick()
-assertEq(dialogRenders.length, 0, "dimension command is no-op when dialog is closed")
-prevCmd!.run()
+assertEq(dialogShows.length, 0, "dimension command is no-op when dialog is closed")
+// modal-layer commands are only ever dispatched by the host while the
+// layer is enabled (dialog open) — emulate that gate in the harness.
+if (modalLayer!.enabled!()) command("usage.dim.prev")!.run()
 await tick()
-assertEq(dialogRenders.length, 0, "cycle command is no-op when dialog is closed")
+assertEq(dialogShows.length, 0, "cycle command is no-op when dialog is closed")
 
 // --- dimension commands work when dialog is open ---
-await runUsage("usage.show")
+await runUsage(undefined)
 await tick()
-dialogRenders.length = 0
-dimCmd!.run()
+dialogShows.length = 0
+dialogSizes.length = 0
+command("usage.dim.agent")!.run()
 await tick()
-assertEq(dialogRenders.length, 1, "dimension command works when dialog is open")
-// close dialog for subsequent tests
-for (const cb of dialogCloseCallbacks) cb()
-dialogCloseCallbacks.length = 0
+assertEq(dialogShows.length, 0, "tab switch does NOT reopen the dialog (v2 repaints in place)")
+assertEq(dialogSizes.length, 1, "tab switch re-fits the dialog size")
 
-// --- keymap: bindings registered (guarded by dialogOpen) ---
-// Bindings are empty: key interception is via global keypress handler,
-// not keymap bindings. Verify no bindings registered.
-assertEq(registeredBindings.length, 0, "no keymap bindings (intercepted via keyInput)")
-// dimension commands registered for command palette / slash subcommands
-for (const name of ["usage.dim.session", "usage.dim.agent", "usage.dim.model", "usage.dim.prev", "usage.dim.next"]) {
-  assert(registeredCommands.some((c) => c.name === name), `command "${name}" registered`)
-}
+// --- modal layer enabledness is guarded by dialogOpen ---
+assertEq(typeof modalLayer!.enabled, "function", "modal layer is enable-guarded")
+assertEq(modalLayer!.enabled!(), true, "modal layer enabled while dialog open")
+closeAll()
+assertEq(modalLayer!.enabled!(), false, "modal layer disabled after close")
+await runUsage(undefined)
+await tick()
+assertEq(modalLayer!.enabled!(), true, "modal layer enabled while dialog open")
 
-// --- keypress interception: dimension keys switch via stopPropagation ---
-// Open dialog first — keypress handler is only active while dialog is open
-await runUsage("usage.show")
+// --- tab hotkeys switch dimensions ---
+dialogSizes.length = 0
+command("usage.key.agent")!.run()
 await tick()
-dialogRenders.length = 0
-// "2" → agent dimension: should stopPropagation + open new dialog
-const stopped2 = fireKeypress("2")
+assertEq(dialogSizes.length, 1, "hotkey '2' switched to agent dimension")
+command("usage.key.model")!.run()
 await tick()
-assert(stopped2, "keypress '2' stopPropagation returned true")
-assertEq(dialogRenders.length, 1, "keypress '2' triggered agent dimension switch")
+assertEq(dialogSizes.length, 2, "hotkey '3' switched to model dimension")
+command("usage.dim.prev")!.run()
+await tick()
+assertEq(dialogSizes.length, 3, "'left' cycled to prev dimension")
+command("usage.dim.next")!.run()
+await tick()
+assertEq(dialogSizes.length, 4, "'right' cycled to next dimension")
 
-// "3" → model dimension
-fireKeypress("3")
+// --- scroll keys repaint without reopening ---
+dialogShows.length = 0
+dialogSizes.length = 0
+command("usage.scroll.down")!.run()
+command("usage.scroll.j")!.run()
+command("usage.scroll.k")!.run()
 await tick()
-assertEq(dialogRenders.length, 2, "keypress '3' triggered model dimension switch")
+assertEq(dialogShows.length, 0, "scroll keys never reopen the dialog")
+assertEq(dialogSizes.length, 0, "scroll keys never resize (tier fixed to full table)")
 
-// left → prev dimension (model→agent)
-fireKeypress("left")
+// --- Enter closes (v1's DialogAlert ok button) ---
+assertEq(modalLayer!.enabled!(), true, "dialog open before Enter test")
+command("usage.close")!.run() // dialog.clear → host fires onClose
+assertEq(modalLayer!.enabled!(), false, "Enter-close resets the open flag")
+dialogShows.length = 0
+command("usage.dim.agent")!.run()
 await tick()
-assertEq(dialogRenders.length, 3, "keypress 'left' cycled to prev dimension")
-
-// right → next dimension (agent→model)
-fireKeypress("right")
-await tick()
-assertEq(dialogRenders.length, 4, "keypress 'right' cycled to next dimension")
-
-// Unhandled key: Enter should NOT be stopped
-const stoppedEnter = fireKeypress("return")
-assert(!stoppedEnter, "Enter key not stopped (dialog handles it for close)")
-// Scroll keys pass through when the table fits (no overflow → no interception).
-// Switch back to the session dim first: the model dim's id-mapping footer
-// makes even 3 rows overflow a 30-row terminal.
-fireKeypress("1")
-await tick()
-const stoppedUp = fireKeypress("up")
-assert(!stoppedUp, "'up' not stopped when the table fits the terminal")
-
-// Close dialog → keypress handler removed
-for (const cb of dialogCloseCallbacks) cb()
-dialogCloseCallbacks.length = 0
-assertEq(keypressListeners.length, 0, "keypress handler removed after dialog close")
-
-// After close, keypresses are NOT intercepted
-dialogRenders.length = 0
-const stoppedAfterClose = fireKeypress("2")
-assert(!stoppedAfterClose, "keypress not intercepted after dialog close")
-await tick()
-assertEq(dialogRenders.length, 0, "no dialog opened from keypress after close")
-
-// --- generation counter: stale onClose doesn't break keypress handler ---
-await runUsage("usage.show")
-await tick()
-const staleListeners = [...keypressListeners]
-const staleCbs = [...dialogCloseCallbacks]
-keypressListeners.length = 0
-dialogCloseCallbacks.length = 0
-// fireKeypress iterates keypressListeners which we just cleared.
-// The handler was saved in staleListeners, so call it directly.
-staleListeners[0]({ name: "3", stopPropagation: () => {} })
-// Now the handler's openDimension("model") has started its async chain.
-// Wait for it to complete and install the new handler.
-await new Promise((r) => setTimeout(r, 100))
-assertEq(keypressListeners.length, 1, "new keypress handler after dimension switch")
-// Fire stale onClose from old dialog — should be a no-op
-for (const cb of staleCbs) cb()
-assertEq(keypressListeners.length, 1, "stale onClose didn't remove new handler (generation guard)")
-// New handler still works
-fireKeypress("2")
-await tick()
-assertEq(dialogRenders.length >= 1, true, "dimension switch still works after stale onClose")
-// Cleanup
-for (const cb of dialogCloseCallbacks) cb()
-dialogCloseCallbacks.length = 0
+assertEq(dialogShows.length, 0, "commands stay no-op after close")
 
 // --- numbered tab strip + composed view (official TabSelect style underline) ---
 const { formatByDimension, renderDimensionView, fitDialogSize } = await import("../plugins/tui/usage")
-const sessionRender = await formatByDimension(fakeApi.client, "s1", "session")
-const view = renderDimensionView(sessionRender, "agent")
+// Aggregation assertions build a UsageSource over the same fixtures the
+// fake ctx feeds the plugin (the dialog path above exercised it end-to-end).
+const usageSource = {
+  getSession: async (id: string) => sessions[id],
+  listChildren: async (parentID: string) => (children[parentID] ?? []).map((id) => sessions[id]).filter(Boolean),
+  messages: async (id: string) => messages[id] ?? [],
+}
+
+const view = renderDimensionView(await formatByDimension(usageSource, "s1", "session"), "agent")
 const viewLines = view.split("\n")
 assertEq(viewLines[0], "(1) By session   (2) By agent   (3) By model", "tab strip labels carry '(n) ' hotkey prefixes")
 // "(2) By agent" sits at offset width("(1) By session") + 3; the bar covers exactly its width
@@ -317,13 +303,13 @@ resetCostsCache()
 
 sessions.z1 = { id: "z1", agent: "build" }
 // 10000×2.3 + 20000×0.56 + 5000×8 / 10000 = (23000 + 11200 + 40000) / 10000 = 7.42 积分
-messages.z1 = [assistant({ mode: "build", agent: "build", providerID: "zhipuai-coding-plan", modelID: "glm-5.3-flash", cost: 0, tokens: { input: 10000, output: 5000, cache: { read: 20000, write: 0 } } }, 1)]
-const ptsText = (await formatByDimension(fakeApi.client, "z1", "session")).table
+messages.z1 = assistant({ agent: "build", providerID: "zhipuai-coding-plan", modelID: "glm-5.3-flash", cost: 0, tokens: { input: 10000, output: 5000, cache: { read: 20000, write: 0 } } }, 1)
+const ptsText = (await formatByDimension(usageSource, "z1", "session")).table
 assert(ptsText.includes("credits") && ptsText.includes("7.42"), "credits column present for plan sessions")
-  assert(ptsText.includes("7.42"), `points computed via OCP dataset (got: ${ptsText.split("\n").join(" | ")})`)
-  // On coding plans the server-side cost is $0, but credits are the actual
-  // billing mechanism so costKnown should be true and no simulated-price icon appears.
-  assert(!ptsText.includes("🏷️"), "coding-plan sessions don't get a simulated-price icon (credits are the real bill)")
+assert(ptsText.includes("7.42"), `points computed via OCP dataset (got: ${ptsText.split("\n").join(" | ")})`)
+// On coding plans the server-side cost is $0, but credits are the actual
+// billing mechanism so costKnown should be true and no simulated-price icon appears.
+assert(!ptsText.includes("🪙"), "coding-plan sessions don't get a simulated-price icon (credits are the real bill)")
 delete sessions.z1
 delete messages.z1
 rmSync(pointsPath, { force: true })
@@ -340,8 +326,8 @@ writeFileSync(modelsDevPath, JSON.stringify({
 process.env.OCP_MODELSDEV_PATH = modelsDevPath
 resetCostsCache()
 sessions.z2 = { id: "z2", agent: "build" }
-messages.z2 = [assistant({ mode: "build", agent: "build", providerID: "anthropic", modelID: "claude-pro", cost: 0, tokens: { input: 1000, output: 100, cache: { read: 10000, write: 0 } } }, 1)]
-const nonPlanText = (await formatByDimension(fakeApi.client, "z2", "session")).table
+messages.z2 = assistant({ agent: "build", providerID: "anthropic", modelID: "claude-pro", cost: 0, tokens: { input: 1000, output: 100, cache: { read: 10000, write: 0 } } }, 1)
+const nonPlanText = (await formatByDimension(usageSource, "z2", "session")).table
 assert(nonPlanText.includes("🪙 $0.0075") && !nonPlanText.includes("积分"), "non-plan cost 0 shows models.dev simulated estimate prefixed with coin icon")
 assert(nonPlanText.includes("https://models.dev/models/anthropic/claude-pro"), "simulated pricing footer links to models.dev model page")
 delete sessions.z2
@@ -358,7 +344,7 @@ assertEq(fitDialogSize("a".repeat(100)), "xlarge", "wide content → xlarge")
 // --- dimension tables via formatByDimension (host renders the dialog) ---
 
 // session dimension: one row per session + total row
-const sessionText = (await formatByDimension(fakeApi.client, "s1", "session")).table
+const sessionText = (await formatByDimension(usageSource, "s1", "session")).table
 for (const header of ["session", "in", "out", "cached", "steps", "cost", "share"]) {
   assert(sessionText.includes(header), `session table has "${header}" column`)
 }
@@ -367,7 +353,7 @@ assert(sessionText.includes("🦾 explore"), "subagent session row (emoji icon)"
 assert(!sessionText.includes("@"), "no @ concatenation in session names")
 assert(!sessionText.includes("main agent") && !sessionText.includes("主 agent"), "legend line removed")
 assert(sessionText.includes("11,702") && sessionText.includes("100"), "per-session in values")
-  assert(sessionText.includes("22,853") && sessionText.includes("1,970") && sessionText.includes("27,008"), "total row sums")
+assert(sessionText.includes("22,853") && sessionText.includes("1,970") && sessionText.includes("27,008"), "total row sums")
 assert(sessionText.includes("$0.0031"), "total row cost")
 assert(sessionText.includes("hit 54.2%") && sessionText.includes("total"), "total row with hit rate")
 assert(sessionText.includes("51.2%"), "s1 share pct")
@@ -383,31 +369,31 @@ const ruleLine = sessionText.split("\n").find((l) => l.includes("─"))!
 assertEq(ruleLine.length, 83, "header rule spans the dialog tier text width (stretched gaps)")
 
 // agent dimension: sessions grouped by agent attribution
-const agentText = (await formatByDimension(fakeApi.client, "s1", "agent")).table
+const agentText = (await formatByDimension(usageSource, "s1", "agent")).table
 for (const header of ["agent", "sess", "in", "out", "cached", "cost", "share"]) {
   assert(agentText.includes(header), `agent table has "${header}" column`)
 }
 assert(agentText.includes("lite") && agentText.includes("explore"), "agent rows present")
 assert(agentText.includes("11,702"), "per-agent input sums")
-  assert(agentText.includes("19,776"), "explore cached-in sum")
+assert(agentText.includes("19,776"), "explore cached-in sum")
 assert(!agentText.includes("build") || agentText.indexOf("explore") < agentText.indexOf("build"), "fixture agent 'build' never used by messages")
 
 // model dimension: tokens/cost summed across the whole tree (same columns as sessions)
-const modelText = (await formatByDimension(fakeApi.client, "s1", "model")).table
+const modelText = (await formatByDimension(usageSource, "s1", "model")).table
 for (const header of ["model", "sess", "in", "out", "cached", "cost", "share"]) {
   assert(modelText.includes(header), `model table has "${header}" column`)
 }
-assert(modelText.includes("anthropic/claude-pro"), "model row: claude-pro")
+assert(modelText.includes("claude-pro"), "model row: claude-pro (short name)")
 assert(modelText.includes("🆔 ") && modelText.includes("\n• claude-pro ← anthropic/claude-pro"), "full model-id label has model icon")
 assert(modelText.includes("11,802"), "claude-pro input summed across s1+c0 (11702+100)")
 assert(modelText.includes("994") && modelText.includes("7,232"), "claude-pro output/cache summed (984+10, 7232+0)")
-assert(modelText.includes("google/gemini-flash"), "model row: gemini-flash")
+assert(modelText.includes("gemini-flash"), "model row: gemini-flash")
 
 // --- scrollable viewport: short terminals slice data rows, pin header + total ---
 const { renderScrollView } = await import("../plugins/tui/usage")
 // Pre-growth snapshot (few data rows): a table within MAX_VISIBLE_ROWS rows
 // fits any terminal without scrolling — used by the no-overflow assertions.
-const smallRender = await formatByDimension(fakeApi.client, "s1", "session")
+const smallRender = await formatByDimension(usageSource, "s1", "session")
 const smallFlat = renderDimensionView(smallRender, "session")
 // Grow the tree to 12 sessions so the session table overflows a 30-row
 // terminal. x0 carries 14 steps → totalSteps crosses the soft tier (30),
@@ -415,10 +401,10 @@ const smallFlat = renderDimensionView(smallRender, "session")
 for (let i = 0; i < 9; i++) {
   const id = `x${i}`
   sessions[id] = { id, parentID: "s1", agent: "task" }
-  messages[id] = [assistant({ mode: "explore", agent: "explore", providerID: "google", modelID: "gemini", cost: 0.0001, tokens: { input: 100 + i, output: 10, reasoning: 0, cache: { read: 0, write: 0 } } }, i === 0 ? 14 : 1)]
+  messages[id] = assistant({ agent: "explore", providerID: "google", modelID: "gemini", cost: 0.0001, tokens: { input: 100 + i, output: 10, reasoning: 0, cache: { read: 0, write: 0 } } }, i === 0 ? 14 : 1)
   children.s1.push(id)
 }
-const bigRender = await formatByDimension(fakeApi.client, "s1", "session")
+const bigRender = await formatByDimension(usageSource, "s1", "session")
 const bigFlat = renderDimensionView(bigRender, "session")
 assertEq(bigRender.view.dataRows.length, 12, "grown tree has 12 data rows")
 assert(bigFlat.includes("turns"), "context warning present in the flat view")
@@ -462,46 +448,24 @@ assertEq(svFit.offset, 0, "offset forced to 0 when nothing overflows")
 assertEq(svFit.view, smallFlat, "no-overflow view identical to the flat render")
 assert(!svFit.view.includes("↑/↓"), "no scroll indicator when the table fits")
 
-// --- plugin-level: scroll keys intercepted while the dialog overflows ---
-toasts.length = 0
-dialogRenders.length = 0
-await runUsage("usage.show")
-await tick()
-assertEq(dialogRenders.length, 1, "dialog opened for the grown tree")
-const rendersBefore = dialogRenders.length
-assert(fireKeypress("down"), "'down' stopPropagation when the table overflows")
-await tick()
-assertEq(dialogRenders.length, rendersBefore + 1, "'down' re-rendered the dialog from cache")
-assert(fireKeypress("j"), "'j' scroll alias intercepted")
-assert(fireKeypress("k"), "'k' scroll alias intercepted")
-// Clamping: hammering 'down' past the end stops re-rendering
-for (let i = 0; i < 100; i++) fireKeypress("down")
-assert(dialogRenders.length < rendersBefore + 100, "scroll re-renders stop at the clamp boundary")
-assert(!fireKeypress("return"), "Enter not stopped while scrolling")
-// Tab switch to a dimension that fits → scroll keys pass through again
-fireKeypress("2")
-await tick()
-assert(!fireKeypress("down"), "'down' passes through after switching to a table that fits")
-for (const cb of dialogCloseCallbacks) cb()
-dialogCloseCallbacks.length = 0
-assertEq(keypressListeners.length, 0, "keypress handler removed after close")
-
 // --- /usage all|agent|model → opens the corresponding table dialog ---
+closeAll()
 toasts.length = 0
-dialogRenders.length = 0
+dialogShows.length = 0
 await runUsage("usage.show all")
 await tick()
 assertEq(toasts.length, 0, "/usage all shows no toast")
-assertEq(dialogRenders.length, 1, "session table dialog opened")
+assertEq(dialogShows.length, 1, "session table dialog opened")
 
 // --- parentID climbing: route on a child session still shows the whole tree ---
 routeSessionID = "c0"
-const climbText = (await formatByDimension(fakeApi.client, "c0", "session")).table
+const climbText = (await formatByDimension(usageSource, "c0", "session")).table
 assert(climbText.includes("🦾 lite") && climbText.includes("🦾 explore") && climbText.includes("🧠 code"), "route on child walks up to root and includes whole tree")
 assert(climbText.includes("🧠 code"), "current session (even if child) gets the main icon")
 routeSessionID = "s1"
 
 // --- no data anywhere → graceful message ---
+closeAll()
 const keep = { ...messages }
 for (const k of Object.keys(messages)) delete messages[k]
 toasts.length = 0
@@ -513,8 +477,8 @@ Object.assign(messages, keep)
 
 // --- server failure on root lookup → graceful message, not a crash ---
 // (session.get is only on the tree path, so exercise /usage all)
-const realGet = fakeApi.client.session.get
-fakeApi.client.session.get = async () => {
+const realGet = (fakeCtx as { client: { session: { get: unknown } } }).client.session.get
+;(fakeCtx as { client: { session: { get: unknown } } }).client.session.get = async () => {
   throw new Error("boom")
 }
 toasts.length = 0
@@ -522,21 +486,23 @@ await runUsage("usage.show all")
 await tick()
 assertEq(toasts.length, 1, "one toast on server error")
 assert(toasts[0].message.includes("No token data") || toasts[0].message.includes("Failed"), "server error degrades gracefully")
-fakeApi.client.session.get = realGet
+;(fakeCtx as { client: { session: { get: unknown } } }).client.session.get = realGet
 
 // --- unknown subcommand → usage hint ---
+closeAll()
 toasts.length = 0
 await runUsage("usage.show bogus")
 assertEq(toasts.length, 1, "one toast for unknown subcommand")
 assert(toasts[0].message.includes("Unknown subcommand"), "unknown subcommand shows error")
 assert(toasts[0].message.includes("Usage:"), "unknown subcommand shows usage hint")
 
-// --- parseSubcommand unit coverage ---
+// --- parseSubcommand unit coverage (v2: raw slash input) ---
 const { parseSubcommand } = await import("../plugins/tui/usage")
-assertEq(parseSubcommand({ input: "usage.show" } as any), null, "bare command name → no subcommand")
-assertEq(parseSubcommand({ input: "usage.show model" } as any), "model", "trailing arg extracted")
-assertEq(parseSubcommand({ data: { args: ["agent"] } } as any), "agent", "data.args wins")
-assertEq(parseSubcommand(null), null, "null ctx → null")
+assertEq(parseSubcommand("usage.show"), null, "bare command name → no subcommand")
+assertEq(parseSubcommand("usage.show model"), "model", "trailing arg extracted")
+assertEq(parseSubcommand("/usage agent"), "agent", "leading /usage token skipped")
+assertEq(parseSubcommand(undefined), null, "no input → null")
+assertEq(parseSubcommand("   "), null, "blank input → null")
 
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)

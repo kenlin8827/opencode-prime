@@ -7,25 +7,28 @@
  * suggestion — a project can legitimately opt out of them; they only refine
  * the message (e.g. "codegraph CLI installed but not indexed").
  *
- * Toast-only strategy (same as adr-announce):
+ * Announce strategy (v2):
  *   - session.created → top-level sessions only (subagent sessions carry
  *     parentID); fires ONCE per plugin instance (in-memory flag) so opening
  *     several sessions in one server run never nags repeatedly.
- *   - tui.showToast — non-intrusive, no chat-transcript pollution; degrades
- *     to silence in headless/older-server environments. Never fatal.
+ *   - v1's tui.showToast has no v2 plugin surface (OCP-V2-GAP — see
+ *     shared/notify.ts): the suggestion degrades to a server-log line and
+ *     is never fatal.
+ *   - V2 event shape: `session.created` is a durable event whose payload
+ *     carries `sessionID` + optional `parentID` at `data` (v1 nested them
+ *     under `properties.info` — both shapes are read for tolerance).
  */
 
-import type { PluginInput } from "@opencode-ai/plugin"
+import { notify } from "../shared/notify"
 import { refreshLocale, tr } from "../tui/i18n"
 import { getProjectDir, resolveTarget, SCAFFOLD_TARGETS } from "./project-manager-config"
 import { probeBackends, type BackendProbe } from "./project-manager-index"
 import { existsSync } from "node:fs"
 
-type Client = PluginInput["client"]
-
-/** Minimal shape we rely on; the SDK's Event union is broader. */
+/** Minimal shape we rely on; the EventManifest union is broader. */
 type SessionCreatedEvent = {
-  type: string
+  type?: string
+  data?: { sessionID?: string; parentID?: string | null }
   properties?: { info?: { parentID?: string; id?: string } }
 }
 
@@ -52,31 +55,31 @@ export function detectUninitialized(): { missing: string[]; probe: BackendProbe 
   return { missing, probe: probeBackends(getProjectDir()) }
 }
 
-async function suggest(client: Client, message: string, _sessionID?: string): Promise<void> {
-  try {
-    await client.tui.showToast({ body: { message, variant: "info" } })
-  } catch { /* headless / older server — degrade to silence, never fatal */ }
-}
-
-export function makeAnnounceHook(client: Client) {
+/** V2 event handler for the ctx.event.subscribe loop. Returns quietly for
+ *  every event type it does not consume. */
+export function makeAnnounceHandler() {
   // Once per plugin instance: the suggestion is about the project, and
   // nagging on every new session of one server run would be noise.
   let announced = false
 
-  return async (input: { event: SessionCreatedEvent }) => {
+  return async (event: unknown): Promise<void> => {
     try {
       if (announced) return
-      const event = input.event
-      if (event?.type !== "session.created") return
+      const ev = event as {
+        type?: string
+        data?: { parentID?: string | null; sessionID?: string }
+        properties?: { info?: { parentID?: string | null; id?: string } }
+      }
+      if (ev?.type !== "session.created") return
       // Subagent sessions (task-dispatched) carry parentID — only suggest on
       // the top-level session the user actually opened.
-      if (event.properties?.info?.parentID) return
+      if (ev.data?.parentID ?? ev.properties?.info?.parentID) return
 
       const { missing, probe } = detectUninitialized()
       if (missing.length === 0) return
 
       announced = true
-      await suggest(client, suggestInitMessage(missing, probe), event.properties?.info?.id)
+      await notify(suggestInitMessage(missing, probe), "info")
     } catch {
       // Never crash a session start — a missed suggestion is harmless.
     }

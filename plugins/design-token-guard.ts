@@ -1,4 +1,4 @@
-import type { Plugin } from "@opencode-ai/plugin"
+import type { Plugin } from "@opencode/plugin"
 
 /**
  * Design Token Guard — intercepts file writes and blocks hardcoded design values.
@@ -7,6 +7,10 @@ import type { Plugin } from "@opencode-ai/plugin"
  * Only scans CSS/SCSS/TSX/JSX/Vue files. Non-frontend files are ignored.
  *
  * To disable for a specific write: add `// design-token-guard: off` as first line.
+ *
+ * v2: the tool execute.before hook receives one mutable event; a
+ * Tool.Error-shaped throw is the deny path, any other defect must fail
+ * open (a hook error beyond execute.before aborts the request flow).
  */
 
 const FRONTEND_EXTENSIONS = [".css", ".scss", ".tsx", ".jsx", ".vue", ".svelte"] as const
@@ -16,6 +20,11 @@ const HARDCODED_HSL = /\b(?:hsl|hsla)\s*\(\s*\d+/g
 const MAGIC_SPACING = /(?:padding|margin|gap|top|left|right|bottom|width|height)\s*[:=]\s*(?:(?!\d+(?:px|rem|em|vh|vw)\b)|0)(\d{2,}px)/gi
 const MAGIC_RADIUS = /border-radius\s*[:=]\s*(?!(?:0|var|--|\$\{))(\d{2,}px)/gi
 const MAGIC_SHADOW = /box-shadow\s*[:=]/i
+
+/** Tool.Error-shaped rejection — the v2 execute.before deny path. */
+class ToolRejection extends Error {
+  readonly _tag = "Tool.Error" as const
+}
 
 function isFrontend(filePath: string): boolean {
   return FRONTEND_EXTENSIONS.some((ext) => filePath.endsWith(ext))
@@ -47,29 +56,41 @@ function scanContent(content: string): string[] {
   return violations
 }
 
-export const DesignTokenGuard: Plugin = async () => {
-  return {
-    "tool.execute.before": async (input, output) => {
-      if (input.tool !== "write") return
+function checkWrite(filePath: string, content: string): void {
+  if (!isFrontend(filePath)) return
+  if (!content) return
 
-      const filePath: string = output.args?.filePath || ""
-      if (!isFrontend(filePath)) return
+  // Allow opt-out via comment
+  if (content.startsWith("// design-token-guard: off")) return
 
-      const content: string = output.args?.content || ""
-      if (!content) return
-
-      // Allow opt-out via comment
-      if (content.startsWith("// design-token-guard: off")) return
-
-      const violations = scanContent(content)
-      if (violations.length > 0) {
-        throw new Error(
-          `[Design Token Guard] Blocked write to ${filePath}:\n` +
-            violations.map((v) => `  ❌ ${v}`).join("\n") +
-            `\n  Use design tokens (CSS variables, Tailwind config, or theme constants).\n` +
-            `  To bypass: add "// design-token-guard: off" as first line.`
-        )
-      }
-    },
+  const violations = scanContent(content)
+  if (violations.length > 0) {
+    throw new ToolRejection(
+      `[Design Token Guard] Blocked write to ${filePath}:\n` +
+        violations.map((v) => `  ❌ ${v}`).join("\n") +
+        `\n  Use design tokens (CSS variables, Tailwind config, or theme constants).\n` +
+        `  To bypass: add "// design-token-guard: off" as first line.`
+    )
   }
 }
+
+const plugin: Plugin.Plugin = {
+  id: "design-token-guard",
+  async setup(ctx) {
+    await ctx.tool.hook("execute.before", async (event) => {
+      if (event.tool !== "write") return
+      try {
+        const args = (event.input ?? {}) as { filePath?: unknown; content?: unknown }
+        const filePath = typeof args.filePath === "string" ? args.filePath : ""
+        const content = typeof args.content === "string" ? args.content : ""
+        checkWrite(filePath, content)
+      } catch (err) {
+        // The deny rejection must propagate; a guard defect fails open.
+        if (err instanceof ToolRejection) throw err
+        console.warn(`[design-token-guard] check failed open: ${String(err)}`)
+      }
+    })
+  },
+}
+
+export default plugin

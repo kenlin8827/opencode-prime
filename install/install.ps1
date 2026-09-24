@@ -67,16 +67,16 @@ if (-not $isInfoCmd -and -not (Get-Command opencode -ErrorAction SilentlyContinu
     }
     
     if ($installOpencode) {
-        # OCP is locked to opencode major v1 (v2 breaks OCP plugins and the
-        # v1 SDK). The pinned installer resolves the newest v1 release and
-        # refuses when a v2+ binary is on PATH. (The official install.ps1
-        # endpoint is HTTP 404, so there is no official script to delegate
-        # to — the asset is downloaded directly.)
+        # OCP v2 requires the opencode v2 runtime (V2 config/plugin contract).
+        # The pinned installer resolves the newest v2 release and upgrades a
+        # v1 binary in the user profile; a v3+ binary is refused. (The
+        # official install.ps1 endpoint is HTTP 404, so there is no official
+        # script to delegate to — the asset is downloaded directly.)
         # Runs in a CHILD PowerShell process on purpose: the tool script
-        # uses `exit <code>` (0 = installed, 2 = v1 present but managed
+        # uses `exit <code>` (0 = installed/upgraded, 2 = present but managed
         # outside ocp, else failure), and in-process invocation would let
         # that exit terminate this installer instead of landing in $LASTEXITCODE.
-        Write-Host "`n🚀 Installing OpenCode CLI (pinned to major v1)..." -ForegroundColor Cyan
+        Write-Host "`n🚀 Installing OpenCode CLI (pinned to major v2)..." -ForegroundColor Cyan
         try {
             $toolScript = Join-Path $ScriptDir 'scripts/tools/opencode.ps1'
             $psBin = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell.exe' }
@@ -90,11 +90,11 @@ if (-not $isInfoCmd -and -not (Get-Command opencode -ErrorAction SilentlyContinu
                 Write-Host "✔ OpenCode CLI already present (managed outside ocp).`n" -ForegroundColor Green
             }
             else {
-                throw "opencode v1 installer exited with code $LASTEXITCODE"
+                throw "opencode v2 installer exited with code $LASTEXITCODE"
             }
         }
         catch {
-            Write-Host "⚠️ Automatic installation encountered an issue. Install the newest opencode v1 manually from https://github.com/anomalyco/opencode/releases (v2 is NOT supported by OCP)" -ForegroundColor Yellow
+            Write-Host "⚠️ Automatic installation encountered an issue. Install the newest opencode v2 manually from https://github.com/anomalyco/opencode/releases (v1 cannot load OCP v2)" -ForegroundColor Yellow
         }
     }
     else {
@@ -102,21 +102,21 @@ if (-not $isInfoCmd -and -not (Get-Command opencode -ErrorAction SilentlyContinu
     }
 }
 
-# 0b. A v2+ opencode on PATH is refused outright: OCP plugins and the v1 SDK
-# are incompatible with v2. Never auto-touch it here (silently downgrading a
-# user's binary would be destructive) — the TS installer (provisionTools)
-# repeats this refusal and skips the opencode-dependent setup steps.
+# 0b. A v3+ opencode on PATH is refused outright: OCP v2 pins the v2 runtime
+# contract and cannot promise v3 compatibility. A v1 binary is NOT refused
+# here — it is the upgrade target of the pinned installer above (and of the
+# TS installer's provisionTools phase). Never auto-downgrade a user's binary.
 if (-not $isInfoCmd -and (Get-Command opencode -ErrorAction SilentlyContinue)) {
     $ocpVer = try { ((& opencode --version 2>$null) | Select-String -Pattern '\d+\.\d+\.\d+' | Select-Object -First 1).Matches.Value } catch { '' }
-    $ocpMajor = if ($ocpVer -match '^(\d+)\.') { $Matches[1] } else { '' }
-    if ($ocpMajor -and $ocpMajor -ne '1') {
+    $ocpMajor = if ($ocpVer -match '^(\d+)\.') { [int]$Matches[1] } else { 0 }
+    if ($ocpMajor -gt 2) {
         Write-Host ""
         Write-Host "============================================================" -ForegroundColor Yellow
-        Write-Host "  ⚠️  opencode v$ocpVer detected — OCP requires opencode v1" -ForegroundColor Yellow
+        Write-Host "  ⚠️  opencode v$ocpVer detected — OCP v2 requires opencode v2.x" -ForegroundColor Yellow
         Write-Host "============================================================" -ForegroundColor Yellow
         Write-Host ""
-        Write-Host "OpenCode Prime is locked to opencode major v1 (v2 breaks OCP plugins and the v1 SDK)."
-        Write-Host "Uninstall v$ocpVer, install the newest v1 from https://github.com/anomalyco/opencode/releases, then re-run."
+        Write-Host "OpenCode Prime v2 targets the opencode v2 runtime contract and cannot run on v$ocpMajor."
+        Write-Host "Install the newest opencode v2 from https://github.com/anomalyco/opencode/releases (or run ocp update), then re-run."
         Write-Host ""
     }
 }

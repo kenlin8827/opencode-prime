@@ -1,19 +1,24 @@
 /**
- * tool-compress Plugin — Unit Tests (no opencode runtime dependency)
+ * tool-compress Plugin — Unit Tests (v2, no opencode runtime dependency)
+ *
+ * V2 model: one "context" hook reads the agent straight off the event and
+ * rewrites `e.tools[...].description` per request — there is no cross-hook
+ * state (v1's chat.message/chat.params agent tracking is gone), so gating
+ * is a pure function of e.agent.
  *
  * Covers:
- *   - tool.definition rewrites descriptions for @lite and @build (description
- *     only, parameters and jsonSchema stay untouched)
- *   - gating: rewrite applies only after chat.message reports a COMPRESS agent
+ *   - description-only rewrites for @lite and @build (input/jsonSchema untouched)
+ *   - gating: rewrite applies only when the event agent is a COMPRESS agent
  *   - task/skill prose is per-agent (lite five-assist vs build full roster)
- *   - chat.params provides redundant agent signal
+ *   - v1 id aliases onto v2 tool ids (bash→shell/execute, task→subagent)
  *   - unknown/MCP tools are left intact (not in OVERRIDES)
  *   - tgrep_search description is owned by the tgrep plugin, not this one
+ *   - plugin entry registers the "context" hook via setup()
  *
- * Run: bun tests/test-tool-compress-unit.ts
+ * Run: bun test ./tests/test-tool-compress-unit.ts
  */
 
-import { ToolCompressPlugin } from "../plugins/tool-compress"
+import ToolCompressPlugin, { toolCompressContextHook, compressedDescription } from "../plugins/tool-compress"
 
 let passed = 0
 let failed = 0
@@ -34,144 +39,136 @@ function section(title: string): void {
   console.log(`${"═".repeat(60)}`)
 }
 
-const plugin = await ToolCompressPlugin()
-const onMessage = plugin["chat.message"]!
-const onParams = plugin["chat.params"]!
-const onToolDef = plugin["tool.definition"]!
+type Tools = Record<string, { description?: string; input?: unknown }>
 
-// ─── Gate closed before any chat.message ─────────────────────────────────
-
-section("gate: closed before chat.message")
-
-{
-  const output = { description: "Execute a shell command " + "x".repeat(4000) }
-  await onToolDef({ toolID: "bash" } as any, output)
-  assert(output.description.length > 4000, "no rewrite before an agent is known")
+function eventWith(agent: string | undefined, tools: Tools): { agent?: string; tools: Tools } {
+  return { agent, tools }
 }
 
-// ─── Gate opens for lite ─────────────────────────────────────────────────
+// ─── Plugin entry shape ────────────────────────────────────────────────────
+
+section("plugin entry (Plugin.define shape)")
+
+assert(ToolCompressPlugin.id === "tool-compress", "stable id kept from v1 name")
+assert(typeof ToolCompressPlugin.setup === "function", "setup() present")
+
+{
+  const hooks = new Map<string, (e: never) => Promise<void>>()
+  const ctx = { session: { hook: async (n: string, cb: (e: never) => Promise<void>) => { hooks.set(n, cb); return { dispose: async () => {} } } } }
+  const cleanup = await ToolCompressPlugin.setup(ctx as never)
+  assert(hooks.has("context"), 'setup registers the "context" hook')
+  assert(typeof cleanup === "function", "setup returns a cleanup")
+  await cleanup()
+}
+
+// ─── Gate closed for unknown/absent agent ──────────────────────────────────
+
+section("gate: no rewrite when agent is absent or not a compress agent")
+
+{
+  const e = eventWith(undefined, { bash: { description: "Execute a shell command " + "x".repeat(4000) } })
+  await toolCompressContextHook(e)
+  assert((e.tools.bash?.description?.length ?? 0) > 4000, "no rewrite when agent unknown")
+}
+
+{
+  const e = eventWith("code", { bash: { description: "x".repeat(4655) } })
+  await toolCompressContextHook(e)
+  assert(e.tools.bash!.description!.length === 4655, "non-compressed agent keeps stock description")
+}
+
+// ─── Lite ──────────────────────────────────────────────────────────────────
 
 section("gate: rewrites only descriptions for @lite")
 
-await onMessage({ sessionID: "s1", agent: "lite" } as any, {} as any)
-
 {
-  const output = { description: "x".repeat(4655) }
-  await onToolDef({ toolID: "bash" } as any, output)
-  assert(output.description.length < 300, "bash description compressed for lite")
-  assert(output.description.includes("workdir"), "compressed bash keeps the workdir rule")
+  const e = eventWith("lite", {
+    bash: { description: "x".repeat(4655) },
+    task: { description: "x".repeat(1800) },
+    read: { description: "x".repeat(1158) },
+    skill: { description: "x".repeat(900) },
+    // a tool with a schema — must NOT be altered, only description is touched
+    write: { description: "x".repeat(1000), input: { type: "object", properties: { filePath: { type: "string" } } } },
+  })
+  await toolCompressContextHook(e)
+  assert((e.tools.bash?.description?.length ?? 0) < 300, "bash description compressed for lite")
+  assert((e.tools.bash?.description ?? "").includes("workdir"), "compressed bash keeps the workdir rule")
+
+  const taskDesc = e.tools.task?.description ?? ""
+  assert(taskDesc.includes("explore") && taskDesc.includes("code-review-fast") && taskDesc.includes("code-review") && taskDesc.includes("advisor") && taskDesc.includes("vision"),
+    "task compressed to the five-assist roster for lite")
+  assert(!taskDesc.includes("researcher"), "task roster hides subagents lite cannot dispatch")
+
+  assert((e.tools.read?.description?.length ?? 999) < 200, "read description compressed for lite")
+  assert((e.tools.read?.description ?? "").includes("offset"), "compressed read keeps offset mention")
+
+  const skillDesc = e.tools.skill?.description ?? ""
+  assert(skillDesc.includes("memory-summarize") && skillDesc.includes("handoff") && skillDesc.includes("git-merge"),
+    "lite skill prose names git + handoff + memory-summarize")
+  assert(!skillDesc.includes("sdd-workflow"), "lite skill prose is not build's full roster")
+
+  // description-only contract: the input schema survives untouched
+  assert(e.tools.write?.input !== undefined, "write tool input schema preserved (description-only rewrite)")
 }
 
-{
-  const output = { description: "x".repeat(1800) }
-  await onToolDef({ toolID: "task" } as any, output)
-  assert(output.description.includes("explore") && output.description.includes("code-review-fast") && output.description.includes("code-review") && output.description.includes("advisor") && output.description.includes("vision"), "task compressed to the five-assist roster for lite")
-  assert(!output.description.includes("researcher"), "task roster hides subagents lite cannot dispatch")
-}
-
-{
-  const output = { description: "x".repeat(1158) }
-  await onToolDef({ toolID: "read" } as any, output)
-  assert(output.description.length < 200, "read description compressed for lite")
-  assert(output.description.includes("offset"), "compressed read keeps offset mention")
-}
-
-{
-  const output = { description: "x".repeat(900) }
-  await onToolDef({ toolID: "skill" } as any, output)
-  // Lite roster: five git ops + handoff + memory-summarize (agent: lite).
-  assert(output.description.includes("memory-summarize") && output.description.includes("handoff") && output.description.includes("git-merge"), "lite skill prose names git + handoff + memory-summarize")
-  assert(!output.description.includes("sdd-workflow"), "lite skill prose is not build's full roster")
-}
-
-// ─── Unknown/MCP tools left intact ───────────────────────────────────────
+// ─── Unknown/MCP tools left intact ─────────────────────────────────────────
 
 section("unknown/MCP tools: left intact (not in OVERRIDES)")
 
 {
-  const output = { description: "Convert markdown to PDF" }
-  await onToolDef({ toolID: "md_to_pdf" } as any, output)
-  assert(output.description === "Convert markdown to PDF", "unknown/MCP tools left intact")
+  const e = eventWith("lite", { md_to_pdf: { description: "Convert markdown to PDF" } })
+  await toolCompressContextHook(e)
+  assert(e.tools.md_to_pdf?.description === "Convert markdown to PDF", "unknown/MCP tools left intact")
 }
 
-// ─── Gate: build compresses shared tools with build-specific rosters ─────
+{
+  const e = eventWith("lite", { tgrep_search: { description: "Built-in OpenCode tool for codebase-wide text/regex search..." } })
+  await toolCompressContextHook(e)
+  assert((e.tools.tgrep_search?.description ?? "").startsWith("Built-in OpenCode tool"),
+    "tgrep_search description untouched (owned by tgrep plugin)")
+}
+
+// ─── Build ─────────────────────────────────────────────────────────────────
 
 section("gate: @build compresses shared tools + build rosters")
 
-await onMessage({ sessionID: "s2", agent: "build" } as any, {} as any)
-
 {
-  const output = { description: "x".repeat(4655) }
-  await onToolDef({ toolID: "bash" } as any, output)
-  assert(output.description.length < 300, "bash description compressed for build")
-  assert(output.description.includes("workdir"), "compressed bash keeps the workdir rule for build")
+  const e = eventWith("build", {
+    bash: { description: "x".repeat(4655) },
+    task: { description: "x".repeat(1800) },
+    skill: { description: "x".repeat(900) },
+  })
+  await toolCompressContextHook(e)
+  assert((e.tools.bash?.description?.length ?? 0) < 300, "bash description compressed for build")
+  assert((e.tools.bash?.description ?? "").includes("workdir"), "compressed bash keeps the workdir rule for build")
+
+  const taskDesc = e.tools.task?.description ?? ""
+  assert(taskDesc.includes("architect") && taskDesc.includes("code-review"), "build task roster names the full team")
+  assert(!taskDesc.includes("five-assist"), "build task roster is not lite's five-assist list")
+
+  const skillDesc = e.tools.skill?.description ?? ""
+  assert(skillDesc.includes("sdd-workflow") && skillDesc.includes("git-merge") && skillDesc.includes("handoff"),
+    "build skill prose names full roster (sdd + git + handoff)")
+  assert(!skillDesc.includes("five-assist"), "build skill prose is not lite's five-assist list")
 }
 
+// ─── v1→v2 tool id aliases ─────────────────────────────────────────────────
+
+section("aliases: v2 tool ids (shell/execute/subagent) get compressed")
+
+assert(compressedDescription("shell", "lite") !== null, "shell aliases to bash override for lite")
+assert(compressedDescription("execute", "lite") !== null, "execute aliases to bash override for lite")
+assert(compressedDescription("subagent", "lite") !== null, "subagent aliases to task override for lite")
+assert((compressedDescription("subagent", "lite") ?? "").includes("explore"), "subagent gets the lite five-assist roster")
+assert(compressedDescription("subagent", "code") === null, "alias still gated by agent")
+assert(compressedDescription("write", "code") === null, "non-compress agent → null")
+
+// A real v2-shaped event using v2 tool ids.
 {
-  const output = { description: "x".repeat(1800) }
-  await onToolDef({ toolID: "task" } as any, output)
-  assert(output.description.includes("architect") && output.description.includes("code-review"), "build task roster names the full team")
-  assert(!output.description.includes("five-assist"), "build task roster is not lite's five-assist list")
-}
-
-{
-  const output = { description: "x".repeat(900) }
-  await onToolDef({ toolID: "skill" } as any, output)
-  assert(output.description.includes("sdd-workflow") && output.description.includes("git-merge") && output.description.includes("handoff"), "build skill prose names full roster (sdd + git + handoff)")
-  assert(!output.description.includes("five-assist"), "build skill prose is not lite's five-assist list")
-}
-
-// ─── Gate closes again for other agents ──────────────────────────────────
-
-section("gate: other agents keep stock descriptions")
-
-await onMessage({ sessionID: "s4", agent: "code" } as any, {} as any)
-
-{
-  const output = { description: "x".repeat(4655) }
-  await onToolDef({ toolID: "bash" } as any, output)
-  assert(output.description.length === 4655, "no rewrite for non-compressed agents (bash stock for code)")
-}
-
-// ─── tgrep_search description is owned by the tgrep plugin, not tool-compress ─
-
-section("ownership: tgrep_search description is NOT modified by tool-compress")
-
-// tgrep_search now sets its own description via `plugins/tgrep.ts` (loaded
-// from `plugins/tgrep/tgrep-tool-description.md`). tool-compress only
-// short-circuits tools it knows about; an unknown tool ID leaves the
-// output untouched, so the plugin's description survives.
-await onMessage({ sessionID: "s3", agent: "code" } as any, {} as any)
-
-{
-  const output = { description: "Built-in OpenCode tool for codebase-wide text/regex search..." }
-  await onToolDef({ toolID: "tgrep_search" } as any, output)
-  assert(output.description.startsWith("Built-in OpenCode tool"), "tgrep_search description untouched by tool-compress (owned by tgrep plugin)")
-}
-
-// ─── chat.params provides redundant agent signal ─────────────────────────
-
-section("signal: chat.params alone opens the gate")
-
-await onParams({ sessionID: "sp", agent: "lite", model: {}, provider: {}, message: {} } as any, {} as any)
-
-{
-  const output = { description: "x".repeat(4655) }
-  await onToolDef({ toolID: "bash" } as any, output)
-  assert(output.description.length < 300, "chat.params alone activates compression")
-}
-
-// ─── Missing agent field keeps last known agent ──────────────────────────
-
-section("gate: agent-less messages do not reset state")
-
-await onMessage({ sessionID: "s3", agent: "lite" } as any, {} as any)
-await onMessage({ sessionID: "s3" } as any, {} as any)
-
-{
-  const output = { description: "x".repeat(2305) }
-  await onToolDef({ toolID: "bash" } as any, output)
-  assert(output.description.length < 300, "lite state persists across agent-less messages")
+  const e = eventWith("lite", { shell: { description: "x".repeat(4000) }, subagent: { description: "x".repeat(2000) } })
+  await toolCompressContextHook(e)
+  assert((e.tools.shell?.description?.length ?? 0) < 300, "shell tool compressed in a live event for lite")
+  assert((e.tools.subagent?.description ?? "").includes("explore"), "subagent tool gets lite roster in a live event")
 }
 
 console.log(`\n${"─".repeat(60)}`)

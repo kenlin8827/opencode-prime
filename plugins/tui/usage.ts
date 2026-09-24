@@ -1,5 +1,8 @@
 /// <reference types="bun" />
-import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
+import type { Context } from "@opencode/plugin/tui/context"
+import { Plugin } from "@opencode/plugin/tui"
+import { createMemo, createSignal } from "solid-js"
+import { jsx } from "@opentui/solid/jsx-runtime"
 import { initI18n, tr, parseSlashArgs } from "./i18n"
 import { parseJsonc } from "../shared/ocp-config"
 import {
@@ -13,7 +16,7 @@ import {
 /**
  * Usage — TUI token/cost usage dialog with per-dimension views.
  *
- * /usage            → dimension picker dialog (tab-style switching)
+ * /usage            → dimension tab dialog (keys 1/2/3 + ←/→ switch)
  * /usage all        → "by session" table directly
  * /usage agent      → "by agent" table directly
  * /usage model      → "by model" table directly
@@ -24,17 +27,16 @@ import {
  *   agent   — one row per agent, sessions summed
  *   model   — one row per model, summed across all sessions
  *
- * Queried live from the opencode server via api.client (@opencode-ai/sdk v2).
+ * Queried live from the opencode server via a `UsageSource` adapter over
+ * the v2 plugin context (client.session.get/list + cached data messages).
  * No local collection or persistence: the server already stores every
- * assistant message with full token/cost data, so this plugin is a pure view
- * over that data.
+ * session and assistant message with token/cost data, so this plugin is a
+ * pure view over that data.
  *
- * Data sources (per session):
- *   - session.messages  → assistant messages carry cost + tokens
- *                         (input/output/reasoning/cache read+write) and
- *                         mode/agent attribution; step-finish parts count steps;
- *                         compaction parts count compactions
- *   - session.get/children → conversation tree (root + subagents)
+ * OCP-V2-GAP: the v2 durable model records one assistant message per
+ * model turn (steps are folded into the turn), so there is no per-step
+ * count to sum. The "Steps" column and the context-watch banner use the
+ * assistant-message count as the closest proxy for v1's step-finish count.
  *
  * Display policy: three token numbers only — non-cached input, output,
  * cached input (cache read). Reasoning and cache-write are counted by the
@@ -45,47 +47,83 @@ import {
  * investment to populate the cache and rarely exceeds ~1% of session
  * tokens, so a separate column would be visual noise.
  *
- * Tables render in a host dialog (DialogAlert); hosts without the dialog
- * API fall back to a toast. Picker → table → confirm → picker acts as
- * tab-style dimension switching. Tables taller than the viewport (capped at
- * MAX_VISIBLE_ROWS) scroll (↑/↓/j/k) inside the dialog while the tab strip,
+ * Tables render in a custom dialog (ctx.ui.dialog.show + a modal keymap
+ * layer). Picker tab-strip → table → scroll (↑/↓/j/k) while the tab strip,
  * context warning, column header, total row and footers stay pinned — the
  * summary is never clipped.
  *
  * Note: this is a TUI-only module — it can only run while the TUI is active.
  */
 
-// TUI prepends "/" itself — slashName must be bare (like "queued", "profile").
+// TUI prepends "/" itself — the slash command name must be bare.
 const SLASH_NAME = "usage"
-const TOAST_DURATION = 15_000
 // Guard against runaway trees when walking subagent children.
 const MAX_TREE_DEPTH = 3
 const MAX_PARENT_HOPS = 10
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-/** Minimal structural types from the SDK (kept loose for test mocks). */
-type Client = TuiPluginApi["client"]
-/** Session-level metadata returned by the SDK. Optional aggregate token/cost
-  * fields are populated when the server has already summed the session's
-  * usage (e.g. `tokens_input`, `tokens_output`, `tokens_cache_read`,
-  * `tokens_cache_write`, `tokens_reasoning`, `cost` on the session row);
-  * `/usage` prefers those over summing per-message tokens — the latter
-  * double-counts the conversation context that each assistant message
-  * re-sends, inflating the total beyond what the server actually billed. */
-type SessionInfo = {
+/**
+ * Data-source adapter over the v2 plugin context. Kept as a structural
+ * interface so unit tests can feed the aggregation layer fakes without a
+ * full plugin harness.
+ */
+export interface UsageSession {
   id: string
   parentID?: string
   agent?: string
-  tokens_input?: number
-  tokens_output?: number
-  tokens_reasoning?: number
-  tokens_cache_read?: number
-  tokens_cache_write?: number
+  /** Server-aggregated cost; the per-message path is the fallback. */
   cost?: number
+  /** Server-aggregated token totals (v2 SessionInfo.tokens). */
+  tokens?: { input: number; output: number; reasoning?: number; cache?: { read?: number; write?: number } }
 }
-type AssistantInfo = { role?: string; mode?: string; agent?: string; providerID?: string; modelID?: string; cost?: number; tokens?: { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } } }
-type MessagePart = { type?: string; cost?: number; tokens?: { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } } }
+
+/** Message view narrowed to what usage aggregation consumes. */
+export interface UsageMessage {
+  type: "assistant" | "compaction" | "other"
+  agent?: string
+  providerID?: string
+  modelID?: string
+  cost?: number
+  tokens?: { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } }
+}
+
+export interface UsageSource {
+  getSession(sessionID: string): Promise<UsageSession | undefined>
+  listChildren(parentID: string): Promise<UsageSession[]>
+  messages(sessionID: string): Promise<UsageMessage[]>
+}
+
+/** Build the production UsageSource from a v2 plugin context. */
+function createContextSource(ctx: Context): UsageSource {
+  return {
+    async getSession(sessionID) {
+      const session = await ctx.client.session.get({ sessionID })
+      return session as UsageSession | undefined
+    },
+    async listChildren(parentID) {
+      const res = await ctx.client.session.list({ parentID })
+      return (res.data ?? []) as UsageSession[]
+    },
+    async messages(sessionID) {
+      await ctx.data.session.message.sync(sessionID)
+      return (ctx.data.session.message.list(sessionID) ?? []).map((m): UsageMessage => {
+        if (m.type === "assistant") {
+          return {
+            type: "assistant",
+            agent: m.agent,
+            providerID: m.model?.providerID,
+            modelID: m.model?.id,
+            cost: m.cost,
+            tokens: m.tokens,
+          }
+        }
+        if (m.type === "compaction") return { type: "compaction" }
+        return { type: "other" }
+      })
+    },
+  }
+}
 
 interface SessionUsage {
   id: string
@@ -330,7 +368,7 @@ const EMPTY: Omit<SessionUsage, "id" | "agent"> = {
   estimatedCostByModel: {},
 }
 
-async function usageForSession(client: Client, session: SessionInfo): Promise<SessionUsage> {
+async function usageForSession(source: UsageSource, session: UsageSession): Promise<SessionUsage> {
   const m: SessionUsage = {
     id: session.id,
     agent: session.agent,
@@ -339,30 +377,29 @@ async function usageForSession(client: Client, session: SessionInfo): Promise<Se
     inputByModel: {}, outputByModel: {}, cacheByModel: {}, stepsByModel: {}, creditsByModel: {}, cashByModel: {}, costByModel: {}, estimatedCostByModel: {},
   }
 
-  // Prefer server-aggregated totals when the SDK supplies them (session row
-  // carries tokens_input/output/cache_read/cache_write/reasoning/cost).
+  // Prefer server-aggregated totals when the session row carries them
+  // (v2 SessionInfo.tokens {input/output/reasoning/cache} + cost).
   // Per-message summing double-counts the conversation context each
   // assistant message re-sends, so totals drift upward vs. what the server
   // actually billed.
   // Require ALL core aggregates — a partial payload (e.g. cost without
   // tokens) would silently zero out the missing fields and undercount, which
-  // is worse than falling back to per-message summing. Type guards are
-  // inlined in the `if` (so TS narrows each `session.tokens_*` property to
-  // `number` inside the block) AND a separate boolean `usedAggregates` is
-  // set so the per-message loop downstream (line ~599) knows whether to
-  // double-add the per-message costs.
+  // is worse than falling back to per-message summing. A separate boolean
+  // `usedAggregates` lets the per-message loop below skip the double-add.
   let usedAggregates = false
+  const t = session.tokens
   if (
-    typeof session.tokens_input === "number" &&
-    typeof session.tokens_output === "number" &&
-    typeof session.tokens_cache_read === "number" &&
+    t &&
+    typeof t.input === "number" &&
+    typeof t.output === "number" &&
+    typeof t.cache?.read === "number" &&
     typeof session.cost === "number"
   ) {
-    m.input = session.tokens_input
-    m.output = session.tokens_output
-    m.cacheRead = session.tokens_cache_read
-    m.cacheWrite = session.tokens_cache_write || 0
-    m.reasoning = session.tokens_reasoning || 0
+    m.input = t.input
+    m.output = t.output
+    m.cacheRead = t.cache.read
+    m.cacheWrite = t.cache.write || 0
+    m.reasoning = t.reasoning || 0
     m.cost = session.cost
     // costKnown: false if the server-billed total is exactly $0 — that means
     // we're either on a plan, the provider skipped billing metadata, or the
@@ -372,18 +409,21 @@ async function usageForSession(client: Client, session: SessionInfo): Promise<Se
     usedAggregates = true
   }
 
-  let messages: Array<{ info: AssistantInfo; parts?: MessagePart[] }> = []
+  let messages: UsageMessage[] = []
   try {
-    const res = await client.session.messages({ sessionID: session.id })
-    messages = (res?.data ?? []) as typeof messages
+    messages = await source.messages(session.id)
   } catch {
     return m
   }
 
   for (const msg of messages) {
-    const info = msg?.info
-    if (info?.role !== "assistant") continue
-    const t = info.tokens || {}
+    if (msg.type === "compaction") {
+      m.compactions++
+      continue
+    }
+    if (msg.type !== "assistant") continue
+    const info = msg
+    const tokens = info.tokens || {}
     const model = `${info.providerID || "unknown"}/${info.modelID || "unknown"}`
     const cost = info.cost || 0
     // When the server supplied session-level totals, don't double-add the
@@ -391,30 +431,29 @@ async function usageForSession(client: Client, session: SessionInfo): Promise<Se
     // for per-model breakdown, which the session row does not expose.
     if (!usedAggregates) {
       m.cost += cost
-      m.input += t.input || 0
-      m.output += t.output || 0
-      m.cacheRead += t.cache?.read || 0
-      m.cacheWrite += t.cache?.write || 0
-      m.reasoning += t.reasoning || 0
+      m.input += tokens.input || 0
+      m.output += tokens.output || 0
+      m.cacheRead += tokens.cache?.read || 0
+      m.cacheWrite += tokens.cache?.write || 0
+      m.reasoning += tokens.reasoning || 0
     }
     // Track whether ANY assistant message carried a real server-side cost —
-    // if so we trust the cost column and skip the kill-line skull. Aggregates
+    // if so we trust the cost column and skip the kill-line flag. Aggregates
     // path sets costKnown when the session row cost > 0; per-message path
     // needs to flag it here too.
     if (cost > 0) m.costKnown = true
     // OCP supplementary fallback: only when the server billed nothing (cost 0)
     // do we consult the points dataset for subscription coding plans.
     if (!m.cost) {
-      const usage = computeUsageForMessage(info.providerID || "", info.modelID || "", t.input || 0, t.cache?.read || 0, t.output || 0)
+      const usage = computeUsageForMessage(info.providerID || "", info.modelID || "", tokens.input || 0, tokens.cache?.read || 0, tokens.output || 0)
       if (usage) {
         if (usage.type === "credits") {
           m.creditsKnown = true
           m.credits += usage.value
           m.creditsByModel[model] = (m.creditsByModel[model] || 0) + usage.value
-          m.stepsByModel[model] = (m.stepsByModel[model] || 0) + 1
           // Credits are a real billing mechanism even when cost stays $0
           // — flag costKnown so the cost cell doesn't fall back to a kill-
-          // line skull. The credits column is where the real spend lives.
+          // line estimate. The credits column is where the real spend lives.
           m.costKnown = true
         } else {
           // cash fallback (user-curated in OCP dataset; defaults to server $0 otherwise)
@@ -431,11 +470,11 @@ async function usageForSession(client: Client, session: SessionInfo): Promise<Se
     // this only when the server total is $0. Source order: models.dev public
     // list price, then a hardcoded low-end market floor if the model is absent.
     {
-      const est = computeModelsDevEstimate(info.providerID || "", info.modelID || "", t.input || 0, t.cache?.read || 0, t.output || 0)
+      const est = computeModelsDevEstimate(info.providerID || "", info.modelID || "", tokens.input || 0, tokens.cache?.read || 0, tokens.output || 0)
       const value = est?.value ??
-        (((t.input || 0) * FALLBACK_FLOOR_USD.input +
-          (t.cache?.read || 0) * FALLBACK_FLOOR_USD.cached +
-          (t.output || 0) * FALLBACK_FLOOR_USD.output) / 1_000_000)
+        (((tokens.input || 0) * FALLBACK_FLOOR_USD.input +
+          (tokens.cache?.read || 0) * FALLBACK_FLOOR_USD.cached +
+          (tokens.output || 0) * FALLBACK_FLOOR_USD.output) / 1_000_000)
       m.estimatedCost += value
       m.estimatedCostByModel[model] = (m.estimatedCostByModel[model] || 0) + value
       if (est) {
@@ -444,37 +483,32 @@ async function usageForSession(client: Client, session: SessionInfo): Promise<Se
         if (!m.floorModels.includes(model)) m.floorModels.push(model)
       }
     }
-    if (info.mode || info.agent) m.agent = info.agent || info.mode
+    if (info.agent) m.agent = info.agent
 
-    m.inputByModel[model] = (m.inputByModel[model] || 0) + (t.input || 0)
-    m.outputByModel[model] = (m.outputByModel[model] || 0) + (t.output || 0)
-    m.cacheByModel[model] = (m.cacheByModel[model] || 0) + (t.cache?.read || 0)
+    m.inputByModel[model] = (m.inputByModel[model] || 0) + (tokens.input || 0)
+    m.outputByModel[model] = (m.outputByModel[model] || 0) + (tokens.output || 0)
+    m.cacheByModel[model] = (m.cacheByModel[model] || 0) + (tokens.cache?.read || 0)
     m.costByModel[model] = (m.costByModel[model] || 0) + cost
-
-    for (const part of msg.parts || []) {
-      if (part?.type === "step-finish") {
-        m.steps++
-        m.stepsByModel[model] = (m.stepsByModel[model] || 0) + 1
-      }
-      if (part?.type === "compaction") m.compactions++
-    }
+    // OCP-V2-GAP: v2 folds steps into one assistant message per turn, so the
+    // per-step count is unavailable; the assistant-message count is the
+    // closest proxy for v1's step-finish parts count.
+    m.steps++
+    m.stepsByModel[model] = (m.stepsByModel[model] || 0) + 1
   }
   return m
 }
 
-async function rootSession(client: Client, sessionId: string): Promise<SessionInfo | undefined> {
-  let current: SessionInfo | undefined
+async function rootSession(source: UsageSource, sessionId: string): Promise<UsageSession | undefined> {
+  let current: UsageSession | undefined
   try {
-    const res = await client.session.get({ sessionID: sessionId })
-    current = res?.data as SessionInfo | undefined
+    current = await source.getSession(sessionId)
   } catch {
     return undefined
   }
   let hops = 0
   while (current?.parentID && hops++ < MAX_PARENT_HOPS) {
     try {
-      const res = await client.session.get({ sessionID: current.parentID })
-      current = res?.data as SessionInfo | undefined
+      current = await source.getSession(current.parentID)
     } catch {
       break
     }
@@ -482,18 +516,18 @@ async function rootSession(client: Client, sessionId: string): Promise<SessionIn
   return current
 }
 
-async function conversationTree(client: Client, sessionId: string): Promise<SessionInfo[]> {
-  const root = await rootSession(client, sessionId)
+async function conversationTree(source: UsageSource, sessionId: string): Promise<UsageSession[]> {
+  const root = await rootSession(source, sessionId)
   if (!root) return []
 
-  const tree: SessionInfo[] = [root]
+  const tree: UsageSession[] = [root]
   let frontier = [root.id]
   for (let depth = 0; depth < MAX_TREE_DEPTH && frontier.length > 0; depth++) {
     const next: string[] = []
     for (const parentID of frontier) {
       try {
-        const res = await client.session.children({ sessionID: parentID })
-        for (const child of (res?.data ?? []) as SessionInfo[]) {
+        const children = await source.listChildren(parentID)
+        for (const child of children) {
           if (tree.some((s) => s.id === child.id)) continue
           tree.push(child)
           next.push(child.id)
@@ -504,37 +538,30 @@ async function conversationTree(client: Client, sessionId: string): Promise<Sess
     }
     frontier = next
   }
-  // Children listing typically returns id-only entries (no tokens/cost).
-  // Hydrate each with the full session object (tokens_input/output/
-  // cache_read/cache_write/reasoning, cost) so usageForSession can prefer
-  // the server-aggregated totals over per-message sums. Merge with
-  // existing fields rather than overwrite — child listings may already
-  // carry agent/parentID, and a session.get roundtrip would lose them
-  // if the server response is sparse.
+  // Children listing may return sparse entries (no tokens/cost). Hydrate
+  // each with the full session object (server-aggregated tokens/cost) so
+  // usageForSession can prefer those over per-message sums. Merge with
+  // existing fields rather than overwrite — a roundtrip that loses
+  // agent/parentID must not degrade the row.
   for (let i = 0; i < tree.length; i++) {
     const s = tree[i]
-    if (
-      typeof s.tokens_input === "number" &&
-      typeof s.tokens_output === "number" &&
-      typeof s.tokens_cache_read === "number" &&
-      typeof s.cost === "number"
-    ) continue
+    if (s.tokens && typeof s.cost === "number") continue
     try {
-      const res = await client.session.get({ sessionID: s.id })
-      if (res?.data) tree[i] = { ...s, ...(res.data as SessionInfo) }
+      const full = await source.getSession(s.id)
+      if (full) tree[i] = { ...s, ...full }
     } catch {
-      // session.get is best-effort; id-only entry is still usable
+      // session.get is best-effort; a sparse entry is still usable
     }
   }
   return tree
 }
 
 /** Conversation tree with per-session usage, dropping sessions without data. */
-async function collectSessions(client: Client, sessionId: string): Promise<SessionUsage[]> {
-  const tree = await conversationTree(client, sessionId)
+async function collectSessions(source: UsageSource, sessionId: string): Promise<SessionUsage[]> {
+  const tree = await conversationTree(source, sessionId)
   const usages: SessionUsage[] = []
   for (const session of tree) {
-    const m = await usageForSession(client, session)
+    const m = await usageForSession(source, session)
     usages.push(m)
   }
   return usages.filter((m) => m.steps > 0 || m.input > 0)
@@ -971,7 +998,7 @@ export interface UsageRender {
   totalCompactions: number
 }
 
-export async function formatByDimension(client: Client, sessionId: string, dim: UsageDimension): Promise<UsageRender> {
+export async function formatByDimension(source: UsageSource, sessionId: string, dim: UsageDimension): Promise<UsageRender> {
   // If we have no shared public catalog yet (cold install, no disk cache,
   // first /usage open), wait briefly so simulated costs can use real public
   // list prices instead of the hardcoded market-floor fallback.
@@ -983,7 +1010,7 @@ export async function formatByDimension(client: Client, sessionId: string, dim: 
       ])
     } catch { /* fall through to the hardcoded floor fallback */ }
   }
-  const sessions = await collectSessions(client, sessionId)
+  const sessions = await collectSessions(source, sessionId)
   if (sessions.length === 0) {
     return { table: "", view: EMPTY_TABLE_VIEW, totalSteps: 0, totalCompactions: 0 }
   }
@@ -1004,24 +1031,24 @@ export async function formatByDimension(client: Client, sessionId: string, dim: 
   return { table: tableViewToString(view), view, totalSteps, totalCompactions }
 }
 
-// Tokens that identify the command itself, not a subcommand. Slash dispatch
-// puts the command NAME ("usage.show") into ctx.input, so leading name
-// tokens must be skipped when extracting the user's trailing argument.
+// Tokens that identify the command itself, not a subcommand. A host
+// variant that echoes the command name into the raw slash input is
+// tolerated by skipping leading name tokens.
 const COMMAND_TOKENS = new Set(["usage.show", "usage", "/usage"])
 
 /**
- * Extract subcommand args from the keymap command context. Check data.args
- * and payload first (likely the real slash args), ctx.input last; in every
- * source skip leading command-name tokens. (Generic version lives in i18n.)
+ * Extract the subcommand from a slash command's raw input (v2 passes the
+ * trailing prompt text to `run(input)`). Leading command-name tokens are
+ * skipped. Generic version lives in i18n.
  */
-export function parseSubcommand(ctx: unknown): string | null {
-  return parseSlashArgs(ctx, [...COMMAND_TOKENS])
+export function parseSubcommand(input: string | undefined): string | null {
+  return parseSlashArgs(input, [...COMMAND_TOKENS])
 }
 
-function currentSessionID(api: TuiPluginApi): string | undefined {
-  const route = api.route.current
-  if (route.name !== "session") return undefined
-  return (route.params as { sessionID?: string } | undefined)?.sessionID
+function currentSessionID(ctx: Context): string | undefined {
+  const route = ctx.ui.router.current()
+  if (route.type !== "session") return undefined
+  return route.sessionID
 }
 
 // ─── Tab strip + view composition ───────────────────────────────────────────
@@ -1056,11 +1083,10 @@ function renderTabStrip(active: UsageDimension): string {
 
 /**
  * Dialog body: numbered tab strip + underline, blank, table. The numbers are
- * the hotkeys, so no hint line is needed. Rendered inside the host
- * DialogAlert (message is a plain string — opentui requires bare text to
- * live under a <text> element, and the plugin adapter exposes no Box/Text
- * primitives, so a self-drawn panel is not possible). The host's ok button
- * is unconditional (no prop hides it); Enter/Esc both close.
+ * the hotkeys (bound in the modal keymap layer), so no hint line is needed.
+ * Rendered as plain text lines inside the plugin-drawn panel — the view is
+ * a string composition by design: one <text> per line, column alignment via
+ * width helpers, Enter/Esc close.
  */
 export function renderDimensionView(rendered: UsageRender, dim: UsageDimension): string {
   const parts: string[] = [renderTabStrip(dim), ""]
@@ -1161,216 +1187,162 @@ export function renderScrollView(rendered: UsageRender, dim: UsageDimension, ter
 
 // ─── Plugin entry ───────────────────────────────────────────────────────────
 
-let activeDim: UsageDimension = "session"
-/** True while the usage dialog is on-screen. */
-let dialogOpen = false
-/** Generation counter: each dialog open increments this. onClose only
- *  resets dialogOpen when its captured generation matches current,
- *  preventing stale onClose from dialog.replace() from clobbering state. */
-let dialogGen = 0
-/** Global keypress handler: intercepts dimension-switching keys BEFORE
- *  DialogAlert can consume them. Registered on dialog open, removed on close. */
-let keyHandler: ((e: any) => void) | null = null
-/** Render cache for the open dialog — scrolling re-slices this locally
- *  instead of re-querying the server on every keypress. */
-let openRendered: UsageRender | null = null
-/** Scroll position (data-row offset) of the open dialog; reset on open/tab switch. */
-let scrollOffset = 0
-/** Max row offset of the current view — 0 when the table fits the viewport
- *  (scroll keys pass through to the host). */
-let scrollMax = 0
-
-const tui: TuiPlugin = async (api) => {
-  initI18n(api)
-
-  const hasDialog = typeof api.ui.dialog?.replace === "function"
-
-  const cycleDimension = (delta: number) => {
-    const idx = DIMENSIONS.indexOf(activeDim)
-    void openDimension(DIMENSIONS[(idx + delta + DIMENSIONS.length) % DIMENSIONS.length])
-  }
-
-  /** Register global keypress interceptor: fires BEFORE DialogAlert.
-   *  Matches 1/2/3/left/right for dimension switching and, while the table
-   *  overflows the terminal, up/down/j/k for scrolling; stopPropagation()
-   *  keeps the dialog from consuming them. */
-  const installKeyHandler = () => {
-    removeKeyHandler()
-    keyHandler = (e: any) => {
-      if (!dialogOpen) return
-      const name: string = e.name
-      // Table scroll — only while the viewport actually overflows, so
-      // tables that fit keep the old key pass-through behavior.
-      if (scrollMax > 0 && (name === "up" || name === "down" || name === "j" || name === "k")) {
-        e.stopPropagation()
-        scrollBy(name === "down" || name === "j" ? 1 : -1)
-        return
-      }
-      // Dimension jump: 1/2/3
-      if (name === "1" || name === "2" || name === "3") {
-        e.stopPropagation()
-        const dim = DIMENSIONS[parseInt(name) - 1]
-        if (dim) void openDimension(dim)
-        return
-      }
-      // Dimension cycle: left = prev, right = next
-      if (name === "left") {
-        e.stopPropagation()
-        cycleDimension(-1)
-        return
-      }
-      if (name === "right") {
-        e.stopPropagation()
-        cycleDimension(1)
-        return
-      }
-    }
-    api.renderer.keyInput.on("keypress", keyHandler)
-  }
-
-  const removeKeyHandler = () => {
-    if (!keyHandler) return
-    api.renderer.keyInput.off("keypress", keyHandler)
-    keyHandler = null
-  }
-
-  /** Re-render the open dialog from the cached render at the current scroll
-   *  offset. Pure string work — no server roundtrip, so scrolling stays
-   *  instant even on huge conversation trees. */
-  const presentView = () => {
-    if (!openRendered) return
-    const rendered = openRendered
-    const flat = renderDimensionView(rendered, activeDim)
-    let view = flat
-    // Terminal height bounds the message (see DIALOG_CHROME). Hosts without
-    // a measurable height (tests, exotic embedders) render the full view.
-    const termHeight = Number(api.renderer?.height) || 0
-    if (termHeight > 0) {
-      const scrolled = renderScrollView(rendered, activeDim, termHeight, scrollOffset)
-      scrollOffset = scrolled.offset
-      scrollMax = scrolled.maxOffset
-      view = scrolled.view
-    } else {
-      scrollMax = 0
-    }
-    if (!hasDialog) {
-      // Hosts without the dialog API: toast fallback.
-      api.ui.toast({ message: view, variant: "info", duration: TOAST_DURATION })
-      return
-    }
-    // Size from the table only (not the tab strip or context-warning prose —
-    // those wrap naturally inside the dialog, so they must not inflate the
-    // width tier). The full table keeps the tier stable while wide rows
-    // scroll out of (and back into) the visible window.
-    const size = fitDialogSize(rendered.table)
-    removeKeyHandler()
-    const myGen = ++dialogGen
-    dialogOpen = true
-    installKeyHandler()
-    api.ui.dialog.replace(
-      () => api.ui.DialogAlert({ title: tr("usage.dialogTitle"), message: view }),
-      () => {
-        if (dialogGen === myGen) {
-          dialogOpen = false
-          removeKeyHandler()
-        }
-      },
-    )
-    api.ui.dialog.setSize(size)
-  }
-
-  /** Scroll the open dialog by `delta` data rows (clamped; no-op at rest). */
-  const scrollBy = (delta: number) => {
-    if (!openRendered || scrollMax <= 0) return
-    const next = Math.min(Math.max(scrollOffset + delta, 0), scrollMax)
-    if (next === scrollOffset) return
-    scrollOffset = next
-    presentView()
-  }
-
-  const openDimension = (dim: UsageDimension) => {
-    activeDim = dim
-    const sessionId = currentSessionID(api) || "default"
-    // Warm the SWR cache: kicks a background refresh if the in-memory entry
-    // is stale, but never blocks the dialog open path. First /usage open in
-    // a fresh install will trigger one slow fetch (because there's nothing
-    // on disk yet) — handled via the formatByDimension await below; all
-    // subsequent opens are instant (background-only refresh).
-    if (!modelsDevCatalog) {
-      void getModelsDevAsync().catch(() => { /* network errors never block */ })
-    }
-    return formatByDimension(api.client, sessionId, dim)
-      .then((rendered) => {
-        if (!rendered.table) {
-          api.ui.toast({ message: tr("usage.noData"), variant: "info" })
-          return
-        }
-        openRendered = rendered
-        scrollOffset = 0 // fresh view — always start at the top row
-        presentView()
-      })
-      .catch((err) => {
-        dialogOpen = false
-        removeKeyHandler()
-        api.ui.toast({ message: tr("usage.failed", { err: err instanceof Error ? err.message : String(err) }), variant: "warning" })
-      })
-  }
-
-  // Slash command + command palette entry.
-  // Key bindings are handled by the global keypress interceptor
-  // (installKeyHandler) which fires BEFORE DialogAlert and calls
-  // stopPropagation() to prevent the dialog from consuming the keys.
-  api.keymap.registerLayer({
-    commands: [
-      {
-        name: "usage.show",
-        title: tr("usage.commandTitle"),
-        desc: tr("usage.commandDesc"),
-        category: "Session",
-        namespace: "palette",
-        slashName: SLASH_NAME,
-        run(ctx: unknown) {
-          const sub = parseSubcommand(ctx)
-          const dim = sub === null ? "session" : DIM_SUBCOMMAND[sub]
-          if (dim === undefined) {
-            api.ui.toast({ message: tr("usage.unknownSub", { sub: sub ?? "" }), variant: "warning" })
-            return Promise.resolve()
-          }
-          return openDimension(dim)
-        },
-      },
-      ...DIMENSIONS.map((dim) => ({
-        name: `usage.dim.${dim}`,
-        title: tr(DIM_TITLE_KEY[dim] as Parameters<typeof tr>[0]),
-        category: "Session",
-        run() {
-          if (dialogOpen) void openDimension(dim)
-        },
-      })),
-      {
-        name: "usage.dim.prev",
-        title: tr("usage.dimPrev"),
-        category: "Session",
-        run() {
-          if (dialogOpen) cycleDimension(-1)
-        },
-      },
-      {
-        name: "usage.dim.next",
-        title: tr("usage.dimNext"),
-        category: "Session",
-        run() {
-          if (dialogOpen) cycleDimension(1)
-        },
-      },
-    ],
-    bindings: [],
-  })
-}
-
-const plugin: TuiPluginModule & { id: string } = {
+export default Plugin.define({
   id: "usage",
-  tui,
-}
+  setup(ctx: Context) {
+    initI18n()
 
-export default plugin
+    const source = createContextSource(ctx)
+    /** Current dialog payload — null when nothing is rendered yet. */
+    const [current, setCurrent] = createSignal<{ dim: UsageDimension; rendered: UsageRender; scroll: number } | null>(null)
+    /** True while the usage dialog is on-screen. */
+    const [dialogOpen, setDialogOpen] = createSignal(false)
+
+    const termHeight = () => Number(ctx.renderer?.height) || 0
+
+    /** Compose the visible view for the current payload (pure per call). */
+    const viewOf = (c: NonNullable<ReturnType<typeof current>>) => {
+      // Terminal height bounds the message (see DIALOG_CHROME). Hosts
+      // without a measurable height (tests, exotic embedders) render the
+      // full view.
+      if (termHeight() > 0) {
+        const scrolled = renderScrollView(c.rendered, c.dim, termHeight(), c.scroll)
+        return scrolled
+      }
+      return { view: renderDimensionView(c.rendered, c.dim), offset: c.scroll, maxOffset: 0 }
+    }
+
+    const presentOrOpen = (dim: UsageDimension, rendered: UsageRender) => {
+      setCurrent({ dim, rendered, scroll: 0 })
+      // Size from the table only (not the tab strip or context-warning prose —
+      // those wrap naturally inside the dialog, so they must not inflate the
+      // width tier). The full table keeps the tier stable while wide rows
+      // scroll out of (and back into) the visible window.
+      ctx.ui.dialog.set({ size: fitDialogSize(rendered.table) })
+      if (dialogOpen()) return
+      setDialogOpen(true)
+      ctx.ui.dialog.show(
+        () => jsx(UsageDialog, {}),
+        () => {
+          setDialogOpen(false)
+          setCurrent(null)
+        },
+      )
+    }
+
+    /** Self-drawn panel body: tab strip + warning + table lines, one
+     *  <text> per line, scroll window recomputed reactively. */
+    function UsageDialog() {
+      const view = createMemo(() => {
+        const c = current()
+        if (!c) return null
+        const theme = ctx.theme
+        const scrolled = viewOf(c)
+        const lines = scrolled.view.split("\n")
+        const title = tr("usage.dialogTitle")
+        return [
+          jsx("text", { style: { fg: theme.text.base }, children: jsx("span", { children: title }) }),
+          ...lines.map((line) =>
+            jsx("text", { style: { fg: theme.text.base }, children: jsx("span", { children: line.length ? line : " " }) })),
+        ]
+      })
+      // Reactive children: the accessor re-runs on every signal read, so
+      // tab switches and scroll updates repaint without reopening the
+      // dialog (v1 re-called dialog.replace with a generation hack).
+      return jsx("box", { style: { flexDirection: "column", paddingLeft: 1, paddingRight: 1 }, children: view })
+    }
+
+    const setScroll = (next: number) => {
+      const c = current()
+      if (!c) return
+      const probe = renderScrollView(c.rendered, c.dim, termHeight(), next)
+      if (probe.offset === c.scroll) return
+      setCurrent({ ...c, scroll: probe.offset })
+    }
+
+    const cycleDimension = (delta: number) => {
+      const c = current()
+      const idx = DIMENSIONS.indexOf(c?.dim ?? "session")
+      void openDimension(DIMENSIONS[(idx + delta + DIMENSIONS.length) % DIMENSIONS.length])
+    }
+
+    const openDimension = (dim: UsageDimension) => {
+      const sessionId = currentSessionID(ctx) || "default"
+      // Warm the SWR cache: kicks a background refresh if the in-memory entry
+      // is stale, but never blocks the dialog open path. First /usage open in
+      // a fresh install will trigger one slow fetch (because there's nothing
+      // on disk yet) — handled via the formatByDimension await below; all
+      // subsequent opens are instant (background-only refresh).
+      if (!modelsDevCatalog) {
+        void getModelsDevAsync().catch(() => { /* network errors never block */ })
+      }
+      return formatByDimension(source, sessionId, dim)
+        .then((rendered) => {
+          if (!rendered.table) {
+            ctx.ui.toast.show({ message: tr("usage.noData"), variant: "info" })
+            return
+          }
+          presentOrOpen(dim, rendered)
+        })
+        .catch((err) => {
+          setDialogOpen(false)
+          ctx.ui.toast.show({ message: tr("usage.failed", { err: err instanceof Error ? err.message : String(err) }), variant: "warning" })
+        })
+    }
+
+    // Dialog interaction keys — a modal-mode layer that exists only while
+    // the usage dialog is on screen. v1 intercepted renderer keypresses
+    // before DialogAlert; v2 dialogs participate in the keymap, so the
+    // idiomatic surface is a layer scoped to the "modal" input mode.
+    // 1/2/3 jump to a dimension tab, ←/→ cycle, ↑/↓/j/k scroll the table.
+    ctx.keymap.layer(() => ({
+      mode: "modal",
+      enabled: () => dialogOpen(),
+      commands: [
+        { id: "usage.key.session", title: tr("usage.dimSession"), group: "Usage", bind: "1", run: () => void openDimension("session") },
+        { id: "usage.key.agent", title: tr("usage.dimAgent"), group: "Usage", bind: "2", run: () => void openDimension("agent") },
+        { id: "usage.key.model", title: tr("usage.dimModel"), group: "Usage", bind: "3", run: () => void openDimension("model") },
+        { id: "usage.dim.prev", title: tr("usage.dimPrev"), group: "Usage", bind: "left", run: () => cycleDimension(-1) },
+        { id: "usage.dim.next", title: tr("usage.dimNext"), group: "Usage", bind: "right", run: () => cycleDimension(1) },
+        { id: "usage.scroll.up", group: "Usage", bind: "up", run: () => setScroll((current()?.scroll ?? 0) - 1) },
+        { id: "usage.scroll.down", group: "Usage", bind: "down", run: () => setScroll((current()?.scroll ?? 0) + 1) },
+        { id: "usage.scroll.k", group: "Usage", bind: "k", run: () => setScroll((current()?.scroll ?? 0) - 1) },
+        { id: "usage.scroll.j", group: "Usage", bind: "j", run: () => setScroll((current()?.scroll ?? 0) + 1) },
+        // Enter closes the view (v1's DialogAlert ok button).
+        { id: "usage.close", group: "Usage", bind: "return", run: () => ctx.ui.dialog.clear() },
+      ],
+    }))
+
+    // Slash command + command palette entry. Tab keys live in the modal
+    // layer above, active only while the dialog is on screen.
+    ctx.keymap.layer(() => ({
+      commands: [
+        {
+          id: "usage.show",
+          title: tr("usage.commandTitle"),
+          description: tr("usage.commandDesc"),
+          group: "Session",
+          palette: true,
+          slash: { name: SLASH_NAME, arguments: true },
+          run(input?: string) {
+            const sub = parseSubcommand(input)
+            const dim = sub === null ? "session" : DIM_SUBCOMMAND[sub]
+            if (dim === undefined) {
+              ctx.ui.toast.show({ message: tr("usage.unknownSub", { sub: sub ?? "" }), variant: "warning" })
+              return
+            }
+            return openDimension(dim)
+          },
+        },
+        ...DIMENSIONS.map((dim) => ({
+          id: `usage.dim.${dim}`,
+          title: tr(DIM_TITLE_KEY[dim] as Parameters<typeof tr>[0]),
+          group: "Session" as const,
+          run() {
+            if (dialogOpen()) void openDimension(dim)
+          },
+        })),
+      ],
+    }))
+  },
+})

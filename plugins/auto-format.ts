@@ -1,5 +1,5 @@
 /// <reference types="bun" />
-import type { Plugin } from "@opencode-ai/plugin"
+import type { Plugin } from "@opencode/plugin"
 
 /**
  * Auto Format — automatically runs formatters on files after edit.
@@ -13,10 +13,17 @@ import type { Plugin } from "@opencode-ai/plugin"
  *  - gofmt:      .go files (always available)
  *  - rustfmt:    rustfmt.toml / .rustfmt.toml
  *
- * Formatter runs via Bun.$ shell. Failures are logged but never block.
- * Only runs on file.edited events, not on every tool call.
+ * Formatter runs via Bun.spawn. Failures are logged but never block.
+ *
+ * v2 event mapping: v1's `file.edited` (emitted by the edit tools) has no
+ * v2 emitter (core edit tool marks it TODO); the live equivalent is the
+ * location file watcher's `filesystem.changed` with data.{file,event}.
+ * The watcher also sees the formatter's own write-back, so each successful
+ * run records the formatted content hash and skips the echo event —
+ * without this, an always-writing formatter (prettier --write) would loop.
  */
 
+import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 
@@ -106,58 +113,58 @@ function getFormatter(filePath: string, projectRoot: string): FormatterConfig | 
   return null
 }
 
-/** Extract a path from both legacy string and current file-object event payloads. */
-function filePathFromEvent(value: unknown): string | null {
-  if (typeof value === "string") return value
-  if (!value || typeof value !== "object") return null
+/** Bound the echo-dedup map; oldest entries just re-validate next time. */
+const MAX_TRACKED_FILES = 512
 
-  const file = value as { path?: unknown; filePath?: unknown }
-  if (typeof file.path === "string") return file.path
-  if (typeof file.filePath === "string") return file.filePath
-  return null
-}
+async function formatFile(filePath: string, projectRoot: string, echoHashes: Map<string, string>): Promise<void> {
+  const formatter = getFormatter(filePath, projectRoot)
+  if (!formatter) return
 
-function formatterNameFor(filePath: string, projectRoot: string): string | null {
-  return getFormatter(filePath, projectRoot)?.name ?? null
-}
+  const before = createHash("sha256").update(await Bun.file(filePath).text(), "utf8").digest("hex")
+  if (echoHashes.get(filePath) === before) return
 
-export const AutoFormatPlugin: Plugin = async ({ client, directory }) => {
-  return {
-    event: async ({ event }) => {
-      if (event.type !== "file.edited") return
-      const file = filePathFromEvent((event as any).properties?.file) ??
-        filePathFromEvent((event as any).file)
-      if (!file) return
-
-      const formatter = getFormatter(file, directory)
-      if (!formatter) return
-
-      try {
-        const cmd = formatter.command(file)
-        const process = Bun.spawn(cmd, { stdout: "ignore", stderr: "pipe" })
-        if (await process.exited !== 0) {
-          throw new Error((await new Response(process.stderr).text()).trim() || "formatter exited with an error")
-        }
-
-        await client.app.log({
-          body: {
-            service: "auto-format",
-            level: "debug",
-            message: `Formatted ${file} with ${formatter.name}`,
-            extra: { file, formatter: formatter.name },
-          },
-        })
-      } catch (err) {
-        // Formatter failed — log warning but never block
-        await client.app.log({
-          body: {
-            service: "auto-format",
-            level: "warn",
-            message: `${formatter.name} failed on ${file}: ${(err as Error).message}`,
-            extra: { file, formatter: formatter.name, error: (err as Error).message },
-          },
-        })
-      }
-    },
+  const cmd = formatter.command(filePath)
+  const process = Bun.spawn(cmd, { stdout: "ignore", stderr: "pipe" })
+  if (await process.exited !== 0) {
+    throw new Error((await new Response(process.stderr).text()).trim() || "formatter exited with an error")
   }
+
+  // Record the POST-format hash: the watcher echo carries the formatted
+  // bytes, so this exact value is what dedups the echo event.
+  const after = createHash("sha256").update(await Bun.file(filePath).text(), "utf8").digest("hex")
+  if (echoHashes.size > MAX_TRACKED_FILES) echoHashes.delete(echoHashes.keys().next().value!)
+  echoHashes.set(filePath, after)
+  console.debug(`[auto-format] Formatted ${filePath} with ${formatter.name}`)
 }
+
+const plugin: Plugin.Plugin = {
+  id: "auto-format",
+  setup(ctx) {
+    const projectRoot = ctx.location.directory
+    const controller = new AbortController()
+    const echoHashes = new Map<string, string>()
+
+    void (async () => {
+      try {
+        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          if (event.type !== "filesystem.changed") continue
+          if (event.data.event === "unlink") continue
+          const file = event.data.file
+          try {
+            await formatFile(file, projectRoot, echoHashes)
+          } catch (err) {
+            // Formatter failed — warn but never block (v1 parity).
+            console.warn(`[auto-format] formatter failed on ${file}: ${(err as Error).message}`)
+          }
+        }
+      } catch {
+        // Subscription stream died (abort or transport error). The plugin
+        // holds no resource beyond the signal; cleanup below aborts it.
+      }
+    })()
+
+    return () => controller.abort()
+  },
+}
+
+export default plugin

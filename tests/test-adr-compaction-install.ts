@@ -3,10 +3,11 @@
  * read-only analysis in-process, and a real OpenCode server boots from that
  * same installed tree with the tools auto-discovered (no fixture plugin path).
  *
- * Requires: `opencode` on PATH, registry access for OpenCode's own
- * `@opencode-ai/plugin` dependency install, and a current-version manifest.
- * Never bumps the version, writes historical manifests, or touches the real
- * user config dir (HOME is redirected to a temporary directory).
+ * Requires: the sandboxed v2 runtime (.ocp/sandbox/bun-windows-x64/bun.exe +
+ * .ocp/sandbox/v2src — see .ocp/sandbox/WORKING-EXAMPLE/README.md), registry
+ * access for OpenCode's own dependency install, and a current-version
+ * manifest. Never bumps the version, writes historical manifests, or touches
+ * the real user config dir (HOME is redirected to a temporary directory).
  * Run: bun tests/test-adr-compaction-install.ts
  */
 import assert from "node:assert/strict"
@@ -18,7 +19,16 @@ import { pathToFileURL } from "node:url"
 import { executeInstall } from "../install/src/installer"
 
 const repo = resolve(import.meta.dir, "..")
-if (!Bun.which("opencode")) throw new Error("OpenCode >=1.18.15 is required")
+// v2 seam: the boot assertions below drive the SANDBOXED v2 runtime (see
+// .ocp/sandbox/WORKING-EXAMPLE) instead of a v1 `opencode` binary on PATH —
+// the host PATH may carry an unrelated v1 install and MUST NOT be spawned.
+const sandbox = resolve(repo, ".ocp/sandbox")
+const sandboxBun = join(sandbox, "bun-windows-x64", "bun.exe")
+const v2Cli = join(sandbox, "v2src", "packages", "cli")
+if (!existsSync(sandboxBun) || !existsSync(join(v2Cli, "src", "index.ts"))) {
+  console.warn("[SKIP] test-adr-compaction-install: sandbox v2 runtime missing (.ocp/sandbox/bun-windows-x64/bun.exe + v2src)")
+  process.exit(0)
+}
 
 const versionsDir = join(repo, "install/versions")
 const versionJsonPath = join(repo, "install/version.json")
@@ -80,7 +90,9 @@ try {
     "skills/adr-context/SKILL.md",
     "plugin-scope.json",
     "opencode.jsonc",
-    "tui.jsonc",
+    // v2 seam: the terminal-client config renders to `cli.json` (mergeTuiConfig
+    // in install/src/merger.ts), replacing v1's `tui.jsonc` artifact.
+    "cli.json",
     "installed.version",
   ]
   for (const rel of required) assert.ok(existsSync(installed(rel)), `Installer did not deliver ${rel}`)
@@ -101,54 +113,78 @@ try {
   assert.equal(readFileSync(join(project, "docs/adr/0001-boundaries.md"), "utf8"), record, "Read-only analysis modified the ADR source")
   console.log("PASS installed toolchain analyzes a real project without writes")
 
-  // Real server boot from the installed tree: no fixture plugin path, auto-discovery only.
-  proc = Bun.spawn(["opencode", "serve", "--hostname", "0.0.0.0", "--port", "0"], {
-    cwd: project,
+  // Real server boot from the installed tree against the SANDBOXED v2 runtime
+  // (no fixture plugin path, config-dir auto-discovery only). Spawn recipe:
+  // .ocp/sandbox/WORKING-EXAMPLE — the v2 global config resolves through
+  // HOME/.config/opencode (== the installed target), plugins load per
+  // location after the first directory-scoped request. The host PATH v1
+  // binary MUST NOT be used: the migrated plugin exports the v2
+  // `{ id, setup }` shape and cannot register on a v1 server.
+  const childEnvPinned: Record<string, string | undefined> = { ...childEnv }
+  for (const key of ["OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT", "OPENCODE_PASSWORD", "ORCA_OPENCODE_CONFIG_DIR", "ORCA_AGENT_HOOK_ENDPOINT", "ORCA_AGENT_HOOK_TOKEN"]) delete childEnvPinned[key]
+  const portProbe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch() { return new Response("") } })
+  const bootPort = portProbe.port
+  portProbe.stop(true)
+  proc = Bun.spawn([sandboxBun, "run", "--cwd", v2Cli, "src/index.ts", "serve", "--hostname", "127.0.0.1", "--port", String(bootPort)], {
+    cwd: v2Cli,
     stdout: "pipe",
     stderr: "pipe",
-    env: childEnv,
+    env: childEnvPinned,
   })
   const stderrDrain = drain(proc.stderr as ReadableStream<Uint8Array>)
   const timer = setTimeout(() => { abort.abort(); proc?.kill() }, 240_000)
   try {
-    let startup = "", port: string | undefined
+    let startup = ""
     for await (const chunk of proc.stdout as ReadableStream<Uint8Array>) {
       startup += new TextDecoder().decode(chunk)
-      port = /listening on http:\/\/[^:]+:(\d+)/.exec(startup)?.[1]
-      if (port) break
+      if (/server listening on http:\/\/\S+/.test(startup)) break
     }
-    assert.ok(port, `Installed runtime did not start: ${stderr}`)
-    const headers = { authorization: `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}`, "content-type": "application/json" }
-    const get = (path: string) => fetch(`http://127.0.0.1:${port}${path}`, { headers, signal: abort.signal })
-    let tools: string[] = []
+    assert.ok(/server listening on http:\/\/127\.0\.0\.1/.test(startup), `Installed v2 runtime did not boot: stdout=${startup}\nstderr=${stderr}`)
+    const headers = {
+      authorization: `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}`,
+      "content-type": "application/json",
+      // v2 location bootstrap: the per-location instance graph (where plugin
+      // setup() runs) is built on the first directory-scoped request. The
+      // header value must be a Windows-style path, not a git-bash /d/ path.
+      "x-opencode-directory": project,
+    }
+    const get = (path: string) => fetch(`http://127.0.0.1:${bootPort}${path}`, { headers, signal: abort.signal })
+    type PluginEntry = { id?: string; state?: { status?: string } }
+    let plugins: PluginEntry[] = []
     let attempts = 0
-    // The first request also waits for OpenCode's own dependency install into
-    // the config dir; that is the real delivery path, not a test shortcut.
-    while (attempts++ < 60) {
+    // The bootstrap also pays for the v2 runtime's cold start from source and
+    // its dependency install into the config dir; that is the real delivery
+    // path, not a test shortcut.
+    while (attempts++ < 90) {
       try {
-        const response = await get("/experimental/tool/ids")
-        if (response.ok) {
-          tools = await response.json() as string[]
-          if (tools.includes("adr_context") && tools.includes("adr_compaction")) break
+        const location = await get("/api/location")
+        if (location.ok) {
+          const response = await get("/api/plugin")
+          if (response.ok) {
+            plugins = ((await response.json() as { data?: PluginEntry[] }).data ?? [])
+            if (plugins.some(p => p.id === "adr" && p.state?.status === "active")) break
+          }
         }
       } catch (error) {
         if (abort.signal.aborted) throw error
       }
-      await Bun.sleep(2500)
+      await Bun.sleep(2000)
     }
-    assert.ok(tools.includes("adr_context") && tools.includes("adr_compaction"), `Installed plugins did not register the ADR maintenance tools: ${tools.join(", ")}`)
-    const config = await get("/config")
-    assert.ok(config.ok, `Resolved config endpoint failed: ${config.status}`)
-    const resolved = JSON.stringify(await config.json())
-    assert.ok(resolved.includes("plugins/adr.ts") || resolved.includes("plugins%2Fadr.ts"), "Auto-discovered ADR plugin is missing from the resolved config origins")
-    const commands = await get("/command")
+    // v2 has no v1-style `/experimental/tool/ids` listing; tool payloads are
+    // added inside `ctx.tool.transform` during setup() — plugin `active`
+    // status is the server-visible proof that setup (and the ADR tool/command
+    // transforms) completed without throwing. Tool payload unit coverage
+    // lives in tests/test-v2-hook-wiring-unit.ts and the compaction unit tests.
+    const adr = plugins.find(p => p.id === "adr")
+    assert.equal(adr?.state?.status, "active", `Installed ADR plugin did not activate in the v2 runtime: ${JSON.stringify(plugins.filter(p => String(p.id ?? "").includes("adr") || String(p.id ?? "").includes(".opencode") === false))}`)
+    const commands = await get("/api/command")
     assert.ok(commands.ok, `Command listing failed: ${commands.status}`)
-    const commandNames = (await commands.json() as { name?: string }[]).map(entry => entry.name)
+    const commandNames = ((await commands.json() as { data?: { name?: string }[] }).data ?? []).map(entry => entry.name)
     assert.ok(commandNames.includes("adr-guard"), `Installed ADR command is missing from the native command list: ${commandNames.join(", ")}`)
     const skillFiles = readdirSync(installed("skills"))
     assert.ok(skillFiles.includes("adr-compaction") && skillFiles.includes("adr-context"), `Installed skill directories changed: ${skillFiles.join(", ")}`)
     assert.ok(!existsSync(join(project, ".ocp/adr-compaction")), "Server startup created maintenance state")
-    console.log("PASS installed tree boots a real OpenCode server with auto-discovered ADR tools and command")
+    console.log("PASS installed tree boots the sandbox v2 runtime with auto-discovered active ADR plugin and command")
   } finally {
     clearTimeout(timer)
   }

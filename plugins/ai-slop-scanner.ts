@@ -1,5 +1,5 @@
 /// <reference types="bun" />
-import type { Plugin } from "@opencode-ai/plugin"
+import type { Plugin } from "@opencode/plugin"
 
 /**
  * AI Slop Scanner — scans frontend files after edit for common AI-generated
@@ -16,7 +16,11 @@ import type { Plugin } from "@opencode-ai/plugin"
  *  - z-index wars (z-[9999])
  *  - Emoji in professional UI
  *
- * Only scans TSX/JSX/Vue/Svelte files. Warnings are logged via client.app.log().
+ * Only scans TSX/JSX/Vue/Svelte files.
+ *
+ * v2 event mapping: `filesystem.changed` replaces v1's `file.edited`
+ * (see auto-format.ts header for the rationale). Warnings go to the
+ * server log via console — v2 dropped the client.app.log API.
  */
 
 const FRONTEND_EXTENSIONS = [".tsx", ".jsx", ".vue", ".svelte"] as const
@@ -75,37 +79,39 @@ function scanForSlop(content: string): string[] {
   return warnings
 }
 
-export const AiSlopScanner: Plugin = async ({ client }) => {
-  return {
-    event: async ({ event }) => {
-      if (event.type !== "file.edited") return
-      const file = (event as any).properties?.file || (event as any).file || ""
-      if (!file || !isFrontend(file)) return
+const plugin: Plugin.Plugin = {
+  id: "ai-slop-scanner",
+  setup(ctx) {
+    const controller = new AbortController()
 
-      // Read the edited file content
+    void (async () => {
       try {
-        const content = await Bun.file(file).text()
-        if (!content) return
+        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          if (event.type !== "filesystem.changed") continue
+          if (event.data.event === "unlink") continue
+          const file = event.data.file
+          if (!file || !isFrontend(file)) continue
 
-        const warnings = scanForSlop(content)
-        if (warnings.length === 0) return
+          try {
+            // Read the edited file content
+            const content = await Bun.file(file).text()
+            if (!content) continue
 
-        // Log warnings via structured logging
-        await client.app.log({
-          body: {
-            service: "ai-slop-scanner",
-            level: "warn",
-            message: `AI Slop detected in ${file}`,
-            extra: {
-              file,
-              warnings,
-              count: warnings.length,
-            },
-          },
-        })
+            const warnings = scanForSlop(content)
+            if (warnings.length === 0) continue
+
+            console.warn(`[ai-slop-scanner] AI Slop detected in ${file} (${warnings.length}):\n  ${warnings.join("\n  ")}`)
+          } catch {
+            // File read failed — skip silently
+          }
+        }
       } catch {
-        // File read failed — skip silently
+        // Subscription ended (abort/transport); plugin holds no further resource.
       }
-    },
-  }
+    })()
+
+    return () => controller.abort()
+  },
 }
+
+export default plugin

@@ -50,8 +50,9 @@ function assertEq(actual: unknown, expected: unknown, label: string) {
   assert(actual === expected, `${label} (got ${JSON.stringify(actual)}, want ${JSON.stringify(expected)})`)
 }
 
-// Fake plugin client — only app.log is used by the guard.
-const fakeClient = { app: { log: async () => { } } } as any
+// v2 has no structured plugin logger; the guard console.warns — silenced
+// during the tool-guard block below so expected denials don't spam output.
+const realWarn = console.warn
 
 async function expectThrow(fn: () => Promise<unknown>, label: string) {
   try {
@@ -224,8 +225,10 @@ clearState()
 // ─── Tool guard integration ──────────────────────────────────────────
 
 console.log("\n== tool guard ==")
-const guard = makeToolGuardHook(fakeClient)
-const call = (tool: string, args: unknown) => guard({ tool }, { args })
+const guard = makeToolGuardHook()
+// v2 execute.before event: one object with mutable input (v1 was (input, output)).
+const call = (tool: string, input: unknown) => guard({ tool, input })
+console.warn = () => {}
 
 // OFF (remove every config file → default off for this block)
 rmSync(join(tmp, "opencode.jsonc"), { force: true })
@@ -253,6 +256,7 @@ await expectOk(() => call("bash", {}), "on → bash without command allowed")
 // Block message sanity
 assert(blockMessage("read on .env").includes(".env.example"), "block message offers .env.example")
 assert(blockMessage("x").includes("envsitter"), "block message offers envsitter escape hatch")
+console.warn = realWarn
 
 // ─── Cleanup & summary ───────────────────────────────────────────────
 

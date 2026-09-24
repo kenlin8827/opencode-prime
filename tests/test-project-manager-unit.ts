@@ -60,8 +60,8 @@ import {
 } from "../plugins/project-manager/project-manager-index"
 import { registerProjectHooks } from "../plugins/project-manager/project-manager-hooks"
 import { makeSystemHook, MARKER } from "../plugins/project-manager/project-manager-system-inject"
-import { makeAnnounceHook, suggestInitMessage } from "../plugins/project-manager/project-manager-announce"
-import { makeCommandHook } from "../plugins/project-manager/project-manager-command"
+import { makeAnnounceHandler, suggestInitMessage } from "../plugins/project-manager/project-manager-announce"
+import { makeCommandHandler } from "../plugins/project-manager/project-manager-command"
 import { makeToolGuardHook, validateMessage } from "../plugins/project-manager/project-manager-tool-guard"
 
 // ─── Test framework ───────────────────────────────────────────────────────
@@ -92,8 +92,8 @@ function section(title: string): void {
   console.log(`${"═".repeat(60)}`)
 }
 
-// Fake client — only the log surface is exercised in unit tests.
-const fakeClient: any = { app: { log: async () => {} } }
+// V2 session view (scope gate + synthetic replies); logs ride console.
+const fakeSession: any = { synthetic: async () => {}, get: async () => ({}) }
 
 // Temp project dir shared by the stateful tests.
 const projectDir = mkdtempSync(join(tmpdir(), "pm-unit-"))
@@ -107,9 +107,10 @@ function createConventionFile(): void {
 
 /** Run the guard hook on a bash command; true when the commit was blocked. */
 async function guardBlocks(command: string): Promise<boolean> {
-  const hook = makeToolGuardHook(fakeClient)
+  const hook = makeToolGuardHook()
   try {
-    await hook({ tool: "bash" }, { args: { command } })
+    // V2 execute.before event: { tool, input } (v1 output.args -> event.input).
+    await hook({ tool: "bash", input: { command } })
     return false
   } catch (err) {
     return String(err).includes("project-manager")
@@ -184,10 +185,10 @@ async function test03_ToolGuard() {
   assert((await guardBlocks(`git push`)) === false, "non-commit command passes")
 
   // Non-bash tools are never gated.
-  const hook = makeToolGuardHook(fakeClient)
+  const hook = makeToolGuardHook()
   let blocked = false
   try {
-    await hook({ tool: "edit" }, { args: { command: `git commit -m "update stuff"` } })
+    await hook({ tool: "edit", input: { command: `git commit -m "update stuff"` } })
   } catch {
     blocked = true
   }
@@ -351,25 +352,11 @@ async function test06_Command() {
   const dirCmd = mkdtempSync(join(tmpdir(), "pm-cmd-"))
   setProjectDir(dirCmd)
   let promptText = ""
-  const mockClient: any = {
-    session: {
-      prompt: async ({ body }: any) => {
-        promptText = body.parts?.[0]?.text ?? ""
-      },
-    },
-  }
-  let handledCalled = false
-  const hook = makeCommandHook(mockClient, () => {
-    handledCalled = true
-    throw new Error("handled")
-  })
-
-  try {
-    await hook({ command: "project", arguments: "init", sessionID: "s-test" })
-  } catch (e: any) {
-    if (e.message !== "handled") throw e
-  }
-  assert(handledCalled === true, "hook handles /project init")
+  // V2: replies ride session.synthetic; returning normally consumes the
+  // command (v1 equivalent: throw the empty-204 "handled" response).
+  const replySession: any = { synthetic: async ({ text }: any) => { promptText = text }, get: async () => ({}) }
+  const hook = makeCommandHandler(replySession)
+  await hook({ arguments: "init", sessionID: "s-test" })
   assert(promptText.includes("[project-manager] init done"), "/project init executes init report")
 
   rmSync(dirCmd, { recursive: true, force: true })
@@ -385,7 +372,12 @@ async function test06_Command() {
 async function test07_Injection() {
   section("07: injection — pointer only, never file content")
 
-  const hook = makeSystemHook(fakeClient)
+  const hookV2 = makeSystemHook(fakeSession)
+  // Adapter for the v1 (input, output) call sites below: the SAME array
+  // reference is handed to the v2 single-event hook (mutations visible).
+  const hook = async (input: unknown, output: { system: string[] }) => {
+    await hookV2({ system: output.system })
+  }
 
   // No file → complete no-op.
   rmSync(conventionFile, { force: true })
@@ -502,11 +494,14 @@ function test08_IndexPlanning() {
   assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true, tgrepIndexed: true, tgrepReadiness: "server", tgrepPolicyCurrent: true })), "tgrep").command === null, "healthy tgrep server skips rebuild")
   assert(planFor(planIndexBackends(probe({ tgrepEnabled: true, tgrepCli: true, tgrepIndexed: true, tgrepReadiness: "disk-index" })), "tgrep").command === "tgrep index .", "unhealthy tgrep index rebuilds")
 
-  // mcp.<name>.enabled parsing (same JSONC subset rule as the profiler).
-  assert(mcpEnabledFrom('{"mcp":{"gitnexus":{"enabled":false}}}', "gitnexus") === false, "explicit false honored")
-  assert(mcpEnabledFrom('{"mcp":{"gitnexus":{"enabled":true}}}', "gitnexus") === true, "explicit true honored")
-  assert(mcpEnabledFrom('{"mcp":{}}', "gitnexus") === true, "missing entry → assume enabled")
-  const commented = '// "mcp":{"gitnexus":{"enabled":false}}\n{"mcp":{"gitnexus":{"enabled":true}}}'
+  // mcp.servers.<name>.disabled parsing (v2 shape): only an explicit
+  // `disabled: true` turns a backend off.
+  assert(mcpEnabledFrom('{"mcp":{"servers":{"gitnexus":{"disabled":true}}}}', "gitnexus") === false, "explicit disabled:true honored")
+  assert(mcpEnabledFrom('{"mcp":{"servers":{"gitnexus":{"disabled":false}}}}', "gitnexus") === true, "explicit disabled:false honored")
+  assert(mcpEnabledFrom('{"mcp":{"servers":{"gitnexus":{"type":"local"}}}}', "gitnexus") === true, "configured server without `disabled` stays enabled (v2 default false)")
+  assert(mcpEnabledFrom('{"mcp":{}}', "gitnexus") === true, "missing entry → assume enabled (documented degradation)")
+  assert(mcpEnabledFrom('{"mcp":{"gitnexus":{"enabled":false}}}', "gitnexus") === true, "a v1-shaped document no longer gates the backend (field is unread in v2)")
+  const commented = '// "mcp":{"servers":{"gitnexus":{"disabled":true}}}\n{"mcp":{"servers":{"gitnexus":{"type":"local"}}}}'
   assert(mcpEnabledFrom(commented, "gitnexus") === true, "whole-line // comments stripped")
 }
 
@@ -534,16 +529,16 @@ async function test09_Announce() {
   // Hook behavior with a capturing fake client.
   const dir2 = mkdtempSync(join(tmpdir(), "pm-announce-"))
   setProjectDir(dir2)
+  // V2: announce surface is shared/notify (console line, v1 was a toast).
   let prompts = 0
-  const hookClient: any = {
-    tui: { showToast: async () => { prompts++ } },
-  }
-  const hook = makeAnnounceHook(hookClient)
-  await hook({ event: { type: "session.created", properties: { info: { id: "sub", parentID: "main" } } } })
+  const origLog = console.log
+  console.log = (...args: unknown[]) => { if (String(args[0] ?? "").includes("[ocp:notify]")) prompts++; else origLog(...args) }
+  const hook = makeAnnounceHandler()
+  await hook({ type: "session.created", data: { sessionID: "sub", parentID: "main" } })
   assert(prompts === 0, "subagent session → no suggestion")
-  await hook({ event: { type: "session.created", properties: { info: { id: "s1" } } } })
+  await hook({ type: "session.created", data: { sessionID: "s1" } })
   assert(prompts === 1, "uninitialized project → suggestion shown")
-  await hook({ event: { type: "session.created", properties: { info: { id: "s2" } } } })
+  await hook({ type: "session.created", data: { sessionID: "s2" } })
   assert(prompts === 1, "once per server run — no nag")
 
   // Fully initialized project → silent.
@@ -554,9 +549,10 @@ async function test09_Announce() {
   writeFileSync(join(dir3, "AGENTS.md"), "x", "utf-8")
   writeFileSync(join(dir3, "docs", "git-commits.md"), "x", "utf-8")
   writeFileSync(join(dir3, ".ocp", "ocp.json"), "{}", "utf-8")
-  const hook2 = makeAnnounceHook(hookClient)
-  await hook2({ event: { type: "session.created", properties: { info: { id: "s3" } } } })
+  const hook2 = makeAnnounceHandler()
+  await hook2({ type: "session.created", data: { sessionID: "s3" } })
   assert(prompts === 1, "initialized project → no suggestion")
+  console.log = origLog
 
   rmSync(dir2, { recursive: true, force: true })
   rmSync(dir3, { recursive: true, force: true })
@@ -726,7 +722,7 @@ function test11_Hooks() {
   assert(!afterCleanup.includes(MARKER_START), "managed block removed in cleanup")
 
   // Disabled backend, no hook files yet → skipped with reason naming the
-  // file that actually gates the flag (mcp.<name>.enabled lives in
+  // file that actually gates the flag (mcp.servers.<name>.disabled lives in
   // opencode.jsonc, NOT options.jsonc).
   const dirOff = mkdtempSync(join(tmpdir(), "pm-hooksoff-"))
   mkdirSync(join(dirOff, ".git", "hooks"), { recursive: true })

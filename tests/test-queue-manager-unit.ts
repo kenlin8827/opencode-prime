@@ -1,15 +1,17 @@
 /**
  * Queue Manager Plugin — Unit Tests (no API dependency)
  *
- * Validates the pure queue-computation helpers of plugins/queue-manager.ts:
- *   - queue definition: user messages without an assistant reply
- *   - exclusions: compaction/subtask messages, all-ignored feedback messages
- *   - preview/visibleText/age formatting
+ * Validates the pure queue-computation helpers of plugins/tui/queue-manager.ts
+ * against the v2 session-inbox model:
+ *   - queue definition: pending USER inbox items only (synthetic /
+ *     compaction / move rows are internal work, never queue entries)
+ *   - preview/age formatting, delivery passthrough, attachment counting
  *
- * Run: npx tsx tests/test-queue-manager-unit.ts   (or: bun tests/test-queue-manager-unit.ts)
+ * Run: bun tests/test-queue-manager-unit.ts   (or: bun test ./tests/test-queue-manager-unit.ts)
  */
 
-import { computeQueued, visibleText, preview, age, isCancelled, type WithParts } from "../plugins/tui/queue-manager"
+import { computeQueued, preview, age } from "../plugins/tui/queue-manager"
+import type { SessionInboxInfo } from "@opencode/client"
 
 // ─── Test framework ───────────────────────────────────────────────────────
 
@@ -35,146 +37,94 @@ function section(title: string): void {
 // ─── Fixtures ─────────────────────────────────────────────────────────────
 
 let seq = 0
-function nextId(): string {
+function nextId(prefix: string): string {
   seq++
-  return `msg_${String(seq).padStart(4, "0")}`
+  return `${prefix}_${String(seq).padStart(4, "0")}`
 }
 
-function userMsg(created: number, parts: unknown[] = []): WithParts {
+function userItem(created: number, text: string, delivery: "steer" | "queue" = "queue", files = 0): SessionInboxInfo {
   return {
-    info: {
-      id: nextId(),
-      sessionID: "ses_test",
-      role: "user",
-      time: { created },
-      agent: "build",
-      model: { providerID: "p", modelID: "m" },
-    } as never,
-    parts: parts as never,
-  }
-}
-
-function assistantMsg(created: number, parentID: string, finish?: string): WithParts {
-  return {
-    info: {
-      id: nextId(),
-      sessionID: "ses_test",
-      role: "assistant",
-      time: { created },
-      parentID,
-      modelID: "m",
-      providerID: "p",
-      mode: "build",
-      agent: "build",
-      path: { cwd: "/x", root: "/x" },
-      cost: 0,
-      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-      finish,
-    } as never,
-    parts: [],
-  }
-}
-
-function textPart(text: string, ignored = false): unknown {
-  return {
-    id: nextId(),
+    id: nextId("inbox"),
     sessionID: "ses_test",
-    messageID: "ignored-in-fixture",
-    type: "text",
-    text,
-    ignored,
+    type: "user",
+    time: { created },
+    delivery,
+    payload: {
+      text,
+      ...(files > 0 ? { files: Array.from({ length: files }, () => ({ uri: "file:///x.png", name: "x.png" })) } : {}),
+    },
   }
+}
+
+function syntheticItem(created: number): SessionInboxInfo {
+  return {
+    id: nextId("inbox"),
+    sessionID: "ses_test",
+    type: "synthetic",
+    time: { created },
+    delivery: "queue",
+    payload: { text: "plugin feedback" },
+  } as SessionInboxInfo
+}
+
+function compactionItem(created: number): SessionInboxInfo {
+  return {
+    id: nextId("inbox"),
+    sessionID: "ses_test",
+    type: "compaction",
+    time: { created },
+    delivery: "queue",
+    payload: {},
+  } as SessionInboxInfo
 }
 
 // ═════════════════════════════════════════════════════════════════════════
-//  1. Queue definition: unanswered user messages only
+//  1. Queue definition: pending user items only
 // ═════════════════════════════════════════════════════════════════════════
 
 function test01_QueueDefinition() {
-  section("01: queue = user messages without an assistant reply")
+  section("01: queue = user inbox items only")
 
   const t = Date.now()
-  const answered = userMsg(t - 60_000, [textPart("hello")])
-  const reply = assistantMsg(t - 55_000, answered.info.id, "stop")
-  const queued = userMsg(t - 10_000, [textPart("while you were busy…")])
+  const items: SessionInboxInfo[] = [
+    userItem(t - 10_000, "while you were busy…"),
+    syntheticItem(t - 9_000),
+    compactionItem(t - 8_000),
+  ]
 
-  const result = computeQueued([answered, reply, queued])
-  assert(result.length === 1, "exactly one queued message")
-  assert(result[0].messageID === queued.info.id, "the unanswered message is queued")
-  assert(result[0].text === "while you were busy…", "text extracted from parts")
-}
-
-function test02_ErroredAssistantStillCountsAsReply() {
-  section("02: assistant reply without finish still counts as answered")
-
-  const t = Date.now()
-  const asked = userMsg(t - 60_000, [textPart("hello")])
-  // errored/interrupted assistant: no finish, but parentID links it
-  const reply = assistantMsg(t - 55_000, asked.info.id)
-
-  const result = computeQueued([asked, reply])
-  assert(result.length === 0, "message with an unfinished reply is NOT queued")
+  const result = computeQueued(items)
+  assert(result.length === 1, "exactly one queued item")
+  assert(result[0].text === "while you were busy…", "text extracted from payload")
 }
 
 function test03_SortedByCreatedAscending() {
   section("03: queue sorted oldest → newest")
 
   const t = Date.now()
-  const q2 = userMsg(t - 5_000, [textPart("second")])
-  const q1 = userMsg(t - 30_000, [textPart("first")])
-  const q3 = userMsg(t - 1_000, [textPart("third")])
+  const q2 = userItem(t - 5_000, "second")
+  const q1 = userItem(t - 30_000, "first")
+  const q3 = userItem(t - 1_000, "third")
 
   const result = computeQueued([q2, q1, q3])
-  assert(result.length === 3, "three queued messages")
+  assert(result.length === 3, "three queued items")
   assert(
     result[0].text === "first" && result[1].text === "second" && result[2].text === "third",
     "sorted by time.created ascending",
   )
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-//  4. Exclusions
-// ═════════════════════════════════════════════════════════════════════════
-
-function test04_CompactionAndSubtaskExcluded() {
-  section("04: internal messages (compaction/subtask) excluded")
+function test04_DeliveryAndAttachments() {
+  section("04: delivery mode passthrough and attachment counts")
 
   const t = Date.now()
-  const compaction = userMsg(t - 10_000, [{ id: "p1", type: "compaction" }])
-  const subtask = userMsg(t - 9_000, [{ id: "p2", type: "subtask", prompt: "x", description: "y", agent: "a" }])
-  const real = userMsg(t - 8_000, [textPart("real queued")])
-
-  const result = computeQueued([compaction, subtask, real])
-  assert(result.length === 1, "only the real user prompt is queued")
-  assert(result[0].text === "real queued", "internal messages filtered out")
-}
-
-function test05_AllIgnoredTextExcluded() {
-  section("05: messages whose text parts are all ignored (feedback) excluded")
-
-  const t = Date.now()
-  const feedback = userMsg(t - 10_000, [textPart("plugin feedback", true), textPart("more feedback", true)])
-  const mixed = userMsg(t - 9_000, [textPart("visible", false), textPart("hidden", true)])
-
-  const result = computeQueued([feedback, mixed])
-  assert(result.length === 1, "all-ignored message filtered, partially-ignored kept")
-  assert(result[0].text === "visible", "visibleText skips ignored parts")
-}
-
-function test06_TombstoneCancelledExcluded() {
-  section("06: tombstone-cancelled messages excluded (busy-strip fallback)")
-
-  const TOMBSTONE =
-    "[This queued message was cancelled via /queued — take no action and reply briefly.]"
-  const t = Date.now()
-  const cancelled = userMsg(t - 10_000, [textPart(TOMBSTONE)])
-  const live = userMsg(t - 9_000, [textPart("still queued")])
-
-  const result = computeQueued([cancelled, live])
-  assert(result.length === 1, "tombstone message filtered out of the queue")
-  assert(result[0].text === "still queued", "live message kept")
-  assert(isCancelled(cancelled.parts as never), "isCancelled detects tombstone")
-  assert(!isCancelled(live.parts as never), "isCancelled false for normal text")
+  const result = computeQueued([
+    userItem(t - 10_000, "steered", "steer", 2),
+    userItem(t - 9_000, "plain", "queue"),
+  ])
+  assert(result[0].delivery === "steer", "steer delivery kept")
+  assert(result[0].attachments === 2, "attachments counted from payload.files")
+  assert(result[1].delivery === "queue", "queue delivery kept")
+  assert(result[1].attachments === 0, "no attachments → 0")
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -201,27 +151,15 @@ function test07_Age() {
   assert(age(now + 10_000, now) === "0s ago", "future timestamps clamped to 0s")
 }
 
-function test08_VisibleTextJoinsParts() {
-  section("08: visibleText joins non-ignored parts")
-
-  const parts = [textPart("line one"), textPart("ignored", true), textPart("line two")]
-  assert(visibleText(parts as never) === "line one\nline two", "joins with newline, skips ignored")
-  assert(visibleText([]) === "", "no parts → empty string")
-}
-
 // ─── Run ──────────────────────────────────────────────────────────────────
 
 test01_QueueDefinition()
-test02_ErroredAssistantStillCountsAsReply()
 test03_SortedByCreatedAscending()
-test04_CompactionAndSubtaskExcluded()
-test05_AllIgnoredTextExcluded()
-test06_TombstoneCancelledExcluded()
+test04_DeliveryAndAttachments()
 test06_Preview()
 test07_Age()
-test08_VisibleTextJoinsParts()
 
 console.log(`\n${"═".repeat(60)}`)
 console.log(`  Result: ${passed} passed, ${failed} failed`)
 console.log(`${"═".repeat(60)}`)
-process.exit(failed > 0 ? 1 : 0)
+if (failed > 0) process.exit(1)

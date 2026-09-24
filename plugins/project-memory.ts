@@ -1,9 +1,10 @@
 /**
  * Barrel entry — re-exports the Project Memory plugin from the subdirectory.
  *
- * OpenCode auto-discovers plugins by scanning the `plugins/` root directory
- * for `.ts` files. This thin file ensures OpenCode picks it up.
+ * V2 loader contract: each root-level `plugins/*.ts` file must
+ * DEFAULT-export `{ id, setup }` (Plugin.define). Helpers stay in the
+ * submodule; tests import them from `plugins/project-memory/*.ts` directly.
  *
  * See: plugins/project-memory/project-memory.ts
  */
-export { ProjectMemoryPlugin } from "./project-memory/project-memory"
+export { ProjectMemoryPlugin, ProjectMemoryPlugin as default } from "./project-memory/project-memory"

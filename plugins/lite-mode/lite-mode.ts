@@ -2,22 +2,27 @@
  * Lite-Mode — L2 disclosure layer.
  *
  * The `lite` agent's inline prompt carries the lite identifier (matrix
- * identifiers.lite). When detectAgent() recognizes the joined system prompt
- * as lite, this plugin strips every `Instructions from: <path>` block (L0
- * instruction files, project AGENTS.md, ~/.claude/CLAUDE.md, remote
- * instructions) from the system text.
+ * identifiers.lite). When detection recognizes the request as lite, this
+ * plugin strips every `Instructions from: <path>` block (L0 instruction
+ * files, project AGENTS.md, ~/.claude/CLAUDE.md, remote instructions) from
+ * the system text.
  *
  * The identifier itself is KEPT: it is the cross-plugin lite signal — every
- * protocol injector's scoped() gate still needs to see it in the system
- * text. Hook order is not controllable, so injectors running AFTER this
+ * protocol injector's gate (agent-scope.scopedForAgent) also scans system
+ * text, and hook order is not controllable, so injectors running AFTER this
  * plugin must still identify lite from the text.
+ *
+ * V2: registered on ctx.session.hook("context") — the v2 replacement of
+ * experimental.chat.system.transform. `e.system` is a SystemPart[]; the
+ * hook runs its string logic over a toSystemView() copy and flushes it
+ * through writeBackSystem() so part identity and cache hints survive.
  *
  * Fail-open: any error leaves the system prompt untouched. Pure string ops —
  * no I/O, no session lookup, costs only a few string checks per step.
  */
 
-import type { Plugin } from "@opencode-ai/plugin"
-import { detectAgent } from "../shared/plugin-scope"
+import { detectAgent, detectAgentByName } from "../shared/plugin-scope"
+import { toSystemView, writeBackSystem } from "../shared/system-block"
 
 const INSTRUCTION_MARKER = "Instructions from: "
 
@@ -53,20 +58,54 @@ export function stripLiteOverhead(system: string): string {
   return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim()
 }
 
-export const LiteModePlugin: Plugin = async () => ({
-  "experimental.chat.system.transform": async (
-    _input: unknown,
-    output: { system: string[] },
-  ) => {
-    if (detectAgent(output.system) !== "lite") return
-    for (let i = 0; i < output.system.length; i++) {
-      const s = output.system[i]
-      if (typeof s !== "string" || detectAgent([s]) !== "lite") continue
+/** V2 "context" hook callback. `e.agent` is the v2 primary identification
+ *  channel; the system-text sentinel stays the fallback (auxiliary requests
+ *  and older event shapes). Exported for unit tests; fail-open internally —
+ *  a throw here must never abort the request flow. */
+export async function liteModeContextHook(e: {
+  agent?: string | null
+  system?: Array<unknown>
+}): Promise<void> {
+  try {
+    const system = Array.isArray(e.system) ? e.system : []
+    const identity = detectAgentByName(e.agent ?? undefined) ?? detectAgent(system)
+    if (identity !== "lite") return
+    const view = system.map((entry) => (typeof entry === "string" ? entry : (entry as { text?: string })?.text ?? ""))
+    for (let i = 0; i < view.length; i++) {
+      if (detectAgent([view[i]]) !== "lite") continue
       try {
-        output.system[i] = stripLiteOverhead(s)
+        view[i] = stripLiteOverhead(view[i])
       } catch {
         // Fail-open: keep the original system text.
       }
     }
+    // Flush only changed entries back through the shared writer (keeps
+    // SystemPart identity + non-text fields intact for untouched parts).
+    for (let i = 0; i < system.length; i++) {
+      const entry = system[i]
+      const text = typeof entry === "string" ? entry : (entry as { text?: string })?.text
+      if (text === undefined || text === view[i]) continue
+      if (entry && typeof entry === "object") (entry as { text: string }).text = view[i]
+      else system[i] = view[i]
+    }
+  } catch {
+    // Fail-open: the hook must never abort the session flow.
+  }
+}
+
+// V2 SDK import — types resolve once @opencode/plugin is installed
+// (package.json is owned by the parallel migration stream).
+import { Plugin } from "@opencode/plugin"
+
+/** V2 plugin definition (id kept identical to the v1 plugin name). */
+export const LiteModePlugin = Plugin.define({
+  id: "lite-mode",
+  async setup(ctx) {
+    const context = await ctx.session.hook("context", (e) => liteModeContextHook(e))
+    return async () => {
+      await context.dispose()
+    }
   },
 })
+
+export default LiteModePlugin

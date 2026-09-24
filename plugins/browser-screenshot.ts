@@ -1,6 +1,5 @@
 /// <reference types="bun" />
-import type { Plugin } from "@opencode-ai/plugin"
-import { tool } from "@opencode-ai/plugin"
+import type { Plugin } from "@opencode/plugin"
 import { mkdirSync, existsSync } from "node:fs"
 import { join, basename } from "node:path"
 import { homedir } from "node:os"
@@ -11,9 +10,19 @@ import { randomUUID } from "node:crypto"
  * that agents (especially @vision and @frontend-dev) can call to capture
  * screenshots of web pages via Playwright's headless browser.
  *
- * The screenshot is saved as a PNG file and returned as a ToolAttachment,
- * so the LLM can directly "see" the image in the same turn — no manual
- * file reading step needed.
+ * The screenshot is saved as a PNG file and returned as structured content
+ * (text + image file part), so the LLM can directly "see" the image in the
+ * same turn — no manual file reading step needed.
+ *
+ * v2 mapping notes:
+ *  - v1 `tool({...})` map → ctx.tool.transform editor.add with
+ *    options.codemode:false (first-class model tool).
+ *  - v1 `attachments:[{type:"file",mime,url:<path>}]` → v2 content
+ *    FileContent part. The v2 image pipeline (core tool.ts normalizeImages)
+ *    only processes `data:` URIs, so the PNG bytes are inlined as a base64
+ *    data URI — a bare filesystem path would not render for the model.
+ *  - v1 result `title` + `context.metadata()` have no v2 equivalent; the
+ *    information stays in `metadata` / the text part.
  *
  * Features:
  *  - Navigate to any URL
@@ -34,8 +43,6 @@ import { randomUUID } from "node:crypto"
  *     selector    (string, optional) — CSS selector to screenshot a specific element
  *     waitUntil   (string, optional) — "load" | "domcontentloaded" | "networkidle" (default "load")
  *     timeout     (number, optional) — navigation timeout in ms (default 30000)
- *
- *   Returns: ToolResult with attachment(s) — PNG screenshot(s) the LLM can see.
  */
 
 // ─── Constants ────────────────────────────────────────────────────────
@@ -48,10 +55,34 @@ const DEVICE_PRESETS: Record<string, { width: number; height: number }> = {
   mobile: { width: 375, height: 812 },
 }
 
+const BROWSER_SCREENSHOT_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    url: { type: "string", description: "URL to navigate to (e.g. 'http://localhost:3000', 'https://example.com')" },
+    fullPage: { type: "boolean", description: "Capture the full scrollable page, not just the viewport. Default: false" },
+    viewport: {
+      type: "object",
+      properties: {
+        width: { type: "number", description: "Viewport width in px" },
+        height: { type: "number", description: "Viewport height in px" },
+      },
+      required: ["width", "height"],
+      description: "Custom viewport dimensions. Overrides 'device' preset.",
+    },
+    device: { type: "string", enum: ["desktop", "mobile", "tablet"], description: "Device preset for viewport. desktop=1440x900, tablet=768x1024, mobile=375x812. Default: desktop" },
+    selector: { type: "string", description: "CSS selector to screenshot a specific element instead of the whole page" },
+    waitUntil: { type: "string", enum: ["load", "domcontentloaded", "networkidle"], description: "When to consider navigation complete. Default: 'load'" },
+    timeout: { type: "number", description: "Navigation timeout in milliseconds. Default: 30000" },
+  },
+  required: ["url"],
+}
+
 // ─── Playwright lazy loader ──────────────────────────────────────────
 // Playwright is a heavy dependency. Load it lazily so plugins that don't
 // use screenshots don't pay the import cost.
 
+// playwright ships no types resolvable from this dependency-free plugin;
+// every boundary below is runtime-untyped by necessity.
 let playwrightModule: any = null
 
 async function loadPlaywright(): Promise<any> {
@@ -107,13 +138,8 @@ async function captureScreenshot(opts: ScreenshotOptions): Promise<{ path: strin
   const pw = await loadPlaywright()
 
   // Resolve viewport
-  let viewport = { width: 1440, height: 900 }
-  if (opts.device && DEVICE_PRESETS[opts.device]) {
-    viewport = { ...DEVICE_PRESETS[opts.device] }
-  }
-  if (opts.viewport) {
-    viewport = { width: opts.viewport.width, height: opts.viewport.height }
-  }
+  const preset = opts.device ? DEVICE_PRESETS[opts.device] : undefined
+  const viewport = opts.viewport ?? preset ?? { width: 1440, height: 900 }
 
   // Launch browser — keep the try-finally tight so that if any step
   // fails (launch, newContext, newPage, goto), we still clean up the
@@ -168,12 +194,72 @@ async function captureScreenshot(opts: ScreenshotOptions): Promise<{ path: strin
   }
 }
 
+// ─── Tool execution ──────────────────────────────────────────────────
+
+/**
+ * Inline the PNG as a base64 data URI content part — v2's image
+ * normalization only understands data: URIs (core/src/tool.ts
+ * normalizeImages), and it resizes oversized images before the provider
+ * call, which a bare path would silently miss.
+ */
+async function imageContentPart(filepath: string): Promise<{ type: "file"; uri: string; mime: string; name: string }> {
+  const base64 = Buffer.from(await Bun.file(filepath).arrayBuffer()).toString("base64")
+  return { type: "file", uri: `data:image/png;base64,${base64}`, mime: "image/png", name: basename(filepath) }
+}
+
+/** Structural slice of v2 Tool.Content (schema/tool.ts TextContent/FileContent). */
+type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "file"; uri: string; mime: string; name?: string }
+
+async function runScreenshot(args: ScreenshotOptions): Promise<{ content: ContentPart[]; metadata: Record<string, unknown> }> {
+  const opts = args
+  try {
+    const result = await captureScreenshot(opts)
+    const text = `Captured screenshot of ${opts.url} (${result.width}x${result.height}${opts.fullPage ? ", full page" : ""}${opts.selector ? `, selector: ${opts.selector}` : ""})\nSaved to: ${result.path}`
+    return {
+      content: [
+        { type: "text", text },
+        await imageContentPart(result.path),
+      ],
+      metadata: {
+        url: opts.url,
+        viewport: `${result.width}x${result.height}`,
+        fullPage: opts.fullPage || false,
+        device: opts.device || "desktop",
+        selector: opts.selector || null,
+        screenshotPath: result.path,
+      },
+    }
+  } catch (err) {
+    const message = (err as Error).message
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Failed to capture screenshot of ${opts.url}:\n${message}\n\n` +
+            "Troubleshooting:\n" +
+            "  1. Is the URL accessible? Try: curl -I <url>\n" +
+            "  2. Is Playwright installed? Run: bun add playwright && bunx playwright install chromium\n" +
+            "  3. Is the selector valid? Check the page structure first.",
+        },
+      ],
+      metadata: {
+        url: opts.url,
+        error: message,
+      },
+    }
+  }
+}
+
 // ─── Plugin ──────────────────────────────────────────────────────────
 
-export const BrowserScreenshotPlugin: Plugin = async () => {
-  return {
-    tool: {
-      browser_screenshot: tool({
+const plugin: Plugin.Plugin = {
+  id: "browser-screenshot",
+  async setup(ctx) {
+    await ctx.tool.transform((editor) => {
+      editor.add({
+        name: "browser_screenshot",
         description:
           "Capture a screenshot of a web page using a headless browser (Playwright/Chromium). " +
           "The screenshot is returned as an image attachment that you can analyze directly. " +
@@ -182,81 +268,14 @@ export const BrowserScreenshotPlugin: Plugin = async () => {
           "EXPENSIVE: launches a full Chromium instance each call. " +
           "NEVER call more than once per turn. Skip if no dev server or no visual change. " +
           "Example: browser_screenshot({ url: 'http://localhost:3000', device: 'mobile' })",
-        args: {
-          url: tool.schema.string().describe("URL to navigate to (e.g. 'http://localhost:3000', 'https://example.com')"),
-          fullPage: tool.schema.boolean().optional().describe("Capture the full scrollable page, not just the viewport. Default: false"),
-          viewport: tool.schema.object({
-            width: tool.schema.number().describe("Viewport width in px"),
-            height: tool.schema.number().describe("Viewport height in px"),
-          }).optional().describe("Custom viewport dimensions. Overrides 'device' preset."),
-          device: tool.schema.enum(["desktop", "mobile", "tablet"]).optional().describe("Device preset for viewport. desktop=1440x900, tablet=768x1024, mobile=375x812. Default: desktop"),
-          selector: tool.schema.string().optional().describe("CSS selector to screenshot a specific element instead of the whole page"),
-          waitUntil: tool.schema.enum(["load", "domcontentloaded", "networkidle"]).optional().describe("When to consider navigation complete. Default: 'load'"),
-          timeout: tool.schema.number().optional().describe("Navigation timeout in milliseconds. Default: 30000"),
-        },
-        execute: async (args, context) => {
-          const opts: ScreenshotOptions = {
-            url: args.url,
-            fullPage: args.fullPage,
-            viewport: args.viewport as { width: number; height: number } | undefined,
-            device: args.device,
-            selector: args.selector,
-            waitUntil: args.waitUntil,
-            timeout: args.timeout,
-          }
-
-          try {
-            const result = await captureScreenshot(opts)
-
-            context.metadata({
-              title: `Screenshot: ${args.url}`,
-              metadata: {
-                url: args.url,
-                viewport: `${result.width}x${result.height}`,
-                fullPage: opts.fullPage || false,
-                device: opts.device || "desktop",
-                selector: opts.selector || null,
-                screenshotPath: result.path,
-              },
-            })
-
-            // Return as attachment so the LLM can see the image directly
-            return {
-              title: `Screenshot captured: ${args.url}`,
-              output: `Captured screenshot of ${args.url} (${result.width}x${result.height}${opts.fullPage ? ", full page" : ""}${opts.selector ? `, selector: ${opts.selector}` : ""})\nSaved to: ${result.path}`,
-              metadata: {
-                url: args.url,
-                viewport: { width: result.width, height: result.height },
-                fullPage: opts.fullPage || false,
-                device: opts.device || "desktop",
-                path: result.path,
-              },
-              attachments: [
-                {
-                  type: "file" as const,
-                  mime: "image/png",
-                  url: result.path,
-                  filename: basename(result.path),
-                },
-              ],
-            }
-          } catch (err) {
-            const message = (err as Error).message
-            return {
-              title: `Screenshot failed: ${args.url}`,
-              output: `Failed to capture screenshot of ${args.url}:\n${message}\n\n` +
-                "Troubleshooting:\n" +
-                "  1. Is the URL accessible? Try: curl -I <url>\n" +
-                "  2. Is Playwright installed? Run: bun add playwright && bunx playwright install chromium\n" +
-                "  3. Is the selector valid? Check the page structure first.",
-              metadata: {
-                url: args.url,
-                error: message,
-              },
-            }
-          }
-        },
-      }),
-    },
-  }
+        input: BROWSER_SCREENSHOT_INPUT_SCHEMA,
+        // codemode:false -> first-class model tool, visible to the provider.
+        options: { codemode: false },
+        // v2 validates input against the JSON schema before we get here.
+        execute: async (args) => runScreenshot(args as ScreenshotOptions),
+      })
+    })
+  },
 }
+
+export default plugin

@@ -99,16 +99,14 @@ const { setLocale, getLocale, initI18n } = await import("../plugins/tui/i18n")
 const { formatI18n, getPreferredLocaleCode, setPreferredLocaleCode } = await import("../install/src/i18n")
 
 // initI18n is a per-process singleton, so seed the file BEFORE first init:
-// the file value must win over both kv and env detection.
+// the file value must win over env detection (v2: no kv store exists).
 writeOcpField("language", "en")
-const kvStore = new Map([["opencode.locale", "zh-CN"]])
-const fakeApi = { kv: { get: (k: string) => kvStore.get(k), set: (k: string, v: unknown) => kvStore.set(k, v) } } as any
-initI18n(fakeApi)
-assertEq(getLocale(), "en", "file value wins over legacy kv and env detection")
+initI18n()
+assertEq(getLocale(), "en", "file value wins over env detection")
 
 // setLocale persists to the shared file (and keeps memory in sync)
 mkdirSync(join(sandbox, "nested"), { recursive: true })
-setLocale(fakeApi, "zh-CN")
+setLocale("zh-CN")
 assertEq(getLocale(), "zh-CN", "setLocale updates in-memory locale")
 assertEq(readOcpField("language"), "zh-CN", "setLocale persists to ocp.json")
 

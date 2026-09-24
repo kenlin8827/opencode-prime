@@ -19,9 +19,18 @@
  *
  * Uninstall = delete docs/e2e-redline.md + the marked AGENTS.md section
  * (documented in the command output; no reverse subcommand by design).
+ *
+ * V2 MAPPING NOTE (v1 → v2): v1 registered `/e2e-adopt` via the `config`
+ * hook (empty template) + `command.execute.before` writing the report into
+ * `output.parts` (model-visible). The command is plugin-OWNED, so v2
+ * registers it through `ctx.command.transform(editor.add)`. The report
+ * reaches the model as an ordinary prompt turn: `session.prompt` (v1's
+ * `output.parts` injection had the same "agent acts on the report"
+ * semantics).
  */
 
-import type { Plugin } from "@opencode-ai/plugin"
+import { Plugin } from "@opencode/plugin"
+import { commandArgumentText, injectReply, type V2Session } from "../shared/agent-scope"
 import { getProjectDir, setProjectDir } from "../shared/opencode-prime"
 import { refreshLocale, tr } from "../tui/i18n"
 import { applyAdoption, adoptionStatus, E2E_REDLINE_DOC_REL } from "./e2e-adopt-apply"
@@ -62,12 +71,14 @@ function uninstallHint(): string {
   return tr("guard.e2eadopt.uninstall")
 }
 
-export function makeCommandHook() {
+/** Build the /e2e-adopt report. V2 command handler (registered via
+ *  ctx.command.transform in the entry): the returned text is delivered to
+ *  the model through session.prompt — v1 equivalent: mutating
+ *  `output.parts` in `command.execute.before`. */
+export function makeCommandHandler() {
   return async (
-    input: { command?: string; arguments?: string; sessionID?: string },
-    output: { parts?: unknown },
-  ) => {
-    if (input.command !== E2E_ADOPT_COMMAND) return
+    input: { arguments?: string; sessionID?: string },
+  ): Promise<string> => {
     refreshLocale()
     const root = getProjectDir()
     const sub = (input.arguments ?? "").trim().toLowerCase()
@@ -132,21 +143,43 @@ export function makeCommandHook() {
       text = helpText()
     }
 
-    output.parts = [{ type: "text", text }]
+    return text
   }
 }
 
-export const E2eAdoptPlugin: Plugin = async ({ directory }) => {
-  setProjectDir(directory)
-  return {
-    config: async (cfg) => {
-      cfg.command ??= {}
-      cfg.command[E2E_ADOPT_COMMAND] = {
-        template: "",
+export const E2eAdoptPlugin = Plugin.define({
+  id: "e2e-adopt",
+  async setup(ctx) {
+    setProjectDir(ctx.location.directory)
+    const handler = makeCommandHandler()
+    const commands = await ctx.command.transform((editor) => {
+      editor.add({
+        name: E2E_ADOPT_COMMAND,
         description:
           "Adopt the E2E red-line policy into project docs — /e2e-adopt writes docs/e2e-redline.md + an AGENTS.md section (detection pre-fills, placeholders reported); /e2e-adopt dry previews; /e2e-adopt status reports adoption",
-      }
-    },
-    "command.execute.before": makeCommandHook(),
-  }
-}
+        execute: async (invocation) => {
+          const text = await handler({
+            arguments: commandArgumentText(invocation.prompt?.text, E2E_ADOPT_COMMAND),
+            sessionID: invocation.sessionID,
+          })
+          // v1 delivered the report to the model via output.parts injection;
+          // v2: an ordinary prompt turn. Without a session there is no
+          // conversation to inform — fall back to the synthetic/log path.
+          if (invocation.sessionID) {
+            const prompt = ctx.session as unknown as V2Session
+            if (typeof prompt.prompt === "function") {
+              await prompt.prompt({ sessionID: invocation.sessionID, text })
+              return
+            }
+          }
+          await injectReply(undefined, invocation.sessionID, text).catch(() => {})
+        },
+      })
+    })
+    return async () => {
+      await commands.dispose()
+    }
+  },
+})
+
+export default E2eAdoptPlugin

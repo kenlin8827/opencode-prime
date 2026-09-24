@@ -7,4 +7,4 @@
  *
  * See: plugins/project-profiler/project-profiler.ts
  */
-export { ProjectProfilerPlugin } from "./project-profiler/project-profiler"
+export { ProjectProfilerPlugin, ProjectProfilerPlugin as default } from "./project-profiler/project-profiler"

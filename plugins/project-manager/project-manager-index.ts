@@ -22,9 +22,10 @@
  *                    from the plan and report entirely.
  *
  * Gate (same AND-rule as project-profiler): a backend is touched only when
- * mcp.<name>.enabled in the installed opencode.jsonc is not false AND its
- * CLI is on PATH. A CLI present but disabled in config is never run; a
- * missing CLI is reported as skipped — never invoked, never errors.
+ * mcp.servers.<name> in the installed opencode.jsonc is not explicitly
+ * `disabled: true` AND its CLI is on PATH. A CLI present but disabled in
+ * config is never run; a missing CLI is reported as skipped — never invoked,
+ * never errors.
  *
  * Serena needs no index step (live LSP) and is not handled here.
  *
@@ -44,21 +45,24 @@ import { hasTgrepIndex, probeTgrepStatus, recordSuccessfulIndex, tgrepNeedsRebui
 
 // ─── Probes ──────────────────────────────────────────────────────────
 
-/** Parse mcp.<name>.enabled out of opencode.jsonc text — same JSONC subset
- * rule as project-profiler: strip whole-line // comments, then read the real
- * object (a regex can't cross nested braces like gitnexus's `env` block).
- * Missing entry or unparseable text → true (assume enabled). */
+/** Parse the v2 MCP enablement of `<name>` out of opencode.jsonc text:
+ *  servers live under `mcp.servers`, and the flag is `disabled` (v2 has no
+ *  `enabled` field — docs: /v2/docs/mcp-servers). Same JSONC subset rule as
+ *  before: strip whole-line // comments, then read the real object (a regex
+ *  can't cross nested braces like gitnexus's `env` block).
+ *  Kept lenient exactly as the v1 reader was: only an explicit
+ *  `disabled: true` turns a backend off, so a missing entry or unparseable
+ *  text still means "run it if the CLI is on PATH" (see the file header). */
 export function mcpEnabledFrom(text: string, name: string): boolean {
   try {
     const json = text.split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n")
-    const obj = JSON.parse(json) as { mcp?: Record<string, { enabled?: boolean }> }
-    const flag = obj.mcp?.[name]?.enabled
-    return flag !== false
+    const obj = JSON.parse(json) as { mcp?: { servers?: Record<string, { disabled?: boolean }> } }
+    return obj.mcp?.servers?.[name]?.disabled !== true
   } catch { /* unparseable — assume enabled */ return true }
 }
 
-/** mcp.<name>.enabled from the installed opencode.jsonc. Degrades to true
- * when the config is missing/unreadable. */
+/** `mcp.servers.<name>.disabled` from the installed opencode.jsonc. Degrades
+ *  to true when the config is missing/unreadable. */
 function mcpEnabled(name: string): boolean {
   try {
     const cfg = join(homedir(), ".config", "opencode", "opencode.jsonc")
@@ -245,7 +249,7 @@ function evaluateCondition(cond: string, root: string, probe: BackendProbe): boo
 
 function conditionSkipNote(cond: string, probe: BackendProbe): string {
   if (cond.startsWith("tool_enabled:")) return `${cond.slice("tool_enabled:".length)} disabled in options.jsonc`
-  // `mcp.<name>.enabled` is read from ~/.config/opencode/opencode.jsonc
+  // `mcp.servers.<name>.disabled` is read from ~/.config/opencode/opencode.jsonc
   // (mcpEnabled above) — NOT options.jsonc, which only governs tool options
   // like tgrep. Point users at the file that actually controls the flag.
   if (cond.startsWith("mcp_enabled:")) return `${cond.slice("mcp_enabled:".length)} disabled in opencode.jsonc`

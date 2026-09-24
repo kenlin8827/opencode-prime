@@ -88,6 +88,11 @@ function runScript(script: string, responses: MockResponse[], env: Record<string
 
 {
   const childProcess = require('node:child_process');
+  // ocp-cli.js fails fast when no engine binary is configured (guard added in
+  // HEAD commits bcc149c/de0022f); this in-process call exercises startDetached
+  // only through the monkey-patched spawn below, so a stub env value is enough.
+  const engineBinEnv = process.env.OCP_ENGINE_BIN;
+  process.env.OCP_ENGINE_BIN = 'mock-engine';
   const originalSpawn = childProcess.spawn;
   const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
   let options: Record<string, unknown> | undefined;
@@ -107,6 +112,8 @@ function runScript(script: string, responses: MockResponse[], env: Record<string
   } finally {
     childProcess.spawn = originalSpawn;
     Object.defineProperty(process, 'platform', platform);
+    if (engineBinEnv === undefined) delete process.env.OCP_ENGINE_BIN;
+    else process.env.OCP_ENGINE_BIN = engineBinEnv;
   }
 }
 

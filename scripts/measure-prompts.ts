@@ -8,11 +8,16 @@
  *   L2 — skills/: only name+description stay resident; the body loads on demand.
  *   Per-step overhead — what every step pays ON TOP of L0+L1: the resident
  *        skills block (<available_skills>), MCP tool definitions, and the
- *        <mcp_instructions> block. Both honor per-agent permission denies
- *        (v1.18.25 semantics: a rule `"<perm>": { "*": "deny" }` hides the
- *        matching tools/skill entirely; wildcard permission keys allowed).
- *        Permission policy lives in the template itself (native opencode
- *        fields: global `permission` + per-agent `permission`/`tools`).
+ *        <mcp_instructions> block. Both honor permission denies using V2
+ *        semantics (core/src/permission.ts evaluate(): ordered rules array,
+ *        LAST matching rule wins, default ask; a tool is hidden when the
+ *        effective effect for (action, "*") is deny). Agent rules are
+ *        appended after the global `permissions` array.
+ *        Permission policy lives in the template itself (native V2 fields:
+ *        global `permissions` + per-agent `permissions`; there is no v1
+ *        `tools` visibility map in V2 — gating is pure permission
+ *        enforcement, and the code-mode `execute` dispatcher folds tool
+ *        schemas out of the per-step prompt by default).
  *        MCP figures come from scripts/mcp-instructions.snapshot.json
  *        (regenerate: bun run scripts/capture-mcp-snapshot.ts).
  *
@@ -43,38 +48,48 @@ function wildcardMatch(value: string, pattern: string): boolean {
   return re.test(value);
 }
 
-/** Flattens a config permission block into rules, mirroring Permission.fromConfig. */
-function permissionRules(perm: any): Array<{ permission: string; pattern: string; action: string }> {
-  const rules: Array<{ permission: string; pattern: string; action: string }> = [];
-  if (!perm || typeof perm !== 'object' || Array.isArray(perm)) return rules;
-  for (const [key, value] of Object.entries(perm)) {
-    if (typeof value === 'string') rules.push({ permission: key, pattern: '*', action: value });
-    else if (value && typeof value === 'object')
-      for (const [pattern, action] of Object.entries(value as Record<string, string>))
-        rules.push({ permission: key, pattern, action: String(action) });
+type Rule = { action: string; resource: string; effect: string };
+
+/** Validates one V2 permissions array entry (schema/permission.ts Rule:
+ *  {action, resource, effect}). Malformed entries are dropped like the
+ *  runtime's normalize does — but loudly, so the gate notices. */
+function rules(value: unknown, label: string): Rule[] {
+  if (!Array.isArray(value)) return [];
+  const out: Rule[] = [];
+  for (const item of value) {
+    if (
+      item &&
+      typeof item.action === 'string' &&
+      typeof item.resource === 'string' &&
+      (item.effect === 'allow' || item.effect === 'deny' || item.effect === 'ask')
+    ) {
+      out.push({ action: item.action, resource: item.resource, effect: item.effect });
+    } else {
+      console.error(`measure-prompts: malformed permission rule in ${label}: ${JSON.stringify(item)}`);
+      process.exitCode = 1;
+    }
   }
-  return rules;
+  return out;
 }
 
-/** Mirrors Permission.evaluate: last matching rule wins, default ask. */
-function evaluateRule(permission: string, pattern: string, rules: Array<{ permission: string; pattern: string; action: string }>): string {
+/** Mirrors V2 Permission.evaluate (core/src/permission.ts): the LAST rule
+ *  matching BOTH action and resource wins; no match = ask. */
+function evaluateRule(action: string, resource: string, rules: Rule[]): string {
   for (let i = rules.length - 1; i >= 0; i--) {
     const r = rules[i];
-    if (wildcardMatch(permission, r.permission) && wildcardMatch(pattern, r.pattern)) return r.action;
+    if (wildcardMatch(action, r.action) && wildcardMatch(resource, r.resource)) return r.effect;
   }
   return 'ask';
 }
 
 /**
- * Mirrors Permission.disabled: a tool is hidden only when a rule matches its
- * name as the permission key with pattern "*" and action "deny".
+ * A tool is hidden for an agent when its effective effect at resource "*" is
+ * deny (the resource a bare tool call is checked against for MCP/skills; the
+ * wildcard `{action:"*"}` deny-all of whitelist agents falls through here
+ * naturally instead of v1's separate Permission.disabled lookup).
  */
-function toolDisabled(tool: string, rules: Array<{ permission: string; pattern: string; action: string }>): boolean {
-  for (let i = rules.length - 1; i >= 0; i--) {
-    const r = rules[i];
-    if (wildcardMatch(tool, r.permission)) return r.pattern === '*' && r.action === 'deny';
-  }
-  return false;
+function toolDisabled(tool: string, rules: Rule[]): boolean {
+  return evaluateRule(tool, '*', rules) === 'deny';
 }
 
 /** Maps a shipped config path (~/.config/opencode/<rel>) to the repo file. */
@@ -95,13 +110,14 @@ if (!template) {
   process.exit(1);
 }
 
-// Policy sanity: per-step gating below relies on the template's native
-// permission fields — a policy-free template would silently measure without
+// Policy sanity: per-step gating below relies on the template's native V2
+// permission arrays — a policy-free template would silently measure without
 // denies.
-if (typeof template.permission !== 'string' || typeof template.agent !== 'object' || !template.agent) {
-  console.error('measure-prompts: template lost its native permission policy — per-step gating would measure without denies');
+if (!Array.isArray(template.permissions) || typeof template.agents !== 'object' || !template.agents) {
+  console.error('measure-prompts: template lost its native V2 permissions/agents — per-step gating would measure without denies');
   process.exit(1);
 }
+const globalRules = rules(template.permissions, 'root permissions');
 
 let failures = 0;
 
@@ -120,11 +136,11 @@ console.log(`  TOTAL: ${l0Total} tok (budget ${L0_BUDGET}) ${l0Ok ? 'OK' : 'OVER
 if (!l0Ok) failures++;
 
 // --- L1: agent prompt assembly ----------------------------------------------
-const agents: Record<string, any> = template.agent && typeof template.agent === 'object' ? template.agent : {};
-console.log('\nL1 (per-agent {file:} assembly)');
+const agents: Record<string, any> = template.agents && typeof template.agents === 'object' ? template.agents : {};
+console.log('\nL1 (per-agent system {file:} assembly)');
 const l1Files = new Set<string>();
 for (const [name, def] of Object.entries(agents)) {
-  const prompt: string = typeof def?.prompt === 'string' ? def.prompt : '';
+  const prompt: string = typeof def?.system === 'string' ? def.system : '';
   const markers = [...prompt.matchAll(/\{file:([^}]+)\}/g)].map((m) => m[1]);
   let agentTotal = 0;
   const parts: string[] = [];
@@ -191,10 +207,13 @@ const skillsBlockText = (list: typeof skillMeta): string =>
 // MCP cost basis: real initialize handshake snapshot (see capture-mcp-snapshot.ts).
 const snapshotPath = path.join(repoDir, 'scripts', 'mcp-instructions.snapshot.json');
 const snapshot: any = fs.existsSync(snapshotPath) ? JSON.parse(fs.readFileSync(snapshotPath, 'utf8')) : null;
-const mcpConfig: Record<string, any> = template.mcp && typeof template.mcp === 'object' ? template.mcp : {};
+// V2 shape: servers under `mcp.servers`; `disabled: true` (the inverse of
+// v1's `enabled`) keeps a server out of the running config.
+const mcpConfig: Record<string, any> =
+  template.mcp && typeof template.mcp.servers === 'object' ? template.mcp.servers : {};
 const mcpServers: Array<{ name: string; instructionsChars: number; schemaChars: number; tools: string[] }> = [];
 for (const [name, def] of Object.entries(mcpConfig)) {
-  if (!def || def.enabled !== true) continue;
+  if (!def || def.disabled === true) continue;
   const snap = snapshot?.servers?.[name];
   if (!snap || snap.error) {
     console.log(`\n  NOTE: no MCP snapshot for enabled server "${name}" (bun run scripts/capture-mcp-snapshot.ts) - cost not measured`);
@@ -211,11 +230,12 @@ for (const [name, def] of Object.entries(mcpConfig)) {
 console.log('\nPer-step resident overhead (paid every step, on top of L0+L1)');
 let fleetOverhead = 0;
 for (const [name, def] of Object.entries(agents)) {
-  const rules = permissionRules(def?.permission);
+  // V2 precedence: global rules load first, agent rules are appended last.
+  const agentRules: Rule[] = [...globalRules, ...rules(def?.permissions, `agents.${name}`)];
   // Skills block: entire block skipped when "skill" is denied with pattern *.
   let skillsTok = 0;
-  if (!toolDisabled('skill', rules)) {
-    const visible = skillMeta.filter((s) => evaluateRule('skill', s.name, rules) !== 'deny');
+  if (!toolDisabled('skill', agentRules)) {
+    const visible = skillMeta.filter((s) => evaluateRule('skill', s.name, agentRules) !== 'deny');
     if (visible.length > 0) skillsTok = estTokens(skillsBlockText(visible));
   }
   // MCP: tool definitions always dominate; <mcp_instructions> drops only when
@@ -223,7 +243,7 @@ for (const [name, def] of Object.entries(agents)) {
   let mcpTok = 0;
   const mcpParts: string[] = [];
   for (const server of mcpServers) {
-    const visibleCount = server.tools.filter((t) => !toolDisabled(t, rules)).length;
+    const visibleCount = server.tools.filter((t) => !toolDisabled(t, agentRules)).length;
     if (visibleCount === 0) continue;
     const serverChars = server.instructionsChars + Math.ceil((server.schemaChars * visibleCount) / server.tools.length);
     const tok = Math.ceil(serverChars / 4);

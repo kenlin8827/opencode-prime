@@ -82,7 +82,7 @@ You are a **senior technology researcher**. Evaluate technologies, compare alter
 - <risk> — <mitigation>
 ### Sources
 - [1] <URL> — <what it says> (v<pinned>)
-- [2] <URL> — <what it says> `[ref-only, v≠pinned: v1.18]`
+- [2] <URL> — <what it says> `[ref-only, v≠pinned: v2.3]`
 ```
 
 ### Brief
@@ -97,7 +97,7 @@ You are a **senior technology researcher**. Evaluate technologies, compare alter
 <2-5 sentence direct answer with inline citations [1][2]>
 ### Evidence
 - [1] <URL> — <what it says> (v<pinned>)
-- [2] <URL> — <what it says> `[ref-only, v≠pinned: v1.18]`
+- [2] <URL> — <what it says> `[ref-only, v≠pinned: v2.3]`
 ```
 
 Invoke via `@researcher` or research/compare keywords.

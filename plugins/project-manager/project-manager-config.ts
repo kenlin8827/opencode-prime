@@ -3,7 +3,7 @@
  *
  * The plugin is PROJECT-LEVEL: every scaffold target is resolved relative to
  * the project directory injected by the plugin entry via setProjectDir()
- * (PluginInput.directory); until then we fall back to process.cwd().
+ * (v2 ctx.location.directory); until then we fall back to process.cwd().
  */
 
 import { existsSync } from "node:fs"
@@ -11,7 +11,7 @@ import { join } from "node:path"
 import { OCP_CONFIG_REL, ocpConfigFile } from "../shared/opencode-prime"
 
 // ─── Project directory ───────────────────────────────────────────────
-// Injected by the plugin entry (project-manager.ts) from PluginInput.directory.
+// Injected by the plugin entry (project-manager.ts) from ctx.location.directory.
 
 let projectDir = process.cwd()
 

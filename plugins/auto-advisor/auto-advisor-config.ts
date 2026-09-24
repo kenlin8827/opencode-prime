@@ -18,7 +18,7 @@
  * are preserved (targeted field upsert, never a full reserialize).
  *
  * The project directory is injected by the plugin entry via
- * setProjectDir() (PluginInput.directory); until then we fall back to
+ * setProjectDir() (v2 ctx.location.directory); until then we fall back to
  * process.cwd().
  *
  * Config-file plumbing (project dir resolution, single-source config read,

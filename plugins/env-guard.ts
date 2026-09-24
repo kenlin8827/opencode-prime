@@ -1,10 +1,8 @@
 /**
- * Barrel entry — re-exports the env guard plugin from the subdirectory.
- *
- * OpenCode auto-discovers plugins by scanning the `plugins/` root directory
- * for `.ts` files. Each file is loaded as a module and its exported plugin
- * functions are registered. This thin file ensures OpenCode picks it up.
+ * Plugin entry — the v2 loader discovers standalone .ts files directly in
+ * the plugins/ directory and loads this module's default export. The real
+ * plugin lives in the subdirectory (one entry + one job per file).
  *
  * See: plugins/env-guard/env-guard.ts
  */
-export { EnvGuardPlugin } from "./env-guard/env-guard"
+export { default } from "./env-guard/env-guard"

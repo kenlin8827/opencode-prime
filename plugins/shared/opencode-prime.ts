@@ -26,7 +26,7 @@
  *     comments and unrelated fields survive a write.
  *
  * The project directory is injected by each plugin entry via setProjectDir()
- * (PluginInput.directory); until then it falls back to process.cwd().
+ * (v2 ctx.location.directory); until then it falls back to process.cwd().
  *
  * This file lives in a subdirectory of plugins/ on purpose: OpenCode only
  * treats root-level plugins/*.ts files as plugin entries, so this shared
@@ -40,7 +40,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileS
 import { dirname, isAbsolute, join } from "node:path"
 
 // ─── Project directory ───────────────────────────────────────────────
-// Injected by the plugin entry from PluginInput.directory.
+// Injected by the plugin entry from ctx.location.directory.
 
 let projectDir = process.cwd()
 
@@ -427,7 +427,8 @@ export function removeConfigField(raw: string, field: string, mode: ConfigFieldR
  * as a bare JSON object via `upsertConfigField("")` — pure-JSON config needs
  * no commented template, unset keys already mean defaults (ADR §3). Returns
  * the failure reason on error (string) — `null` on success, never throws.
- * Plugin hooks log the reason to `client.app.log({ level: "warn" })` so
+ * Plugin hooks log the reason to the server log (`console.warn` — v2 has no
+ * structured plugin log API, v1's `client.app.log` is gone) so
  * users see a real diagnosis (read-only fs vs parse error vs permission
  * denied) instead of an opaque "couldn't set switch".
  */

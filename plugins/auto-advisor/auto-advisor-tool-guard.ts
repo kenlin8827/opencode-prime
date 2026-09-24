@@ -29,43 +29,48 @@
  * predicates are null-safe).
  */
 
-import type { PluginInput } from "@opencode-ai/plugin"
 import {
   clearAutoAnswer,
-  extractSessionId,
   isAutoAnswerActive,
   makeLogger,
 } from "./auto-advisor-runtime"
 
-/** Extract sessionID from either the hook input or output. */
-function resolveSessionId(input: unknown, output: unknown): string {
-  // tool.execute.before receives (input, output) where input may carry
-  // sessionID in some OpenCode versions. Try input first, fall back to
-  // output, then "default".
-  const fromInput = extractSessionId(input)
-  if (fromInput !== "default") return fromInput
-  return extractSessionId(output)
+/** V2 tool execute.before event fields this guard reads. */
+interface ToolGuardEvent {
+  tool?: string
+  sessionID?: string
+  // `input` is the tool-call args (shape-untrusted); defensive
+  // sessionID fallback lives here for host-shape parity.
+  input?: unknown
 }
 
-type Log = ReturnType<typeof makeLogger>
+/** Resolve the session from the v2 event (top-level first, defensive
+ *  fallback to nested input). */
+function resolveSessionId(e: ToolGuardEvent): string {
+  if (typeof e.sessionID === "string" && e.sessionID) return e.sessionID
+  const nested = e.input as { sessionID?: unknown } | undefined
+  if (typeof nested?.sessionID === "string" && nested.sessionID) return nested.sessionID
+  return "default"
+}
 
 const QUESTION_TOOL_RE = /^(question|ask|prompt|confirm|select)$/i
 
-export function makeToolGuardHook(client: PluginInput["client"]) {
-  const log: Log = makeLogger(client, "auto-advisor-mode")
+/** V2 `ctx.tool.hook("execute.before", …)` handler. The deliberate throw
+ *  IS the blocking mechanism — execute.before is the one v2 hook allowed
+ *  to reject; NOT wrapped fail-open. */
+export function makeToolGuardHook() {
+  const log = makeLogger("auto-advisor-mode")
 
-  // NOT wrapped in safeHook — intentional throws must propagate to block
-  // tool execution. safeHook would swallow them and defeat the guard.
-  return async (input: { tool?: string; sessionID?: string }, output: { args?: unknown }) => {
-    const sessionId = resolveSessionId(input, output)
+  return async (e: ToolGuardEvent): Promise<void> => {
+    const sessionId = resolveSessionId(e)
 
     // ── 1. Full-mode auto-answer enforcement (one-shot) ───────────
     if (isAutoAnswerActive(sessionId)) {
       clearAutoAnswer(sessionId)
-      if (input.tool && QUESTION_TOOL_RE.test(input.tool)) {
+      if (e.tool && QUESTION_TOOL_RE.test(e.tool)) {
         await log(
           "info",
-          `question tool "${input.tool}" blocked — auto-answer active for session ${sessionId}`,
+          `question tool "${e.tool}" blocked — auto-answer active for session ${sessionId}`,
         )
         throw new Error(
           "[Auto-Advisor Mode Guard] Full-mode auto-answer is active — " +

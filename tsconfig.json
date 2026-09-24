@@ -10,7 +10,14 @@
     "skipLibCheck": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "@opentui/solid"
+    "jsxImportSource": "@opentui/solid",
+    "paths": {
+      // Dev-only typecheck mapping for the v2 plugin SDK: plugins use
+      // `import type` (erased at runtime — the dependency-free load shape
+      // proven by .ocp/sandbox/WORKING-EXAMPLE). Drop this once
+      // @opencode/plugin lands in package.json dependencies.
+      "@opencode/plugin": ["./.ocp/sandbox/v2src/packages/plugin/src/promise/index.ts"]
+    }
   },
   "include": ["plugins/**/*.ts", "plugins/**/*.tsx", "tools/**/*.ts"],
   "exclude": ["node_modules"]

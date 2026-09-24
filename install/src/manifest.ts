@@ -13,7 +13,7 @@ const SHIPPED_FILES = [
   'opencode.template.jsonc', //  core config template — merged into the target opencode.jsonc by installer/merger.ts (never copied verbatim)
   'plugin-scope.json', //  plugin scope policy — runtime gate data for plugins/shared/plugin-scope.ts (permission/tools live in the template instead)
   'tiers.json',     //  agent→tier map — merged by installer/merger.ts
-  'tui.template.jsonc', //  TUI plugin registration — merged with user's tui.jsonc by installer/merger.ts (preserves user-added plugins; never copied verbatim)
+  'cli.template.jsonc', //  V2 terminal-client template — merged with user's global cli.json by installer/merger.ts (preserves user-added plugins; never copied verbatim; v1 tui.json(c) is migrated on first V2 merge)
   // Runtime script referenced by opencode.jsonc MCP config (serena command):
   //   node -e "import(... .config/opencode/scripts/serena-workspace-daemon.mjs)"
   'scripts/serena-workspace-daemon.mjs',
@@ -102,16 +102,17 @@ export function isCrossMajorVersion(a: string, b: string): boolean {
 }
 
 /**
- * Newest v1 tag from a newest-first release listing (e.g. the GitHub
- * releases API, which returns newest first). The opencode v1 pin
- * (install/scripts/tools/opencode.sh|.ps1) mirrors this contract: first
- * entry with major 1 wins — never "latest overall", which may be v2.
- * Returns null when no v1 tag is present; callers fall back to a pinned
- * known-good v1 release.
+ * Newest tag for one major from a newest-first release listing (e.g. the
+ * GitHub releases API, which returns newest first). The opencode pin
+ * (install/scripts/tools/opencode.sh|.ps1) mirrors this contract with the
+ * OCP-required runtime major (2 for OCP v2): first entry with that major
+ * wins — never "latest overall", which may already be a newer, untested
+ * major. Returns null when no tag of that major is present; callers fall
+ * back to a pinned known-good release.
  */
-export function selectLatestV1Tag(tags: string[]): string | null {
+export function selectLatestTagForMajor(tags: string[], major: number): string | null {
   for (const t of tags) {
-    if (majorOf(t) === 1) return t;
+    if (majorOf(t) === major) return t;
   }
   return null;
 }

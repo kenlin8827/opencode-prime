@@ -5,7 +5,7 @@
  * for `.ts` files. Each file is loaded as a module and its exported plugin
  * functions are registered.
  *
- * See: plugins/md-to-docx/index.ts
+ * See: plugins/md-to-docx/md-to-docx.ts
  */
-export { MdToDocxPlugin } from "./md-to-docx/index"
-export { MdToDocxPlugin as default } from "./md-to-docx/index"
+export { MdToDocxPlugin } from "./md-to-docx/md-to-docx"
+export { MdToDocxPlugin as default } from "./md-to-docx/md-to-docx"

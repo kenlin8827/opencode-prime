@@ -3,33 +3,37 @@
  * Git history, and external MCP transports are intentionally not claimed covered.
  */
 import { existsSync, realpathSync } from "node:fs"
+import { scopedForCall, type V2Session } from "../shared/agent-scope"
+import { notify } from "../shared/notify"
 import { ocpConfigFile, readProjectConfig } from "../shared/opencode-prime"
 import { relative, resolve } from "node:path"
-import type { PluginInput } from "@opencode-ai/plugin"
 import { getAdrConfig, getAdrDir, normalizeAdrReadGuard } from "./adr-config"
 import { CONTEXT_BUDGET, currentState, isArchived, recordRoot, takeSnapshot } from "./adr-context"
 import { readOptional } from "./adr-storage"
-import { scopedForTool } from "../shared/plugin-scope"
 
-export function createReadGuard(project: string, client: PluginInput["client"]) {
+/** V2 `ctx.tool.hook("execute.before")` handler. The "guard" mode's throw
+ *  is a deliberate rejection (legal on execute.before); the "warn" mode is
+ *  fail-open. `session` powers parentID subagent detection in the scope
+ *  gate (v1 used the plugin client). */
+export function createReadGuard(project: string, session: V2Session | undefined) {
   const warned = new Set<string>()
   let lastMode: "off" | "warn" | "guard" = "off", degraded = false
-  return async (input: { tool?: string; sessionID?: string; agent?: string }, output: { args?: unknown }) => {
+  return async (input: { tool?: string; sessionID?: string; agent?: string; input?: unknown }) => {
     const parsed = readProjectConfig(project)
     const raw = (parsed?.adr as Record<string, unknown> | undefined)?.readGuard
     const invalid = (!parsed && existsSync(ocpConfigFile(project))) || (raw !== undefined && normalizeAdrReadGuard(raw) === null)
     if (invalid && !degraded) {
       const message = `ADR readGuard configuration is invalid; retaining last known mode (${lastMode}). Restart without a valid config defaults to off. Protection is degraded until repaired.`
-      try { await client.tui.showToast({ body: { message, variant: "warning" } }) } catch { console.warn(message) }
+      await notify(message, "warning")
     }
     degraded = invalid
     const mode = invalid ? lastMode : getAdrConfig(project).readGuard
     lastMode = mode
-    const scopeAllowed = await scopedForTool(input, "adr-context-tool", client)
+    const scopeAllowed = await scopedForCall(input, "adr-context-tool", session)
     if (mode === "off" || !scopeAllowed) return
     const tool = input.tool?.toLowerCase() ?? ""
-    if (!["read", "read_file", "grep", "bash", "shell"].includes(tool)) return
-    const args = output.args && typeof output.args === "object" ? output.args as Record<string, unknown> : {}
+    if (!["read", "read_file", "grep", "bash", "shell", "execute"].includes(tool)) return
+    const args = input.input && typeof input.input === "object" ? input.input as Record<string, unknown> : {}
     const value = args.filePath ?? args.file_path ?? args.path
     let path = typeof value === "string" ? relative(project, resolve(project, value)).replace(/\\/g, "/") : ""
     if (typeof value === "string") {
@@ -78,7 +82,7 @@ export function createReadGuard(project: string, client: PluginInput["client"]) 
     if (!warned.has(key)) {
       warned.add(key)
       if (warned.size > 1000) warned.delete(warned.values().next().value!)
-      try { await client.tui.showToast({ body: { message, variant: "warning" } }) } catch { console.warn(message) }
+      await notify(message, "warning")
     }
   }
 }

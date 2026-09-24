@@ -35,57 +35,141 @@
  * Switch: `adrGuard` field in the project-level .ocp/ocp.json (no state file).
  */
 
-import type { Plugin } from "@opencode-ai/plugin"
-import { HttpServerResponse } from "effect/unstable/http"
-import { makeCommandHook } from "./adr-command"
+import { Plugin } from "@opencode/plugin"
+import { commandArgumentText, type V2Session } from "../shared/agent-scope"
+import { makeCommandHandler } from "./adr-command"
 import { ADR_COMMAND, COMMAND_NAME, setProjectDir } from "./adr-config"
 import { makeSystemHook } from "./adr-system-inject"
 import { makeToolGuardHook } from "./adr-tool-guard"
 import { createCompactionRuntime } from "./adr-compaction-runtime"
 import { createReadGuard } from "./adr-read-guard"
 
-// OpenCode's command hook has no cancel/noReply output. Throwing a raw
-// Effect response is handled by OpenCode's HTTP layer as an empty
-// successful command — the LLM never sees an empty prompt.
-const handled = (): never => {
-  throw HttpServerResponse.empty({ status: 204 })
+/** Join `output.parts` (v1 command-mutation channel) into prompt text. */
+function partsText(parts: Array<unknown>): string {
+  return parts
+    .map((p) => (typeof p === "string" ? p : (p as { text?: unknown })?.text))
+    .filter((t): t is string => typeof t === "string")
+    .join("\n")
 }
 
-export const AdrPlugin: Plugin = async ({ client, directory }) => {
-  // Switch is project-level: pin state/config paths to this project's directory.
-  setProjectDir(directory)
-  const maintenance = createCompactionRuntime(directory, client)
-  const command = makeCommandHook(client, handled)
-  const commitGuard = makeToolGuardHook(client)
-  const readGuard = createReadGuard(directory, client)
-  return {
-    tool: maintenance.tools,
-    event: async ({ event }) => { await maintenance.event(event) },
-    config: async (cfg) => {
-      cfg.command ??= {}
-      cfg.command[COMMAND_NAME] = {
-        template: "",
+// V2 MAPPING NOTES (v1 → v2):
+//   • `config` hook (template commands) + `command.execute.before` → the
+//     two commands are plugin-OWNED → ctx.command.transform(editor.add)
+//     for /adr plus the /adr-guard alias. v1 "handled" (throw empty-204)
+//     = return from execute; v1 "continue" (template proceeded) /
+//     output.parts mutation = session.prompt with the (mutated) text.
+//   • `experimental.chat.system.transform` → "context" hook.
+//   • `tool.execute.before` chain (maintenance → readGuard → commitGuard)
+//     keeps v1 order; the deliberate throws are legal rejections on this
+//     hook only. `tool.execute.after` → execute.after (question
+//     authorization + receipt, see adr-compaction-runtime notes).
+//   • `tool: {...}` registration → ctx.tool.transform(editor.add) with
+//     options { codemode:false } (first-class model tools).
+//   • `event` hook → ctx.event.subscribe for-await loop (session.deleted
+//     cleanup), aborted on plugin cleanup.
+
+export const AdrPlugin = Plugin.define({
+  id: "adr",
+  async setup(ctx) {
+    // Switch is project-level: pin state/config paths to this project's directory.
+    const directory = ctx.location.directory
+    setProjectDir(directory)
+    const session = ctx.session as unknown as V2Session
+    const maintenance = createCompactionRuntime(directory, session)
+    const command = makeCommandHandler()
+    const commitGuard = makeToolGuardHook()
+    const readGuard = createReadGuard(directory, session)
+    const abort = new AbortController()
+
+    const context = await ctx.session.hook("context", (e) => makeSystemHook(session)(e))
+    // Tool execute.before: the guards' deliberate throws are the blocking
+    // mechanism (execute.before is the one v2 hook allowed to reject).
+    const before = await ctx.tool.hook("execute.before", async (e) => {
+      await maintenance.before({ tool: e.tool, sessionID: e.sessionID, id: e.id, input: e.input })
+      await readGuard({ tool: e.tool, sessionID: e.sessionID, agent: e.agent, input: e.input })
+      await commitGuard({ tool: e.tool, input: e.input })
+    })
+    const after = await ctx.tool.hook("execute.after", (e) =>
+      maintenance.after({
+        tool: e.tool,
+        sessionID: e.sessionID,
+        id: e.id,
+        input: e.input,
+        status: e.status,
+        result: e.status === "completed"
+          ? (e.result as { content?: string; output?: { answers?: unknown } })
+          : undefined,
+      }),
+    )
+    // Tools: static payloads (schema + closures) — sync-cheap, idempotent.
+    const tools = await ctx.tool.transform((editor) => {
+      for (const payload of maintenance.toolPayloads) editor.add(payload as never)
+    })
+    // Commands: /adr (primary) + /adr-guard (iron-law switch alias).
+    // Returns "handled" | "dispatched" for TEST OBSERVABILITY only (the v2
+    // host ignores execute() return values): "handled" = command consumed
+    // with no model turn (v1's 204 throw), "dispatched" = a model turn was
+    // triggered (v1's template fall-through / output.parts injection).
+    const runCommand = async (name: string, invocation: { sessionID: string; prompt: { text: string } }): Promise<"handled" | "dispatched"> => {
+      const args = commandArgumentText(invocation.prompt?.text, name)
+      const input = { command: name, arguments: args, sessionID: invocation.sessionID }
+      const output: { parts: Array<unknown> } = { parts: [] }
+      const m = await maintenance.command(input, output)
+      if (m === "handled") return "handled"
+      if (m === "continue") {
+        const text = output.parts.length ? partsText(output.parts) : `/${name} ${args}`.trim()
+        if (invocation.sessionID) await session.prompt?.({ sessionID: invocation.sessionID, text })
+        return "dispatched"
+      }
+      const res = await command(input)
+      // v1 parity: unhandled /adr input fell through to the template
+      // "/adr $ARGUMENTS" (a model turn); /adr-guard always handled itself.
+      if (res !== "handled" && name === ADR_COMMAND && invocation.sessionID) {
+        await session.prompt?.({ sessionID: invocation.sessionID, text: `/${name} ${args}`.trim() })
+        return "dispatched"
+      }
+      return "handled"
+    }
+    const commands = await ctx.command.transform((editor) => {
+      editor.add({
+        name: COMMAND_NAME,
         description:
           "Alias of /adr guard — toggle the ADR iron law for this project — every feat/refactor commit requires a new/updated ADR (on | off | reset | status)",
-      }
-      cfg.command[ADR_COMMAND] = {
-        template: "/adr $ARGUMENTS",
+        execute: async (invocation) => {
+          // Test-observability seam: the v2 host ignores execute() return
+          // values, so surface the handled/dispatched status on the
+          // invocation object for unit tests (v1's 204-vs-fall-through).
+          ;(invocation as { __status?: string }).__status = await runCommand(COMMAND_NAME, invocation)
+        },
+      })
+      editor.add({
+        name: ADR_COMMAND,
         description:
           "Manage Architecture Decision Records and the commit guard (new | supersede | context | compaction | tree | check | guard | help)",
+        execute: async (invocation) => {
+          // Test-observability seam: the v2 host ignores execute() return
+          // values, so surface the handled/dispatched status on the
+          // invocation object for unit tests (v1's 204-vs-fall-through).
+          ;(invocation as { __status?: string }).__status = await runCommand(ADR_COMMAND, invocation)
+        },
+      })
+    })
+    // Event loop: session teardown cleanup for maintenance state.
+    void (async () => {
+      try {
+        for await (const ev of ctx.event.subscribe({ signal: abort.signal })) {
+          await maintenance.event(ev)
+        }
+      } catch {
+        // Subscription died with the server — plugin state goes with it.
       }
-    },
-    "command.execute.before": async (input, output) => {
-      const result = await maintenance.command(input, output)
-      if (result === "handled") return handled()
-      if (result === "continue") return
-      await command(input)
-    },
-    "experimental.chat.system.transform": makeSystemHook(client),
-    "tool.execute.before": async (input, output) => {
-      await maintenance.before(input, output)
-      await readGuard(input, output)
-      await commitGuard(input, output)
-    },
-    "tool.execute.after": maintenance.after,
-  }
-}
+    })()
+
+    return async () => {
+      abort.abort()
+      await Promise.allSettled([context.dispose(), before.dispose(), after.dispose(), tools.dispose(), commands.dispose()])
+    }
+  },
+})
+
+export default AdrPlugin

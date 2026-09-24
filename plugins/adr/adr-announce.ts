@@ -11,18 +11,15 @@
  * This file now only provides toast feedback for /adr guard switches (and its /adr-guard alias) and
  * status reports.
  *
- * Toast-only strategy:
- *   tui.showToast is the sole surface — non-intrusive, no chat-transcript
- *   pollution, and degrades to a log line in headless/older-server
- *   environments. Never fatal.
+ * Announce strategy (v2): OCP-V2-GAP — the v2 plugin Context exposes no
+ *   TUI notification surface, so the former tui.showToast path degrades to
+ *   a server-log line via shared/notify. Non-intrusive (no chat-transcript
+ *   pollution either way). Never fatal.
  */
 
-import type { PluginInput } from "@opencode-ai/plugin"
+import { notify } from "../shared/notify"
 import { refreshLocale, tr } from "../tui/i18n"
 import { getAdrDir, getState, type GuardState } from "./adr-config"
-import { makeLogger } from "./adr-runtime"
-
-type Client = PluginInput["client"]
 
 /** One user-visible line per state. ON MUST name the enforcement surface. */
 export function announceMessage(state: GuardState): string {
@@ -39,44 +36,23 @@ export function statusMessage(): string {
 }
 
 /**
- * Best-effort toast + log. Toast failure (headless run, older server without
- * /tui/show-toast) degrades to the log line — announcing must never break a
- * session start or a switch.
- */
-async function showToast(client: Client, message: string, variant: "warning" | "info"): Promise<void> {
-  const log = makeLogger(client, "adr")
-  try {
-    await client.tui.showToast({ body: { message, variant } })
-    await log("info", `announce: toast shown — ${message}`)
-  } catch {
-    await log("info", `announce (no TUI — log only): ${message}`)
-  }
-}
-
-/**
- * Show the message as a toast notification — non-intrusive, no
- * chat-transcript pollution. Degrades to a log line if the TUI is
- * unavailable. Never fatal.
+ * Best-effort announce (v1: toast; v2: shared/notify server-log line).
+ * Never fatal — announcing must not break a session or a switch.
  */
 export async function announce(
-  client: Client,
   message: string,
   variant: "warning" | "info" = "info",
   _sessionID?: string,
 ): Promise<void> {
-  await showToast(client, message, variant)
+  await notify(message, variant)
 }
 
 /** Immediate user-visible confirmation for `/adr guard on|off` switches. */
-export async function announceSwitch(
-  client: Client,
-  state: GuardState,
-  sessionID?: string,
-): Promise<void> {
-  await announce(client, announceMessage(state), state === "on" ? "warning" : "info", sessionID)
+export async function announceSwitch(state: GuardState, sessionID?: string): Promise<void> {
+  await announce(announceMessage(state), state === "on" ? "warning" : "info", sessionID)
 }
 
 /** Immediate user-visible status report for bare `/adr guard`. */
-export async function announceStatus(client: Client, sessionID?: string): Promise<void> {
-  await announce(client, statusMessage(), "info", sessionID)
+export async function announceStatus(sessionID?: string): Promise<void> {
+  await announce(statusMessage(), "info", sessionID)
 }

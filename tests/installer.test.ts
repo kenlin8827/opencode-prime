@@ -10,7 +10,7 @@ import {
   mergeTuiConfig,
   mergeUserOptions,
   getUserOptionsPath,
-  updateOptionsJsoncInPlace,
+  normalizeLegacyAgent,
 } from '../install/src/merger';
 import {
   collectHistoricalShippedFiles,
@@ -86,7 +86,7 @@ if (!schema.defaultAgent.value || schema.mcpItems.length === 0 || schema.pluginI
 // Agent candidates must be the template's primary/all agents — never a raw
 // prompts/ dir scan, which would offer subagent-only prompts as primaries.
 const tmplAgents = Object.entries(
-  (readJsoncFile<Record<string, any>>(path.join(repoDir, 'opencode.template.jsonc'))?.agent ?? {}) as Record<string, any>
+  (readJsoncFile<Record<string, any>>(path.join(repoDir, 'opencode.template.jsonc'))?.agents ?? {}) as Record<string, any>
 )
   .filter(([, def]) => def?.mode === 'primary' || def?.mode === 'all')
   .map(([name]) => name);
@@ -107,46 +107,48 @@ if (merged.mcp?.serena !== false || merged.mcp?.codegraph !== true) throw new Er
 if (merged.plugin?.['opencode-mem@2.24.3'] !== true || merged.plugin?.['opencode-qoder-bridge'] !== true) throw new Error('mergeUserOptions failed to merge nested plugin map');
 console.log('✓ User options merge passed');
 
-// 3d. mergeTuiConfig — first install writes template; user plugins preserved on upgrade
-console.log('\nTest 3d: TUI Config Merge — preserves user-added plugins across reinstalls');
-const tuiMergeDir = path.join(os.tmpdir(), `opencode-tui-merge-test-${Date.now()}`);
+// 3d. mergeTuiConfig — V2 cli.json model: first install writes the template;
+// user plugins preserved on upgrade; a v1 tui.jsonc is migrated when no
+// cli.json exists yet.
+console.log('\nTest 3d: CLI Config Merge — preserves user-added plugins across reinstalls');
+const tuiMergeDir = path.join(os.tmpdir(), `opencode-cli-merge-test-${Date.now()}`);
 const tuiRepoDir = path.join(tuiMergeDir, 'repo');
 const tuiTargetDir = path.join(tuiMergeDir, 'target');
 fs.mkdirSync(tuiRepoDir, { recursive: true });
 fs.mkdirSync(tuiTargetDir, { recursive: true });
-// Minimal template (3 OCP plugins)
+// Minimal V2 template
 fs.writeFileSync(
-  path.join(tuiRepoDir, 'tui.template.jsonc'),
-  '{\n  "$schema": "https://opencode.ai/tui.json",\n  "display_thinking": true,\n  "plugin": [\n    "./plugins/tui/a.ts",\n    "./plugins/tui/b.ts",\n  ]\n}\n',
+  path.join(tuiRepoDir, 'cli.template.jsonc'),
+  '{\n  "$schema": "https://opencode.ai/v2/cli.json",\n  "session": { "thinking": "show" },\n  "plugins": [\n    "./plugins/tui/a.ts",\n    "./plugins/tui/b.ts",\n  ]\n}\n',
   'utf8'
 );
 
-// Subtest 1: first install — no existing tui.jsonc, write the template directly.
+// Subtest 1: first install — no existing cli.json, write the template directly.
 mergeTuiConfig(tuiRepoDir, tuiTargetDir);
-const firstInstall = readJsoncFile<Record<string, any>>(path.join(tuiTargetDir, 'tui.jsonc'));
-if (!firstInstall || firstInstall.plugin.length !== 2) {
+const firstInstall = readJsoncFile<Record<string, any>>(path.join(tuiTargetDir, 'cli.json'));
+if (!firstInstall || firstInstall.plugins.length !== 2) {
   throw new Error('First-install merge should write all template plugins');
 }
-if (firstInstall.display_thinking !== true) {
+if (firstInstall.session?.thinking !== 'show') {
   throw new Error('First-install merge should write template scalar fields');
 }
-if (firstInstall.$schema !== 'https://opencode.ai/tui.json') {
+if (firstInstall.$schema !== 'https://opencode.ai/v2/cli.json') {
   throw new Error('First-install merge should write $schema from template');
 }
-console.log('✓ First install writes template plugins + scalars');
+console.log('✓ First install writes template plugins + scalars (cli.json)');
 
 // Subtest 2: user adds a custom plugin, then merge runs again — user plugin survives.
-const existing = readJsoncFile<Record<string, any>>(path.join(tuiTargetDir, 'tui.jsonc'));
-existing.plugin.push('./plugins/tui/user-extra.ts');
-existing.theme = 'custom-user-theme';   // user customization on a scalar the template doesn't carry
+const existing = readJsoncFile<Record<string, any>>(path.join(tuiTargetDir, 'cli.json'));
+existing.plugins.push('./plugins/tui/user-extra.ts');
+existing.theme = { name: 'custom-user-theme' };   // user customization on a section the template doesn't carry
 fs.writeFileSync(
-  path.join(tuiTargetDir, 'tui.jsonc'),
+  path.join(tuiTargetDir, 'cli.json'),
   JSON.stringify(existing, null, 2) + '\n',
   'utf8'
 );
 mergeTuiConfig(tuiRepoDir, tuiTargetDir);
-const afterUpgrade = readJsoncFile<Record<string, any>>(path.join(tuiTargetDir, 'tui.jsonc'));
-const pluginPaths = afterUpgrade.plugin as string[];
+const afterUpgrade = readJsoncFile<Record<string, any>>(path.join(tuiTargetDir, 'cli.json'));
+const pluginPaths = afterUpgrade.plugins as string[];
 if (!pluginPaths.includes('./plugins/tui/a.ts') || !pluginPaths.includes('./plugins/tui/b.ts')) {
   throw new Error('Re-install dropped a template plugin');
 }
@@ -156,29 +158,55 @@ if (!pluginPaths.includes('./plugins/tui/user-extra.ts')) {
 if (pluginPaths.indexOf('./plugins/tui/a.ts') > pluginPaths.indexOf('./plugins/tui/user-extra.ts')) {
   throw new Error('Template plugins should come first, user additions after');
 }
-if (afterUpgrade.theme !== 'custom-user-theme') {
+if (afterUpgrade.theme?.name !== 'custom-user-theme') {
   throw new Error('User scalar customizations should be preserved');
 }
-if (afterUpgrade.$schema !== 'https://opencode.ai/tui.json') {
+if (afterUpgrade.$schema !== 'https://opencode.ai/v2/cli.json') {
   throw new Error('$schema must always come from template');
 }
-console.log('✓ Re-install preserves user-added plugins + scalar customizations');
+console.log('✓ Re-install preserves user-added plugins + section customizations');
 
 // Subtest 3: dedupe — if user already has a template plugin, no duplicate.
-const withDup = readJsoncFile<Record<string, any>>(path.join(tuiTargetDir, 'tui.jsonc'));
-withDup.plugin.push('./plugins/tui/a.ts');   // duplicate of template plugin
+const withDup = readJsoncFile<Record<string, any>>(path.join(tuiTargetDir, 'cli.json'));
+withDup.plugins.push('./plugins/tui/a.ts');   // duplicate of template plugin
 fs.writeFileSync(
-  path.join(tuiTargetDir, 'tui.jsonc'),
+  path.join(tuiTargetDir, 'cli.json'),
   JSON.stringify(withDup, null, 2) + '\n',
   'utf8'
 );
 mergeTuiConfig(tuiRepoDir, tuiTargetDir);
-const afterDedupe = readJsoncFile<Record<string, any>>(path.join(tuiTargetDir, 'tui.jsonc'));
-const aCount = (afterDedupe.plugin as string[]).filter((p) => p === './plugins/tui/a.ts').length;
+const afterDedupe = readJsoncFile<Record<string, any>>(path.join(tuiTargetDir, 'cli.json'));
+const aCount = (afterDedupe.plugins as string[]).filter((p) => p === './plugins/tui/a.ts').length;
 if (aCount !== 1) {
   throw new Error(`Plugin dedupe failed — ./plugins/tui/a.ts appears ${aCount} times`);
 }
 console.log('✓ Re-install dedupes plugins already present in template');
+
+// Subtest 4: V1→V2 migration — no cli.json, legacy tui.jsonc plugins survive
+// (tuple form → {package, options}) and display_thinking becomes session.thinking.
+fs.rmSync(path.join(tuiTargetDir, 'cli.json'));
+fs.writeFileSync(
+  path.join(tuiTargetDir, 'tui.jsonc'),
+  '{\n  "$schema": "https://opencode.ai/tui.json",\n  "display_thinking": false,\n  "theme": "gruvbox",\n  "plugin": [\n    "./plugins/tui/legacy-user.ts",\n    ["./plugins/tui/tuple.ts", { "enabled": true }],\n  ]\n}\n',
+  'utf8'
+);
+mergeTuiConfig(tuiRepoDir, tuiTargetDir);
+const migrated = readJsoncFile<Record<string, any>>(path.join(tuiTargetDir, 'cli.json'));
+const migPaths = (migrated.plugins as Array<string | { package: string }>).map((p) => (typeof p === 'string' ? p : p.package));
+if (!migPaths.includes('./plugins/tui/legacy-user.ts') || !migPaths.includes('./plugins/tui/tuple.ts')) {
+  throw new Error('V1 tui.jsonc plugins must be migrated into cli.json');
+}
+const tuple = (migrated.plugins as Array<{ package: string; options?: { enabled?: boolean } }>).find((p) => typeof p !== 'string' && p.package === './plugins/tui/tuple.ts');
+if (!tuple || tuple.options?.enabled !== true) {
+  throw new Error('V1 tuple plugin must become { package, options }');
+}
+if (migrated.session?.thinking !== 'hide') {
+  throw new Error('Migrated legacy display_thinking=false must win over the template default (existing wins)');
+}
+if (migrated.theme?.name !== 'gruvbox') {
+  throw new Error('Legacy theme scalar must migrate to theme.name');
+}
+console.log('✓ Legacy tui.jsonc migrated on first V2 merge (plugins tuple→object, theme→theme.name)');
 
 if (fs.existsSync(tuiMergeDir)) fs.rmSync(tuiMergeDir, { recursive: true, force: true });
 
@@ -200,7 +228,7 @@ fs.mkdirSync(cfgRepoDir, { recursive: true });
 fs.mkdirSync(cfgTargetDir, { recursive: true });
 fs.writeFileSync(
   path.join(cfgRepoDir, 'opencode.template.jsonc'),
-  '{\n  "removed_agents": ["ghost"],\n  "instructions": [\n    "~/.config/opencode/instructions/a.md",\n    "~/.config/opencode/instructions/b.md"\n  ],\n  "agent": {\n    "build": { "prompt": "T_BUILD" },\n    "code": { "prompt": "T_CODE" }\n  }\n}\n',
+  '{\n  "removed_agents": ["ghost"],\n  "instructions": [\n    "~/.config/opencode/instructions/a.md",\n    "~/.config/opencode/instructions/b.md"\n  ],\n  "agents": {\n    "build": { "system": "T_BUILD" },\n    "code": { "system": "T_CODE" }\n  }\n}\n',
   'utf8'
 );
 fs.writeFileSync(
@@ -212,7 +240,7 @@ fs.writeFileSync(
 // factory agent (ghost) + one custom agent
 fs.writeFileSync(
   path.join(cfgTargetDir, 'opencode.jsonc'),
-  '{\n  "instructions": ["old/1.md", "old/2.md", "old/3.md"],\n  "agent": {\n    "build": { "prompt": "OLD_MODIFIED_BUILD" },\n    "ghost": { "prompt": "RETIRED_FACTORY_AGENT" },\n    "my-agent": { "prompt": "CUSTOM_USER_AGENT" }\n  }\n}\n',
+  '{\n  "instructions": ["old/1.md", "old/2.md", "old/3.md"],\n  "agents": {\n    "build": { "system": "OLD_MODIFIED_BUILD" },\n    "ghost": { "system": "RETIRED_FACTORY_AGENT" },\n    "my-agent": { "system": "CUSTOM_USER_AGENT" }\n  }\n}\n',
   'utf8'
 );
 fs.writeFileSync(
@@ -226,16 +254,16 @@ const cfgMerged = readJsoncFile<Record<string, any>>(path.join(cfgTargetDir, 'op
 if (JSON.stringify(cfgMerged?.instructions) !== JSON.stringify(['~/.config/opencode/instructions/a.md', '~/.config/opencode/instructions/b.md'])) {
   throw new Error('mergeConfig must take template instructions — stale user array leaked through');
 }
-if (cfgMerged?.agent?.build?.prompt !== 'T_BUILD') {
+if (cfgMerged?.agents?.build?.system !== 'T_BUILD') {
   throw new Error('Factory agent "build" must follow the template — stale user copy leaked through');
 }
-if (cfgMerged?.agent?.code?.prompt !== 'T_CODE') {
+if (cfgMerged?.agents?.code?.system !== 'T_CODE') {
   throw new Error('Factory agent "code" missing — template agents must survive the merge');
 }
-if (cfgMerged?.agent?.['my-agent']?.prompt !== 'CUSTOM_USER_AGENT') {
+if (cfgMerged?.agents?.['my-agent']?.system !== 'CUSTOM_USER_AGENT') {
   throw new Error('User-defined agent "my-agent" must be preserved verbatim');
 }
-if (cfgMerged?.agent?.ghost !== undefined) {
+if (cfgMerged?.agents?.ghost !== undefined) {
   throw new Error('Retired factory agent "ghost" must be dropped on upgrade');
 }
 if (cfgMerged?.removed_agents !== undefined) {
@@ -257,13 +285,14 @@ if (cfgTiers?.['my-agent'] !== 'pro') {
 console.log('✓ instructions template-owned + factory-agent upgrade propagation + custom-agent preservation + retirement cleanup');
 if (fs.existsSync(cfgMergeDir)) fs.rmSync(cfgMergeDir, { recursive: true, force: true });
 
-// 3g. Native policy propagation:
-//   - opencode.template.jsonc carries permission/tools as native opencode
+// 3g. Native policy propagation (V2):
+//   - opencode.template.jsonc carries `permissions` arrays as native V2
 //     fields; mergeConfig copies them verbatim (no materialization step).
-//   - Factory agents follow the template wholesale: a hand-edited permission
+//   - Factory agents follow the template wholesale: a hand-edited rule set
 //     on a factory agent is replaced on upgrade, not merged.
 //   - Custom agents are preserved verbatim and stay policy-free unless the
-//     user gave them policy.
+//     user gave them policy — and a V1-legacy custom agent is converted
+//     (prompt/disable/tools-map → system/disabled/permissions) on capture.
 console.log('\nTest 3g: Config Merge — Native Policy Propagation');
 const surfMergeDir = path.join(os.tmpdir(), `opencode-surface-test-${Date.now()}`);
 const surfRepoDir = path.join(surfMergeDir, 'repo');
@@ -272,7 +301,7 @@ fs.mkdirSync(surfRepoDir, { recursive: true });
 fs.mkdirSync(surfTargetDir, { recursive: true });
 fs.writeFileSync(
   path.join(surfRepoDir, 'opencode.template.jsonc'),
-  '{\n  "permission": "allow",\n  "agent": {\n    "lite": { "prompt": "T_LITE", "permission": { "skill": { "*": "deny" }, "serena_*": { "*": "deny" } }, "tools": { "task": false, "question": false } },\n    "build": { "prompt": "T_BUILD", "permission": { "serena_*": { "*": "deny" } } }\n  }\n}\n',
+  '{\n  "permissions": [{ "action": "*", "resource": "*", "effect": "allow" }],\n  "agents": {\n    "lite": { "system": "T_LITE", "permissions": [ { "action": "skill", "resource": "*", "effect": "deny" }, { "action": "serena_*", "resource": "*", "effect": "deny" }, { "action": "subagent", "resource": "*", "effect": "deny" }, { "action": "question", "resource": "*", "effect": "deny" } ] },\n    "build": { "system": "T_BUILD", "permissions": [ { "action": "serena_*", "resource": "*", "effect": "deny" } ] }\n  }\n}\n',
   'utf8'
 );
 fs.writeFileSync(
@@ -280,82 +309,161 @@ fs.writeFileSync(
   '{\n  "$comment": "t",\n  "lite": "flash",\n  "build": "standard"\n}\n',
   'utf8'
 );
-// Stale installed config: a user-modified factory permission on lite (factory
-// agents follow the template — hand edits are replaced, not merged) plus a
-// custom agent
+// Stale installed config (V1 legacy — exercises the upgrade path): a
+// user-modified factory permission on lite (factory agents follow the
+// template — hand edits are replaced, not merged), a V1 custom agent whose
+// tools-map/permission-map must convert, and a clean V2 custom agent.
 fs.writeFileSync(
   path.join(surfTargetDir, 'opencode.jsonc'),
-  '{\n  "agent": {\n    "lite": { "prompt": "OLD_LITE", "permission": { "pencil_*": { "*": "deny" } } },\n    "my-agent": { "prompt": "CUSTOM" }\n  }\n}\n',
+  '{\n  "agent": {\n    "lite": { "prompt": "OLD_LITE", "permission": { "pencil_*": { "*": "deny" } } },\n    "my-legacy": { "prompt": "CUSTOM", "permission": { "edit": "deny", "bash": { "*": "deny", "git status*": "allow" } }, "tools": { "task": false, "write": false, "todowrite": true } },\n    "my-agent": { "system": "CUSTOM2" }\n  }\n}\n',
   'utf8'
 );
 const surfBag = extractPreserveBag(surfTargetDir);
 mergeConfig(surfRepoDir, surfTargetDir, {} as any, surfBag);
 const surfMerged = readJsoncFile<Record<string, any>>(path.join(surfTargetDir, 'opencode.jsonc'));
-if (surfMerged?.permission !== 'allow') {
-  throw new Error('global permission must pass through from the template');
+if (!Array.isArray(surfMerged?.permissions) || surfMerged.permissions[0]?.effect !== 'allow') {
+  throw new Error('global permissions array must pass through from the template');
 }
-if (surfMerged?.agent?.lite?.permission?.skill?.['*'] !== 'deny' || surfMerged?.agent?.lite?.permission?.['serena_*']?.['*'] !== 'deny') {
-  throw new Error('lite permission must propagate from the template');
+const litePermsJson = JSON.stringify(surfMerged?.agents?.lite?.permissions ?? []);
+if (!litePermsJson.includes('"serena_*"') || !litePermsJson.includes('"skill"')) {
+  throw new Error('lite permissions must propagate from the template');
 }
-if (surfMerged?.agent?.lite?.permission?.['pencil_*'] !== undefined) {
+if (litePermsJson.includes('pencil_')) {
   throw new Error('factory agents follow the template — hand-edited permission must be replaced, not merged');
 }
-if (surfMerged?.agent?.lite?.tools?.task !== false || surfMerged?.agent?.lite?.tools?.question !== false) {
-  throw new Error('lite tools map must propagate from the template verbatim');
+const legacyCustom = surfMerged?.agents?.['my-legacy'];
+if (legacyCustom?.system !== 'CUSTOM' || legacyCustom?.prompt !== undefined) {
+  throw new Error('V1 custom agent: prompt must migrate to system on capture');
 }
-if (surfMerged?.agent?.build?.permission?.['serena_*']?.['*'] !== 'deny') {
+if (legacyCustom?.tools !== undefined || legacyCustom?.permission !== undefined) {
+  throw new Error('V1 custom agent: legacy tools/permission maps must not survive the conversion');
+}
+const legacyPerms: Array<Record<string, string>> = legacyCustom?.permissions ?? [];
+const findRule = (action: string, resource: string) =>
+  legacyPerms.find((r) => r.action === action && r.resource === resource);
+if (findRule('edit', '*')?.effect !== 'deny') throw new Error('V1 permission "edit":"deny" must convert');
+if (!findRule('shell', '*') || !findRule('shell', 'git status*')) throw new Error('V1 bash rules must rename to shell with resources intact');
+if (findRule('subagent', '*')?.effect !== 'deny') throw new Error('V1 tools.task:false must become subagent deny');
+if (findRule('edit', '*') === undefined || legacyPerms.filter((r) => r.action === 'edit').some((r) => r.effect === 'allow')) {
+  throw new Error('V1 tools.write:false must fold into edit deny, no allow leak');
+}
+if (legacyPerms.some((r) => r.action === 'todowrite')) throw new Error('todowrite has no V2 action — must be dropped');
+if (JSON.stringify(legacyPerms) !== JSON.stringify([
+  { action: 'edit', resource: '*', effect: 'deny' },
+  { action: 'shell', resource: '*', effect: 'deny' },
+  { action: 'shell', resource: 'git status*', effect: 'allow' },
+  { action: 'subagent', resource: '*', effect: 'deny' },
+  { action: 'edit', resource: '*', effect: 'deny' },
+])) {
+  // (last edit-deny from write:false — duplicates kept deliberately: order is v1 semantics)
+  throw new Error(`V1 tools→permissions conversion order/content drifted: ${JSON.stringify(legacyPerms)}`);
+}
+if (surfMerged?.agents?.build?.permissions?.[0]?.action !== 'serena_*') {
   throw new Error('build permission must propagate from the template');
 }
-if (surfMerged?.agent?.build?.tools !== undefined) {
-  throw new Error('agents without template tools entries must not gain a tools map');
-}
-if (surfMerged?.agent?.['my-agent']?.permission !== undefined) {
+if (surfMerged?.agents?.['my-agent']?.permissions !== undefined) {
   throw new Error('custom agents without template entries must stay policy-free');
 }
-if (fs.existsSync(surfMergeDir)) fs.rmSync(surfMergeDir, { recursive: true, force: true });
-console.log('✓ Native policy propagation: global + per-agent permission/tools, factory semantics intact');
-
-// 3h. Real repo regression: the shipped template carries native permission
-// policy (the template is the policy source of truth again), and plugin
-// injection policy lives in plugin-scope.json.
-const realTemplate = readJsoncFile<Record<string, any>>(path.join(repoDir, 'opencode.template.jsonc'));
-if (realTemplate?.permission !== 'allow') {
-  throw new Error('opencode.template.jsonc must carry global permission "allow" — policy lives in the template');
+if (surfMerged?.agent !== undefined) {
+  throw new Error('legacy agent block must not survive the merge');
 }
-if (realTemplate?.agent?.lite?.permission?.['*']?.['*'] !== 'deny') {
+if (fs.existsSync(surfMergeDir)) fs.rmSync(surfMergeDir, { recursive: true, force: true });
+console.log('✓ Native V2 policy propagation: global + per-agent permissions, V1 custom-agent conversion, factory semantics intact');
+
+// 3g-b. normalizeLegacyAgent unit pins (pure).
+{
+  const conv = normalizeLegacyAgent({
+    prompt: 'P', disable: true, temperature: 0.2, variant: 'high',
+    model: 'prov/model', tools: { '*': false, read: true },
+    permission: { edit: 'deny' },
+  });
+  if (conv.system !== 'P' || conv.prompt !== undefined) throw new Error('normalizeLegacyAgent: prompt→system');
+  if (conv.disabled !== true || conv.disable !== undefined) throw new Error('normalizeLegacyAgent: disable→disabled');
+  if (conv.model !== 'prov/model#high' || conv.variant !== undefined) throw new Error('normalizeLegacyAgent: variant joins model ref');
+  if (conv.request?.body?.temperature !== 0.2 || conv.temperature !== undefined) throw new Error('normalizeLegacyAgent: temperature→request.body');
+  const firstDeny = conv.permissions.findIndex((r: any) => r.action === '*' && r.effect === 'deny');
+  const readAllow = conv.permissions.findIndex((r: any) => r.action === 'read' && r.effect === 'allow');
+  if (!(conv.permissions[0].action === 'edit' && firstDeny > 0 && readAllow > firstDeny)) {
+    throw new Error('normalizeLegacyAgent: permission rules precede tools whitelist; allow after deny-all');
+  }
+  const externalAllow = conv.permissions.findIndex((r: any) => r.action === 'external_directory' && r.effect === 'allow');
+  if (!(externalAllow > firstDeny && externalAllow < readAllow)) {
+    throw new Error('normalizeLegacyAgent: tools-whitelist must re-allow external_directory between deny-all and the tool allows');
+  }
+  const passthrough = normalizeLegacyAgent({ system: 'S', permissions: [{ action: 'x', resource: '*', effect: 'ask' }] });
+  if (passthrough.system !== 'S' || !Array.isArray(passthrough.permissions)) throw new Error('normalizeLegacyAgent: V2-shaped entry must pass through untouched');
+  console.log('✓ normalizeLegacyAgent conversion unit pins passed');
+}
+
+// 3h. Real repo regression: the shipped template carries V2-native permission
+// policy (the template is the policy source of truth), and plugin injection
+// policy lives in plugin-scope.json.
+const realTemplate = readJsoncFile<Record<string, any>>(path.join(repoDir, 'opencode.template.jsonc'));
+const ruleAt = (list: Array<Record<string, string>>, action: string, resource: string) =>
+  (list ?? []).filter((r) => r.action === action && r.resource === resource);
+const lastEffect = (list: Array<Record<string, string>>, action: string, resource: string) => {
+  const m = ruleAt(list, action, resource);
+  return m.length ? m[m.length - 1].effect : undefined;
+};
+if (!Array.isArray(realTemplate?.permissions) || lastEffect(realTemplate.permissions, '*', '*') !== 'allow') {
+  throw new Error('opencode.template.jsonc must carry a global allow-all V2 permission — policy lives in the template');
+}
+const litePerms = realTemplate?.agents?.lite?.permissions;
+if (lastEffect(litePerms, '*', '*') !== 'deny') {
   throw new Error('shipped template lost the lite wildcard deny');
+}
+// lite's whitelist shape (v1 tools map folded into the ordered array): deny-all
+// FIRST, tool allows after it (last-match-wins), and external_directory
+// re-allowed so the wildcard deny does not stomp the v1 root-allow parity.
+if ((litePerms ?? []).findIndex((r: any) => r.action === '*' && r.effect === 'deny') !== 0) {
+  throw new Error('lite permissions must open with the {action:"*"} deny');
+}
+if (lastEffect(litePerms, 'external_directory', '*') !== 'allow') {
+  throw new Error('lite must re-allow external_directory after the deny-all');
+}
+// Whitelisted V2 native set (bash→shell, write folds into edit, task→subagent,
+// todowrite dropped) + question + tgrep_search + memory_note.
+const liteRequired = ['read', 'edit', 'shell', 'grep', 'glob', 'webfetch', 'websearch', 'subagent', 'question', 'tgrep_search', 'memory_note'];
+const liteMissing = liteRequired.filter((t) => lastEffect(litePerms, t, '*') !== 'allow');
+if (liteMissing.length) {
+  throw new Error('lite allow-list lost required V2 actions: ' + liteMissing.join(', '));
 }
 // lite's skill access is scoped to the agent-less commands (/handoff,
 // /git-merge, /git-pick, /git-pull, /git-push, /git-rebase) plus
-// /memory-summarize (agent: lite); every other skill stays denied.
-const liteSkill = realTemplate?.agent?.lite?.permission?.skill;
-if (liteSkill?.['*'] !== 'deny' || liteSkill?.['handoff'] !== 'allow' || liteSkill?.['memory-summarize'] !== 'allow' || liteSkill?.['git-merge'] !== 'allow' || liteSkill?.['git-pick'] !== 'allow' || liteSkill?.['git-pull'] !== 'allow' || liteSkill?.['git-push'] !== 'allow' || liteSkill?.['git-rebase'] !== 'allow') {
-  throw new Error('lite skill permission must deny "*" and allow handoff + memory-summarize + git-merge/git-pick/git-pull/git-push/git-rebase');
+// /memory-summarize (agent: lite); every other skill stays denied. The skill
+// group must come AFTER the tool allows so its wildcard deny is the last match
+// for unlisted skill IDs.
+if (lastEffect(litePerms, 'skill', '*') !== 'deny') {
+  throw new Error('lite skill permission must deny "*"');
 }
-const liteTools = realTemplate?.agent?.lite?.tools;
-if (!liteTools || typeof liteTools !== 'object' || liteTools['*'] !== false) {
-  throw new Error('lite tools must wildcard-deny then whitelist the capable set');
+for (const s of ['handoff', 'memory-summarize', 'git-merge', 'git-pick', 'git-pull', 'git-push', 'git-rebase']) {
+  if (lastEffect(litePerms, 'skill', s) !== 'allow') {
+    throw new Error(`lite must allow skill "${s}" (scoped roster)`);
+  }
 }
-// Whitelisted core set + the skill tool (needed to load git-merge/git-pick/git-pull/git-push/git-rebase)
-// + question (interactive ask for the default primary; measured ~216 tok/step with the tool-compress description)
-// + memory_note (lite.md's project-memory habit).
-const liteRequired = ['read', 'edit', 'write', 'bash', 'grep', 'glob', 'webfetch', 'websearch', 'todowrite', 'task', 'skill', 'question', 'memory_note'];
-const liteMissing = liteRequired.filter((t) => liteTools?.[t] !== true);
-if (liteMissing.length) {
-  throw new Error('lite tools whitelist lost required tools: ' + liteMissing.join(', '));
+if ((litePerms ?? []).some((r: any) => r.action === 'todowrite' || r.action === 'bash' || r.action === 'task')) {
+  throw new Error('lite permissions must not carry V1 action names (bash/task/todowrite)');
 }
-if (liteTools && 'list' in liteTools) {
-  throw new Error('lite tools whitelist must not carry list (not a real opencode tool)');
+// V2-native top-level keys present, V1 shapes gone:
+if (realTemplate?.agent !== undefined || realTemplate?.plugin !== undefined || realTemplate?.snapshot !== undefined || realTemplate?.permission !== undefined) {
+  throw new Error('shipped template must not carry V1 keys (agent/plugin/snapshot/permission)');
+}
+if (realTemplate?.snapshots !== true || !Array.isArray(realTemplate?.plugins) || realTemplate?.mcp?.servers?.serena?.disabled !== true || realTemplate?.mcp?.servers?.codegraph?.disabled !== false) {
+  throw new Error('shipped template lost V2-native snapshots/plugins/mcp.servers shapes (enabled→disabled inverted)');
 }
 const realScope = readJsoncFile<Record<string, any>>(path.join(repoDir, 'plugin-scope.json'));
 if (!realScope?.plugins?.['*']?.deny?.includes('lite') || !realScope.plugins['*'].deny.includes('subagent:*')) {
   throw new Error('shipped plugin-scope.json lost the default deny policy');
 }
-console.log('✓ Template carries native policy; plugin-scope.json carries the injector policy');
+if (!fs.existsSync(path.join(repoDir, 'cli.template.jsonc'))) {
+  throw new Error('cli.template.jsonc (V2 terminal-client template) missing from the repo');
+}
+console.log('✓ Template carries V2-native policy + shapes; plugin-scope.json carries the injector policy; cli.template ships');
 
 // 3i. Model preservation: reinstall must preserve the user's model picks
-// (root `model`, `small_model`, and per-agent `model` overrides set via
-// /profile apply). Without this, the template defaults overwrite them.
+// (root `model`, the flash tier, and per-agent `model` overrides set via
+// /profile apply). Without this, the template defaults overwrite them. The
+// v1 root `small_model` migrates into `agents.title.model` on restore.
 console.log('\nTest 3i: Config Merge — Model ID Preservation');
 const modelMergeDir = path.join(os.tmpdir(), `opencode-model-merge-test-${Date.now()}`);
 const modelRepoDir = path.join(modelMergeDir, 'repo');
@@ -365,7 +473,7 @@ fs.mkdirSync(modelTargetDir, { recursive: true });
 // Template with default model picks
 fs.writeFileSync(
   path.join(modelRepoDir, 'opencode.template.jsonc'),
-  '{\n  "model": "template/standard",\n  "small_model": "template/flash",\n  "agent": {\n    "build": { "prompt": "T_BUILD" },\n    "code": { "prompt": "T_CODE", "model": "template/pro" }\n  }\n}\n',
+  '{\n  "model": "template/standard",\n  "agents": {\n    "title": { "model": "template/flash" },\n    "build": { "system": "T_BUILD" },\n    "code": { "system": "T_CODE", "model": "template/pro" }\n  }\n}\n',
   'utf8'
 );
 fs.writeFileSync(
@@ -373,7 +481,8 @@ fs.writeFileSync(
   '{\n  "$comment": "t",\n  "build": "standard",\n  "code": "pro"\n}\n',
   'utf8'
 );
-// User's installed config with custom model picks (set via /profile apply)
+// User's installed config with custom model picks (set via /profile apply) —
+// a V1 shape install to prove the small_model → agents.title.model upgrade.
 fs.writeFileSync(
   path.join(modelTargetDir, 'opencode.jsonc'),
   '{\n  "model": "anthropic/claude-sonnet-4-20250514",\n  "small_model": "anthropic/claude-haiku-4-20250414",\n  "agent": {\n    "build": { "prompt": "T_BUILD", "model": "anthropic/claude-sonnet-4-20250514" },\n    "code": { "prompt": "T_CODE", "model": "anthropic/claude-sonnet-4-20250514" }\n  }\n}\n',
@@ -394,23 +503,26 @@ if (modelBag.userSmallModel !== 'anthropic/claude-haiku-4-20250414') {
 if (modelBag.userAgentModels?.code !== 'anthropic/claude-sonnet-4-20250514') {
   throw new Error(`extractPreserveBag failed to capture per-agent model: got ${modelBag.userAgentModels?.code}`);
 }
-console.log('✓ extractPreserveBag captures model / small_model / per-agent models');
+console.log('✓ extractPreserveBag captures model / small_model (v1) / per-agent models');
 mergeConfig(modelRepoDir, modelTargetDir, {} as any, modelBag);
 const modelMerged = readJsoncFile<Record<string, any>>(path.join(modelTargetDir, 'opencode.jsonc'));
 if (modelMerged?.model !== 'anthropic/claude-sonnet-4-20250514') {
   throw new Error(`mergeConfig overwrote root model with template: got ${modelMerged?.model}`);
 }
-if (modelMerged?.small_model !== 'anthropic/claude-haiku-4-20250414') {
-  throw new Error(`mergeConfig overwrote root small_model with template: got ${modelMerged?.small_model}`);
+if (modelMerged?.small_model !== undefined) {
+  throw new Error('merged config must not carry the removed v1 small_model key');
 }
-if (modelMerged?.agent?.code?.model !== 'anthropic/claude-sonnet-4-20250514') {
-  throw new Error(`mergeConfig overwrote per-agent model with template: got ${modelMerged?.agent?.code?.model}`);
+if (modelMerged?.agents?.title?.model !== 'anthropic/claude-haiku-4-20250414') {
+  throw new Error(`flash tier must restore into agents.title.model (v1 small_model upgrade): got ${modelMerged?.agents?.title?.model}`);
 }
-// Factory agent prompt still follows the template (not the user's old copy)
-if (modelMerged?.agent?.build?.prompt !== 'T_BUILD') {
-  throw new Error('Factory agent prompt must follow the template');
+if (modelMerged?.agents?.code?.model !== 'anthropic/claude-sonnet-4-20250514') {
+  throw new Error(`mergeConfig overwrote per-agent model with template: got ${modelMerged?.agents?.code?.model}`);
 }
-console.log('✓ mergeConfig preserves user model picks while template prompt upgrades propagate');
+// Factory agent system still follows the template (not the user's old copy)
+if (modelMerged?.agents?.build?.system !== 'T_BUILD') {
+  throw new Error('Factory agent system must follow the template');
+}
+console.log('✓ mergeConfig preserves user model picks (small_model→agents.title.model) while template upgrades propagate');
 if (fs.existsSync(modelMergeDir)) fs.rmSync(modelMergeDir, { recursive: true, force: true });
 
 // 3j. Rename migration: factory agent `explorer` → `explore`. The user's
@@ -425,7 +537,7 @@ fs.mkdirSync(renameRepoDir, { recursive: true });
 fs.mkdirSync(renameTargetDir, { recursive: true });
 fs.writeFileSync(
   path.join(renameRepoDir, 'opencode.template.jsonc'),
-  '{\n  "removed_agents": ["explorer"],\n  "agent": {\n    "explore": { "prompt": "T_EXPLORE" }\n  }\n}\n',
+  '{\n  "removed_agents": ["explorer"],\n  "agents": {\n    "explore": { "system": "T_EXPLORE" }\n  }\n}\n',
   'utf8'
 );
 fs.writeFileSync(
@@ -433,7 +545,7 @@ fs.writeFileSync(
   '{\n  "$comment": "t",\n  "explore": "flash"\n}\n',
   'utf8'
 );
-// Installed config from before the rename: explorer carries a user model pick
+// Installed config from before the rename (V1 shape): explorer carries a user model pick
 fs.writeFileSync(
   path.join(renameTargetDir, 'opencode.jsonc'),
   '{\n  "agent": {\n    "explorer": { "prompt": "OLD_PROMPT", "model": "prov/flash-model" }\n  }\n}\n',
@@ -447,10 +559,10 @@ fs.writeFileSync(
 const renameBag = extractPreserveBag(renameTargetDir);
 mergeConfig(renameRepoDir, renameTargetDir, {} as any, renameBag);
 const renameMerged = readJsoncFile<Record<string, any>>(path.join(renameTargetDir, 'opencode.jsonc'));
-if (renameMerged?.agent?.explore?.model !== 'prov/flash-model') {
-  throw new Error(`Rename migration must carry the user's model pick to explore: got ${renameMerged?.agent?.explore?.model}`);
+if (renameMerged?.agents?.explore?.model !== 'prov/flash-model') {
+  throw new Error(`Rename migration must carry the user's model pick to explore: got ${renameMerged?.agents?.explore?.model}`);
 }
-if (renameMerged?.agent?.explorer !== undefined) {
+if (renameMerged?.agents?.explorer !== undefined || renameMerged?.agent !== undefined) {
   throw new Error('Retired explorer agent block must be dropped on upgrade');
 }
 const renameTiers = readJsoncFile<Record<string, any>>(path.join(renameTargetDir, 'tiers.json'));
@@ -574,14 +686,14 @@ const installRes = executeInstall(
 if (!installRes.success || installRes.filesInstalled === 0) throw new Error('Install failed');
 if (!fs.existsSync(path.join(testTargetDir, 'opencode.jsonc'))) throw new Error('opencode.jsonc missing from target');
 if (fs.existsSync(path.join(testTargetDir, 'opencode.template.jsonc'))) throw new Error('config template leaked into target — only the merged opencode.jsonc should be installed');
-if (fs.existsSync(path.join(testTargetDir, 'tui.template.jsonc'))) throw new Error('TUI template leaked into target — only the merged tui.jsonc should be installed');
-if (!fs.existsSync(path.join(testTargetDir, 'tui.jsonc'))) throw new Error('tui.jsonc missing from target');
+if (fs.existsSync(path.join(testTargetDir, 'cli.template.jsonc'))) throw new Error('CLI template leaked into target — only the merged cli.json should be installed');
+if (!fs.existsSync(path.join(testTargetDir, 'cli.json'))) throw new Error('cli.json missing from target');
 if (!fs.existsSync(path.join(testTargetDir, 'installed.version'))) throw new Error('installed.version missing');
 if (!fs.existsSync(getTargetInstalledManifestPath(testTargetDir))) throw new Error('.ocp/installed.manifest.txt missing');
 if (!fs.existsSync(path.join(testTargetDir, 'tiers.json'))) throw new Error('tiers.json missing from target');
 const targetManagedManifest = readTargetInstalledManifest(testTargetDir);
 if (!targetManagedManifest || targetManagedManifest.length === 0) throw new Error('Failed to read target installed manifest');
-if (targetManagedManifest.includes('opencode.template.jsonc') || targetManagedManifest.includes('tui.template.jsonc')) {
+if (targetManagedManifest.includes('opencode.template.jsonc') || targetManagedManifest.includes('cli.template.jsonc')) {
   throw new Error('Target installed manifest must not include template input files');
 }
 if (!targetManagedManifest.includes('providers/llm-router.json')) {
@@ -597,34 +709,62 @@ console.log(`✓ Install passed (${installRes.filesInstalled} files written, cus
 
 // 5a. Stale prune uses the target-managed set, not the package manifest. This
 // catches files that remain package inputs but should never remain in target.
+// The historical basis (install/versions/*.manifest.txt) is versioned per
+// release line and may be empty on a fresh line (manifests compacted away at
+// the minVersion floor), so this test SEEDS a self-contained historical
+// manifest fixture — same repo, cleaned up in finally — instead of depending
+// on accumulated release history being present.
 console.log('\nTest 5a: Stale Prune Removes Non-Target Package Inputs');
 fs.writeFileSync(path.join(testTargetDir, 'opencode.template.jsonc'), 'stale template\n', 'utf8');
-fs.writeFileSync(path.join(testTargetDir, 'tui.template.jsonc'), 'stale tui template\n', 'utf8');
+fs.writeFileSync(path.join(testTargetDir, 'tui.template.jsonc'), 'stale tui template (v1 name)\n', 'utf8');
+fs.writeFileSync(path.join(testTargetDir, 'cli.template.jsonc'), 'stale cli template\n', 'utf8');
 const packageFiles = collectShippedFiles(repoDir);
 const managedAfterFirstInstall = computeTargetManagedFiles(packageFiles, false);
-if (managedAfterFirstInstall.includes('opencode.template.jsonc') || managedAfterFirstInstall.includes('tui.template.jsonc')) {
+if (
+  managedAfterFirstInstall.includes('opencode.template.jsonc') ||
+  managedAfterFirstInstall.includes('cli.template.jsonc')
+) {
   throw new Error('computeTargetManagedFiles leaked template input files');
 }
-const staleRes = executeInstall(repoDir, {
-  action: 'install',
-  target: testTargetDir,
-  force: true,
-  noBackup: true,
-  yes: true,
-  isInteractive: false,
-});
-if (!staleRes.success) throw new Error('Stale-prune reinstall failed');
-if (fs.existsSync(path.join(testTargetDir, 'opencode.template.jsonc'))) {
-  throw new Error('Stale opencode.template.jsonc survived reinstall');
+const fixtureManifestRel = path.join('install', 'versions', '1.99.9.manifest.txt');
+const fixtureManifest = path.join(repoDir, fixtureManifestRel);
+fs.mkdirSync(path.dirname(fixtureManifest), { recursive: true });
+fs.writeFileSync(
+  fixtureManifest,
+  ['opencode.template.jsonc', 'tui.template.jsonc', 'cli.template.jsonc', 'instructions/ghost-v1.md'].join('\n') + '\n',
+  'utf8',
+);
+fs.writeFileSync(path.join(testTargetDir, 'instructions', 'ghost-v1.md'), 'stale shipped instruction\n', 'utf8');
+try {
+  const staleRes = executeInstall(repoDir, {
+    action: 'install',
+    target: testTargetDir,
+    force: true,
+    noBackup: true,
+    yes: true,
+    isInteractive: false,
+  });
+  if (!staleRes.success) throw new Error('Stale-prune reinstall failed');
+  if (fs.existsSync(path.join(testTargetDir, 'opencode.template.jsonc'))) {
+    throw new Error('Stale opencode.template.jsonc survived reinstall');
+  }
+  if (fs.existsSync(path.join(testTargetDir, 'tui.template.jsonc'))) {
+    throw new Error('Stale v1 tui.template.jsonc survived reinstall (renamed to cli.template.jsonc)');
+  }
+  if (fs.existsSync(path.join(testTargetDir, 'cli.template.jsonc'))) {
+    throw new Error('Stale cli.template.jsonc survived reinstall');
+  }
+  if (fs.existsSync(path.join(testTargetDir, 'instructions', 'ghost-v1.md'))) {
+    throw new Error('Stale historical shipped file survived reinstall');
+  }
+  const targetManagedManifestAfterReinstall = readTargetInstalledManifest(testTargetDir);
+  if (!targetManagedManifestAfterReinstall || targetManagedManifestAfterReinstall.includes('providers/llm-router.json')) {
+    throw new Error('Upgrade target manifest should exclude user-owned provider presets');
+  }
+} finally {
+  fs.rmSync(fixtureManifest, { force: true });
 }
-if (fs.existsSync(path.join(testTargetDir, 'tui.template.jsonc'))) {
-  throw new Error('Stale tui.template.jsonc survived reinstall');
-}
-const targetManagedManifestAfterReinstall = readTargetInstalledManifest(testTargetDir);
-if (!targetManagedManifestAfterReinstall || targetManagedManifestAfterReinstall.includes('providers/llm-router.json')) {
-  throw new Error('Upgrade target manifest should exclude user-owned provider presets');
-}
-console.log('✓ Stale prune removes template inputs and writes target-managed manifest');
+console.log('✓ Stale prune removes template inputs (v1 + v2 names) and writes target-managed manifest');
 
 // 5b. MCP CLI provisioning plan
 console.log('\nTest 5b: MCP CLI Provisioning Plan');

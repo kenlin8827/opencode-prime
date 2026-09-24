@@ -42,6 +42,18 @@ const settle = async (ui: { flush: () => Promise<unknown> }) => {
 }
 
 const repoDir = process.cwd()
+
+// Harness guard: a failing assert throws with renderers still mounted, and an
+// open opentui renderer keeps the Bun event loop alive — the run hangs instead
+// of exiting red. Drain to stderr and exit on any uncaught assertion error.
+process.on('uncaughtException', (error) => {
+  console.error(String((error as { message?: string })?.message ?? error))
+  process.exit(1)
+})
+process.on('unhandledRejection', (error) => {
+  console.error(String((error as { message?: string })?.message ?? error))
+  process.exit(1)
+})
 // The wizard renders write project state through context.root (wizard save/init paths);
 // point it at a throwaway dir so headless key-press simulation never mutates
 // the real repo's .ocp/ config (pre-ADR this leak hid inside ignored .opencode/).

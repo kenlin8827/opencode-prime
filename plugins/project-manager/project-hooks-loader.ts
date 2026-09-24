@@ -29,7 +29,7 @@ export interface BackendAction {
 }
 
 export interface BackendEntry {
-  /** MCP name used to read `mcp.<name>.enabled` from opencode.jsonc. */
+  /** MCP name used to read `mcp.servers.<name>.disabled` from opencode.jsonc. */
   mcp: string
   /** CLI name used for PATH probes. */
   cli: string

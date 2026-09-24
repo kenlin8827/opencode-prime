@@ -18,24 +18,33 @@
  *
  * Run: bun run tests/test-updater-unit.ts
  *
- * Follow-up (opencode v1 pin + fresh-install lock): also pins
- * `selectLatestV1Tag` (newest v1 from a newest-first listing),
- * `majorOfOpencodeOutput` (--version parse) and `isBlockedFreshInstall`
+ * Follow-up (runtime pin + fresh-install lock): also pins
+ * `selectLatestTagForMajor` (newest tag of a major from a newest-first
+ * listing), `majorOfOpencodeOutput` (--version parse),
+ * `requiredRuntimeMajor`/`checkRuntimeCompat` (the both-direction runtime
+ * gate — v1 runtime + v2 OCP package and vice versa are refused, unprovable
+ * dev/"local" versions are fail-open) and `isBlockedFreshInstall`
  * (cross-major `ocp install` refusal in both directions — installed v2 +
  * repo v1 rolls back nothing).
  */
 
-import { isCrossMajorVersion, majorOf, selectLatestV1Tag } from "../install/src/manifest"
+import { isCrossMajorVersion, majorOf, selectLatestTagForMajor } from "../install/src/manifest"
 import {
   isBlockedMajorUpgrade,
   majorLockEnabled,
+  opencodeRowLocked,
   partitionUpdates,
   policyDefaultFromRegistry,
   shouldOverlayRelease,
   shouldSkipUpgradeDownload,
   type ComponentCheck,
 } from "../install/src/updater"
-import { isBlockedFreshInstall, majorOfOpencodeOutput } from "../install/src/installer"
+import {
+  checkRuntimeCompat,
+  isBlockedFreshInstall,
+  majorOfOpencodeOutput,
+  requiredRuntimeMajor,
+} from "../install/src/installer"
 import type { ToolRegistry } from "../install/src/installer"
 
 let passed = 0
@@ -189,20 +198,47 @@ const unknownLocal = comp({ key: "x", label: "x", local: null, latest: "2.0.0", 
   assert(blocked.length === 1 && pending.length === 0, "majorLocked undefined → locked (blocked)")
 }
 
-console.log("selectLatestV1Tag — newest v1 from a newest-first listing")
+console.log("selectLatestTagForMajor — newest tag of one major from a newest-first listing")
 
-assert(selectLatestV1Tag(["v2.0.0", "v1.18.32", "v1.18.31"]) === "v1.18.32", "v2 on top → first v1 wins (never latest-overall)")
-assert(selectLatestV1Tag(["v1.18.32", "v1.18.31"]) === "v1.18.32", "all-v1 listing → newest v1")
-assert(selectLatestV1Tag(["2.0.0", "1.18.32"]) === "1.18.32", "missing v prefix still parses")
-assert(selectLatestV1Tag(["v2.0.0", "v3.1.0"]) === null, "no v1 tag → null (caller falls back to the pinned v1 release)")
-assert(selectLatestV1Tag([]) === null, "empty listing → null")
+assert(selectLatestTagForMajor(["v3.0.0", "v2.0.15", "v2.0.14"], 2) === "v2.0.15", "v3 on top → first v2 wins (never latest-overall)")
+assert(selectLatestTagForMajor(["v2.0.15", "v2.0.14"], 2) === "v2.0.15", "all-v2 listing → newest v2")
+assert(selectLatestTagForMajor(["3.0.0", "2.0.15"], 2) === "2.0.15", "missing v prefix still parses")
+assert(selectLatestTagForMajor(["v2.0.0", "v1.18.32"], 1) === "v1.18.32", "major 1 still selectable (old OCP lines)")
+assert(selectLatestTagForMajor(["v2.0.0", "v1.18.32"], 3) === null, "no tag of that major → null (caller falls back to the pinned release)")
+assert(selectLatestTagForMajor([], 2) === null, "empty listing → null")
 
 console.log("majorOfOpencodeOutput — parse `opencode --version`")
 
-assert(majorOfOpencodeOutput("opencode 1.18.32") === 1, "typical --version output → 1")
+assert(majorOfOpencodeOutput("opencode 1.18.32") === 1, "typical v1 --version output → 1")
 assert(majorOfOpencodeOutput("2.0.0") === 2, "bare v2 version → 2")
+assert(Number.isNaN(majorOfOpencodeOutput("local")), "dev build (OPENCODE_VERSION=\"local\") → NaN (fail-open downstream)")
 assert(Number.isNaN(majorOfOpencodeOutput("opencode: command not found")), "garbage → NaN (fail-open downstream)")
 assert(Number.isNaN(majorOfOpencodeOutput("")), "empty output → NaN")
+
+console.log("requiredRuntimeMajor / checkRuntimeCompat — the both-direction runtime gate")
+
+assert(requiredRuntimeMajor("2.0.0") === 2, "OCP v2 requires the v2 runtime")
+assert(requiredRuntimeMajor("2.3.1") === 2, "OCP v2.x requires v2")
+assert(requiredRuntimeMajor("1.9.0") === 1, "OCP v1.x requires the v1 runtime")
+assert(requiredRuntimeMajor("0.42.0") === 1, "OCP v0.x requires the v1 runtime")
+assert(requiredRuntimeMajor("garbage") === 1, "unparseable OCP version → conservative v1")
+
+assert(checkRuntimeCompat(null, "2.0.0").ok === true, "absent/unparseable runtime → fail-open (provisioning pins the major)")
+assert(checkRuntimeCompat(2, "2.0.0").ok === true, "v2 runtime + v2 package → ok")
+const tooOld = checkRuntimeCompat(1, "2.0.0")
+assert(tooOld.ok === false && tooOld.kind === "runtime-too-old" && tooOld.message.includes("Upgrade the runtime"),
+  "v1 runtime + v2 package → refused with 'upgrade the runtime' instruction")
+const tooNew = checkRuntimeCompat(2, "0.42.0")
+assert(tooNew.ok === false && tooNew.kind === "runtime-too-new",
+  "v2 runtime + v1-era package → refused (both directions)")
+assert(checkRuntimeCompat(2, "1.18.32").ok === false, "1.x OCP line still requires v1: v2 runtime → too-new")
+
+console.log("opencodeRowLocked — v1→v2 runtime crossing is the fix, not a violation")
+
+assert(opencodeRowLocked("1.18.32", 2, true) === false, "OCP v2 line: opencode 1.18.32 → offered for upgrade (unlocked)")
+assert(opencodeRowLocked("2.0.9", 2, true) === true, "in-major rows keep the lock (3.0 would still be blocked)")
+assert(opencodeRowLocked("2.0.9", 1, true) === true, "OCP v1 line: no unlock — v2 runtime is the too-new direction")
+assert(opencodeRowLocked("1.0.0", 2, false) === false, "already-unlocked row stays unlocked")
 
 console.log("isBlockedFreshInstall — fresh-install lock (both directions)")
 

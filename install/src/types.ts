@@ -97,13 +97,21 @@ export interface ManifestData {
 
 export interface PreserveBag {
   profiles: Record<string, string>;
+  /** Custom (non-factory) agents, normalized to V2 native shape. */
   userAgents: Record<string, any>;
+  /** V2-native `providers` map the user wrote into opencode.jsonc. */
   userModels: Record<string, any>;
+  /** V1-legacy `provider` map captured verbatim (written back under `provider`
+   * so the v2 runtime normalizer migrates it losslessly). */
+  userProvidersLegacy?: Record<string, any>;
   userEnv: Record<string, string>;
   userTiers: Record<string, string>;
   /** Root-level `model` the user picked (e.g. via /profile apply). */
   userModel?: string;
-  /** Root-level `small_model` the user picked (tracks tier.flash). */
+  /**
+   * Flash-tier model: read from root `small_model` (v1) or `agents.title.model`
+   * (v2-native home per core/config/normalize.ts); restored to the latter.
+   */
   userSmallModel?: string;
   /** Per-agent model overrides the user set on factory agents. */
   userAgentModels?: Record<string, string>;

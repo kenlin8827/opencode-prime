@@ -25,7 +25,7 @@ import {
   type SddPhase,
 } from "../plugins/sdd/sdd-engine"
 import { makeSddCommandHook } from "../plugins/sdd/sdd-command"
-import { SddPlugin } from "../plugins/sdd/sdd"
+import SddPlugin, { parseSddCommand } from "../plugins/sdd/sdd"
 
 let passed = 0
 let failed = 0
@@ -154,22 +154,33 @@ assert(implLauncher.includes("agent: code"), "/impl routes to @code")
 // -------------------------------------------------------------
 // 06: Plugin shape — engine-only (no config / system hooks)
 // -------------------------------------------------------------
-header("06: Plugin shape — engine-only")
+header("06: Plugin shape — engine-only (v2)")
 
-const mockPluginInput: any = {
-  client: {
-    session: {
-      prompt: async (opts: any) => {
-        // mock session prompt
-      },
-    },
-  },
+assert(SddPlugin.id === "sdd", "stable plugin id kept from v1 name")
+assert(typeof SddPlugin.setup === "function", "setup() present (Plugin.define shape)")
+
+{
+  const hooks = new Map<string, (e: any) => Promise<void>>()
+  const transforms: string[] = []
+  const ctx: any = {
+    session: { hook: async (name: string, cb: (e: any) => Promise<void>) => { hooks.set(name, cb); return { dispose: async () => {} } } },
+    command: { transform: async () => { transforms.push("command"); return { dispose: async () => {} } } },
+    tool: { transform: async () => { transforms.push("tool"); return { dispose: async () => {} } } },
+  }
+  await SddPlugin.setup(ctx)
+  assert(hooks.has("prompt"), 'registers the "prompt" hook (v2 replacement for command.execute.before)')
+  assert(!hooks.has("context"), "no context (system.transform) hook — protocol lives at L2")
+  assert(transforms.length === 0, "no command/tool transform — commands come from commands/*.md")
 }
 
-const plugin: any = await SddPlugin(mockPluginInput)
-assert(typeof plugin["command.execute.before"] === "function", "command.execute.before hook present")
-assert(plugin.config === undefined, "no config hook — commands come from commands/*.md")
-assert(plugin["experimental.chat.system.transform"] === undefined, "no system injection — protocol lives at L2")
+// parseSddCommand: matches the template-defined commands, ignores others
+assert(parseSddCommand("/sdd status")?.command === "sdd", "parseSddCommand recognizes /sdd")
+assert(parseSddCommand("/sdd status")?.arguments === "status", "parseSddCommand extracts arguments")
+assert(parseSddCommand("/prd build a cart")?.command === "prd", "parseSddCommand recognizes /prd")
+assert(parseSddCommand("/plan x")?.command === "plan", "parseSddCommand recognizes /plan")
+assert(parseSddCommand("/impl y")?.command === "impl", "parseSddCommand recognizes /impl")
+assert(parseSddCommand("/usage") === null, "parseSddCommand ignores non-sdd commands")
+assert(parseSddCommand("hello") === null, "parseSddCommand ignores plain prose")
 
 // -------------------------------------------------------------
 // 07: Command hook execution
@@ -177,15 +188,14 @@ assert(plugin["experimental.chat.system.transform"] === undefined, "no system in
 header("07: Command hook execution")
 
 let promptedText = ""
-const capturingClient: any = {
-  session: {
-    prompt: async (opts: any) => {
-      promptedText = opts?.body?.parts?.[0]?.text || ""
-    },
+// V2 session view: injectReply calls session.synthetic({ sessionID, text }).
+const capturingSession: any = {
+  synthetic: async ({ text }: { sessionID: string; text: string }) => {
+    promptedText = text || ""
   },
 }
 
-const commandHook = makeSddCommandHook(capturingClient)
+const commandHook = makeSddCommandHook(capturingSession)
 
 // /sdd help
 await commandHook({ command: "sdd", arguments: "help", sessionID: "s1" })

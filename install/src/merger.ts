@@ -121,6 +121,116 @@ export function mergeUserOptions(
   return merged;
 }
 
+// ── V1 → V2 legacy-shape conversion (installer side) ─────────────────
+//
+// opencode v2 normalizes a whole-file V1 config at runtime, but it does NOT
+// recursively infer formats inside a nested entry (migrate-v1 docs: "keep each
+// of those nested entries entirely in one format"). Custom agents preserved
+// across a v1→v2 upgrade therefore get converted here once, mechanically:
+//
+//   prompt → system · disable → disabled · variant joins the model ref (#v)
+//   temperature/top_p → request.body · permission map + tools map →
+//   ordered permissions array (v1 map order preserved — both engines are
+//   last-match-wins) · bash→shell · task→subagent · write/patch→edit.
+
+const V1_ACTION_RENAMES: Record<string, string> = {
+  bash: "shell",
+  task: "subagent",
+  write: "edit",
+  patch: "edit",
+};
+
+function v2Action(action: string): string {
+  return V1_ACTION_RENAMES[action] ?? action;
+}
+
+/** Flattens a v1 `permission` map ({tool: "effect"} | {tool: {pattern: effect}})
+ *  into v2 rules, preserving key order (= v1 evaluation order). */
+function v1PermissionRules(perm: unknown): Array<Record<string, string>> {
+  if (!perm || typeof perm !== "object" || Array.isArray(perm)) return [];
+  const rules: Array<Record<string, string>> = [];
+  for (const [action, value] of Object.entries(perm as Record<string, unknown>)) {
+    if (typeof value === "string") {
+      rules.push({ action: v2Action(action), resource: "*", effect: value });
+    } else if (value && typeof value === "object") {
+      for (const [resource, effect] of Object.entries(value as Record<string, string>)) {
+        rules.push({ action: v2Action(action), resource, effect: String(effect) });
+      }
+    }
+  }
+  return rules;
+}
+
+/** Converts a v1 `tools` visibility map into appended permission rules:
+ *  wildcard-false becomes the leading {action:"*"} deny the allow-list is
+ *  ordered behind (the v1 tools map never touched external_directory, so a
+ *  whitelist agent re-allows it after the deny to keep v1 parity). */
+function v1ToolsRules(tools: unknown): Array<Record<string, string>> {
+  if (!tools || typeof tools !== "object" || Array.isArray(tools)) return [];
+  const entries = Object.entries(tools as Record<string, unknown>);
+  const rules: Array<Record<string, string>> = [];
+  if ((tools as Record<string, unknown>)["*"] === false) {
+    rules.push({ action: "*", resource: "*", effect: "deny" });
+    rules.push({ action: "external_directory", resource: "*", effect: "allow" });
+  }
+  for (const [name, enabled] of entries) {
+    if (name === "*" || typeof enabled !== "boolean") continue;
+    // todowrite has no v2 action; a dead rule would only mislead readers.
+    if (name === "todowrite") continue;
+    rules.push({ action: v2Action(name), resource: "*", effect: enabled ? "allow" : "deny" });
+  }
+  return rules;
+}
+
+/** Converts one v1-shaped agent definition to the v2 native shape. Entries
+ *  already v2-shaped pass through untouched. */
+export function normalizeLegacyAgent(def: unknown): Record<string, any> {
+  if (!def || typeof def !== "object" || Array.isArray(def)) return {};
+  const v1 = def as Record<string, any>;
+  const isLegacyShape =
+    v1.tools !== undefined ||
+    v1.permission !== undefined ||
+    v1.disable !== undefined ||
+    typeof v1.prompt === "string" ||
+    v1.variant !== undefined;
+  if (!isLegacyShape) return v1;
+
+  const out: Record<string, any> = { ...v1 };
+  delete out.tools;
+  delete out.variant;
+  if (typeof out.prompt === "string") {
+    out.system = out.system ?? out.prompt;
+    delete out.prompt;
+  }
+  if (out.disable !== undefined) {
+    out.disabled = out.disabled ?? out.disable;
+    delete out.disable;
+  }
+  if (typeof out.model === "string" && typeof v1.variant === "string" && v1.variant) {
+    out.model = `${out.model}#${v1.variant}`;
+  }
+  const body: Record<string, unknown> = {};
+  for (const key of ["temperature", "top_p"] as const) {
+    if (out[key] !== undefined) {
+      body[key] = out[key];
+      delete out[key];
+    }
+  }
+  const permissionRules = v1PermissionRules(out.permission);
+  delete out.permission;
+  const toolRules = v1ToolsRules(v1.tools);
+  if (Object.keys(body).length > 0) {
+    out.request = { ...(out.request ?? {}), body: { ...((out.request as any)?.body ?? {}), ...body } };
+  }
+  const rules = [
+    ...permissionRules,
+    ...toolRules,
+    ...(Array.isArray(v1.permissions) ? v1.permissions : []),
+  ];
+  if (rules.length > 0) out.permissions = rules;
+  return out;
+}
+
 /**
  * Formats opencode.jsonc nicely with models serialized on single lines.
  */
@@ -129,9 +239,11 @@ export function writeConfigJson(
   obj: Record<string, any>,
 ): void {
   const clone = JSON.parse(JSON.stringify(obj));
-  if (clone.provider && typeof clone.provider === "object") {
-    for (const pName of Object.keys(clone.provider)) {
-      const p = clone.provider[pName];
+  // V2-native `providers` (v1 `provider` blocks are preserved under their
+  // legacy key by extractPreserveBag and normalized by the runtime).
+  if (clone.providers && typeof clone.providers === "object") {
+    for (const pName of Object.keys(clone.providers)) {
+      const p = clone.providers[pName];
       if (p && p.models && typeof p.models === "object") {
         for (const mName of Object.keys(p.models)) {
           // Placeholder tag to preserve inline formatting
@@ -241,15 +353,29 @@ export function extractPreserveBag(targetDir: string): PreserveBag {
   const existingConfig = readJsoncFile<Record<string, any>>(configPath);
   if (!existingConfig) return bag;
 
-  if (existingConfig.agent && typeof existingConfig.agent === "object") {
-    // Captured verbatim; mergeConfig filters out factory agents so template
-    // upgrades propagate — only agents absent from the template stick.
-    bag.userAgents = existingConfig.agent;
+  // Agents: V2-native `agents` wins; a V1-only target still carries the legacy
+  // `agent` map, captured per-entry through normalizeLegacyAgent so preserved
+  // customs land in native shape (v2 does not convert nested entries inside
+  // the native `agents` block itself).
+  const agentsSource =
+    existingConfig.agents && typeof existingConfig.agents === "object" && !Array.isArray(existingConfig.agents)
+      ? existingConfig.agents
+      : existingConfig.agent && typeof existingConfig.agent === "object"
+        ? existingConfig.agent
+        : null;
+  if (agentsSource) {
+    // Captured (legacy ones converted); mergeConfig filters out factory agents
+    // so template upgrades propagate — only agents absent from the template stick.
+    const captured: Record<string, any> = {};
+    for (const [name, def] of Object.entries(agentsSource)) {
+      captured[name] = existingConfig.agents ? def : normalizeLegacyAgent(def);
+    }
+    bag.userAgents = captured;
     // Snapshot per-agent model overrides the user set (e.g. via /profile apply)
-    // so they survive reinstall even on factory agents (whose prompt/tools
+    // so they survive reinstall even on factory agents (whose system/policy
     // follow the template but whose model picks are user-owned).
     const agentModels: Record<string, string> = {};
-    for (const [name, def] of Object.entries(existingConfig.agent)) {
+    for (const [name, def] of Object.entries(captured)) {
       const agent = def as Record<string, unknown>;
       if (agent && typeof agent.model === "string") {
         agentModels[name] = agent.model;
@@ -257,19 +383,36 @@ export function extractPreserveBag(targetDir: string): PreserveBag {
     }
     if (Object.keys(agentModels).length > 0) bag.userAgentModels = agentModels;
   }
-  if (existingConfig.provider && typeof existingConfig.provider === "object") {
-    bag.userModels = existingConfig.provider;
+  // Providers: native `providers` is preserved under `providers`; a residual
+  // v1 `provider` block is preserved verbatim under its legacy key — the v2
+  // runtime's own normalizer migrates it losslessly (npm→package, options→
+  // settings, model metadata), whereas forcing v1 entries through the native
+  // decode would silently drop fields the schema does not know.
+  if (existingConfig.providers && typeof existingConfig.providers === "object" && !Array.isArray(existingConfig.providers)) {
+    bag.userModels = existingConfig.providers;
+  }
+  if (existingConfig.provider && typeof existingConfig.provider === "object" && !Array.isArray(existingConfig.provider)) {
+    bag.userProvidersLegacy = existingConfig.provider;
   }
   if (existingConfig.env && typeof existingConfig.env === "object") {
     bag.userEnv = existingConfig.env;
   }
-  // Root-level model picks: /profile apply writes `model` (tier.standard)
-  // and `small_model` (tier.flash) here — preserve them across reinstalls.
+  // Root-level model picks: /profile apply writes `model` (tier.standard);
+  // the flash tier lives in `agents.title.model` (v2) or root `small_model`
+  // (v1 install being upgraded) — preserve across reinstalls.
   if (typeof existingConfig.model === "string") {
     bag.userModel = existingConfig.model;
   }
   if (typeof existingConfig.small_model === "string") {
     bag.userSmallModel = existingConfig.small_model;
+  }
+  const titleAgent = existingConfig.agents?.title;
+  if (
+    !existingConfig.small_model &&
+    titleAgent &&
+    typeof titleAgent.model === "string"
+  ) {
+    bag.userSmallModel = titleAgent.model;
   }
 
   return bag;
@@ -345,21 +488,30 @@ export function mergeTiersJson(
 }
 
 /**
- * Merges the repo's tui.template.jsonc with the user's existing tui.jsonc
- * (if any) and writes the result to the target tui.jsonc.
+ * V2 terminal-client merge: repo's cli.template.jsonc with the target's
+ * global cli.json, written back to <target>/cli.json. V2 replaced the layered
+ * v1 tui.json(c) with ONE global cli file (~/.config/opencode/cli.json) —
+ * read by the TUI only, never the server (v2src packages/cli/src/config/
+ * config.ts).
  *
  * Merge rules:
- *   - `plugin[]` is the union of template + existing, deduped by string path,
- *     template-first so OCP plugins keep their canonical order.
- *   - Scalar fields (display_thinking, theme, keybinds, ...) win for the
+ *   - `plugins[]` is the union of template + existing, deduped by package
+ *     key (string entry = itself; object entry = .package), template-first
+ *     so OCP plugins keep their canonical order.
+ *   - Scalar/object fields (theme, keybinds, session, ...) win for the
  *     existing target where present, and fall back to template defaults.
  *   - `$schema` always comes from the template (it's a pointer, not user state).
+ *   - Upgrade from v1: when no cli.json exists but a legacy tui.jsonc does,
+ *     its plugin list is migrated (string kept; v1 tuple [path, options] →
+ *     {package, options}) and `display_thinking` becomes `session.thinking`
+ *     — same mapping opencode's own ConfigMigration performs, applied here
+ *     so the OCP-managed plugin union survives the jump.
  *
  * First install (no existing target): writes the template directly.
  */
 export function mergeTuiConfig(repoDir: string, targetDir: string): void {
-  const templatePath = path.join(repoDir, "tui.template.jsonc");
-  const targetPath = path.join(targetDir, "tui.jsonc");
+  const templatePath = path.join(repoDir, "cli.template.jsonc");
+  const targetPath = path.join(targetDir, "cli.json");
 
   const template = readJsoncFile<Record<string, any>>(templatePath);
   if (!template || Object.keys(template).length === 0) {
@@ -367,23 +519,52 @@ export function mergeTuiConfig(repoDir: string, targetDir: string): void {
     return;
   }
 
-  const existing = fs.existsSync(targetPath)
+  let existing: Record<string, any> = fs.existsSync(targetPath)
     ? readJsoncFile<Record<string, any>>(targetPath) || {}
     : {};
 
+  if (Object.keys(existing).length === 0) {
+    const legacyTui =
+      readJsoncFile<Record<string, any>>(path.join(targetDir, "tui.jsonc")) ??
+      readJsoncFile<Record<string, any>>(path.join(targetDir, "tui.json"));
+    if (legacyTui) {
+      existing = { ...legacyTui };
+      delete existing.$schema;
+      delete (existing as any).theme; // v1 scalar → v2 theme.name below
+      const plugins = (Array.isArray(legacyTui.plugin) ? legacyTui.plugin : [])
+        .map((p: unknown) =>
+          Array.isArray(p) && typeof p[0] === "string" ? { package: p[0], options: p[1] } : p,
+        );
+      if (plugins.length) existing.plugins = plugins;
+      delete existing.plugin;
+      if (typeof legacyTui.display_thinking === "boolean") {
+        existing.session = {
+          ...(existing.session ?? {}),
+          thinking: legacyTui.display_thinking ? "show" : "hide",
+        };
+        delete existing.display_thinking;
+      }
+      if (typeof legacyTui.theme === "string") {
+        existing.theme = { ...(existing.theme ?? {}), name: legacyTui.theme };
+      }
+    }
+  }
+
   // Plugin union: template-first, then any user-added plugins not already
-  // present. Filter to strings only so a malformed existing file can't
-  // crash the merge with a non-array.
-  const templatePlugins = Array.isArray(template.plugin)
-    ? template.plugin.filter((p) => typeof p === "string")
-    : [];
-  const existingPlugins = Array.isArray(existing.plugin)
-    ? existing.plugin.filter((p) => typeof p === "string")
-    : [];
-  const seen = new Set(templatePlugins);
+  // present (matched by package key). Malformed entries are dropped rather
+  // than crashing the merge.
+  const pluginKey = (p: unknown): string | null =>
+    typeof p === "string" ? p : p && typeof p === "object" && typeof (p as any).package === "string" ? (p as any).package : null;
+  const templatePlugins = (Array.isArray(template.plugins) ? template.plugins : []).filter(
+    (p: unknown) => pluginKey(p) !== null,
+  );
+  const existingPlugins = (Array.isArray(existing.plugins) ? existing.plugins : []).filter(
+    (p: unknown) => pluginKey(p) !== null,
+  );
+  const seen = new Set(templatePlugins.map(pluginKey));
   const mergedPlugins = [
     ...templatePlugins,
-    ...existingPlugins.filter((p) => !seen.has(p)),
+    ...existingPlugins.filter((p: unknown) => !seen.has(pluginKey(p))),
   ];
 
   // Scalar fields: existing wins, template fills gaps. `$schema` is
@@ -391,7 +572,7 @@ export function mergeTuiConfig(repoDir: string, targetDir: string): void {
   const merged: Record<string, any> = {
     ...template,
     ...existing,
-    plugin: mergedPlugins,
+    plugins: mergedPlugins,
   };
   delete merged.$schema;
   merged.$schema = template.$schema;
@@ -457,46 +638,60 @@ export function mergeConfig(
   // 3. Merge preserved user custom providers/models. Shipped providers live in
   // `providers/*.json` as standalone preset files opencode loads natively; the
   // template does not inline a provider block anymore. Anything the user
-  // wrote into `opencode.jsonc.provider` is preserved verbatim — additions,
-  // edits, and deletions all stick.
+  // wrote into `opencode.jsonc.providers` (v2) or `opencode.jsonc.provider`
+  // (v1 legacy) is preserved under the key it came from — additions, edits,
+  // and deletions all stick, and the v2 runtime normalizes the legacy block.
   if (bag?.userModels && Object.keys(bag.userModels).length > 0) {
-    config.provider = { ...(config.provider || {}), ...bag.userModels };
+    config.providers = { ...(config.providers || {}), ...bag.userModels };
+  }
+  if (bag?.userProvidersLegacy && Object.keys(bag.userProvidersLegacy).length > 0) {
+    config.provider = { ...(config.provider || {}), ...bag.userProvidersLegacy };
   }
 
   // 3b. Restore root-level model picks (/profile apply writes these).
-  // `model` tracks tier.standard; `small_model` tracks tier.flash.
-  // Without this, reinstall resets both to the template defaults and the
-  // user's provider/model selections are lost.
+  // `model` tracks tier.standard; the flash tier lives in
+  // `agents.title.model` — the v2-native replacement for v1's root
+  // `small_model` (core/config/normalize.ts migrates the latter into the
+  // former). Without this, reinstall resets both to the template defaults and
+  // the user's provider/model selections are lost.
   if (bag?.userModel) {
     config.model = bag.userModel;
   }
   if (bag?.userSmallModel) {
-    config.small_model = bag.userSmallModel;
+    config.agents = config.agents && typeof config.agents === "object" ? config.agents : {};
+    const title =
+      config.agents.title && typeof config.agents.title === "object" ? config.agents.title : {};
+    // The captured pick is user state — it wins over any template default
+    // (v1 parity: `small_model` restore overwrote the template value).
+    config.agents.title = { ...title, model: bag.userSmallModel };
   }
 
   // 4. Merge preserved user custom agents. Factory agents (present in the
-  // template) always follow the template so prompt/tools/description upgrades
-  // reach existing installs (their `model` picks are user-owned and restored
-  // separately in step 4b); only agents absent from the template are treated
-  // as user-defined and preserved verbatim — except retired factory agents
-  // (removed_agents), which are dropped so deletions propagate on upgrade.
+  // template) always follow the template so system/description/permission
+  // upgrades reach existing installs (their `model` picks are user-owned and
+  // restored separately in step 4b); only agents absent from the template are
+  // treated as user-defined and preserved verbatim — except retired factory
+  // agents (removed_agents), which are dropped so deletions propagate on
+  // upgrade.
   if (bag?.userAgents && Object.keys(bag.userAgents).length > 0) {
     const templateAgents =
-      config.agent && typeof config.agent === "object" ? config.agent : {};
+      config.agents && typeof config.agents === "object" ? config.agents : {};
     const customAgents: Record<string, any> = {};
     for (const [agentName, agentDef] of Object.entries(bag.userAgents)) {
       if (removedAgents.includes(agentName)) continue;
+      if (agentName === "title") continue; // flash-tier home, handled in 3b
       if (!(agentName in templateAgents)) customAgents[agentName] = agentDef;
     }
-    if (Object.keys(customAgents).length > 0) {
-      config.agent = { ...templateAgents, ...customAgents };
+    const mergedAgents = { ...templateAgents, ...customAgents };
+    if (Object.keys(mergedAgents).length > 0) {
+      config.agents = mergedAgents;
     }
   }
 
   // 4b. Restore per-agent model picks (/profile apply writes one ref per tier
   // into every agent block). Factory agents follow the template for
-  // prompt/tools/permission, but model refs are user state and must survive
-  // reinstall. Applied AFTER step 4 so the template's agent block is in place.
+  // system/permissions, but model refs are user state and must survive
+  // reinstall. Applied AFTER step 4 so the template's agents block is in place.
   if (bag?.userAgentModels && Object.keys(bag.userAgentModels).length > 0) {
     // Rename migration: factory agent `explorer` was renamed to `explore`
     // (capturing the subagent name models are trained on). Move the user's
@@ -506,13 +701,13 @@ export function mergeConfig(
       bag.userAgentModels["explore"] = bag.userAgentModels["explorer"];
       delete bag.userAgentModels["explorer"];
     }
-    if (config.agent && typeof config.agent === "object") {
+    if (config.agents && typeof config.agents === "object") {
       for (const [agentName, modelRef] of Object.entries(bag.userAgentModels)) {
         if (
-          config.agent[agentName] &&
-          typeof config.agent[agentName] === "object"
+          config.agents[agentName] &&
+          typeof config.agents[agentName] === "object"
         ) {
-          config.agent[agentName].model = modelRef;
+          config.agents[agentName].model = modelRef;
         }
       }
 
@@ -534,7 +729,7 @@ export function mergeConfig(
         if (!known) tierRefs[tier] = { ref: modelRef, conflict: false };
         else if (known.ref !== modelRef) known.conflict = true;
       }
-      for (const [agentName, agentDef] of Object.entries(config.agent)) {
+      for (const [agentName, agentDef] of Object.entries(config.agents)) {
         if (bag.userAgentModels[agentName]) continue; // restored above
         const def = agentDef as Record<string, any> | null | undefined;
         if (!def || typeof def !== "object") continue;
@@ -548,7 +743,7 @@ export function mergeConfig(
 
   // 5. Apply default_agent from options
   if (options.default_agent) {
-    if (config.agent && options.default_agent in config.agent) {
+    if (config.agents && options.default_agent in config.agents) {
       config.default_agent = options.default_agent;
     } else {
       console.warn(
@@ -557,16 +752,19 @@ export function mergeConfig(
     }
   }
 
-  // 6. Apply MCP servers toggle
+  // 6. Apply MCP servers toggle — V2 shape: servers live under `mcp.servers`
+  // and `enabled` becomes the inverse `disabled` (schema/config/mcp.ts).
   if (options.mcp && config.mcp && typeof config.mcp === "object") {
     for (const [mcpName, enabled] of Object.entries(options.mcp)) {
-      if (mcpName in config.mcp && typeof config.mcp[mcpName] === "object") {
-        config.mcp[mcpName].enabled = Boolean(enabled);
+      const server = config.mcp.servers?.[mcpName];
+      if (server && typeof server === "object") {
+        server.disabled = !enabled;
       }
     }
   }
 
-  // 7. Apply npm plugins list
+  // 7. Apply plugin package list (V2 `plugins`; entries are plain package
+  // strings — options.jsonc carries name→bool switches, no per-plugin options)
   if (options.plugin && typeof options.plugin === "object") {
     const activePlugins: string[] = [];
     for (const [pluginName, enabled] of Object.entries(options.plugin)) {
@@ -574,15 +772,14 @@ export function mergeConfig(
         activePlugins.push(pluginName);
       }
     }
-    config.plugin = activePlugins;
+    config.plugins = activePlugins;
   }
 
-  // 8. Apply RTK option
+  // 8. Apply RTK option — remove the bundled rtk-write plugin dir when the
+  // user opted out (the v1 root barrel plugins/rtk-write.ts no longer ships;
+  // stale copies of it in a target are handled by the manifest stale-prune).
   if (options.tools?.rtk === false) {
-    // If RTK is disabled, remove rtk-write bundled plugin references if any
-    const rtkPluginPath = path.join(targetDir, "plugins", "rtk-write.ts");
     const rtkPluginDir = path.join(targetDir, "plugins", "rtk-write");
-    if (fs.existsSync(rtkPluginPath)) fs.rmSync(rtkPluginPath, { force: true });
     if (fs.existsSync(rtkPluginDir))
       fs.rmSync(rtkPluginDir, { recursive: true, force: true });
   }

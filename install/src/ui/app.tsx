@@ -1,8 +1,8 @@
 import { createEffect, createMemo, createSignal, For, on, Show } from 'solid-js'
 import type { JSX } from '@opentui/solid'
 import { useKeyboard, useRenderer } from '@opentui/solid'
-import type { TuiPluginModule } from '@opencode-ai/plugin/tui'
-import { createOpencodeClient } from '@opencode-ai/sdk/v2'
+import type { Context } from '@opencode/plugin/tui'
+import { createUsageClient, createWizardContext } from './wizard-context'
 import type { OcpRoute } from './router'
 import { Modal } from './components/modal'
 import { categoryRows, skipHeaderRow, SelectList, SELECT_PANEL_PAD, type SelectRow } from './components/select-list'
@@ -24,17 +24,6 @@ import { formatI18n, getAvailableLocales, getPreferredLocaleCode, loadLocale, se
 import { getDefaultBinDir, isShimRegistered, runGlobalRegistration, unregisterShim } from '../shim'
 
 export interface OcpUiContext { repoDir: string; root?: string; sessionId?: string; usageScope?: 'all' | 'current' }
-
-/** `createOpencodeClient()` does not inherit the SDK singleton's default URL;
- * standalone OCP must provide the local OpenCode server origin explicitly.
- * The v2 client matches the plugin's TuiPluginApi client (flat parameters:
- * session.get({ sessionID }) etc.) and scopes requests via `directory`. */
-export function createUsageClient(directory?: string) {
-  return createOpencodeClient({
-    baseUrl: process.env.OPENCODE_SERVER_URL || 'http://localhost:4096',
-    ...(directory ? { directory } : {}),
-  })
-}
 
 const DAY_MS = 86_400_000
 
@@ -90,129 +79,19 @@ function dateBucket(updated: number | undefined): string {
   return tr('usage.picker.earlier')
 }
 
-// ─── TuiPluginApi compatibility host ─────────────────────────────────
+// ─── V2 TUI-plugin context host ──────────────────────────────────────
 // The standalone OpenTUI app loads the SAME wizard plugins that opencode's
-// /provider and /profile slash commands run. This adapter implements only
-// the generic host surface those plugins consume — dialog stack, dialog
-// components, toast, keymap command registration, kv and a minimal client
-// facade. Every wizard menu, flow and validation stays in plugins/tui/*.
+// /provider and /profile slash commands run. The V2 wizards export
+// `Plugin.define({ id, setup })` and receive a full `Context`
+// (@opencode/plugin/tui); the compatible context — promise dialogs, keymap
+// layers, the data cache and the OpenCode client — is built in
+// ./wizard-context. Every wizard menu, flow and validation stays in
+// plugins/tui/*.
 
-/** Structural mirrors of TuiDialogSelectProps & friends (values are strings here). */
-interface CompatSelectProps {
-  title: string; placeholder?: string; current?: unknown; renderFilter?: boolean; skipFilter?: boolean; itemSpacing?: number;
-  options: Array<{ title: string; value: unknown; description?: string; category?: string }>;
-  onSelect?: (option: { title: string; value: unknown; description?: string; category?: string }) => void
-}
-interface CompatPromptProps {
-  title: string; placeholder?: string; value?: string; busy?: boolean; busyText?: string;
-  onConfirm?: (value: string) => void; onCancel?: () => void
-}
-interface CompatConfirmProps { title: string; message: string; onConfirm?: () => void; onCancel?: () => void }
-interface CompatAlertProps { title: string; message: string; busy?: boolean; busyText?: string; onConfirm?: () => void }
-interface CompatCommand { name: string; run(context?: unknown): void | Promise<void> }
-
-function createWizardApi(host: ReturnType<typeof createTuiHost>, context: OcpUiContext, renderer?: unknown) {
-  let sessionId = context.sessionId
-  const keyListeners = new Set<(event: unknown) => void>()
-  const dialogStack = {
-    replace(render: () => Dialog, onClose?: () => void) { host.replace(render(), onClose) },
-    clear() { host.clear() },
-    setSize(tier: 'medium' | 'large' | 'xlarge') { host.setSize(tier) },
-  }
-  return {
-    ui: {
-      dialog: dialogStack,
-      DialogSelect(props: CompatSelectProps): Dialog {
-        const mapped: DialogOption[] = props.options.map((option) => ({
-          title: option.title,
-          value: String(option.value),
-          ...(option.description !== undefined ? { description: option.description } : {}),
-          ...(option.category !== undefined ? { category: option.category } : {}),
-        }))
-        return {
-          kind: 'select', title: props.title, placeholder: props.placeholder, options: mapped,
-          current: props.current !== undefined ? String(props.current) : undefined,
-          ...(props.renderFilter !== undefined ? { renderFilter: props.renderFilter } : {}),
-          ...(props.skipFilter !== undefined ? { renderFilter: !props.skipFilter } : {}),
-          ...(props.itemSpacing !== undefined ? { itemSpacing: props.itemSpacing } : {}),
-          onSelect: (picked) => {
-            const source = props.options[mapped.indexOf(picked)]
-            if (source) props.onSelect?.(source)
-          },
-        }
-      },
-      DialogPrompt(props: CompatPromptProps): Dialog {
-        return {
-          kind: 'prompt', title: props.title, placeholder: props.placeholder, value: props.value ?? '',
-          busy: props.busy, busyText: props.busyText,
-          onConfirm: (value) => props.onConfirm?.(value),
-          onCancel: props.onCancel ? () => props.onCancel?.() : undefined,
-        }
-      },
-      DialogConfirm(props: CompatConfirmProps): Dialog {
-        return { kind: 'confirm', title: props.title, message: props.message, onConfirm: () => props.onConfirm?.(), onCancel: props.onCancel }
-      },
-      DialogAlert(props: CompatAlertProps): Dialog {
-        return {
-          kind: 'alert',
-          title: props.title,
-          message: props.message,
-          ...(props.busy !== undefined ? { busy: props.busy } : {}),
-          ...(props.busyText !== undefined ? { busyText: props.busyText } : {}),
-          onClose: props.onConfirm,
-        }
-      },
-      toast(props: { title?: string; message: string }) { host.notify(props.message, props.title) },
-    },
-    keymap: {
-      registerLayer(layer: { commands?: CompatCommand[] }) {
-        for (const command of layer.commands ?? []) {
-          host.register(command.name, (input) => { void command.run({ input }) })
-        }
-      },
-      dispatchCommand(name: string) { return host.dispatch(name) },
-    },
-    route: { get current() { return { name: 'session', params: { sessionID: sessionId } } } },
-    // Project wizard uses the native TUI's resolved workspace directory,
-    // rather than process.cwd(), to avoid scaffolding the OCP install itself.
-    state: { path: { directory: context.root ?? process.cwd() } },
-    renderer: {
-      // Real terminal height: the usage plugin derives its scrollable
-      // viewport budget from it (0 disables scrolling and renders full view).
-      get height() { return Number((renderer as unknown as { height?: number } | undefined)?.height) || 0 },
-      keyInput: { on(_name: string, listener: (event: unknown) => void) { keyListeners.add(listener) }, off(_name: string, listener: (event: unknown) => void) { keyListeners.delete(listener) } },
-    },
-    kv: {
-      get<T>(key: string, fallback?: T) { return host.kvGet<T>(key) ?? fallback },
-      set() { /* wizard locales persist via ocp.json, not host kv */ },
-    },
-    // Provider/profile run without a server and fall back to file/public data.
-    // Usage talks to the local OpenCode server through the same SDK client that
-    // powers the in-app plugin, scoped to the invoking workspace.
-    client: {
-      global: { config: { async update() { return { error: new Error('standalone: no live opencode server') } } } },
-      provider: { async list() { return { error: new Error('standalone: no live opencode server') } } },
-      session: createUsageClient(context.usageScope === 'all' ? undefined : (context.root ?? process.cwd())).session,
-    },
-    setSessionId(next: string | undefined) { sessionId = next },
-    /** Fire plugin-registered keypress interceptors (usage dimension keys /
-     *  scrolling). True when one stopped propagation — the caller must then
-     *  preventDefault so the focused renderable does not also react. */
-    fireKey(event: { name?: string }): boolean {
-      let stopped = false
-      for (const listener of [...keyListeners]) listener({ name: event.name, stopPropagation: () => { stopped = true } })
-      return stopped
-    },
-  }
-}
-
-async function registerWizard(plugin: TuiPluginModule, api: ReturnType<typeof createWizardApi>): Promise<void> {
-  // The standalone host implements the wizard-used subset of TuiPluginApi;
-  // host-only fields the wizards never touch are intentionally absent.
-  await plugin.tui(api as unknown as Parameters<TuiPluginModule['tui']>[0], undefined, {
-    id: plugin.id ?? 'standalone-wizard', source: 'internal', spec: 'standalone', target: 'standalone',
-    first_time: 0, last_time: 0, time_changed: 0, load_count: 0, fingerprint: '', state: 'same',
-  })
+async function registerWizard(plugin: { id: string; setup: (context: Context) => Promise<unknown> | unknown }, context: Context): Promise<void> {
+  // V2 lifecycle: setup receives the host-built context and registers its
+  // keymap layers; the wizard's dialogs open via keymap dispatch afterwards.
+  await plugin.setup(context)
 }
 
 function Screen(props: { title: string; lines: () => string[]; onEnter?: () => void; onBack: () => void; footer: string }): JSX.Element {
@@ -254,18 +133,22 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
   }
   const repoDir = props.context.repoDir
   const host = createTuiHost()
-  const wizardApi = createWizardApi(host, props.context, renderer)
-  const providerReady = registerWizard(providerWizard, wizardApi)
-  const profileReady = registerWizard(profileWizard, wizardApi)
-  const projectReady = registerWizard(projectWizard, wizardApi)
-  const usageReady = registerWizard(usagePlugin, wizardApi)
+  const wizard = createWizardContext(host, {
+    root: props.context.root,
+    sessionId: props.context.sessionId,
+    renderer,
+  })
+  const providerReady = registerWizard(providerWizard, wizard.context)
+  const profileReady = registerWizard(profileWizard, wizard.context)
+  const projectReady = registerWizard(projectWizard, wizard.context)
+  const usageReady = registerWizard(usagePlugin, wizard.context)
 
-  // Global keypress forwarding: plugin interceptors (registered through the
-  // keyInput facade above) run BEFORE the dialog layer, mirroring opencode's
-  // ordering. A stopPropagation from the plugin keeps the focused renderable
-  // (select lists) from also consuming the key.
+  // Global keypress routing: V2 keymap binds (usage dimension keys / report
+  // scrolling) are matched against the layers the wizards registered, BEFORE
+  // the dialog layer — mirroring opencode's ordering. A consumed key calls
+  // preventDefault so the focused renderable does not also react.
   useKeyboard((key) => {
-    if (wizardApi.fireKey({ name: key.name })) key.preventDefault?.()
+    if (wizard.dispatchKey(key.name ?? '')) key.preventDefault?.()
   })
 
   // Global toast surface: rendered ONCE, top-right above the active route, so
@@ -464,6 +347,12 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
       <Show when={dialog.busy}><text fg={ocpTheme.muted}>⏳</text><text> </text></Show>
       <text selectable fg={ocpTheme.text}>{dialog.message}</text>
     </Modal>
+    if (dialog.kind === 'custom') {
+      // Plugin-owned JSX frame (V2 ctx.ui.dialog.show): the plugin renders its
+      // own title/content and its keymap binds own the keys; Esc unwinds the
+      // frame through host.close() → the plugin's onClose.
+      return <Modal title="" size={host.size()} footer="Esc returns">{dialog.render()}</Modal>
+    }
     return <Modal title={dialog.title} size={host.size()} footer={dialog.busy ? (dialog.busyText ?? 'Working…') : 'Enter confirms · Esc cancels'}>
       <input focused value={dialog.value ?? ''} placeholder={dialog.placeholder ?? ''}
         backgroundColor="transparent" textColor={ocpTheme.text}
@@ -499,7 +388,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
     const [error, setError] = createSignal('')
     const [requestedSessionValid, setRequestedSessionValid] = createSignal(!routeProps.sessionId)
     const open = (sessionID: string) => {
-      wizardApi.setSessionId(sessionID)
+      wizard.setSessionId(sessionID)
       // `usage.show` has dimension-style arguments only (all/agent/model),
       // not session IDs. The selected id is exposed through `route.current`,
       // exactly like OpenCode's own /usage command. Dispatch with no argument
@@ -519,28 +408,20 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
       // toast. Check the server's canonical session endpoint first, then open
       // the reusable report only when the requested id really exists.
       void createUsageClient(props.context.usageScope === 'all' ? undefined : (props.context.root ?? process.cwd())).session.get({ sessionID: routeProps.sessionId })
-        .then((result) => {
-          if (result.error || !result.data) throw result.error ?? new Error('Session not found')
+        .then(() => {
           setRequestedSessionValid(true)
           open(routeProps.sessionId!)
         })
         .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))
     }
     else if (!sessions() && !error()) {
-      // --all: the plain /session list defaults to the SERVER's own directory
-      // (verified: no directory param → server-cwd scope), so cross-project
-      // listing needs the experimental endpoint, which is explicitly
-      // "across projects". roots=true keeps the picker to top-level sessions
-      // (the report walks each session's subtree itself).
+      // V2 client: no cross-project roots listing (v1 preview endpoint) —
+      // plain session.list, server-default scope, generous limit.
       const scopeAll = props.context.usageScope === 'all'
       const client = createUsageClient(scopeAll ? undefined : (props.context.root ?? process.cwd()))
-      const list = scopeAll
-        ? client.experimental.session.list({ roots: true, limit: 200 })
-        : client.session.list({ roots: true })
-      void list
+      void client.session.list({ limit: { limit: 200 } })
         .then((result) => {
-          if (result.error) throw result.error
-          setSessions((result.data ?? []).sort((a, b) => (b.time?.updated ?? 0) - (a.time?.updated ?? 0)))
+          setSessions([...result.data].sort((a, b) => (b.time?.updated ?? 0) - (a.time?.updated ?? 0)))
         })
         .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))
     }

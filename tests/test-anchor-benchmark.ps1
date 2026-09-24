@@ -25,6 +25,26 @@ param(
     [switch]$Quick
 )
 
+# ─── v2 runtime gate ───────────────────────────────────────────────────────
+# Spawns the real CLI: requires OpenCode >= 2.0.0 (OCP_TEST_OPENCODE_BIN or
+# PATH). No eligible runtime → explicit [SKIP] + exit 0 (CI-friendly). Host
+# config traps cleared so the run never reads the live session config.
+foreach ($ocGateTrap in @("ORCA_OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT", "OPENCODE_PASSWORD")) { Remove-Item "Env:$ocGateTrap" -ErrorAction SilentlyContinue }
+$ocCandidates = @()
+if ($env:OCP_TEST_OPENCODE_BIN) { $ocCandidates += $env:OCP_TEST_OPENCODE_BIN }
+$ocOnPath = Get-Command opencode -ErrorAction SilentlyContinue
+if ($ocOnPath) { $ocCandidates += $ocOnPath.Source }
+$script:OC = $null
+foreach ($ocCandidate in $ocCandidates) {
+    $ocRaw = try { (& $ocCandidate --version 2>&1) -join " " } catch { "" }
+    if ($ocRaw -match '(\d+)\.') {
+        if ([int]$Matches[1] -ge 2) { $script:OC = $ocCandidate; break }
+        Write-Host "[SKIP] opencode $ocRaw at $ocCandidate is below the 2.0.0 runtime floor" -ForegroundColor Yellow
+        exit 0
+    }
+}
+if (-not $script:OC) { Write-Host "[SKIP] test-anchor-benchmark: no OpenCode >= 2.0.0 discoverable (set OCP_TEST_OPENCODE_BIN or install on PATH)" -ForegroundColor Yellow; exit 0 }
+
 # Load env vars
 $env:LLM_ROUTER_BASE_URL = [System.Environment]::GetEnvironmentVariable("LLM_ROUTER_BASE_URL", "User")
 $env:LLM_ROUTER_API_KEY = [System.Environment]::GetEnvironmentVariable("LLM_ROUTER_API_KEY", "User")
@@ -75,7 +95,7 @@ function Run-OpenCode([string]$prompt, [string]$anchorState) {
     }
 
     # Run opencode
-    $output = opencode run --agent build --model llm-router/default $prompt 2>&1
+    $output = & $script:OC run --agent build --model llm-router/default $prompt 2>&1
     return ($output -join "`n")
 }
 

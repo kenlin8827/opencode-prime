@@ -1,5 +1,5 @@
 /**
- * Hook: experimental.chat.system.transform — inject the project memory
+ * Hook: ctx.session.hook("context") — inject the project memory
  * files into the system prompt.
  *
  * Two files, one marker `[PROJECT MEMORY]`, two sections in the fragment:
@@ -28,14 +28,15 @@
  * hint, so the model can mechanically act on it.
  *
  * Opencode runtime note (verified 2026-09-11, see ADR 0002): the runtime
- * rebuilds `output.system` per chat request — same defensive-strip pattern
+ * rebuilds `e.system` per chat request — same defensive-strip pattern
  * as the other injectors. No fragment cache here: the body is file content
  * that a review edit can change mid-session, so it must stay fresh.
  */
 
-import type { PluginInput } from "@opencode-ai/plugin"
-import { scoped } from "../shared/plugin-scope"
+import { scopedForAgent, type V2Session } from "../shared/agent-scope"
+import { systemTexts } from "../shared/plugin-scope"
 import { appendBlock, escapeRegExp, stripBlockByLine } from "../shared/system-block"
+import { makeRuntimeLogger } from "../shared/notify"
 import {
   countEntries,
   fileMtimeMs,
@@ -127,37 +128,45 @@ export function buildFragment(
   return `\n\n${MARKER}\n\n${stalenessLine}` + parts.join("\n---\n\n")
 }
 
-function hasMarker(system: string[]): boolean {
+function hasMarker(system: Array<unknown>): boolean {
   const re = new RegExp(`\\n${escapeRegExp(MARKER)}`)
-  return system.some((s) => typeof s === "string" && re.test(s))
+  return systemTexts(system).some((s) => re.test(s))
 }
 
-export function makeSystemHook(client: PluginInput["client"]) {
-  const log = (level: "info" | "warn", message: string) =>
-    client.app.log({ body: { service: "project-memory", level, message } })
+/** V2 "context" hook (replaces v1 experimental.chat.system.transform).
+ *  `e.system` is a mutable SystemPart[] — appendBlock/stripBlockByLine are
+ *  parts-aware and write through part.text in place. Fail-open: a throw in
+ *  a session hook would abort the request flow. */
+export function makeSystemHook(session: V2Session | undefined) {
+  const log = makeRuntimeLogger("project-memory")
 
-  return async (input: { sessionID?: string } | undefined, output: { system: string[] }) => {
-    // Lite/utility/subagent sessions are denied via plugin-scope.json "*".
-    if (!(await scoped(input, output.system, "project-memory", client))) return
+  return async (e: { agent?: string | null; system?: Array<unknown>; sessionID?: string }): Promise<void> => {
+    try {
+      // Lite/utility/subagent sessions are denied via plugin-scope.json "*".
+      if (!(await scopedForAgent(e, "project-memory", session))) return
 
-    // Defensive strip — stale block from a previous turn / flipped switch.
-    const stripped = hasMarker(output.system) ? stripBlockByLine(output.system, MARKER) : false
+      const system = Array.isArray(e.system) ? e.system : []
+      // Defensive strip — stale block from a previous turn / flipped switch.
+      const stripped = hasMarker(system) ? stripBlockByLine(system, MARKER) : false
 
-    if (!isEnabled()) {
-      if (stripped) await log("info", "system prompt: stale project-memory block stripped (switch off)")
-      return
+      if (!isEnabled()) {
+        if (stripped) await log("info", "system prompt: stale project-memory block stripped (switch off)")
+        return
+      }
+
+      const pub = readPublic()
+      const priv = readPrivate()
+      if (pub === null && priv === null) {
+        if (stripped) await log("info", "system prompt: stale project-memory block stripped (both files missing/empty)")
+        return
+      }
+
+      const fragment = buildFragment(pub, publicPath(), priv, privatePath())
+      if (fragment === "") return
+      if (appendBlock(system, fragment))
+        await log("info", "system prompt: project memory injected")
+    } catch {
+      // Fail-open: never abort the request over an injector.
     }
-
-    const pub = readPublic()
-    const priv = readPrivate()
-    if (pub === null && priv === null) {
-      if (stripped) await log("info", "system prompt: stale project-memory block stripped (both files missing/empty)")
-      return
-    }
-
-    const fragment = buildFragment(pub, publicPath(), priv, privatePath())
-    if (fragment === "") return
-    if (appendBlock(output.system, fragment))
-      await log("info", "system prompt: project memory injected")
   }
 }

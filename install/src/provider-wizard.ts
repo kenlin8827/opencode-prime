@@ -13,7 +13,12 @@ function printProviders(): number {
   let config: ReturnType<typeof readConfig> = {}
   try { config = readConfig(CONFIG_FILE) } catch { /* An empty config has no providers. */ }
   const connected = new Set(readConnections().map((item) => item.id))
-  const entries = Object.entries(config.provider ?? {}).sort(([a], [b]) => naturalCmp(a, b))
+  // V2-native `providers` first; legacy `provider` block (v1 installs) as
+  // fallback — both maps carry the same `{ models: {...} }` shape here.
+  const providerMap = (config.providers ?? config.provider ?? {}) as NonNullable<
+    (typeof config)['provider']
+  >
+  const entries = Object.entries(providerMap).sort(([a], [b]) => naturalCmp(a, b))
   if (!entries.length) { console.log(tr('provider.cli.noProviders')); return 0 }
   console.log('ID\tModels\tConnection')
   for (const [id, provider] of entries) console.log(`${id}\t${Object.keys(provider.models ?? {}).length}\t${connected.has(id) ? 'connected' : 'disconnected'}`)

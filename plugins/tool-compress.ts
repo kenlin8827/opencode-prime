@@ -1,29 +1,38 @@
 /**
- * tool-compress — compress native tool descriptions for @lite and @build.
+ * tool-compress (v2) — compress native tool descriptions for @lite and @build.
  *
- * opencode ships Claude-Code-derived tool descriptions (~6.5k tok total;
- * bash alone ~1.8k). The bulk is description prose (usage guides, shell
- * notes, examples), NOT the parameter schema (~100 tok). Frontier models
- * are RL-trained on these schemas, so short descriptions lose almost
+ * opencode ships Claude-Code-derived tool descriptions (~6k tok total;
+ * the shell tool alone ~1.8k). The bulk is description prose (usage guides,
+ * shell notes, examples), NOT the parameter schema (~100 tok). Frontier
+ * models are RL-trained on these schemas, so short descriptions lose almost
  * nothing. Lite and build pay this token cost on every step.
  *
- * Strategy: override description only. Leave parameters and jsonSchema
- * untouched — the native Effect Schema is always correct (field names,
- * validation rules) and costs little. Overriding parameters by hand risks
- * field-name mismatches (e.g. oldText vs oldString) that break tool calls
- * at runtime — the exact bug we fixed after the first attempt.
+ * Strategy: override description only. Leave the parameter schema untouched —
+ * the native schema is always correct (field names, validation rules) and
+ * costs little. Overriding parameters by hand risks field-name mismatches
+ * (e.g. oldText vs oldString) that break tool calls at runtime — the exact
+ * bug we fixed after the first attempt.
  *
  * Shared overrides (bash, read, …) are agent-agnostic. `task` and `skill`
  * name agents/skills in their prose, so each compressed agent carries its
  * own roster text — lite's five-assist list must not leak into build.
  *
- * tool.definition input has no agent field, so gate via chat.message +
- * chat.params state (both fire per user message before the request is
- * assembled; dual signals guard against either hook dropping the agent
- * field in a future opencode version).
- * Loader contract: this module MUST export a function only
- * (getLegacyPlugins drops files with any non-function export).
+ * V2 MAPPING NOTE (v1 → v2):
+ *   v1: `tool.definition` (global, one-shot at assembly) + agent tracked
+ *   via `chat.message`/`chat.params` state because tool.definition has no
+ *   agent field. V2: `ctx.session.hook("context")` carries BOTH the agent
+ *   (`e.agent`) and the per-request assembled tool map (`e.tools`, mutable
+ *   `{ description, input }` entries) — one hook, no cross-hook state, no
+ *   dual-signal drift risk. Descriptions are compressed per request.
+ *
+ *   V2 tool ids differ from v1 names; ALIASES maps compressed keys onto the
+ *   observed v2 registry (`shell`/`execute` ← bash, `subagent` ← task) so
+ *   compression keeps hitting the real tools on either host generation.
+ *
+ * Fail-open: any error leaves `e.tools` untouched.
  */
+
+import { Plugin } from "@opencode/plugin"
 
 /** Agents that pay full stock tool schemas every step and get compression. */
 const COMPRESS_AGENTS = new Set(["lite", "build"])
@@ -39,7 +48,6 @@ const SHARED_OVERRIDES: Record<string, string> = {
   websearch: "Search the web and return results.",
   todowrite: "Create or update a structured todo list for multi-step tasks. Each item: `content`, `status` (pending/in_progress/completed/cancelled), `priority` (high/medium/low). Mark in_progress before starting, completed when done — keep the list current.",
   webfetch: "Fetch a URL and extract its main content. Default format markdown; pass `text` or `html` if needed. `timeout` defaults to 120s — set lower for slow endpoints you don't trust.",
-  question: "Ask the user a blocking question with 1–4 labeled options; the answer returns as the selected label. At most once per task — only for irreversible/destructive decisions or genuinely unresolvable ambiguity.",
 }
 
 /** Per-agent overrides for tools whose prose names that agent's roster. */
@@ -54,22 +62,50 @@ const AGENT_OVERRIDES: Record<string, Record<string, string>> = {
   },
 }
 
-const COMPRESSED_TOOLS = new Set([
-  ...Object.keys(SHARED_OVERRIDES),
-  "task",
-  "skill",
-])
+/** v1 logical key → the ids that key can surface under on either host
+ *  generation (v1 `bash`/`task` vs v2 `shell`/`execute`/`subagent`). */
+const TOOL_ID_ALIASES: Record<string, string[]> = {
+  bash: ["bash", "shell", "execute"],
+  task: ["task", "subagent"],
+}
 
-export async function ToolCompressPlugin() {
-  let currentAgent = ""
-  const track = (agent?: string) => { if (agent) currentAgent = agent }
-  return {
-    "chat.message": async (input: { agent?: string }, _output: unknown) => track(input.agent),
-    "chat.params": async (input: { agent?: string }, _output: unknown) => track(input.agent),
-    "tool.definition": async (input: { toolID: string }, output: { description: string }) => {
-      if (!COMPRESSED_TOOLS.has(input.toolID) || !COMPRESS_AGENTS.has(currentAgent)) return
-      const next = AGENT_OVERRIDES[currentAgent]?.[input.toolID] ?? SHARED_OVERRIDES[input.toolID]
-      if (next) output.description = next
-    },
+const COMPRESSED_KEYS = new Set([...Object.keys(SHARED_OVERRIDES), "task", "skill"])
+
+/** Compressed-description lookup for one v2 tool id and agent. Null when
+ *  the tool is not compressed or the agent opts out. */
+export function compressedDescription(toolID: string, agent: string): string | null {
+  if (!COMPRESS_AGENTS.has(agent)) return null
+  const key = Object.entries(TOOL_ID_ALIASES).find(([, ids]) => ids.includes(toolID))?.[0] ?? toolID
+  if (!COMPRESSED_KEYS.has(key)) return null
+  return AGENT_OVERRIDES[agent]?.[key] ?? SHARED_OVERRIDES[key] ?? null
+}
+
+/** V2 "context" hook callback: rewrite tool descriptions in place. */
+export async function toolCompressContextHook(e: {
+  agent?: string | null
+  tools?: Record<string, { description?: string } | undefined> | undefined
+}): Promise<void> {
+  try {
+    const agent = e.agent
+    if (!agent || !e.tools) return
+    for (const [id, tool] of Object.entries(e.tools)) {
+      if (!tool || typeof tool.description !== "string") continue
+      const next = compressedDescription(id, agent)
+      if (next && next !== tool.description) tool.description = next
+    }
+  } catch {
+    // Fail-open: leave stock descriptions untouched.
   }
 }
+
+export const ToolCompressPlugin = Plugin.define({
+  id: "tool-compress",
+  async setup(ctx) {
+    const context = await ctx.session.hook("context", (e) => toolCompressContextHook(e))
+    return async () => {
+      await context.dispose()
+    }
+  },
+})
+
+export default ToolCompressPlugin

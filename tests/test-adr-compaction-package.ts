@@ -8,6 +8,9 @@ import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { createHash } from "node:crypto"
 import { collectShippedFiles, generateManifest } from "../install/src/manifest"
+// The repository package.json is JSONC (inline license comments), so a strict
+// JSON.parse rejects it — parse through the installer's own JSONC reader.
+import { parseJsonc } from "../install/src/merger"
 
 const repo = resolve(import.meta.dir, "..")
 const dir = mkdtempSync(join(tmpdir(), "adr-package-smoke-"))
@@ -23,14 +26,16 @@ try {
   for (const folder of ["install", "bin", "scripts"]) cpSync(join(repo, folder), join(dir, folder), {
     recursive: true, filter: path => !/(?:^|\/)(?:node_modules|dist|\.git)(?:\/|$)/.test(path),
   })
-  const pkg = JSON.parse(readFileSync(join(repo, "package.json"), "utf8"))
+  const pkg = parseJsonc<Record<string, any>>(readFileSync(join(repo, "package.json"), "utf8"))
   // This is a fixture label, not an approved release or ADR namespace.
   const unBumpedVersion = pkg.version
   const version = `${pkg.version}-adr-validation`
   pkg.version = version
   writeFileSync(join(dir, "package.json"), JSON.stringify(pkg, null, 2))
   writeFileSync(join(dir, "install/version.json"), JSON.stringify({ ...JSON.parse(originalVersion), version }, null, 2))
-  symlinkSync(join(repo, "node_modules"), join(dir, "node_modules"), "dir")
+  // Windows file symlinks need developer mode / privileges (EPERM); a junction
+  // is an unprivileged equivalent for linking a directory.
+  symlinkSync(join(repo, "node_modules"), join(dir, "node_modules"), process.platform === "win32" ? "junction" : "dir")
   const manifest = generateManifest(dir, version)
   const entries = readFileSync(manifest.path, "utf8").split("\n")
   const required = ["plugins/adr/adr-compaction.ts", "plugins/adr/adr-compaction-runtime.ts", "plugins/adr/adr-context.ts", "plugins/adr/adr-read-guard.ts", "plugins/adr/adr-storage.ts", "plugins/adr/adr-publication.ts", "plugins/adr/adr-archive.ts", "skills/adr-compaction/SKILL.md", "skills/adr-context/SKILL.md", "plugin-scope.json"]

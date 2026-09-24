@@ -11,10 +11,11 @@ function assert(ok: boolean, message: string): void {
   if (!ok) failed++
 }
 
-// Global MCP config with every backend disabled — keeps the assertion set
-// focused on the project-state and tgrep-badge contracts instead of any
-// one MCP's rendering. Tests are deterministic on this dimension.
-const noMcp = { mcp: { codegraph: { enabled: false }, gitnexus: { enabled: false }, serena: { enabled: false } } }
+// Global MCP config with every backend disabled (v2 shape: servers live under
+// `mcp.servers`, the flag is `disabled`) — keeps the assertion set focused on
+// the project-state and tgrep-badge contracts instead of any one MCP's
+// rendering. Tests are deterministic on this dimension.
+const noMcp = { mcp: { servers: { codegraph: { disabled: true }, gitnexus: { disabled: true }, serena: { disabled: true } } } }
 
 // ─── 1. Not-init project: only the "scaffold" row renders, NOT INIT + error ───
 // Label "scaffold" mirrors resolveProjectScaffold() and the INIT/PARTIAL/
@@ -56,6 +57,22 @@ assert(badgesInit.some((b) => b.label === "git-commits"), "init: git-commits bad
 assert(badgesInit.find((b) => b.label === "codegraph") === undefined, "init: codegraph hidden when MCP disabled")
 assert(badgesInit.find((b) => b.label === "gitnexus") === undefined, "init: gitnexus hidden when MCP disabled")
 assert(badgesInit.find((b) => b.label === "serena") === undefined, "init: serena hidden when MCP disabled")
+
+// ─── 3b. v2 enablement shape renders (regression guard) ───
+// mcpEnabledIn() once read v1's `mcp.<name>.enabled === true`, which can never
+// match a v2 document — every backend then fell to "off" and OFF rows are
+// filtered as non-actionable, so the disabled-only assertions above stayed
+// green while the feature was silently dead. These positive cases fail under
+// the old field read.
+const cgEnabled = { mcp: { servers: { codegraph: { type: "local" }, gitnexus: { disabled: true }, serena: { disabled: true } } } }
+assert(buildProjectBadges(rootInit, cgEnabled).find((b) => b.label === "codegraph")?.state === "NO INDEX", "v2: server configured without `disabled` renders NO INDEX (default false = connect)")
+mkdirSync(join(rootInit, ".codegraph"))
+assert(buildProjectBadges(rootInit, cgEnabled).find((b) => b.label === "codegraph")?.state === "READY", "v2: configured + index dir renders READY")
+const v1Shaped = buildProjectBadges(rootInit, { mcp: { codegraph: { enabled: true }, serena: { enabled: true } } })
+assert(
+  v1Shaped.find((b) => b.label === "codegraph") === undefined && v1Shaped.find((b) => b.label === "serena") === undefined,
+  "v1-shaped config is not mistaken for enabled",
+)
 
 // ─── 4. Tgrep badge contract: env-aware (tools.tgrep + CLI), but the 6-state label/variant table is fixed ───
 // Tgrep readiness depends on the user's global config + CLI presence on PATH, so the

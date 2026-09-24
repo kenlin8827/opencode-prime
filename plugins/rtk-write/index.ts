@@ -3,9 +3,9 @@
  *
  * Vendored from https://github.com/martinstannard/openrtk
  * Copyright (c) 2026 Martin Stannard, MIT License.
- * Intercepts shell commands in `tool.execute.before` and rewrites them
- * through RTK for automatic output compression (60-90% token savings on
- * common dev commands).
+ * Intercepts shell commands at the tool execute.before hook and rewrites
+ * them through RTK for automatic output compression (60-90% token savings
+ * on common dev commands).
  *
  * Local deviations from upstream:
  *  - The rtk probe uses `rtk --version` instead of `which rtk` — `which`
@@ -17,14 +17,14 @@
  *                        (loop-guard.ts)
  *      2. escape hatch — `RTK_RAW=1 <cmd>` bypasses rewriting (recovery.ts)
  *      3. recovery hint— elided output gets a one-line "how to get it all"
- *                        notice appended in `tool.execute.after` (recovery.ts)
+ *                        notice appended in execute.after (recovery.ts)
  *    Tuning lives in `tools.rtkWrite` (config.ts).
  *
  * Replaces rtk's official opencode plugin (`rtk init -g --opencode`):
  * same hook, same effect, but shipped by this repo so no `rtk init`
  * step is needed and the rewrite rules are reviewable in-tree.
  */
-import type { Plugin } from "@opencode-ai/plugin";
+import type { Plugin } from "@opencode/plugin";
 import { execFile } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -88,13 +88,13 @@ function isBlocked(command: string, options: RtkWriteOptions): boolean {
  * Remembers the pre-rewrite command per tool call, so the after-hook can name
  * the original command in the recovery notice.
  *
- * Why this exists: the before-hook mutates `output.args.command`, so
- * opencode's after-hook `args` may already be the rewritten command. Building
- * the hint from that would produce `RTK_RAW=1 rtk git status` — a rerun that
- * still compresses and therefore still loops. Storing the original keyed by
- * `callID` makes the notice correct regardless of which args the runtime
- * hands the after-hook. Bounded: entries are consumed on use, and the cap
- * covers calls whose after-hook never fires (aborted tools).
+ * Why this exists: the before-hook mutates the call input, so the runtime
+ * may hand the after-hook the REWRITTEN args. Building the hint from those
+ * would produce `RTK_RAW=1 rtk git status` — a rerun that still compresses
+ * and therefore still loops. Storing the original keyed by the call ID makes
+ * the notice correct regardless of which args the runtime hands the
+ * after-hook. Bounded: entries are consumed on use, and the cap covers calls
+ * whose after-hook never fires (aborted tools).
  */
 const MAX_TRACKED_CALLS = 512;
 
@@ -167,8 +167,8 @@ export function createRtkWriteCore(
  * LOCALAPPDATA, darwin = ~/Library/Application Support (XDG ignored),
  * linux = XDG_DATA_HOME or ~/.local/share.
  *
- * Our vendored plugin already rewrites commands via tool.execute.before,
- * so rtk's shell hook is redundant (and impossible on Windows).
+ * Our vendored plugin already rewrites commands via the execute.before
+ * hook, so rtk's shell hook is redundant (and impossible on Windows).
  */
 function silenceHookWarn() {
   try {
@@ -191,66 +191,119 @@ function silenceHookWarn() {
   }
 }
 
-/** Extract the shell command from opencode's bash/shell tool args. */
-function commandArg(args: unknown): string | null {
-  if (!args || typeof args !== "object") return null;
-  const command = (args as Record<string, unknown>).command;
+/** Extract the shell command from a shell/bash tool call input. */
+function commandArg(input: unknown): string | null {
+  if (!input || typeof input !== "object") return null;
+  const command = (input as Record<string, unknown>).command;
   return typeof command === "string" && command.trim() ? command : null;
 }
 
-export const RtkWritePlugin: Plugin = async () => {
-  const options = loadRtkWriteOptions();
-  if (!options.enabled) return {};
+const isShellTool = (tool: string): boolean => {
+  // OpenCode may use "bash", "shell", or other names
+  const name = String(tool ?? "").toLowerCase();
+  return name === "bash" || name === "shell";
+};
 
-  // Probe through Node's argv-based process API, not a shell command. This
-  // works with rtk.exe on Windows and the Unix binary on macOS/Linux.
-  try {
-    await execFileAsync("rtk", ["--version"], { windowsHide: true });
-  } catch {
-    console.warn("[rtk-write] rtk binary not found in PATH — plugin disabled");
-    return {};
+/**
+ * v2 execute.after completed-result shape. The SDK types `result` as the
+ * readonly Tool.Result; the runtime hands a plain object, so reassignment
+ * of the whole `result` field (not its readonly members) is the mutation
+ * channel. `output` is the shell tool's declared machine output; `content`
+ * is what the model actually reads — both must carry the recovery notice.
+ */
+interface MutableToolResult {
+  output?: unknown;
+  content?: string | Array<{ type: string; text?: string; [key: string]: unknown }>;
+  metadata?: Record<string, unknown>;
+}
+
+const appendToResult = (result: MutableToolResult, suffix: string): MutableToolResult => {
+  const items = typeof result.content === "string"
+    ? [{ type: "text", text: result.content }]
+    : result.content
+      ? [...result.content]
+      : [];
+  const lastTextIndex = items.findLastIndex((item) => item.type === "text");
+  const lastText = lastTextIndex >= 0 ? items[lastTextIndex] : undefined;
+  if (lastText && typeof lastText.text === "string") {
+    items[lastTextIndex] = { ...lastText, text: lastText.text + suffix };
+  } else {
+    items.push({ type: "text", text: suffix.trimStart() });
   }
+  const existing = result.output;
+  return { ...result, output: typeof existing === "string" ? existing + suffix : existing, content: items };
+};
 
-  // Suppress rtk's "No hook installed" banner — our vendored plugin
-  // already handles command rewriting via tool.execute.before, so
-  // rtk's own shell hook is redundant (and impossible on Windows).
-  silenceHookWarn();
-  const core = createRtkWriteCore(options, createRewriteCache());
-  const tracker = createOriginalCommandTracker();
+const plugin: Plugin.Plugin = {
+  id: "rtk-write",
+  async setup(ctx) {
+    const options = loadRtkWriteOptions();
+    if (!options.enabled) return;
 
-  return {
-    "tool.execute.before": async (input, output) => {
-      // OpenCode may use "bash", "shell", or other names
-      const tool = String(input?.tool ?? "").toLowerCase();
-      if (tool !== "bash" && tool !== "shell") return;
+    // Probe through Node's argv-based process API, not a shell command. This
+    // works with rtk.exe on Windows and the Unix binary on macOS/Linux.
+    try {
+      await execFileAsync("rtk", ["--version"], { windowsHide: true });
+    } catch {
+      console.warn("[rtk-write] rtk binary not found in PATH — plugin disabled");
+      return;
+    }
 
-      const command = commandArg(output?.args);
+    // Suppress rtk's "No hook installed" banner — our vendored plugin
+    // already handles command rewriting via the execute.before hook, so
+    // rtk's own shell hook is redundant (and impossible on Windows).
+    silenceHookWarn();
+    const core = createRtkWriteCore(options, createRewriteCache());
+    const tracker = createOriginalCommandTracker();
+
+    await ctx.tool.hook("execute.before", async (event) => {
+      if (!isShellTool(event.tool)) return;
+      const command = commandArg(event.input);
       if (!command) return;
 
-      // Remember the original before rewriting, so the after-hook can build a
-      // correct "rerun with RTK_RAW=1 ..." hint.
-      tracker.remember(input.callID, command);
+      // Remember the original before rewriting, so the after-hook can build
+      // a correct "rerun with RTK_RAW=1 ..." hint.
+      tracker.remember(event.id, command);
 
-      // RTK owns the rewrite contract. Its exit status is not meaningful here:
-      // it returns status 3 even when it writes a valid rewrite. Therefore,
-      // non-empty stdout is the sole success condition. Empty output leaves
-      // the original command unchanged.
-      const rewritten = await core.decideRewrite(input.sessionID, command);
-      if (rewritten) (output.args as Record<string, unknown>).command = rewritten;
-    },
+      // RTK owns the rewrite contract. Its exit status is not meaningful
+      // here: it returns status 3 even when it writes a valid rewrite.
+      // Therefore, non-empty stdout is the sole success condition. Empty
+      // output leaves the original command unchanged. A rewrite defect must
+      // fail open — running the command as-typed beats aborting the call.
+      try {
+        const rewritten = await core.decideRewrite(event.sessionID, command);
+        if (rewritten) (event.input as Record<string, unknown>).command = rewritten;
+      } catch (err) {
+        console.error("[rtk-write] rewrite failed open:", err);
+      }
+    });
 
-    "tool.execute.after": async (input, output) => {
-      const tool = String(input?.tool ?? "").toLowerCase();
-      if (tool !== "bash" && tool !== "shell") return;
+    await ctx.tool.hook("execute.after", async (event) => {
+      if (!isShellTool(event.tool)) return;
+      if (event.status !== "completed") return;
 
-      // Only annotate when the before-hook tracked this call. Falling back to
-      // `input.args` is unsafe: the before-hook mutated those args, so the
-      // after-hook may receive the rewritten command, and the hint would read
-      // "RTK_RAW=1 rtk <cmd>" — a rerun that still compresses. Untracked calls
-      // (evicted, or the before-hook never saw them) get no hint at all.
-      const command = tracker.take(input.callID);
-      if (!command || typeof output?.output !== "string") return;
-      output.output = core.annotateOutput(input.sessionID, command, output.output);
-    },
-  };
+      // Only annotate when the before-hook tracked this call. Falling back
+      // to `event.input` is unsafe: the before-hook mutated those args, so
+      // they may hold the REWRITTEN command, and the hint would read
+      // "RTK_RAW=1 rtk <cmd>" — a rerun that still compresses. Untracked
+      // calls (evicted, or the before-hook never saw them) get no hint.
+      const command = tracker.take(event.id);
+      if (!command) return;
+      try {
+        const result = event.result as MutableToolResult;
+        const output = result.output;
+        if (typeof output !== "string" || output === "") return;
+        const annotated = core.annotateOutput(event.sessionID, command, output);
+        if (annotated === output) return;
+        // MutableToolResult mirrors the hook payload loosely; the appended
+        // item is always {type:"text"} so the strict Result content union
+        // holds at runtime — the cast only bridges the mirror's width.
+        event.result = appendToResult(result, annotated.slice(output.length)) as unknown as typeof event.result;
+      } catch (err) {
+        console.error("[rtk-write] annotation failed open:", err);
+      }
+    });
+  },
 };
+
+export default plugin;
