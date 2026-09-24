@@ -107,8 +107,9 @@
 
 ```
 /profile reset
-→ 确认对话框列出全部引用 → 从 `opencode.jsonc` 移除根 `model`、`small_model`
-  及所有 `agent.*.model`（保留 .bak 备份），并停用当前预设。opencode 回落到
+→ 确认对话框列出全部引用 → 从 `opencode.jsonc` 移除根 `model` 及所有
+  `agents.*.model`（含 `agents.title.model` —— flash 层在 v2 的归属；残留的
+  旧版 `small_model` / `agent.*.model` 也会一并清除；保留 .bak 备份），并停用当前预设。opencode 回落到
   原生模型选择器。预设文件与 `tiers.json` 保留 — 重置清的是“已应用状态”，
   不是“库存”。重启后生效。
 ```
@@ -258,7 +259,7 @@
 
 ## 自定义服务商（`/provider` 向导）
 
-`/provider` 斜杠命令（通过 `tui.template.jsonc` 注册的 TUI 插件）以原生弹窗端到端配置自定义服务商 — 无需参数：
+`/provider` 斜杠命令（经 `cli.template.jsonc` → 全局 `cli.json` 注册的 TUI 插件）以原生弹窗端到端配置自定义服务商 — 无需参数：
 
 ```
 /provider

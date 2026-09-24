@@ -304,10 +304,11 @@ memory_note({ lesson: "auth middleware swallows JWT errors" }, ctx: { agent: "ad
 
 ## 管理排队提示（`/queued`）
 
-会话忙碌时提交的提示，OpenCode 会立即持久化为用户消息。内置的 `queue-manager.ts` TUI 插件提供交互式管理界面：
+会话忙碌时提交的提示，OpenCode 会作为持久化收件箱条目（durable inbox item）保存。内置的 `queue-manager.ts` TUI 插件提供交互式管理界面：
 
 - `/queued` 打开选择对话框，列出全部排队消息。
-- 选中后可执行：**编辑文本**、**取消消息**、**查看全文**，或 **Cancel ALL** 批量取消。
+- 选中后可执行：**切换投递方式**（steer ↔ queue —— steer 会在下一个安全边界把该条目提前到排队工作之前）、**取消消息**、**查看全文**，或 **Cancel ALL** 批量取消。
+- v1 的"编辑文本"已移除：v2 收件箱 API 可取消、重新入队、更改投递方式，但无法重写待定条目的载荷。
 
 ---
 
@@ -367,7 +368,7 @@ memory_note({ lesson: "auth middleware swallows JWT errors" }, ctx: { agent: "ad
 
 ## 外部 NPM 插件与桥接生态
 
-除了内置的 TypeScript 源码插件外，本项目还集成了经过严格兼容性验证的外部 NPM 插件体系。这些插件通过 `install/options.jsonc` 进行声明，并在安装时由 `Ensure-Plugins` 自动预热至 `~/.cache/opencode`。
+除了内置的 TypeScript 源码插件外，本项目还集成了经过严格兼容性验证的外部 NPM 插件体系。这些插件通过 `install/options.jsonc` 的 `plugin` 块声明（控制 `opencode.jsonc` 中 `plugins` 数组的成员资格）；v2 运行时在服务启动时立即加载已缓存的包插件，并在后台安装缺失的包。
 
 | 插件名称 | 默认状态 | 说明与前置要求 |
 |---|---|---|

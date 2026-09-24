@@ -9,17 +9,18 @@
 |---|---|---|---|
 | **L0** | `opencode.jsonc:instructions` | 每个 Agent 的每一步 | 铁律：`rfc-keywords`、`output-protocol`、`verification-honesty`、`routing-index` |
 | **L1** | Agent 的 `prompt` 字段，经 `{file:}` 标记拼装 | 该 Agent 运行期间 | 角色规则：编码包、`sql-migration`、评审基准 |
-| **L2** | `skills/*/SKILL.md` 元数据 | 每步常驻，可见性由 `permission` 控制；**正文经 `commands/*.md` 发射器按需加载** | 场景规则：工作流协议（`sdd-workflow`、`dev`、`goal`、`handoff` 等） |
+| **L2** | `skills/*/SKILL.md` 元数据 | 每步常驻，可见性由 Agent 的 `permissions[]` 规则控制；**正文经 `commands/*.md` 发射器按需加载** | 场景规则：工作流协议（`sdd-workflow`、`dev`、`goal`、`handoff` 等） |
 | **L3** | 你项目的 `AGENTS.md`（OpenCode 原生） | 读取该目录文件时 | 你的个人 / 项目规则 |
 
 L0 是最贵的层（× 步数 × Agent 数），因此发布门禁用
 `scripts/measure-prompts.ts` 对其施加硬性 token 预算。
 
-**单一事实来源。** Agent *定义*（mode、model、permission、tools、prompt
-拼装）只存在于 jsonc 的 `agent` 块。`prompts/*.md` 片段是无 frontmatter
+**单一事实来源。** Agent *定义*（mode、model、permissions、tools、prompt
+拼装）只存在于 jsonc 的 `agents` 块。`prompts/*.md` 片段是无 frontmatter
 的纯正文，绝不能落在安装后配置的 `agents/` 目录下：opencode 会把
 `agents/*.md` 自动发现为 agent 定义，其 frontmatter/body 会静默覆盖 jsonc
-块（v1.18.25 已实证）。`prompts/` 不会被自动发现。
+块（v2 发现路径：`~/.config/opencode/agents/<name>.md` 与 `.opencode/agents/`，
+见 agents 指南）。`prompts/` 不会被自动发现。
 
 ## L1 路由矩阵
 
@@ -35,13 +36,15 @@ L0 是最贵的层（× 步数 × Agent 数），因此发布门禁用
 
 ## 每步可见性控制
 
-两个常驻层改用 Agent 级权限门控而非披露（opencode v1.18.25 语义）：
+两个常驻层改用 Agent 级权限门控而非披露（opencode v2 `permissions[]`
+语义——`{action, resource, effect}` 规则的有序数组，最后一条匹配生效）：
 
-- **skills 块** —— `{ "skill": { "name": "deny" } }` 从常驻 skills 块中移除单个技能；
-  `{ "*": "deny" }` 清空整个块。工作流技能仅对 `build`、`plan`、`code`
-  主代理可见；所有子代理一律拒绝 `"*"`。
-- **MCP 工具面** —— `"<server>_*": { "*": "deny" }` 同时隐藏工具与 `mcp_instructions`
-  块。代码情报服务器（`serena`、`codegraph`）只留给真正查代码的 Agent。
+- **skills 块** —— `{ "action": "skill", "resource": "<name>", "effect": "deny" }`
+  从常驻 skills 块中移除单个技能；resource `"*"` 拒绝全部技能。工作流技能仅对
+  `build`、`plan`、`code` 主代理可见；所有子代理一律拒绝 `"*"`；`lite` 主代理
+  携带 `"*"` deny 加逐技能显式 allow（handoff、memory-summarize、Git 家族）。
+- **MCP 工具面** —— `{ "action": "<server>_*", "resource": "*", "effect": "deny" }`
+  隐藏该服务器的工具。代码情报服务器（`serena`、`codegraph`）只留给真正查代码的 Agent。
 - **L0 剥离** —— `lite` 主 Agent 完全退出 L0：其内联 prompt 携带 `<!-- lite-mode -->`
   哨兵，`plugins/lite-mode.ts` 会把它连同所有 `Instructions from:` 块从系统提示中剥离。
 
@@ -52,11 +55,14 @@ L0 是最贵的层（× 步数 × Agent 数），因此发布门禁用
 ## 插件注入门控
 
 运行时的协议注入（护栏通告、作用域协议）由 `plugin-scope.json`（仓库根，
-随清单发布）策略门控，唯一消费方为 `plugins/shared/plugin-scope.ts`。每个注入器在
-触碰系统提示前都要 `await scoped(input, output.system, "<plugin-id>", client)`。
+随清单发布）策略门控，经 v2 门控层 `plugins/shared/agent-scope.ts` 由
+`plugins/shared/plugin-scope.ts` 消费。每个注入器在触碰系统提示前，都要把
+`ctx.session.hook("context")` / `ctx.tool.hook(...)` 回调置于门控之后。
 
-- **身份识别** —— 文本 `identifiers`（lite 哨兵、标题生成器前缀）加会话真值：
-  `parentID` 非空即子代理步骤（按会话缓存；仅在文本未命中时查询）。
+- **身份识别**（先命中先生效）—— v2 事件的 `agent` ID（`detectAgentByName`，
+  主通道）；其次是已装配 system 文本中的 `identifiers`（lite 哨兵、标题生成器
+  前缀——在 agent ID 不充分的上下文里仍需要）；再次是会话真值：`parentID`
+  非空即子代理步骤（按会话缓存；仅在前序通道未命中时查询）。
 - **策略** —— 逐插件 `deny`/`allow` 列表，作用域文法 `x`（身份或态）与 `x:*`
   （态 `x` 的任意身份）；未声明的插件继承 `"*"` 默认条目。出厂默认：拒绝 `lite`、
   `utility`、`subagent:*` —— 注入不进被剥离的主代理，也不进任何子代理步骤。

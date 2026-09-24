@@ -4,7 +4,8 @@
 
 **Production-ready multi-agent engineering for [OpenCode](https://opencode.ai).**
 
-[![Version](https://img.shields.io/badge/version-0.33.0-blue.svg)](https://github.com/kenlin8827/opencode-prime/releases)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/kenlin8827/opencode-prime/releases)
+[![OpenCode runtime](https://img.shields.io/badge/OpenCode%20runtime-%E2%89%A52.0.0-blue.svg)](https://opencode.ai)
 ![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-lightgrey.svg)
 
@@ -38,7 +39,9 @@ curl -fsSL https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/inst
 irm https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.ps1 | iex
 ```
 
-Re-run the installer to upgrade while retaining API keys, custom models, and tier mappings. For prerequisites, pinned versions, offline inspection, and clone-based installation, see the [installation guide](https://opencode-prime.dev/).
+Re-run the installer to upgrade while retaining API keys, custom models, and tier mappings. OCP **2.x requires the OpenCode v2 runtime** (major ≥ 2.0.0) — the installer resolves and pins the newest v2 release for you. For prerequisites, pinned versions, offline inspection, and clone-based installation, see the [installation guide](https://opencode-prime.dev/).
+
+> **Upgrading from OCP 0.x?** OCP 2.0.0 is a fresh version line adapted to the OpenCode v2 runtime (native v2 plugin API, V2-native config keys, global `cli.json` for the terminal client). Cross-major installs are locked by design: back up with `ocp init`, then run the one-liner above. See the [release notes](install/versions/2.0.0.notes.md) and the migration ADR (ADR-2.0.0) for details.
 
 ## Quick start
 

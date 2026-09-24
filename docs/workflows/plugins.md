@@ -315,10 +315,11 @@ While `docs/git-commits.md` exists:
 
 ## Managing queued prompts (`/queued`)
 
-OpenCode persists prompts submitted while busy as user messages. The bundled `queue-manager.ts` TUI plugin provides an interactive UI:
+OpenCode persists prompts submitted while busy as durable inbox items. The bundled `queue-manager.ts` TUI plugin provides an interactive UI:
 
 - `/queued` opens a picker dialog listing all queued messages.
-- Selected actions: **Edit Prompt**, **Cancel Prompt**, **View Full Text**, or **Cancel ALL**.
+- Selected actions: **Toggle delivery** (steer ↔ queue — steering promotes the item ahead of queued work at the next safe boundary), **Cancel Prompt**, **View Full Text**, or **Cancel ALL**.
+- v1's "Edit text" is gone: the v2 inbox API can cancel, re-admit, and change delivery, but cannot rewrite a pending item's payload.
 
 ---
 
@@ -377,7 +378,7 @@ Export project Markdown documents (technical designs, requirements, ADRs, meetin
 
 ## External NPM Plugins & Bridges
 
-In addition to bundled TypeScript plugins, this distribution integrates validated external NPM plugins. These plugins are managed declaratively in `install/options.jsonc` and automatically pre-warmed into `~/.cache/opencode` by `Ensure-Plugins` upon install.
+In addition to bundled TypeScript plugins, this distribution integrates validated external NPM plugins. These plugins are managed declaratively in `install/options.jsonc` (the `plugin` block controls membership in `opencode.jsonc`'s `plugins` array); the v2 runtime loads cached package plugins at server startup and installs missing ones in the background.
 
 | Plugin | Default Status | Description & Prerequisites |
 |---|---|---|

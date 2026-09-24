@@ -13,7 +13,7 @@ This is an open-source project: **every design decision must withstand public sc
 - **Refactor over patch** — when a mechanism is structurally wrong (e.g., static prompt injection where on-demand loading belongs), fix the architecture. Do NOT accumulate compensating hacks on top of a flawed foundation.
 - **Defendability gate** — refactoring cost never justifies shipping a design the maintainers themselves cannot defend in public. If it would be embarrassing to explain, redesign it before merging.
 - **Top-tier engineering floor** — code that fails top-tier engineering **quality** (correctness, performance, security, testability, type safety, error/edge-case handling) **or philosophy** (maintainability, defensibility, platform-native design, simplicity, fit with project design principles) MUST be triaged on encounter (refactor inline / file-as-issue / explicit-out-of-scope, by impact on current task) and MUST clear both (a) the explicit rule set (`cp-<slug>` baseline + per-language hard rules) and (b) the Defendability gate above. "Do less / lazy / pragmatic / good-enough" rationales are evaluated as **YAGNI**: welcome when the dropped work was genuinely unneeded, rejected when they bypass the floor under a YAGNI label. This floor does not override `cp-abstract` (≥3 use cases before abstraction) or `cp-understand` (understand before changing).
-- **Match injection mechanism to content type** — `tools: [...]` description for declarative capabilities (state, availability); `skills/<name>/SKILL.md` for on-demand workflow (L2, body loads only when relevant); `experimental.chat.system.transform` injection only for imperative policy or protocol the model must internalize. Never duplicate tool capability in fixed system-prompt text; never put a workflow guide in a fixed prompt when a skill can carry it. Decision matrix and OCP examples: `DEVELOPING.md` §"Plugin authoring — injection mechanism".
+- **Match injection mechanism to content type** — `tools: [...]` description for declarative capabilities (state, availability); `skills/<name>/SKILL.md` for on-demand workflow (L2, body loads only when relevant); `ctx.session.hook("context")` injection only for imperative policy or protocol the model must internalize. Never duplicate tool capability in fixed system-prompt text; never put a workflow guide in a fixed prompt when a skill can carry it. Decision matrix and OCP examples: `DEVELOPING.md` §"Plugin authoring — injection mechanism".
 
 ---
 
@@ -82,7 +82,7 @@ The manifest (`install/versions/<VERSION>.manifest.txt`) is auto-generated from 
 
 ### Version Bump Steps
 
-1. Bump `version` in `install/version.json` (e.g. `0.7.0`). Raise `minVersion` only when you also want to compact older manifests into `install/versions/history.manifest.txt`. Sync `package.json` `version` + `install/README.md` title.
+1. Bump `version` in `install/version.json` (e.g. `2.1.0`). Raise `minVersion` only when you also want to compact older manifests into `install/versions/history.manifest.txt`. Sync `package.json` `version` + `install/README.md` title.
 2. Run `bun run manifest:generate` to regenerate the manifest and compact manifests below `minVersion`.
 3. Pre-release gate: `pwsh scripts/pack.ps1 && pwsh scripts/verify.ps1` (or `.sh` variants).
 
@@ -93,7 +93,7 @@ The manifest (`install/versions/<VERSION>.manifest.txt`) is auto-generated from 
 After version bump, manifest regeneration, and pre-release gate pass:
 
 1. **Stay on the release line** — tag from the line that owns the version (`dev-v1` for 0.x-v1, `dev-v2.x` for the v2 line). Do **not** merge to `main` first: each line is its own release line. Merging into `main` is optional (snapshot only) and never a prerequisite for tagging.
-2. **Tag** — `git tag v<VERSION>` on that line (e.g. `v0.7.0`).
+2. **Tag** — `git tag v<VERSION>` on that line (e.g. `v2.1.0`).
 3. **Push** — `git push origin <release-branch>` then `git push origin v<VERSION>` (tag push triggers the Release workflow automatically; `--follow-tags` may not push annotated tags reliably).
 4. **GitHub Actions auto-run**:
    - `Release` workflow (triggered by `v*` tag): runs `pack.sh` + `verify.sh`, creates GitHub Release with `tar.gz`/`zip` + `latest` aliases. Works from any branch that carries the tag.
@@ -104,8 +104,8 @@ After version bump, manifest regeneration, and pre-release gate pass:
 
 ### What Ships
 
-- **Auto-discovered** (`SHIPPED_DIRS`): `prompts/`, `instructions/`, `plugins/`, `profiles/`, `providers/`, `skills/` — all files in these dirs ship automatically. Agent prompt fragments ship as `prompts/`, never `agents/`: opencode auto-discovers `agents/*.md` as agent definitions whose frontmatter silently overrides the jsonc `agent` block (verified v1.18.25).
-- **Explicit** (`SHIPPED_FILES` in `manifest.ts`): `opencode.template.jsonc`, `tiers.json`, `tui.template.jsonc`, `scripts/serena-workspace-daemon.mjs`.
-- `scripts/` is NOT in `SHIPPED_DIRS` — only the one runtime script above is installed; the rest (`pack.*`, `verify.*`, `capture-*.ts`) stays repo-side. New standalone ship files must be added to `SHIPPED_FILES`.
+- **Auto-discovered** (`SHIPPED_DIRS`): `prompts/`, `instructions/`, `plugins/`, `profiles/`, `providers/`, `skills/` — all files in these dirs ship automatically. Agent prompt fragments ship as `prompts/`, never `agents/`: opencode auto-discovers `agents/*.md` as agent definitions whose frontmatter silently overrides the jsonc `agents` block (verified on v1.18.25; v2 keeps the discovery — `~/.config/opencode/agents/` and `.opencode/agents/`).
+- **Explicit** (`SHIPPED_FILES` in `manifest.ts`): `opencode.template.jsonc`, `plugin-scope.json`, `tiers.json`, `cli.template.jsonc`, `scripts/serena-workspace-daemon.mjs`, `scripts/headroom-proxy-daemon.mjs`.
+- `scripts/` is NOT in `SHIPPED_DIRS` — only the runtime scripts above are installed; the rest (`pack.*`, `verify.*`, `capture-*.ts`) stays repo-side. New standalone ship files must be added to `SHIPPED_FILES`.
 - `install/` and `bin/` are auto-mirrored during packaging.
 - **Plugin export contract**: files in `plugins/` are dynamically discovered and loaded by OpenCode. Do not add or restore production exports solely to make unit tests import private helpers: an extra runtime export can change plugin loading behavior. Test through the plugin's exported entry point and registered hooks; if direct helper coverage is essential, move the helper to a non-plugin module with an intentional, documented export contract.

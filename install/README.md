@@ -180,7 +180,7 @@ Together the slash commands (inside opencode sessions) and the `ocp provider` /
 A profile is a named preset bundling per-tier model picks, applied in one
 shot instead of editing each tier by hand. Profiles are applied via the
 `/profile` slash command inside an opencode session (see
-`plugins/profile-wizard.ts`, a TUI plugin registered in `tui.template.jsonc`),
+`plugins/profile-wizard.ts`, a TUI plugin registered in `cli.template.jsonc`),
 or from any terminal via `ocp profile` — the same wizard and semantics
 without a running session (`ocp profile list` / `ocp profile apply <name>`
 for non-interactive use):
@@ -348,7 +348,7 @@ Everything else stays in the repo and never reaches the target:
 | `tests/`        | Test scripts — not part of the config     |
 | `package.json`, `bun.lock`, `package-lock.json` | npm metadata — not needed by opencode |
 | `tsconfig.json` | TS build config — not needed at runtime   |
-| `tui.template.jsonc` | TUI tweak kept locally only               |
+| `cli.template.jsonc` | Terminal-client tweak kept locally only   |
 | `.gitignore`, `README.md` | Repo metadata — not config          |
 
 In particular, **`.git/` is never copied to the target** — the target should
@@ -501,7 +501,8 @@ on install).
     it powers `ocp code`.
   - `false` on any switch skips that surface (already-installed components
     stay put).
-- `mcp.<name>` drives `opencode.jsonc`'s `mcp.<name>.enabled`; enabling an
+- `mcp.<name>` drives `opencode.jsonc`'s `mcp.servers.<name>.disabled`
+  (`true` → `disabled: false`, `false` → `disabled: true`); enabling an
   entry that declares an `install` field also provisions its CLI on the
   next install (disabled entries are never provisioned). Entries the options
   file doesn't list keep the shipped `opencode.template.jsonc` value.

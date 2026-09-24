@@ -144,12 +144,12 @@ watcher 负责日常增量更新。将 `tools.tgrep` 设为 `false` 可完全退
 
 ---
 
-## 插件自动预热（Ensure-Plugins）
+## 外部 npm 插件
 
-为了避免首次启动 OpenCode 时因在线下载 npm 插件而出现卡顿，安装器会在安装的最后阶段自动探测本地包管理器（`bun` > `npm` > `pnpm`），并将已启用的外部插件自动预装至 OpenCode 原生缓存目录（`~/.cache/opencode`）。
+`install/options.jsonc` 的 `plugin` 块控制 `opencode.jsonc` 中 `plugins` 数组的成员资格：开关置 `true` 即把对应包名作为插件条目注入，置 `false` 则移除。安装器自身不执行任何包下载——v2 运行时会在服务启动时立即加载已缓存的包插件，并在后台安装缺失的包（见 OpenCode 插件指南），因此启用某插件后的首次启动可能要等后台安装完成才会看到它。
 
-- **零配置目录污染**：插件缓存严格存放在 OpenCode 官方数据目录中，不影响 `~/.config/opencode` 配置清单的原子化升级与卸载。
-- **容错降级**：若本地未安装包管理器或网络不可达，安装器会优雅跳过，保留由 OpenCode 启动时自动拉取的保底能力。
+- **零配置目录污染**：包插件不会向 `~/.config/opencode` 写入任何内容，其安装完全由运行时托管。
+- **离线容忍**：断网时条目留在配置里，OpenCode 在后续启动时自动拉取。开/关只需翻转开关并重跑安装器。
 
 ---
 
@@ -157,7 +157,7 @@ watcher 负责日常增量更新。将 `tools.tgrep` 设为 `false` 可完全退
 
 安装时自动配置 [rtk](https://github.com/rtk-ai/rtk) —— 一个在命令输出（git status、测试、构建等）到达模型前将其压缩 60-90% 的 CLI 代理。
 
-若 PATH 中没有 `rtk`，安装器会将固定版本的二进制下载到 `~/.local/bin`。opencode 钩子以内置的 `plugins/rtk-write.ts` 形式随配置分发。
+若 PATH 中没有 `rtk`，安装器会将固定版本的二进制下载到 `~/.local/bin`。opencode 插件以内置的 `plugins/rtk-write/` 目录形式随配置分发（v1 的根入口文件 `plugins/rtk-write.ts` 已不再发布；升级时残留的旧文件会被清单清理机制移除）。
 
 若不需要：在 `install/options.jsonc` 中设 `"rtk": false` 后重新安装即可。
 

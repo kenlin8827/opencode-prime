@@ -16,7 +16,7 @@ Every file above is in the released manifest; see `install/versions/0.40.0.manif
 
 ## Install and first use
 
-1. Install or upgrade OCP (`ocp install` / `ocp upgrade`). The plugin tree, skills and scope policy land in the OpenCode config dir; no extra npm dependency is required beyond OpenCode's own `@opencode-ai/plugin`. The delivery test below proves this by running the production installer and then booting a real server from the installed tree.
+1. Install or upgrade OCP (`ocp install` / `ocp upgrade`). The plugin tree, skills and scope policy land in the OpenCode config dir; no extra npm dependency is required beyond OpenCode's own `@opencode/plugin`. The delivery test below proves this by running the production installer and then booting a real server from the installed tree.
 2. In a project that already has ADRs, run `/adr compaction`. This default path is read-only: it lists the records that would be consolidated, their coverage and the current view freshness, and it makes no model call and no write.
 3. When you are ready, ask for a semantic summary or a consolidation draft. A separate cost Ask authorizes the model spend; drafting then stages named batches (`stage`), which are persisted and retry-safe.
 4. Finish with `submit` and answer the native review Ask: **accept**, **save drafts only**, **request changes**, or **cancel**. A single explicit accept both records the decision and applies the listed plan through the audited path — no per-record commands.

@@ -20,6 +20,8 @@ irm https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.ps1
 
 > 💡 **零风险平滑升级**：已安装的用户重复执行上述命令可直接升级到最新版本，你的 **API 密钥、自定义模型和模型梯队选择均会完整保留**，不会丢失。
 
+> ⚠️ **从 OCP 0.x 而来？** 该跃迁跨越大版本（OpenCode v1 → v2 运行时），按设计被锁定——刻意路径与破坏面详见[升级到 OCP 2.x 指南](./upgrade-to-v2)。
+
 <details>
 <summary><b>安装指定版本</b></summary>
 

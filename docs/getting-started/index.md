@@ -20,6 +20,8 @@ irm https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.ps1
 
 > 💡 **Zero-Risk Upgrades**: Re-running the command above smoothly upgrades to the latest release while **preserving** all your API keys, custom models, and tier assignments.
 
+> ⚠️ **Coming from OCP 0.x?** That jump crosses majors (OpenCode v1 → v2 runtime) and is locked by design — see the [v1→v2 upgrade guide](./upgrade-to-v2) for the deliberate path and what breaks.
+
 <details>
 <summary><b>Install a specific version</b></summary>
 

@@ -8,7 +8,7 @@ This page details the foundational system dependencies for running OpenCode Prim
 
 | Requirement | Purpose | How to Install |
 |---|---|---|
-| [opencode](https://opencode.ai) CLI (major **v1 only** — v2 is refused) | Core runtime that reads configurations and schedules agents | `curl -fsSL https://opencode.ai/install \| bash -s -- --version <latest-1.x>` (take the newest v1 from [releases](https://github.com/anomalyco/opencode/releases); normally installed automatically, pinned to v1) |
+| [opencode](https://opencode.ai) CLI (major **v2** — the 2.0.x line) | Core runtime that reads configurations and schedules agents | Normally installed automatically: the OCP installer (`install/scripts/tools/opencode.sh\|.ps1`, wired as `@script:opencode`) resolves the newest **v2** release from [releases](https://github.com/anomalyco/opencode/releases) — never "latest overall" — and upgrades a v1 binary found in the user profile in place. Manual: take the newest v2 tag from releases (`curl -fsSL https://opencode.ai/install \| bash -s -- --version <latest-v2-tag>`) |
 | PowerShell 7+ (Windows) | Windows installer and maintenance scripts | `winget install Microsoft.PowerShell` |
 | Bash 4+ + `jq` (macOS / Linux / WSL) | Unix installer and manifest parser | `brew install jq` or `sudo apt install jq` |
 | Git | Version control & manifest rollbacks | System package manager |

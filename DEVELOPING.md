@@ -14,15 +14,15 @@ Everything you need to modify this repo: architecture, prompt conventions, plugi
 prompts/         # Agent prompt fragments: 3 primaries + 17 specialists (pure bodies, no frontmatter; loaded via {file:} — must NOT live under agents/ or opencode auto-discovers them as agent definitions that override the jsonc agent block)
 instructions/    # Rule files layered by disclosure: L0 (opencode.jsonc:instructions) vs L1 (agent prompt {file:} assembly)
 skills/          # L2 on-demand skills (opencode skill tool loads them when relevant)
-plugins/         # TypeScript plugins (barrel entries at root, logic in subdirs)
+plugins/         # TypeScript plugins (barrel entries at root default-exporting Plugin.define; logic in subdirs; TUI plugins in plugins/tui/)
 profiles/        # Model profiles: provider + per-tier model picks
-providers/       # Custom provider definitions (auto-loaded by opencode as presets; /provider → "Add preset" can also import them into opencode.jsonc)
+providers/       # Custom provider preset definitions (seeded once, then user-owned; /provider → "Add preset" imports them into the config's provider block)
 install/         # Self-installing engine (TypeScript), manifests, version.json, options
 bin/             # OCP CLI dispatchers (opencode-prime, ocp) — installer wrapper + runtime launcher
 tests/           # Structural + prompt test suites (see tests/README.md)
 scripts/         # Packaging scripts for releases
-opencode.template.jsonc  # Root config template merged into ~/.config/opencode/opencode.jsonc
-tui.template.jsonc  # TUI config template (registers TUI plugins; merged with user tui.jsonc on install so user-added plugins survive)
+opencode.template.jsonc  # Root config template merged into ~/.config/opencode/opencode.jsonc (V2-native keys: agents / permissions[] / providers / plugins / mcp.servers)
+cli.template.jsonc  # Terminal-client template merged into the ONE global ~/.config/opencode/cli.json (registers TUI plugins; replaces v1's layered tui.json(c); a legacy v1 tui.jsonc plugin list is migrated on upgrade)
 tiers.json       # Tier definitions sidecar (consumed by profile-wizard)
 ```
 
@@ -58,9 +58,10 @@ User
  ├── @code (primary, default) ── direct developer, delegation only on request
  │                                (advisor/explore/code-review-fast/code-review/vision)
  │
- │   (default agent is set by install/options.jsonc:default_agent —
- │    the installer applies it to opencode.jsonc's root `default_agent`
- │    on every install; valid values: code / build / plan)
+│   (default agent is set by install/options.jsonc:default_agent —
+   │    the installer applies it to opencode.jsonc's root `default_agent`
+   │    on every install (any name defined in the `agents` block; unknown
+   │    names keep the template value, which ships as `lite`)
  │
  ├── Disclosure layers (see docs/core/prompt-layers.md)
  │   ├── L0 `opencode.jsonc:instructions` — every step × every agent:
@@ -70,7 +71,7 @@ User
  │   │     test-scope), sql-migration (dba only)
  │   └── L2 skills/sdd-workflow — loaded on demand via the skill tool
  │
- ├── Per-step visibility gating (agent `permission` denies in the template)
+  ├── Per-step visibility gating (agents.<name>.permissions[] rules in the template)
   │     skills block: sdd-workflow visible only to build/plan/code (open
   │     roster) and architect (explicit `sdd-workflow` + `adr-*` allows);
   │     MCP tool surface (serena_* / codegraph_*, ~10.9k tok/step of tool
@@ -79,13 +80,14 @@ User
   │     scripts/measure-prompts.ts (real MCP handshake snapshot in
   │     scripts/mcp-instructions.snapshot.json)
  │
- └── Plugins (runtime enforcement & workflows — see "Plugin system")
-     ├── npm plugins via `opencode.jsonc:plugin` (qoder-bridge, …)
-     ├── auto-discovered entries in `plugins/*.ts` (guards, collectors, barrels)
-     ├── injection gate: plugin-scope.json → plugins/shared/plugin-scope.ts
-     │     (protocol injections denied for lite/utility identities and all
-     │     subagent steps; per-plugin overrides allowed; fail-open)
-     └── TUI plugins via `tui.template.jsonc:plugin` (provider-wizard, profile-wizard, queue-manager, usage)
+  └── Plugins (runtime enforcement & workflows — see "Plugin system")
+      ├── npm package plugins via `opencode.jsonc:plugins` (qoder-bridge, …)
+      ├── auto-discovered entries in `plugins/*.ts` barrels + directories (guards, collectors)
+      ├── injection gate: plugin-scope.json → plugins/shared/plugin-scope.ts,
+      │     enforced per-agent by plugins/shared/agent-scope.ts on v2 hook events
+      │     (protocol injections denied for lite/utility identities and all
+      │     subagent steps; per-plugin overrides allowed; fail-open)
+      └── TUI plugins via `cli.template.jsonc:plugins` → global cli.json (provider-wizard, profile-wizard, project-wizard, queue-manager, sidebar-status, usage)
 ```
 
 Design invariants:
@@ -133,23 +135,9 @@ Each agent prompt has two distinct layers:
 
 ### 3. Structural tags
 
-Every agent file follows this structure:
+Agent *definitions* live in the `agents` block of `opencode.template.jsonc` (mode, model, request, permissions — the v2-native surface); the prompt bodies in `prompts/*.md` carry **no frontmatter**. Each body follows this structure:
 
 ```markdown
----
-description: <when to invoke — used by build.md routing>
-mode: subagent
-variant: <low|medium|high>
-temperature: <0.0-0.4>
-steps: <max tool calls>
-permission:
-  read: allow
-  bash: allow
-  edit: <allow|deny>
-  webfetch: <allow|ask|deny>
-  websearch: <allow|ask|deny>
----
-
 You are a **senior <role>**. <one-line scope>.
 
 ## Operating loop
@@ -167,7 +155,7 @@ You are a **senior <role>**. <one-line scope>.
 Invoke via `@<agent-name>` or <keywords>.
 ```
 
-Note: the `tier` field some agent blocks carry in `opencode.template.jsonc` is a **custom, non-standard** configuration field consumed by this repo's tooling (profile-wizard, tiers.json) — upstream OpenCode schemas do not know it.
+Note: agent→tier mapping is **not** a field in the config — `tiers.json` (repo root, shipped beside the template) is the single source, consumed by profile-wizard and the installer preserve/restore logic. opencode forwards every unknown agent field to the provider as a model option and strict upstream gateways reject it, so the tier metadata deliberately lives outside `opencode.jsonc`.
 
 ### 4. Output protocol (shared)
 
@@ -214,7 +202,7 @@ Five tiers, each mapped per active profile (`profiles/*.json`):
 
 If the backend model doesn't support a variant, it's silently ignored.
 
-Profile mechanics (tier→model rewrite, live apply vs fallback, validation) are user-facing behavior documented in the [user manual](README.md#profiles); the implementation lives in `plugins/profile-wizard.ts` with tier definitions in `tiers.json` (sidecar — upstream OpenCode rejects unknown schema fields in `opencode.jsonc`, so tiers live outside it).
+Profile mechanics (tier→model rewrite, live apply vs fallback, validation) are user-facing behavior documented in the [user manual](README.md#profiles); the TUI wizard lives in `plugins/tui/profile-wizard.ts` with its apply/reset core in `plugins/shared/profile-core.ts`, and tier definitions in `tiers.json` (sidecar — upstream OpenCode rejects unknown schema fields in `opencode.jsonc`, so tiers live outside it).
 
 ## Test scope policy (default — lazy)
 
@@ -258,7 +246,7 @@ Full table including the "User explicitly asks run all tests" row, escalation ru
 1. **Create `prompts/<name>.md`** — pure prompt body, NO frontmatter (follow the structural template above).
 2. **Add to `build.md` routing table** — add row to `## Your team` and trigger words table.
 3. **Add to `plan.md` team table** — if analysis-capable.
-4. **Add to `opencode.template.jsonc`** — `agent.<name>` block with tier, model, mode, etc.
+4. **Add to `opencode.template.jsonc`** — `agents.<name>` block with model, mode, permissions[], etc. (tier lives in `tiers.json`, not the block).
 5. **Add to `tests/test-all.ps1`** — add to `$allFiles` array and relevant content checks.
 6. **Generate manifest** — bump `version` in `install/version.json`, then `bun run manifest:generate`. See `AGENTS.md` §4 for the full shipping rules — files in `prompts/`, `instructions/`, `plugins/`, `profiles/`, `providers/`, `skills/` are auto-discovered; standalone files and `scripts/` runtime scripts must be added to `SHIPPED_FILES` in `install/src/manifest.ts`.
 7. **Test** — run `pwsh -ExecutionPolicy Bypass -File tests/test-all.ps1 -StructuralOnly`.
@@ -299,7 +287,7 @@ Workflow slash commands (`/dev`, `/goal`, `/handoff`, …) are native opencode c
 4. **Update `docs/workflows/commands.md`** (English) and **`docs/zh/workflows/commands.md`** (Chinese) — add one row to the command overview table. The row description is the user-facing summary; keep it short (≤ ~250 chars) and link related docs where useful.
 5. **Update `DEVELOPING.md` repository layout** (this file, around line 495) — add the new files to the `commands/` and `skills/` directory tree so the listing stays truthful. Don't list every file; list the new *category* entry.
 6. **Bump version and regenerate manifest**:
-   - `install/version.json` + `package.json` + `install/README.md` title — bump minor for new features (e.g. `0.22.0 → 0.23.0`); a purely additive command+skill MAY ship as a patch bump at the maintainer's discretion, with the reason recorded in that version's notes file.
+   - `install/version.json` + `package.json` + `install/README.md` title — bump minor for new features (e.g. `2.1.0 → 2.2.0`); a purely additive command+skill MAY ship as a patch bump at the maintainer's discretion, with the reason recorded in that version's notes file.
     - `bun run manifest:generate` — `commands/` and `skills/` are in `SHIPPED_DIRS` (see `install/src/manifest.ts`), so new files appear automatically in `install/versions/<version>.manifest.txt`
    - If a custom protocol needs a self-check script (recommended for safety-critical skills), add it to the skill's `## Protocol self-check` section **using shell variables to assemble forbidden-pattern literals** — otherwise grep in the check will false-positive on the literals themselves.
 7. **Run structural tests** — `pwsh -ExecutionPolicy Bypass -File tests/test-all.ps1 -StructuralOnly`. Verify the test suite accepts the new files and frontmatter.
@@ -330,7 +318,7 @@ Workflow slash commands (`/dev`, `/goal`, `/handoff`, …) are native opencode c
 
 ### Git workflow skill family (shared doctrine)
 
-`/git-merge`, `/git-pick`, `/git-pull`, `/git-push`, and `/git-rebase` are one family: five thin launchers over five L2 protocols that share a single doctrine. They are **agent-less** (no `agent:` frontmatter), so they follow the current agent — which is why `lite`'s `permission.skill` block in `opencode.template.jsonc` allow-lists these five names plus `/handoff` and `/memory-summarize` (`agent: lite`) and denies every other skill.
+`/git-merge`, `/git-pick`, `/git-pull`, `/git-push`, and `/git-rebase` are one family: five thin launchers over five L2 protocols that share a single doctrine. They are **agent-less** (no `agent:` frontmatter), so they follow the current agent — which is why `lite`'s `permissions[]` block in `opencode.template.jsonc` (under `agents`) allow-lists these five names plus `/handoff` and `/memory-summarize` (`agent: lite`) and denies every other skill (`{ action: "skill", resource: "*", effect: "deny" }` first, then explicit allows — last match wins).
 
 **Edit-together invariant.** These blocks are structurally identical across the family; changing one file alone is a defect, not a style choice:
 
@@ -365,9 +353,9 @@ Match the LLM-native mechanism to **what the content IS**, not what's most conve
 
 | Content | Mechanism | Why |
 |---|---|---|
-| Declarative capability ("I exist", "I can do X", availability/state) | `tool:` array description in the plugin entry | LLM-native; zero fixed per-step cost; the runtime sends the tool list per call |
-| Workflow / on-demand guidance ("when the user says X, do Y") | `skill` at `skills/<name>/SKILL.md` (L2) | Body loads only when the skill is invoked; `<available_skills>` only carries name + description otherwise |
-| Imperative policy / protocol / rulebook the model must internalize for the session | `experimental.chat.system.transform` injection | Cannot be expressed declaratively; the model must read the rule to follow it |
+| Declarative capability ("I exist", "I can do X", availability/state) | the registered tool's `description` (`ctx.tool.transform(editor.add)`) | LLM-native; zero fixed per-step cost; the runtime sends the tool list per call |
+| Workflow / on-demand guidance ("when the user says X, do Y") | `skill` at `skills/<name>/SKILL.md` (L2) | Body loads only when the skill is invoked; the skill list only carries name + description otherwise |
+| Imperative policy / protocol / rulebook the model must internalize for the session | `ctx.session.hook("context")` injection (append to `event.system` — `SystemPart[]`) | Cannot be expressed declaratively; the model must read the rule to follow it. The v2 context hook also carries `agent`/`model` for scoping (v1's `experimental.chat.system.transform` is retired). |
 
 **OCP canonical examples** (use as references when adding a new plugin):
 
@@ -379,14 +367,14 @@ Match the LLM-native mechanism to **what the content IS**, not what's most conve
 | `deepseek-anchor` | `[DEEPSEEK REASONING ANCHOR]` + HARD RULE | One-shot tactical directive — must be in the prompt for the first turn, then lifted. In-memory session tracking, not config-driven. |
 | `lite-mode` | (no injection — strips only) | The strip gates every other injector; runs early in the hook chain. |
 | `project-manager` | `[PROJECT COMMIT CONVENTION]` block pointer | Progressive disclosure pointer — names the doc the model should read for the rule; not a workflow step in itself. |
-| `md-to-pdf` / `md-to-docx` | `skills/md-to-pdf/SKILL.md` + `skills/md-to-docx/SKILL.md` (L2) | Workflow, not imperative policy. Tool description advertises the capability; skill body loads on demand when the user signals intent (`@file.md 转PDF`, `/md-to-docx <path>`, etc.). Fixed `system.transform` injection removed. |
+| `md-to-pdf` / `md-to-docx` | `skills/md-to-pdf/SKILL.md` + `skills/md-to-docx/SKILL.md` (L2) | Workflow, not imperative policy. Tool description advertises the capability; skill body loads on demand when the user signals intent (`@file.md 转PDF`, `/md-to-docx <path>`, etc.). Fixed context-hook injection removed. |
 
 **Anti-patterns to refuse in review**:
 
-- Tool steering text duplicated in a fixed `system.transform` injection — put it in the `tool:` description instead, or move the workflow to a skill.
+- Tool steering text duplicated in a fixed `context`-hook injection — put it in the tool `description` instead, or move the workflow to a skill.
 - A workflow guide (multi-step "when user says X do Y do Z") in fixed system-prompt text — make it a skill.
-- Re-injecting unchanged content on every chat — use a content-keyed cache (`profileKey` / `plugin-switch` / similar) so the hook is a no-op when state is stable.
-- A `system.transform` hook whose only purpose is to advertise a tool's existence — the runtime already sends the tool list per call; the extra block is dead weight.
+- Re-injecting unchanged content on every model request — use a content-keyed cache (`profileKey` / `plugin-switch` / similar) so the hook is a no-op when state is stable.
+- A `context` hook whose only purpose is to advertise a tool's existence — the runtime already sends the tool list per call; the extra block is dead weight.
 
 When uncertain which mechanism applies: read the content as if you were the model. If the text tells the model *what the system can do* (declarative), the tool list already covers it. If the text tells the model *how to behave* (imperative), system prompt is the only place. If the text tells the model *what to do in a specific situation* (workflow), make it a skill.
 
@@ -396,51 +384,58 @@ OpenCode plugin hooks provide runtime guarantees that prompts alone cannot achie
 
 ### Discovery & layout
 
-- **Auto-discovered**: OpenCode scans the `plugins/` root for `.ts` files. Multi-file plugins therefore use the **barrel pattern**: `plugins/<name>.ts` re-exports from `plugins/<name>/<name>.ts`, keeping implementation, protocol markdown, and helpers in the subdirectory.
-- **TUI plugins**: registered explicitly in `tui.template.jsonc:plugin` (`provider-wizard.ts`, `profile-wizard.ts`, `queue-manager.ts`, `sidebar-status.ts`, `usage.ts`) — TUI-only, no headless equivalent. `provider-wizard.ts` and `profile-wizard.ts` are dual-hosted: opencode loads them for the `/provider` and `/profile` slash commands, and the standalone OpenTUI app behind `ocp provider` / `ocp profile` loads the SAME modules through a `TuiPluginApi`-compatible host (`install/src/ui/app.tsx` + `tui-host.ts`). One wizard, two hosts — never re-implement wizard flows in `install/src/`.
-- **npm plugins**: the default `opencode.template.jsonc:plugin` array is empty — OCP does not ship any default npm plugin. Optional plugins (`opencode-qoder-bridge`, `opencode-mem@2.24.3`) remain opt-in via `install/options.jsonc` and are dynamically injected/pre-installed on install when enabled. `@dietrichgebert/ponytail` was removed entirely (ADR-0003).
+- **Auto-discovered**: OpenCode loads bare `.ts`/`.js` files and immediate plugin package directories from every discovered `plugins/` directory (global `~/.config/opencode/plugins/` and project `.opencode/plugins/`). Multi-file plugins therefore use the **barrel pattern**: `plugins/<name>.ts` re-exports from `plugins/<name>/<name>.ts`, keeping implementation, protocol markdown, and helpers in the subdirectory. V2 loader contract: each root barrel DEFAULT-exports a `Plugin.define({ id, setup })` object (`@opencode/plugin`) — v1 `server()`-function exports are gone (hard cutover, no shim). A `plugins[]` config entry must be a package or DIRECTORY (not a bare file); the dir needs a `server.ts`/`index.ts` entry. **Pitfall**: never combine a root barrel with an `index.ts` inside the subdir — the loader discovers BOTH and the plugin's `setup` runs twice (duplicate hooks/commands). The subdir entry module must be named `<name>.ts` (e.g. `plugins/adr/adr.ts`); `index.ts` is reserved for barrel-less directory plugins like `rtk-write/`. Corollary: `plugins/shared/` and `plugins/tui/` deliberately have NO `index.ts`/`tui.ts` (helper modules and explicit-`cli.json` TUI plugins respectively) — do not "complete" them into package dirs, or they become auto-discovered. Discovered-entry scope is `plugins/` immediate children only; nested bare files (e.g. `plugins/tui/i18n.ts`, `plugins/tui/_wizard-helpers.ts`) are never loaded as plugins. Known accepted deviation: barrels keep named re-exports (`export { XPlugin, XPlugin as default }`) consumed by unit tests; V2's loader reads only the default export, so these are runtime-inert — slim them opportunistically when touching a barrel, never in a dedicated churn commit.
+- **TUI plugins**: registered explicitly in `cli.template.jsonc:plugins` (`provider-wizard.ts`, `profile-wizard.ts`, `project-wizard.ts`, `queue-manager.ts`, `sidebar-status.ts`, `usage.ts` under `plugins/tui/`) — CLI-only (terminal-client) plugins on the `@opencode/plugin/tui` slot/keymap API, loaded by the TUI process from the ONE global `cli.json` (the background service never loads it). `provider-wizard.ts` and `profile-wizard.ts` are dual-hosted: opencode loads them for the `/provider` and `/profile` slash commands, and the standalone OpenTUI app behind `ocp provider` / `ocp profile` loads the SAME modules through a `TuiPluginApi`-compatible host (`install/src/ui/app.tsx` + `tui-host.ts`). One wizard, two hosts — never re-implement wizard flows in `install/src/`.
+- **npm plugins**: the default `opencode.template.jsonc:plugins` array is empty — OCP does not ship any default npm plugin. Optional plugins (`opencode-qoder-bridge`, `opencode-mem@2.24.3`) remain opt-in via `install/options.jsonc`; the `plugin` block controls membership in the `plugins` array at merge time, and the v2 runtime installs package plugins in the background at server startup. `@dietrichgebert/ponytail` was removed entirely (ADR-0003).
 - **User-level plugin config**: `~/.config/opencode/ocp.json` (`plugins/shared/ocp-config.ts`) — one JSON file for cross-session user preferences shared by all ocp plugins (currently `language`, written by i18n). Plugins add their own namespaced keys via `readOcpField`/`writeOcpField`; unknown keys survive every write. Writes are pure JSON; reads are JSONC-tolerant (hand-edited comments keep working). `OCP_CONFIG_PATH` overrides the location (tests). The legacy `ocp.jsonc` rename is a one-shot performed by the installer (ADR 0004).
-- **Shared plumbing**: `plugins/shared/opencode-prime.ts` — project-dir resolution, JSONC parsing, field upsert, never-throw writes; used by auto-advisor, adr, env-guard, project-manager. `plugins/shared/plugin-scope.ts` — the runtime injection gate: every `system.transform` protocol injector awaits `scoped(input, output.system, "<plugin-id>", client)` before injecting; policy lives in `plugin-scope.json` (repo root, shipped) as `identifiers` (text detection) plus per-plugin `deny`/`allow` lists with scope grammar `x` / `x:*`; the `"*"` entry is the inherited default (deny `lite`, `utility`, `subagent:*`). Fail-open. `plugins/shared/system-block.ts` — shared `appendBlock` / `stripBlockByLine` / `escapeRegExp` for `system.transform` injectors: append lands on the last string entry OR pushes a fresh entry when the runtime shape is empty / all-object (the fix for the 2026-09-11 silent-drop regression in opencode versions that pass non-string arrays); strip uses a line-start regex derived from the marker via `escapeRegExp`, so a marker rename stays single-source. Used by project-profiler, project-manager, auto-advisor. `plugins/shared/plugin-switch.ts` — shared project-level on/off state machine (`createPluginSwitch` factory + `normalizeSwitchState` helper): a plugin declares its field name, alias table, default state, and which canonical states count as "on"; the helper handles read-from-config / write-to-config / clear-to-default plumbing via `opencode-prime.ts`. Used by auto-advisor (`off`/`lite`/`full`), adr, env-guard, project-memory (`on`/`off`). Pure-function core (`normalizeSwitchState`) is exported for unit tests.
+- **Shared plumbing**: `plugins/shared/opencode-prime.ts` — project-dir resolution, JSONC parsing, field upsert, never-throw writes; used by auto-advisor, adr, env-guard, project-manager. `plugins/shared/plugin-scope.ts` — the scope POLICY: `identifiers` (text detection) plus per-plugin `deny`/`allow` lists with scope grammar `x` / `x:*`; the `"*"` entry is the inherited default (deny `lite`, `utility`, `subagent:*`). `plugins/shared/agent-scope.ts` — the v2 GATE on top of that policy: v2 has no per-agent hook scoping, so every injector registers its `ctx.session.hook("context")` / `ctx.tool.hook(...)` callback behind an agent-scope check. Detection order: event `agent` ID → system-text sentinels → `session.get` parentID ground truth (cached). Fail-open, exactly like v1. `plugins/shared/system-block.ts` — shared `appendBlock` / `stripBlockByLine` / `escapeRegExp` for context-hook injectors operating on the v2 `SystemPart[]`. `plugins/shared/plugin-switch.ts` — shared project-level on/off state machine (`createPluginSwitch` factory + `normalizeSwitchState` helper): a plugin declares its field name, alias table, default state, and which canonical states count as "on"; the helper handles read-from-config / write-to-config / clear-to-default plumbing via `opencode-prime.ts`. Used by auto-advisor (`off`/`lite`/`full`), adr, env-guard, project-memory (`on`/`off`). Pure-function core (`normalizeSwitchState`) is exported for unit tests.
 
 ### Hook inventory
 
+V2 plugin API: `Plugin.define({ id, setup })`; inside `setup(ctx)` registrations come from domain hooks (`ctx.session.hook(...)`, `ctx.tool.hook(...)`, `ctx.permission.hook(...)`, `ctx.shell.hook(...)`) and synchronous registry transforms (`ctx.tool.transform`, `ctx.command.transform`, `ctx.model.transform`, `ctx.agent.transform`, …). Runtime hooks run in registration order; a later transform wins over an earlier one.
+
 | Plugin | Hook | What it does |
 |--------|------|-------------|
-| `design-token-guard.ts` | `tool.execute.before` | Blocks writes with hardcoded colors/spacing/radius. Throws error. |
-| `ai-slop-scanner.ts` | `event: file.edited` | Scans frontend files for AI anti-patterns (gradient soup, div soup, …). Logs warnings. |
-| `auto-format.ts` | `event: file.edited` | Auto-runs the project-selected dprint/Biome/Prettier/ESLint/Ruff/gofmt/rustfmt after file edit. dprint and Biome require their config and project-local binary; OCP never installs either globally. |
-| `browser-screenshot.ts` | custom tool | Registers `browser_screenshot` tool (Playwright headless) for `@vision` / `@frontend-dev`. |
-| `lite-mode.ts` (+ `plugins/lite-mode/`) | `system.transform` | Strips the `<!-- lite-mode -->` sentinel and every `Instructions from:` block (L0) from the `@lite` primary's system prompt. |
-| `project-profiler.ts` (+ `plugins/project-profiler/`) | `session.created` + `system.transform` | Detects project nature at session start (config-driven, zero CLI probing) and injects a compact profile + code-intelligence backend recommendation (Serena vs CodeGraph, GitNexus optional) into the system prompt. **Cache key is the profile content SHA-256** (see ADR 0002), not the cwd — a profile change mid-session (tgrep watcher died, `opencode.jsonc` edited) refreshes the block; a stable profile leaves the prompt byte-identical. **Always injects** under opencode's verified Scenario-A runtime (output.system rebuilt per request — see ADR 0002): a "skip on same key" optimization would leave the LLM without the capabilities block after turn 1. The cache stores the rendered block per (cwd, key) so the render step (the only non-trivial per-turn work) is skipped on steady state. The defensive `stripBlockByLine` keeps behavior correct under a hypothetical Scenario-B runtime (prompt persists across turns). |
-| `rtk-write.ts` (+ `plugins/rtk-write/`) | command rewrite | Vendored rtk integration: rewrites shell commands through the rtk compression proxy transparently. |
-| `auto-advisor-mode.ts` (+ `plugins/auto-advisor/`) | 5 hooks — see below | Advisor modes off/lite/full; protocol injection; full-mode auto-execute; red-team suppression. |
-| `deepseek-anchor.ts` (+ `plugins/deepseek-anchor/`) | `config` + `command.execute.before` + `system.transform` | `/deepseek-anchor` command; anchor-based reasoning protocols with DeepSeek models. |
-| `adr.ts` (+ `plugins/adr/`) | `config` + `command.execute.before` + `system.transform` + `tool.execute.before` | `/adr` command suite (guard switch `/adr guard`, alias `/adr-guard`); ADR iron-law protocol injection; hard-blocks `feat`/`refactor` commits without an ADR in the change set. Also registers the `adr_context` / `adr_compaction` tools and `/adr compaction` maintenance flow (bounded retrieval, reviewed consolidation, reversible archive): only the verified user channel can authorize writes (`adr-compaction.ts` / `adr-compaction-runtime.ts`); storage, publication, archive moves and the finite read guard live in `adr-storage.ts` / `adr-publication.ts` / `adr-archive.ts` / `adr-read-guard.ts`. |
-| `env-guard.ts` (+ `plugins/env-guard/`) | `tool.execute.before` | Secret-file gate: blocks reads/copies of secret-bearing `.env*` files. |
-| `e2e-adopt.ts` (+ `plugins/e2e-adopt/`) | `config` + `command.execute.before` | `/e2e-adopt [dry\|status]` command — adopts the E2E red-line policy into PROJECT DOCS (`docs/e2e-redline.md` + marker-framed AGENTS.md section), baijiu-shop-style documentation governance; detection pre-fills, never applies silently, no runtime injection or gate (retired the e2e-guard plugin 2026-09-22). |
-| `project-manager.ts` (+ `plugins/project-manager/`) | `config` + `command.execute.before` + `system.transform` + `tool.execute.before` + `event: session.created` | `/project init|index|sync` commands; init runs the one-shot legacy migration (`.opencode/` OCP state → `.ocp/`, ADR 0004) then creates missing baseline files (`.ocp/ocp.json`, `docs/git-commits.md`, `AGENTS.md`, never overwrites); sync re-runs the migration on demand; file-as-switch commit discipline; one-time `/project init` suggestion. |
-| `project-memory.ts` (+ `plugins/project-memory/`) | `config` + `command.execute.before` + `system.transform` + custom tool | `/memory note [text]` (+ `--private`) writes dated bullets to `.ocp/memory/public.md` (committed, PR-reviewed) or `private.md` (gitignored, current-user-only); `memory_note` tool lets the agent call it when it discovers a reusable rule; `/memory-summarize [focus]` skill (thin launcher in `commands/`, protocol in `skills/memory-summarize/`) reviews the session. Both files live inside the project at `.ocp/memory/` (same convention as `.ocp/handoffs/` etc.) — no user-home storage. Single marker `[PROJECT MEMORY]` with `=== Public ===` / `=== Private ===` sections; AGENTS.md authoritative on conflict; 16k-char cap per section → pointer. Tool is gated via `plugin-scope.json` (`project-memory-note-tool` key — utility sessions denied). |
-| `sdd.ts` (+ `plugins/sdd/`) | `command.execute.before` | Engine-only: `/sdd status|handoff|help` runtime actions (artifact discovery, handoff bundling). The SDD protocol itself lives at L2 (`skills/sdd-workflow/SKILL.md`); `/sdd` `/prd` `/plan` `/impl` are `commands/*.md` launchers. |
-| `profile-wizard.ts` | TUI plugin | `/profile` dialog wizard: tier review, per-tier model override, live apply via server config API with file rewrite on request failure. Announces active profile on session creation. |
-| `provider-wizard.ts` | TUI plugin | `/provider` dialog wizard: baseURL/apiKey prompts, atomic write, model add/remove management; 🔌 Manage connections — union of the /connect credential store and config apiKeys (official built-ins and custom), one-click disconnect that keeps provider definitions and models. `/disconnect` (TUI-only keymap, official-/connect shape: one menu row, instant dialogs). |
-| `queue-manager.ts` | TUI plugin | `/queued` command: list/edit/cancel queued user messages. |
-| `usage.ts` | TUI plugin | `/usage` opens a dialog with auto-fitted width and a visible tab strip: **by session** (one row per session + total), **by agent**, **by model** — input (non-cached) / output / cached-in, cost, cache hit, share bars. `1/2/3` or `←→` (`[`/`[]`) switch tabs live via global keymap bindings; `Enter` closes. `/usage all\|agent\|model` opens a dimension directly. Hosts without the dialog API fall back to a toast. Pure view over server data — no local persistence. |
-| `project-wizard.ts` | TUI plugin | `/project` dialog wizard: two-tier interactive wizard (scaffolding init, switch configuration, template sync, index catch-up) with re-entrant echo. New Node projects without an existing formatter may explicitly set up project-local dprint. Owns the `/project` TUI slash entry; the server `command.execute.before` hook in `project-manager.ts` keeps handling `init\|index\|sync` subcommands for headless `ocp project <sub>` invocations. |
-| `md-to-pdf.ts` (+ `plugins/md-to-pdf/`) | `config` + `command.execute.before` + `system.transform` + custom tool | `/md-to-pdf` command & `md_to_pdf` tool: converts Markdown to styled A4 PDF via Pandoc + Playwright. Auto-steers natural language `@filepath 转PDF`. |
-| `md-to-docx.ts` (+ `plugins/md-to-docx/`) | `config` + `command.execute.before` + `system.transform` + custom tool | `/md-to-docx` command & `md_to_docx` tool: converts Markdown to publication-quality styled Word (.docx) documents via Pandoc + Python typography engine. |
+| `design-token-guard.ts` | `ctx.tool.hook("execute.before")` | Blocks writes with hardcoded colors/spacing/radius. Throws error. |
+| `ai-slop-scanner.ts` | `ctx.event.subscribe` (`filesystem.changed`) | Scans frontend files for AI anti-patterns (gradient soup, div soup, …). Logs warnings. (v1's `file.edited` is replaced by `filesystem.changed`, `unlink` skipped.) |
+| `auto-format.ts` | `ctx.event.subscribe` (`filesystem.changed`) | Auto-runs the project-selected dprint/Biome/Prettier/ESLint/Ruff/gofmt/rustfmt after file edit. dprint and Biome require their config and project-local binary; OCP never installs either globally. |
+| `browser-screenshot.ts` | `ctx.tool.transform(editor.add)` | Registers `browser_screenshot` tool (Playwright headless) for `@vision` / `@frontend-dev`. |
+| `lite-mode.ts` (+ `plugins/lite-mode/`) | `ctx.session.hook("context")` | Strips the `<!-- lite-mode -->` sentinel and every `Instructions from:` block (L0) from the `@lite` primary's system parts. |
+| `project-profiler.ts` (+ `plugins/project-profiler/`) | `ctx.session.hook("context")` | Detects project nature (config-driven, zero CLI probing) and injects a compact profile + code-intelligence backend recommendation (Serena vs CodeGraph, GitNexus optional) into the system parts. **Cache key is the profile content SHA-256** (see ADR 0002), not the cwd — a profile change mid-session (tgrep watcher died, `opencode.jsonc` edited) refreshes the block; a stable profile leaves the prompt byte-identical. **Always injects** under opencode's verified Scenario-A runtime (system rebuilt per request — see ADR 0002): a "skip on same key" optimization would leave the LLM without the capabilities block after turn 1. The cache stores the rendered block per (cwd, key) so the render step (the only non-trivial per-turn work) is skipped on steady state. The defensive `stripBlockByLine` keeps behavior correct under a hypothetical Scenario-B runtime (prompt persists across turns). |
+| `model-variants.ts` | `ctx.model.transform` + `ctx.agent.transform` + `ctx.event.subscribe` | Folds `{provider, model, variant=effort}` reasoning-effort refs onto proven sibling models and clears the variant (v2 errors on a variant the model no longer declares); shared vocabulary in `plugins/shared/model-variants.ts`. GAP: v1's `command.<name>.model` rewrite is dropped (v2 commands carry no model ref). |
+| `tool-compress.ts` | `ctx.session.hook("context")` | Swaps heavy native tool schemas for compressed descriptions (scoped per agent via `event.agent`). |
+| `rtk-write/` | `ctx.tool.hook("execute.before")` + `execute.after` | Vendored rtk integration: rewrites shell commands through the rtk compression proxy and annotates results. (The v1 root barrel `plugins/rtk-write.ts` no longer ships — the directory entry is discovered directly.) |
+| `auto-advisor-mode.ts` (+ `plugins/auto-advisor/`) | 4 surfaces — see below | Advisor modes off/lite/full; protocol injection; full-mode auto-execute; red-team suppression. |
+| `deepseek-anchor.ts` (+ `plugins/deepseek-anchor/`) | `ctx.command.transform` + `ctx.session.hook("context")` + `ctx.tool.hook("execute.before")` + `ctx.event.subscribe` | `/deepseek-anchor` command; anchor-based reasoning protocols with DeepSeek models; session-deleted cleanup via the event stream. |
+| `adr.ts` (+ `plugins/adr/`) | `ctx.session.hook("context")` + `ctx.tool.hook("execute.before"/"execute.after")` + `ctx.tool.transform` + `ctx.command.transform` + `ctx.event.subscribe` | `/adr` command suite (guard switch `/adr guard`, alias `/adr-guard`); ADR iron-law protocol injection; hard-blocks `feat`/`refactor` commits without an ADR in the change set. Also registers the `adr_context` / `adr_compaction` tools and `/adr compaction` maintenance flow (bounded retrieval, reviewed consolidation, reversible archive): only the verified user channel can authorize writes (`adr-compaction.ts` / `adr-compaction-runtime.ts`, re-implemented on `tool.hook("execute.after")` + session synthetic events); storage, publication, archive moves and the finite read guard live in `adr-storage.ts` / `adr-publication.ts` / `adr-archive.ts` / `adr-read-guard.ts`. |
+| `env-guard.ts` (+ `plugins/env-guard/`) | `ctx.tool.hook("execute.before")` | Secret-file gate: blocks reads/copies of secret-bearing `.env*` files. |
+| `e2e-adopt.ts` (+ `plugins/e2e-adopt/`) | `ctx.command.transform` | `/e2e-adopt [dry\|status]` command — adopts the E2E red-line policy into PROJECT DOCS (`docs/e2e-redline.md` + marker-framed AGENTS.md section), baijiu-shop-style documentation governance; detection pre-fills, never applies silently, no runtime injection or gate (retired the e2e-guard plugin 2026-09-22). |
+| `project-manager.ts` (+ `plugins/project-manager/`) | `ctx.session.hook("context")` + `ctx.tool.hook("execute.before")` + `ctx.command.transform` + `ctx.event.subscribe` (`session.created`) | `/project init\|index\|sync` commands; init runs the one-shot legacy migration (`.opencode/` OCP state → `.ocp/`, ADR 0004) then creates missing baseline files (`.ocp/ocp.json`, `docs/git-commits.md`, `AGENTS.md`, never overwrites); sync re-runs the migration on demand; file-as-switch commit discipline; one-time `/project init` suggestion (announce surface degraded to a log line — see OCP-V2-GAP in `project-manager-announce.ts`). |
+| `project-memory.ts` (+ `plugins/project-memory/`) | `ctx.session.hook("context")` + `ctx.command.transform` + `ctx.tool.transform` | `/memory note [text]` (+ `--private`) writes dated bullets to `.ocp/memory/public.md` (committed, PR-reviewed) or `private.md` (gitignored, current-user-only); `memory_note` tool lets the agent call it when it discovers a reusable rule; `/memory-summarize [focus]` skill (thin launcher in `commands/`, protocol in `skills/memory-summarize/`) reviews the session. Both files live inside the project at `.ocp/memory/` (same convention as `.ocp/handoffs/` etc.) — no user-home storage. Single marker `[PROJECT MEMORY]` with `=== Public ===` / `=== Private ===` sections; AGENTS.md authoritative on conflict; 16k-char cap per section → pointer. Tool is gated via `plugin-scope.json` (`project-memory-note-tool` key — utility sessions denied). |
+| `sdd.ts` (+ `plugins/sdd/`) | `ctx.session.hook("prompt")` | Engine-only: `/sdd status\|handoff\|help` runtime actions (artifact discovery, handoff bundling). The SDD protocol itself lives at L2 (`skills/sdd-workflow/SKILL.md`); `/sdd` `/prd` `/plan` `/impl` are `commands/*.md` launchers. |
+| `tgrep.ts` (+ `plugins/tgrep/`) | `ctx.tool.transform` | Registers the `tgrep_search` tool (`options.codemode:false` so the model sees it directly). GAP: v1's UI `title` field has no v2 `Tool.Result` equivalent — titles dropped, text preserved. |
+| `context-watch.ts` (+ `plugins/context-watch/`) | `ctx.session.hook("context")` + `ctx.event.subscribe` | Context-window watch banner; session-deleted state cleanup. |
+| `tui/profile-wizard.ts` | TUI plugin | `/profile` dialog wizard: tier review, per-tier model override, live apply via server config API with file rewrite on request failure. |
+| `tui/provider-wizard.ts` | TUI plugin | `/provider` dialog wizard: baseURL/apiKey prompts, atomic write, model add/remove management; 🔌 Manage connections — union of the /connect credential store and config apiKeys (official built-ins and custom), one-click disconnect that keeps provider definitions and models. `/disconnect` (TUI-only keymap, official-/connect shape: one menu row, instant dialogs). |
+| `tui/queue-manager.ts` | TUI plugin | `/queued` command: list / view / toggle delivery (steer↔queue) / cancel one or all queued inbox prompts (v1's "Edit text" dropped — see OCP-V2-GAP). |
+| `tui/sidebar-status.ts` | TUI plugin (slot) | TUI sidebar slot: plugin switches, MCP state, context watch, profile badge. |
+| `tui/usage.ts` | TUI plugin | `/usage` opens a dialog with auto-fitted width and a visible tab strip: **by session** (one row per session + total), **by agent**, **by model** — input (non-cached) / output / cached-in, cost, cache hit, share bars. `1/2/3` or `←→` (`[`/`[]`) switch tabs live via global keymap bindings; `Enter` closes. `/usage all\|agent\|model` opens a dimension directly. Pure view over server data — no local persistence. GAP: v2 folds steps into one assistant message per turn, so the "Steps" column counts assistant messages as the closest proxy. |
+| `tui/project-wizard.ts` | TUI plugin | `/project` dialog wizard: two-tier interactive wizard (scaffolding init, switch configuration, template sync, index catch-up) with re-entrant echo. New Node projects without an existing formatter may explicitly set up project-local dprint. Owns the `/project` TUI slash entry; the server `ctx.command.transform` handler in `project-manager.ts` keeps handling `init\|index\|sync` subcommands for headless `ocp project <sub>` invocations. |
+| `md-to-pdf.ts` (+ `plugins/md-to-pdf/`) | `ctx.command.transform` + `ctx.tool.transform` | `/md-to-pdf` command & `md_to_pdf` tool: converts Markdown to styled A4 PDF via Pandoc + Playwright. Auto-steers natural language `@filepath 转PDF`. |
+| `md-to-docx.ts` (+ `plugins/md-to-docx/`) | `ctx.command.transform` + `ctx.tool.transform` | `/md-to-docx` command & `md_to_docx` tool: converts Markdown to publication-quality styled Word (.docx) documents via Pandoc + Python typography engine. |
 
-Workflow slash commands (`/dev-review`, `/goal`, `/handoff`, …) are native opencode command files in `commands/*.md` — thin launchers that instruct the agent to load the matching L2 skill (`skills/<name>/SKILL.md`) on demand. No runtime code, no system-prompt injection; the protocol body enters the conversation exactly once, only when the command is invoked. Runtime-logic plugins (guards, wizards, exporters) still register their commands programmatically via the `config` hook; every `system.transform` injector passes through the `plugin-scope.ts` gate first (see shared plumbing), so injections never land in `@lite`, utility sessions, or subagent steps unless a per-plugin entry overrides the default (project-profiler does — its backend routing is explore's work discipline, not orchestration protocol).
+Workflow slash commands (`/dev-review`, `/goal`, `/handoff`, …) are native opencode command files in `commands/*.md` — thin launchers that instruct the agent to load the matching L2 skill (`skills/<name>/SKILL.md`) on demand. No runtime code, no system-prompt injection; the protocol body enters the conversation exactly once, only when the command is invoked. Runtime-logic plugins (guards, wizards, exporters) still register their commands programmatically via `ctx.command.transform(editor.add)`; every context-hook injector passes through the `agent-scope.ts` gate first (see shared plumbing), so injections never land in `@lite`, utility sessions, or subagent steps unless a per-plugin entry overrides the default (project-profiler does — its backend routing is explore's work discipline, not orchestration protocol).
 
 ### Auto-advisor internals
 
 **Storage**: the `autoAdvisorMode` field in the project `.ocp/ocp.json` — no hidden state file, no env var. Resolution: project config → `off` (default); purely project-level, no global fallback. `/auto-advisor` always writes to the project-level config only (comments and other fields preserved).
 
-**Five-hook enforcement** (`plugins/auto-advisor-mode.ts` + helpers in `plugins/auto-advisor/`):
+**Four-surface enforcement** (`plugins/auto-advisor-mode.ts` + helpers in `plugins/auto-advisor/`) — v1's five hooks collapse to four in v2 (the `config` hook and plugin command merge into one `command.transform`):
 
-1. `command.execute.before` — `/auto-advisor <mode>` upserts `autoAdvisorMode` in the project `.ocp/ocp.json`
-2. `experimental.chat.system.transform` — injects the active-mode marker + embedded protocol into every system prompt
-3. `tool.execute.before` — full-mode auto-answer enforcement (blocks question tool when advisor auto-answered); off-mode relies on system prompt soft guard (no auto-dispatch, manual @advisor allowed)
-4. `tool.execute.after` — parses confidence; full mode ≥ 8 gets the auto-execute directive (max 10/session, never on model fallback, never on red-team output)
+1. `ctx.command.transform` (`editor.add`) — `/auto-advisor <mode>` upserts `autoAdvisorMode` in the project `.ocp/ocp.json`
+2. `ctx.session.hook("context")` — injects the active-mode marker + embedded protocol into the system parts (`SystemPart[]`)
+3. `ctx.tool.hook("execute.before")` — full-mode auto-answer enforcement (blocks the question tool when the advisor has auto-answered); off-mode relies on the system-prompt soft guard (no auto-dispatch, manual @advisor allowed)
+4. `ctx.tool.hook("execute.after")` — parses confidence; full mode ≥ 8 gets the auto-execute directive (max 10/session, never on model fallback, never on red-team output)
 
 ### Red-team stance internals
 
@@ -472,17 +467,17 @@ Opencode compiles plugins at runtime, but type errors indicate logic issues — 
 `install/` is a self-contained TypeScript engine (`install/src/`, run via Bun through `install/install.ps1` / `install/install.sh`). Modules:
 
 - `index.ts` — CLI entry: action parsing (`install` / `update` / `status` / `register` / `unregister` / `wizard` / `dashboard` / `tui` / `serve` / `web` / `desktop`), and the launcher dispatch below;
-- `installer.ts` — manifest-driven install/update/uninstall/status;
+- `installer.ts` — manifest-driven install/update/uninstall/status; carries the both-direction runtime/package compat gate (`requiredRuntimeMajor` / `checkRuntimeCompat`: OCP 2.x requires the opencode v2 runtime, v1↔v2 mixing is refused before any mutation; absent/unparseable versions fail open), and the v2 terminal-client merge (`mergeTuiConfig`: `cli.template.jsonc` → global `cli.json`, migrating a legacy v1 `tui.jsonc` plugin list on the first v2 run);
 - `manifest.ts` — `SHIPPED_DIRS` / `SHIPPED_FILES` → manifest generation;
-- `wizard.ts` / `dashboard.ts` — interactive TUI setup wizard and single-screen control center (rows include `global_commands` and `openchamber` switches);
-- `src/ui/` — standalone OpenTUI host for `ocp provider` / `ocp profile` / `dashboard` / project screens. `app.tsx` loads the SAME `plugins/tui/*-wizard.ts` modules through a `TuiPluginApi`-compatible adapter (`tui-host.ts` dialog stack); `opencode-theme.ts` + `builtin-themes.ts` adopt the user's opencode theme (tui.jsonc `theme`, `themes/*.json` hierarchy, hex/ANSI/refs/`{dark,light}`/`none` semantics) so the host looks like the opencode TUI — never hardcode wizard colors;
+- `wizard.ts` / `dashboard.ts` — interactive TUI setup wizard and single-screen control center (rows include `global_commands` and the three `openchamber_*` surface switches);
+- `src/ui/` — standalone OpenTUI host for `ocp provider` / `ocp profile` / `dashboard` / project screens. `app.tsx` loads the SAME `plugins/tui/*-wizard.ts` modules through a `TuiPluginApi`-compatible adapter (`tui-host.ts` dialog stack); `opencode-theme.ts` + `builtin-themes.ts` adopt the user's opencode theme (`cli.json` `theme`, then opencode's theme-file hierarchy — built-in table < `~/.config/opencode/themes/` < `<cwd>/.opencode/themes/`, later shadows — never merges, plus hex/ANSI/refs/`{dark,light}`/`none` semantics) so the host looks like the opencode TUI — never hardcode wizard colors;
 - `shim.ts` — global shims (`registerShim`) + PATH provisioning (`ensureBinDirOnPath`: Windows user-PATH registry via `[Environment]::SetEnvironmentVariable` — never `setx`; POSIX guarded profile block) wrapped by `runGlobalRegistration`;
 - `launcher.ts` — runtime launchers behind `ocp tui` / `serve` / `web` / `desktop`, including the OpenChamber port-reclaim and auto-password logic;
 - `openchamber.ts` — provision the `openchamber` CLI via the first detected package manager (pnpm > bun > yarn > npm) when missing (needs Node.js 22+).
 
 `bin/opencode-prime` (bash) and `bin/opencode-prime.ps1` (PowerShell 7+) are standalone dispatchers that mirror the same subcommands without requiring Bun — installer subcommands exec `install.sh` / `install.ps1`, launcher subcommands (`tui`, `serve`, `web`, `desktop|ui`) are implemented natively per platform. `bin/ocp` / `bin/ocp.ps1` are thin forwarders. The full user-facing command list lives in the docs (`docs/maintenance/ocp-cli.md`).
 
-Option switches in `install/options.jsonc` that gate engine behavior: `global_commands` (register shims + PATH during install) and `openchamber` (provision the `openchamber` CLI); both default `true`.
+Option switches in `install/options.jsonc` that gate engine behavior: `global_commands` (register shims + PATH during install, default `true`), `default_agent` (applied to `opencode.jsonc` when the name exists in the `agents` block), `tui_mode` (direct | herdr | luvus), `tools` (rtk, ripgrep, tgrep, and the three independent `openchamber_web` / `openchamber_desktop` / `openchamber_vscode` surfaces), `mcp` (per-server enable → `mcp.servers.<name>.disabled`), and `plugin` (npm plugin package membership).
 
 ---
 
@@ -604,11 +599,13 @@ prompts/
 
 profiles/                     # Tier→model presets applied via /profile
 providers/
-├── antigravity-router.json   # Custom provider definition (auto-loaded preset; importable via /provider → "Add preset")
-├── claude-code-router.json   # Custom provider definition (auto-loaded preset; importable via /provider → "Add preset")
-├── codex-router.json         # Custom provider definition (auto-loaded preset; importable via /provider → "Add preset")
-├── llm-router.json           # Custom provider definition (auto-loaded preset; importable via /provider → "Add preset")
-└── qoder-router.json         # Custom provider definition (auto-loaded preset; importable via /provider → "Add preset")
+├── antigravity-router.json   # Custom provider preset (seeded once, user-owned; importable via /provider → "Add preset")
+├── claude-code-router.json   # Custom provider preset (seeded once, user-owned; importable via /provider → "Add preset")
+├── codex-router.json         # Custom provider preset (seeded once, user-owned; importable via /provider → "Add preset")
+├── llm-router.json           # Custom provider preset (seeded once, user-owned; importable via /provider → "Add preset")
+├── omniroute.json            # Custom provider preset (OmniRoute gateway profile — ADR-0.38.0)
+├── qoder-router.json         # Custom provider preset (seeded once, user-owned; importable via /provider → "Add preset")
+└── qwen-router.json          # Custom provider preset (seeded once, user-owned; importable via /provider → "Add preset")
 
 commands/                     # Native opencode slash-command launchers (thin: frontmatter + "load the skill")
 ├── dev.md · dev-plan.md · dev-quick.md · dev-flash.md · dev-review.md · dev-ultra.md   # Dev-flow launchers (agent: build)
@@ -635,7 +632,7 @@ skills/                       # L2 workflow protocols — metadata resident, bod
 plugins/
 ├── shared/opencode-prime.ts      # Shared JSONC plumbing (project dir, field upsert)
 ├── shared/provider-creds.ts      # Credential single source of truth (auth store + config apiKeys; used by the wizard's disconnect flows)
-├── auto-advisor-mode.ts           # Barrel: advisor mode guard (5 hooks)
+├── auto-advisor-mode.ts           # Barrel: advisor mode guard (4 hook surfaces)
 ├── auto-advisor/                  # Mode config, runtime, protocol, per-hook helpers
 ├── adr.ts                         # Barrel: ADR workbench + iron-law guard
 ├── adr/                           # Engine, config, runtime, guard submodules, styles
@@ -651,25 +648,34 @@ plugins/
 ├── project-memory.ts              # Barrel: /memory note|on|off|status + memory_note tool
 ├── project-memory/                # Config (switch + scoped lesson append), command, system-inject, tool
 ├── project-profiler.ts            # Barrel: project profile injection
+├── context-watch.ts               # Barrel: context-window watch banner
+├── context-watch/                 # Implementation
+├── model-variants.ts              # Fold {provider,model,variant=effort} refs onto siblings; clears variant
+├── tool-compress.ts               # Barrel: compress heavy native tool schemas (per-agent)
+├── tgrep.ts (+ tgrep/)            # Barrel: registers tgrep_search (options.codemode:false)
 ├── deepseek-anchor.ts             # Barrel: /deepseek-anchor command
 ├── deepseek-anchor/               # Command, config, announce, index
 ├── sdd.ts                         # Barrel: SDD engine (/sdd runtime actions only)
-├── sdd/                           # Engine + command hook (protocol lives at skills/sdd-workflow)
-├── rtk-write.ts                    # Barrel: vendored rtk command rewrite
-├── rtk-write/                      # Implementation + rewrite logic
+├── sdd/                           # Engine + prompt hook (protocol lives at skills/sdd-workflow)
+├── rtk-write/                     # Directory entry (no root barrel): vendored rtk command rewrite
 ├── lite-mode.ts                   # Hook: strip L0 from @lite system prompt
 ├── lite-mode/                     # Implementation
-├── shared/plugin-scope.ts         # Injection gate (consumes plugin-scope.json)
+├── shared/plugin-scope.ts         # Scope policy (consumes plugin-scope.json)
+├── shared/agent-scope.ts          # V2 gate: per-agent hook scoping (event.agent → system sentinel → parentID) over plugin-scope.ts
+├── shared/notify.ts               # Announce surface bridge: v2 Context has no TUI domain → server-log line (OCP-V2-GAP)
 ├── shared/plugin-switch.ts        # Shared on/off state machine (auto-advisor, adr/env-guard, project-memory)
-├── shared/system-block.ts         # Shared appendBlock / stripBlockByLine / escapeRegExp for system.transform injectors
+├── shared/system-block.ts         # Shared appendBlock / stripBlockByLine / escapeRegExp for context-hook injectors (SystemPart[])
 ├── design-token-guard.ts          # Hook: block hardcoded design values
-├── ai-slop-scanner.ts             # Hook: scan for AI anti-patterns
-├── auto-format.ts                 # Hook: auto-run formatters
+├── ai-slop-scanner.ts             # Hook: scan for AI anti-patterns (filesystem.changed)
+├── auto-format.ts                 # Hook: auto-run formatters (filesystem.changed)
 ├── browser-screenshot.ts          # Custom tool: Playwright screenshots
-├── profile-wizard.ts              # TUI plugin: /profile dialog wizard
-├── provider-wizard.ts             # TUI plugin: /provider dialog wizard + /disconnect (TUI keymap)
-├── queue-manager.ts               # TUI plugin: /queued dialog manager
-└── usage.ts                      # TUI plugin: /usage token/cost usage (pure view over server data)
+└── tui/                           # TUI plugins (registered in cli.template.jsonc:plugins → global cli.json)
+    ├── provider-wizard.ts         # /provider dialog wizard + /disconnect (TUI keymap)
+    ├── profile-wizard.ts          # /profile dialog wizard (core logic in shared/profile-core.ts)
+    ├── project-wizard.ts          # /project dialog wizard
+    ├── queue-manager.ts           # /queued dialog manager (steer↔queue / cancel — v1 edit dropped)
+    ├── sidebar-status.ts          # TUI slot: plugin/MCP/profile status panel
+    └── usage.ts                   # /usage token/cost view (assistant-message step proxy — OCP-V2-GAP)
 
 tests/
 ├── test-all.ps1              # Main test runner (structural + prompt tests)
@@ -688,12 +694,12 @@ tests/
 
 ## Release workflow
 
-1. Bump `version` in `install/version.json` (e.g. `0.7.0`) and sync `package.json` `version` + `install/README.md` title to match.
+1. Bump `version` in `install/version.json` (e.g. `2.1.0`) and sync `package.json` `version` + `install/README.md` title to match.
 2. Regenerate the manifest: `bun run manifest:generate` — the manifest is **always overwritten**, so ensure `SHIPPED_DIRS` / `SHIPPED_FILES` in `install/src/manifest.ts` include every new file (see `AGENTS.md` §4). **Never hand-edit a generated manifest.** `pack.sh` / `pack.ps1` resolve the shipped-file inventory through `scripts/check-package-manifest.ts`, which refuses to build when the current-version manifest disagrees with what actually ships (a stale manifest silently omits files from the archive).
 3. Run structural tests: `pwsh -ExecutionPolicy Bypass -File tests/test-all.ps1 -StructuralOnly`.
 4. Type-check plugins: `bun install && bunx tsc --noEmit`.
 5. Commit and push to the release line (`dev-v1`, `dev-v2.x`, …). Do **not** merge to `main` first — each line is its own release line; a `main` merge is optional snapshot only (see `AGENTS.md` §3).
-6. Tag and push from that line: `git tag v0.7.0 && git push origin v0.7.0`.
+6. Tag and push from that line: `git tag v2.1.0 && git push origin v2.1.0`.
 7. The [Release workflow](.github/workflows/release.yml) builds `opencode-prime-<ver>.tar.gz` + `.zip` and creates a GitHub Release automatically — no manual artifact upload needed.
 
-Runtime behavior (hooks, LLM compliance) cannot be fully covered by the structural suite — verify in a real `opencode` environment against the pre-release flow before tagging.
+Runtime behavior (hooks, LLM compliance) cannot be fully covered by the structural suite — verify in a real **opencode v2** environment against the pre-release flow before tagging.

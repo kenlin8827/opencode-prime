@@ -154,12 +154,12 @@ the tgrep version and repository revision before claiming a performance gain.
 
 ---
 
-## Plugin Pre-warming Cache (Ensure-Plugins)
+## External npm Plugins
 
-To avoid startup stalls during the first OpenCode launch caused by online package downloads, the installer auto-detects local package managers (`bun` > `npm` > `pnpm`) and pre-warms enabled external plugins into OpenCode's native cache directory (`~/.cache/opencode`).
+The `plugin` block in `install/options.jsonc` controls membership in `opencode.jsonc`'s `plugins` array: a switch set to `true` injects its package name as a plugin entry, `false` removes it. The installer itself performs no package download — the v2 runtime loads cached package plugins at server startup and installs missing ones in the background (see the OpenCode plugins guide), so a first launch after enabling a plugin may run without it until the background install lands.
 
-- **Zero Config Directory Pollution**: Plugin caches reside strictly in OpenCode's data directory, keeping `~/.config/opencode` clean for manifest-based updates and uninstalls.
-- **Graceful Fallback**: If no package manager is installed or the network is offline, the installer gracefully skips pre-warming without failing the installation. OpenCode will download them upon launch as usual.
+- **Zero Config Directory Pollution**: nothing is written into `~/.config/opencode` for package plugins; the runtime owns their installation.
+- **Offline-tolerant**: with no network the entries stay in the config; OpenCode downloads them on a later launch. Enable/disable by flipping the switch and re-running the installer.
 
 ---
 
@@ -167,7 +167,7 @@ To avoid startup stalls during the first OpenCode launch caused by online packag
 
 Install auto-provisions [rtk](https://github.com/rtk-ai/rtk) — a CLI proxy that compresses command output (git status, test runs, builds, ...) by 60-90% before it reaches the model.
 
-If `rtk` is not on PATH, the installer downloads the pinned release into `~/.local/bin` (SHA256-verified, added to user PATH on Windows). The opencode hook ships in-tree as `plugins/rtk-write.ts`.
+If `rtk` is not on PATH, the installer downloads the pinned release into `~/.local/bin` (SHA256-verified, added to user PATH on Windows). The opencode plugin ships in-tree as `plugins/rtk-write/` (the v1 root barrel `plugins/rtk-write.ts` no longer ships; stale copies are pruned on upgrade).
 
 To opt out: set `"rtk": false` in `install/options.jsonc` and re-run install.
 

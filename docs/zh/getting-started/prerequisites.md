@@ -8,7 +8,7 @@
 
 | 要求 | 用途 | 安装方式 |
 |---|---|---|
-| [opencode](https://opencode.ai) CLI（仅限大版本 **v1**——v2 会被拒绝） | 核心运行时，读取配置并调度智能体 | `curl -fsSL https://opencode.ai/install \| bash -s -- --version <latest-1.x>`（从 [releases](https://github.com/anomalyco/opencode/releases) 取最新 v1；通常由安装器自动装好并锁定在 v1） |
+| [opencode](https://opencode.ai) CLI（大版本 **v2**——即 2.0.x 线） | 核心运行时，读取配置并调度智能体 | 通常由安装器自动装好：OCP 安装器（`install/scripts/tools/opencode.sh\|.ps1`，以 `@script:opencode` 接入）只解析 [releases](https://github.com/anomalyco/opencode/releases) 上最新的 **v2** 发布包——绝不取 "latest overall"；若用户 profile 里检测到 v1 二进制，则就地升级至最新 v2。手动安装：从 releases 取最新 v2 标签（`curl -fsSL https://opencode.ai/install \| bash -s -- --version <latest-2.x>`） |
 | PowerShell 7+（Windows） | Windows 端安装与维护脚本 | `winget install Microsoft.PowerShell` |
 | Bash 4+ + `jq`（macOS / Linux / WSL） | Unix 端安装与清单解析 | `brew install jq` 或 `sudo apt install jq` |
 | Git | 版本控制与升级清单回退 | 系统包管理器自带 |

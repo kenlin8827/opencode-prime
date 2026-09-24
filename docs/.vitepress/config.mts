@@ -63,6 +63,7 @@ export default withMermaid(
                 { text: 'Project Initialization & Guardrails', link: '/getting-started/project-init' },
                 { text: 'Clients & UI Options', link: '/getting-started/clients' },
                 { text: 'Prerequisites & Source Install', link: '/getting-started/prerequisites' },
+                { text: 'Upgrading to OCP 2.x (OpenCode v2)', link: '/getting-started/upgrade-to-v2' },
               ]
             },
             {
@@ -129,6 +130,7 @@ export default withMermaid(
                   { text: '项目初始化与工程护栏', link: '/zh/getting-started/project-init' },
                   { text: '客户端与交互界面', link: '/zh/getting-started/clients' },
                   { text: '环境要求与源码开发', link: '/zh/getting-started/prerequisites' },
+                  { text: '升级到 OCP 2.x（OpenCode v2）', link: '/zh/getting-started/upgrade-to-v2' },
                 ]
               },
               {

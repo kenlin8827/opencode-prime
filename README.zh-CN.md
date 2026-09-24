@@ -4,7 +4,8 @@
 
 **面向 [OpenCode](https://opencode.ai) 的生产级多智能体工程套件。**
 
-[![版本](https://img.shields.io/badge/version-0.33.0-blue.svg)](https://github.com/kenlin8827/opencode-prime/releases)
+[![版本](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/kenlin8827/opencode-prime/releases)
+[![OpenCode 运行时](https://img.shields.io/badge/OpenCode%20runtime-%E2%89%A52.0.0-blue.svg)](https://opencode.ai)
 ![许可证](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)
 ![平台](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-lightgrey.svg)
 
@@ -38,7 +39,9 @@ curl -fsSL https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/inst
 irm https://raw.githubusercontent.com/kenlin8827/opencode-prime/main/install.ps1 | iex
 ```
 
-重复运行安装命令即可升级，同时保留 API 密钥、自定义模型和模型层级配置。前置条件、指定版本、检查脚本后再运行，以及克隆安装方式请见[在线文档](https://opencode-prime.dev/zh/)。
+重复运行安装命令即可升级，同时保留 API 密钥、自定义模型和模型层级配置。OCP **2.x 需要 OpenCode v2 运行时**（大版本 ≥ 2.0.0）——安装器会替你解析并钉住最新 v2 发布包。前置条件、指定版本、检查脚本后再运行，以及克隆安装方式请见[在线文档](https://opencode-prime.dev/zh/)。
+
+> **从 OCP 0.x 升级？** OCP 2.0.0 是适配 OpenCode v2 运行时的全新版本线（v2 原生插件 API、V2 原生配置键、终端客户端改用全局 `cli.json`）。跨大版本安装按设计被锁定：先 `ocp init` 备份，再执行上方一键安装命令。详见[发布说明](install/versions/2.0.0.notes.md)与迁移 ADR（ADR-2.0.0）。
 
 > 中国大陆网络环境可通过 `OCP_RAW_MIRROR`、`OCP_API_MIRROR` 与 `OCP_RELEASE_MIRROR` 配置 GitHub 镜像；详细说明见[安装与维护文档](https://opencode-prime.dev/zh/maintenance/ocp-cli)。
 

@@ -11,18 +11,19 @@ that don't.
 |---|---|---|---|
 | **L0** | `opencode.jsonc:instructions` | every step of every agent | iron rules: `rfc-keywords`, `output-protocol`, `verification-honesty`, `routing-index` |
 | **L1** | agent `prompt` field, assembled from `{file:}` markers | while that agent runs | role rules: coding pack, `sql-migration`, review criteria |
-| **L2** | `skills/*/SKILL.md` metadata | resident every step, visibility gated by `permission`; **body loads on demand** via the slash-command launchers in `commands/*.md` | scenario rules: workflow protocols (`sdd-workflow`, `dev`, `goal`, `handoff`, …) |
+| **L2** | `skills/*/SKILL.md` metadata | resident every step, visibility gated by the agent `permissions[]` rules; **body loads on demand** via the slash-command launchers in `commands/*.md` | scenario rules: workflow protocols (`sdd-workflow`, `dev`, `goal`, `handoff`, …) |
 | **L3** | your project's `AGENTS.md` (OpenCode native) | when files in that directory are read | your personal / project rules |
 
 L0 is the expensive layer (paid × steps × agents), so it stays under a hard
 token budget enforced by `scripts/measure-prompts.ts` in the release gate.
 
-**Single source of truth.** Agent *definitions* (mode, model, permission,
-tools, prompt assembly) live only in the jsonc `agent` block. The
+**Single source of truth.** Agent *definitions* (mode, model, permissions,
+tools, prompt assembly) live only in the jsonc `agents` block. The
 `prompts/*.md` fragments are pure bodies without frontmatter, and must never
 live under `agents/` in the installed config: opencode auto-discovers
 `agents/*.md` as agent definitions whose frontmatter/body silently override
-the jsonc block (verified v1.18.25). `prompts/` is not auto-discovered.
+the jsonc block (v2 discovery: `~/.config/opencode/agents/<name>.md` and
+`.opencode/agents/`, per the agents guide). `prompts/` is not auto-discovered.
 
 ## The L1 routing matrix
 
@@ -39,14 +40,17 @@ the jsonc block (verified v1.18.25). `prompts/` is not auto-discovered.
 ## Per-step visibility gating
 
 Two resident layers are gated by per-agent permissions instead of disclosure
-(opencode v1.18.25 semantics):
+(opencode v2 `permissions[]` semantics — an ordered array of
+`{action, resource, effect}` rules where the LAST match wins):
 
-- **Skills block** — `{ "skill": { "name": "deny" } }` drops a skill from the
-  resident skills block; `{ "*": "deny" }` empties the block. Workflow skills
-  stay visible only for the `build`, `plan`, `code` primaries; every subagent
-  denies `"*"`.
-- **MCP tool surface** — `"<server>_*": { "*": "deny" }` hides both the tools
-  and the `mcp_instructions` block. The code-intel servers (`serena`,
+- **Skills block** — `{ "action": "skill", "resource": "<name>", "effect":
+  "deny" }` drops a skill from the resident skills block; resource `"*"`
+  denies every skill. Workflow skills stay visible only for the `build`,
+  `plan`, `code` primaries; every subagent denies `"*"`; the `lite` primary
+  carries a `"*"` deny plus explicit per-skill allows (handoff,
+  memory-summarize, the Git family).
+- **MCP tool surface** — `{ "action": "<server>_*", "resource": "*", "effect":
+  "deny" }` hides the server's tools. The code-intel servers (`serena`,
   `codegraph`) stay only with agents that actually query code.
 - **L0 stripping** — the `lite` primary opts out of L0 entirely: its inline
   prompt carries the `<!-- lite-mode -->` sentinel and `plugins/lite-mode.ts`
@@ -61,15 +65,18 @@ Quantify any change with `scripts/measure-prompts.ts` before releasing.
 ## Plugin injection gating
 
 Runtime protocol injections (guardrail notices, scoped protocols) are
-policy-gated by `plugin-scope.json` (repo root, shipped), consumed solely by
-`plugins/shared/plugin-scope.ts`. Every injector awaits
-`scoped(input, output.system, "<plugin-id>", client)` before touching the
-system prompt.
+policy-gated by `plugin-scope.json` (repo root, shipped), consumed by
+`plugins/shared/plugin-scope.ts` through the v2 gate
+`plugins/shared/agent-scope.ts`. Every injector registers its
+`ctx.session.hook("context")` / `ctx.tool.hook(...)` callback behind the
+gate before touching the system prompt.
 
-- **Identification** — text `identifiers` (the `lite` sentinel, the
-title-generator prefix) plus session ground truth: a non-empty `parentID`
-marks a subagent step (cached per session; consulted only when text
-detection misses).
+- **Identification** (first hit wins) — the v2 event's `agent` ID
+(`detectAgentByName`, the primary channel), then text `identifiers` in the
+assembled system parts (the `lite` sentinel, the title-generator prefix —
+still needed where the agent ID is insufficient), then session ground truth:
+a non-empty `parentID` marks a subagent step (cached per session; consulted
+only when the earlier channels miss).
 - **Policy** — per-plugin `deny`/`allow` lists using the scope grammar `x`
 (identity or state) and `x:*` (any identity in state `x`); unspecified
 plugins inherit the `"*"` entry. Shipped default: deny `lite`, `utility`,

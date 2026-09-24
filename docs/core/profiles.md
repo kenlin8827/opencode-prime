@@ -107,8 +107,10 @@ The `reset` subcommand removes every model ref the wizard wrote:
 
 ```
 /profile reset
-→ Confirm dialog listing all refs → removes root `model`, `small_model` and
-  every `agent.*.model` from `opencode.jsonc` (keeps a `.bak` backup) and
+→ Confirm dialog listing all refs → removes root `model` and every
+  `agents.*.model` (incl. `agents.title.model`, the flash tier's v2 home)
+  from `opencode.jsonc` — a residual legacy `small_model` / `agent.*.model`
+  is stripped too (keeps a `.bak` backup) and
   deactivates the profile. opencode falls back to its native model picker.
   Profile files and `tiers.json` are kept — reset clears the applied state,
   not the library. Restart to apply.
@@ -259,7 +261,7 @@ Each tier resolves to the provider/model mapped by the active profile. **Variant
 
 ## Custom providers (`/provider` wizard)
 
-The `/provider` slash command (a TUI plugin registered via `tui.template.jsonc`) configures custom providers end to end through native dialogs — no arguments:
+The `/provider` slash command (a TUI plugin registered via `cli.template.jsonc` → the global `cli.json`) configures custom providers end to end through native dialogs — no arguments:
 
 ```
 /provider
