@@ -1,4 +1,5 @@
 {
+  "autoAdvisorMode": "off",
   "adr": {
     "style": "ocp",
     "numbering": "iteration",
