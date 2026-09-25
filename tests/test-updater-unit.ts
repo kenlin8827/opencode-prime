@@ -34,6 +34,7 @@ import {
   majorLockEnabled,
   opencodeRowLocked,
   partitionUpdates,
+  requiredMajorRowLocked,
   policyDefaultFromRegistry,
   shouldOverlayRelease,
   shouldSkipUpgradeDownload,
@@ -232,6 +233,13 @@ const tooNew = checkRuntimeCompat(2, "0.42.0")
 assert(tooNew.ok === false && tooNew.kind === "runtime-too-new",
   "v2 runtime + v1-era package → refused (both directions)")
 assert(checkRuntimeCompat(2, "1.18.32").ok === false, "1.x OCP line still requires v1: v2 runtime → too-new")
+
+console.log("requiredMajorRowLocked — the shared rule behind a required-major row")
+
+assert(requiredMajorRowLocked("1.24.2", 2, true) === false, "below the required major → offered (upgrade is the fix)")
+assert(requiredMajorRowLocked("2.0.0", 2, true) === true, "at the required major → locked (v3 stays blocked)")
+assert(requiredMajorRowLocked("3.0.0", 2, true) === true, "past the required major → locked")
+assert(requiredMajorRowLocked("garbage", 2, true) === true, "unparseable version → fail closed (keep the lock)")
 
 console.log("opencodeRowLocked — v1→v2 runtime crossing is the fix, not a violation")
 

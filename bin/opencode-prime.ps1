@@ -288,7 +288,7 @@ switch ($Subcommand.ToLowerInvariant()) {
     'web' {
         if (-not (Get-Command openchamber -ErrorAction SilentlyContinue)) {
             Write-Host '✗ openchamber was not found on PATH.' -ForegroundColor Red
-            Write-Host '  Install OpenChamber first: npm install -g @openchamber/web'
+            Write-Host '  Install OpenChamber first: npm install -g @openchamber/web@2'
             Write-Host '  or download the native app from https://openchamber.dev/download'
             exit 1
         }

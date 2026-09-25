@@ -15,6 +15,7 @@ import {
   findLinuxDesktopBin,
   findVscodeCli,
   findWindowsDesktopExe,
+  openChamberWebMajorWarning,
   VSCODE_CLI_CANDIDATES,
 } from './openchamber';
 
@@ -108,7 +109,7 @@ export function launchWeb(extraArgs: string[]): number {
   if (!isBinaryOnPath('openchamber')) {
     console.error('✗ openchamber was not found on PATH.');
     console.error(
-      '  Install OpenChamber first: `npm install -g @openchamber/web`\n' +
+      '  Install OpenChamber first: `npm install -g @openchamber/web@2`\n' +
         '  or download the native app from https://openchamber.dev/download'
     );
     return 1;
@@ -117,6 +118,13 @@ export function launchWeb(extraArgs: string[]): number {
   if (extraArgs[0] === 'stop') {
     return stopWeb();
   }
+
+  // Soft compat guard: `ocp web` drives the v2 CLI surface, so an installed
+  // v1/v3 CLI is worth a warning before we start serving (never a hard
+  // refusal — see openChamberWebMajorWarning). Skipped for `ocp web stop`,
+  // which only tears a running instance down.
+  const majorWarn = openChamberWebMajorWarning();
+  if (majorWarn) console.warn(majorWarn);
 
   // `ocp web restart` is just an explicit spelling of `ocp web`.
   if (extraArgs[0] === 'restart') {
@@ -202,7 +210,7 @@ export function launchWeb(extraArgs: string[]): number {
 
   return launchBinary(
     'openchamber',
-    '  Install OpenChamber first: `npm install -g @openchamber/web`\n' +
+    '  Install OpenChamber first: `npm install -g @openchamber/web@2`\n' +
       '  or download the native app from https://openchamber.dev/download',
     ['serve', ...args]
   );

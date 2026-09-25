@@ -8,7 +8,6 @@ import {
   getCurrentRepoVersion,
   getDefaultTargetDir,
   getInstalledVersion,
-  isBinaryOnPath,
   loadToolRegistry,
   requiredRuntimeMajor,
   apiMirrorUrls,
@@ -18,7 +17,12 @@ import {
   type ToolRegistry,
 } from './installer';
 import { isCrossMajorVersion, majorOf, isNewerVersion, parseVersionPayload } from './manifest';
-import { findPackageManager, globalAddCommand } from './package-manager';
+import {
+  findPackageManager,
+  globalAddCommand,
+  isUsablePackageManager,
+  type PackageManager,
+} from './package-manager';
 import { installMethodFromPath, localBinaryVersion, resolveBinPath } from './shared/opencode-detect';
 
 const REPO_BASE = 'https://github.com/kenlin8827/opencode-prime';
@@ -73,13 +77,33 @@ export function isBlockedMajorUpgrade(local: string, latest: string): boolean {
 }
 
 /**
- * Pure decision for the opencode row's lock: crossing up to the required
- * runtime major is the fix (unlocked); every other cross stays locked.
+ * Pure decision for a row that declares a REQUIRED major (opencode's
+ * runtime, the OpenChamber web CLI, ...): crossing UP to that major is the
+ * compat fix, not a lock violation — so it is offered. Every other cross
+ * stays locked, including the too-new direction and a jump past the
+ * required major (2 → 3 when 2 is required).
+ *
+ * The apply side stays bounded by each tool's pinned installer (@script or
+ * `@pm:<pkg>@<major>`), so unlocking the decision can never overshoot.
  */
-export function opencodeRowLocked(local: string, requiredMajor: number, baseLocked: boolean): boolean {
+export function requiredMajorRowLocked(
+  local: string,
+  requiredMajor: number,
+  baseLocked: boolean,
+): boolean {
   const major = majorOf(local);
   if (!baseLocked || Number.isNaN(major)) return baseLocked;
   return !(major < requiredMajor);
+}
+
+/**
+ * Pure decision for the opencode row's lock — the runtime instance of
+ * `requiredMajorRowLocked` (crossing up to the required runtime major is
+ * the fix). Kept as a named export so the runtime contract reads on its
+ * own at the call site and in tests.
+ */
+export function opencodeRowLocked(local: string, requiredMajor: number, baseLocked: boolean): boolean {
+  return requiredMajorRowLocked(local, requiredMajor, baseLocked);
 }
 
 /**
@@ -192,6 +216,14 @@ interface ToolEntryUpdate {
    * (true = locked); false opts the tool out of the lock.
    */
   lock_major?: boolean;
+  /**
+   * Major this OCP release is built against (e.g. 2 for the OpenChamber web
+   * CLI). When the installed binary sits BELOW it, the cross-major upgrade
+   * IS the compat fix and is offered instead of refused — see
+   * requiredMajorRowLocked. Crossing past it stays locked, and the apply
+   * side is bounded by the tool's pinned installer anyway.
+   */
+  required_major?: number;
   /** Optional fallback for both strategies when no pm is detected / no per-platform override. */
   upgrade?: unknown; // string | Record<string, string>; resolved via resolveInstallCommand
   /**
@@ -398,6 +430,31 @@ async function applyComponentUpgrade(
 }
 
 /**
+ * The major a row is REQUIRED to sit on, when it declares one. opencode's
+ * runtime major is derived from this OCP release (requiredRuntimeMajor);
+ * every other tool declares `update_check.required_major` in tools.jsonc
+ * (e.g. 2 for the OpenChamber web CLI). undefined = no required major, so
+ * the plain major lock applies.
+ *
+ * The opencode branch reads `install/version.json`, which THROWS when the
+ * file is missing (see getCurrentRepoVersion). A not-installed repo can
+ * still have a probed binary on PATH (CI runners, partial git clones) — in
+ * that edge case degrade to "no required major" instead of crashing the
+ * probe loop, which would otherwise skip every other tool in the registry.
+ */
+function requiredMajorFor(name: string, def: ToolEntry | undefined, repoDir: string): number | undefined {
+  if (name === 'opencode') {
+    try {
+      return requiredRuntimeMajor(getCurrentRepoVersion(repoDir));
+    } catch {
+      return undefined;
+    }
+  }
+  const v = def?.update_check?.required_major;
+  return typeof v === 'number' ? v : undefined;
+}
+
+/**
  * TOCTOU guard for companion tools: the lock decision consumed the probe
  * snapshot, but a tool upgrade runs `pkg@latest` or an official installer —
  * whatever is newest AT APPLY TIME. A major published inside the
@@ -410,6 +467,12 @@ function verifyPostUpgradeMajor(c: ComponentCheck, repoDir: string): void {
   const def = loadToolRegistry(repoDir)?.tools?.[c.key] as ToolEntry | undefined;
   const now = def?.binary ? localBinaryVersion(def.binary) : null;
   if (!now || !c.local || !isCrossMajorVersion(c.local, now)) return;
+  // Landing ON the required major is the intended crossing (the row was
+  // unlocked on purpose) — not a TOCTOU violation, so no alarm. Only a
+  // major BEYOND it means a release slipped in during the probe→apply
+  // window.
+  const required = requiredMajorFor(c.key, def, repoDir);
+  if (typeof required === 'number' && majorOf(now) === required) return;
   console.error(`⚠ ${c.label}: the upgrade crossed the major boundary (v${c.local} → v${now}).`);
   console.error('  A new major was published between the version check and the apply — the lock gates the decision, not the installer itself.');
   const pkg = def?.update_check?.upgrade_package;
@@ -538,10 +601,14 @@ function smartUpgrade(toolName: string, def: ToolEntry, repoDir: string): number
     return runInstallCommand(official, repoDir, { binary: def.binary }).status ?? 1;
   }
 
+  // Availability gate: a PATH hit alone can be a broken impostor (Hadoop's
+  // `yarn`), which would fail the install without ever reaching the npm
+  // fallback — so both the owning manager and the fallback search use the
+  // "PATH + `<pm> --version` exits 0" probe.
   const manager =
-    method !== 'unknown' && isBinaryOnPath(method)
-      ? method
-      : findPackageManager(['bun', 'pnpm', 'yarn', 'npm'], isBinaryOnPath);
+    method !== 'unknown' && isUsablePackageManager(method)
+      ? (method as PackageManager)
+      : findPackageManager(['bun', 'pnpm', 'yarn', 'npm']);
   const cmd = manager === null ? null : globalAddCommand(manager, pkg);
 
   if (!cmd) {
@@ -593,12 +660,20 @@ async function probeToolFromRegistry(repoDir: string, name: string, def: ToolEnt
   // (locked when the policy block is absent — the safe default).
   let locked = majorLockEnabled(def.update_check?.lock_major, majorLockPolicyDefault(repoDir));
   const local = localBinaryVersion(def.binary);
-  // The opencode row is the runtime the compat gate depends on: crossing up
-  // to the major this OCP line requires (v1 → v2) is the FIX, not a lock
-  // violation — offer it (the @script:opencode pin bounds the apply to the
-  // required major, so no overshoot). Every other major cross stays locked.
-  if (name === 'opencode' && local) {
-    locked = opencodeRowLocked(local, requiredRuntimeMajor(getCurrentRepoVersion(repoDir)), locked);
+  // Rows with a REQUIRED major (the opencode runtime, the OpenChamber web
+  // CLI): crossing up to that major is the FIX, not a lock violation — offer
+  // it. Each such tool's installer is pinned to the required major
+  // (@script:opencode / `@pm:<pkg>@<major>`), so unlocking the decision can
+  // never overshoot into an untested future major. Every other cross stays
+  // locked.
+  // Required-major resolution stays inside the `local` guard: the opencode
+  // branch reads install/version.json, which THROWS when the file is
+  // missing — a not-installed row must never add that failure mode.
+  if (local) {
+    const requiredMajor = requiredMajorFor(name, def, repoDir);
+    if (typeof requiredMajor === 'number') {
+      locked = requiredMajorRowLocked(local, requiredMajor, locked);
+    }
   }
   const base = { key: name, label: name, majorLocked: locked };
 

@@ -169,21 +169,39 @@
       }
     },
     "openchamber_web": {
-      "description": "OpenChamber web UI CLI — powers `ocp web`",
+      "description": "OpenChamber web UI CLI — powers `ocp web` (OCP v2 requires the v2 CLI; pinned to major 2)",
       "binary": "openchamber",
       "url": "https://openchamber.dev",
+      // Pinned to major 2 — the same contract opencode has with this OCP
+      // line. `ocp web` drives the CLI's `serve` / `status --quiet` /
+      // `stop [--port]` surface and OpenChamber's settings.json layout; a
+      // v3 rewrite of either is untested against it. `@2` is a semver range
+      // (>=2.0.0 <3.0.0), so in-major patch/minor fixes still flow through
+      // — only the major boundary is closed. Do NOT revert to a bare
+      // `@pm:@openchamber/web` or to `@latest`: those install whatever is
+      // newest, including a future v3.
       "install": {
-        "default": "@pm:@openchamber/web"
+        "default": "@pm:@openchamber/web@2"
       },
       "update_check": {
         "source": {
           "kind": "npm",
           "package": "@openchamber/web"
         },
-        "upgrade_strategy": "smart",
+        // "static" on purpose (NOT "smart"): the smart strategy would run
+        // `bun/pnpm/yarn/npm install -g <upgrade_package>` (unpinned),
+        // sailing past the v2 pin into an untested major. The @pm: spec
+        // below still resolves through the manager that OWNS the binary
+        // (per-tool ownership), so nothing is lost. `upgrade_package` is
+        // kept for verifyPostUpgradeMajor's pin-back hint only.
+        "upgrade_strategy": "static",
         "upgrade_package": "@openchamber/web",
+        // Crossing UP to major 2 is the compat fix for a v1 CLI, so
+        // updater.ts unlocks that one direction (requiredMajorRowLocked);
+        // 2 → 3 stays refused like every other cross-major jump.
+        "required_major": 2,
         "upgrade": {
-          "default": "@pm:@openchamber/web@latest"
+          "default": "@pm:@openchamber/web@2"
         }
       }
     },

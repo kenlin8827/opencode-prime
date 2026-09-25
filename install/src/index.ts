@@ -854,7 +854,7 @@ async function main() {
         section('Companions');
       }
       if (companions.web) {
-        console.log(ensureOpenChamberWebCli().message);
+        console.log(ensureOpenChamberWebCli(repoDir).message);
       }
       if (companions.vscode) {
         console.log(ensureOpenChamberVscodeExtension().message);

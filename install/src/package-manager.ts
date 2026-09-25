@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import {
   getInstallMethod,
   installMethodFromPath,
@@ -28,9 +29,47 @@ export function globalAddCommand(manager: PackageManager, packageName: string): 
   }
 }
 
+/**
+ * A PATH hit is NOT enough: Hadoop ships a `yarn` that `where.exe` finds but
+ * that cannot execute (missing libexec script on Windows) — its .cmd wrapper
+ * still EXITS 0 while printing the failure to stderr. Selecting it would run
+ * `yarn global add <pkg>`, fail, and never fall through to npm.
+ *
+ * So availability = on PATH AND `<pm> --version` exits 0 AND prints an
+ * actual semver on stdout AND stderr carries no recognized failure token
+ * (error / cannot / not found / enoent — covers the Hadoop impostor plus
+ * every package manager's own "command-not-found" diagnostics). Every real
+ * manager (bun/pnpm/yarn/npm) answers that in milliseconds; the impostor
+ * either prints nothing on stdout or fails loudly on stderr.
+ *
+ * Takes a bare command name (not just a PackageManager) so the probe is
+ * reusable for any PATH command. `onPath` is injectable for unit tests
+ * (PATH mutation is unreliable across Windows + child processes).
+ */
+export function isUsablePackageManager(
+  name: string,
+  onPath: (cmd: string) => boolean = isBinaryOnPath,
+): boolean {
+  if (!onPath(name)) return false;
+  try {
+    const res = spawnSync(name, ['--version'], {
+      encoding: 'utf8',
+      timeout: 15000,
+      // Windows resolves .cmd shims only through the shell.
+      shell: process.platform === 'win32',
+    });
+    if (res.status !== 0 || res.error) return false;
+    const stderr = res.stderr ?? '';
+    if (/\b(error|cannot|not found|enoent)\b/i.test(stderr)) return false;
+    return /\d+\.\d+\.\d+/.test(res.stdout ?? '');
+  } catch {
+    return false;
+  }
+}
+
 export function findPackageManager(
   order: readonly PackageManager[],
-  isAvailable: PackageManagerAvailability = isBinaryOnPath,
+  isAvailable: PackageManagerAvailability = isUsablePackageManager,
 ): PackageManager | null {
   for (const manager of order) {
     if (isAvailable(manager)) return manager;
@@ -41,7 +80,7 @@ export function findPackageManager(
 export function findPackageManagerForBinary(
   ownedBy: string,
   order: readonly PackageManager[],
-  isAvailable: PackageManagerAvailability = isBinaryOnPath,
+  isAvailable: PackageManagerAvailability = isUsablePackageManager,
 ): PackageManager | null {
   const normalized = ownedBy.toLowerCase();
   const ownedManager = order.find((manager) => normalized.includes(manager));
@@ -91,7 +130,7 @@ export function resolvePmForSpec(
   opts: PmResolutionOptions = {},
 ): PackageManagerCommand | null {
   if (!spec) return null;
-  const isAvailable = opts.isAvailable ?? isBinaryOnPath;
+  const isAvailable = opts.isAvailable ?? isUsablePackageManager;
   const resolveBinaryPath = opts.resolveBinaryPath ?? resolveBinPath;
 
   // 1. Per-tool ownership first.

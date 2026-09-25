@@ -77,7 +77,7 @@ ocp serve --port 4096       # 固定端口
 
 ### `ocp web` — OpenChamber Web 界面
 
-依赖 `openchamber` CLI（在 `install/options.jsonc` 中设 `"openchamber_web": true` 后才会自动拉取，需 Node.js 22+）。行为要点：
+依赖 `openchamber` CLI（在 `install/options.jsonc` 中设 `"openchamber_web": true` 后才会自动拉取，需 Node.js 22+）。该包**锁定大版本 2**（`@openchamber/web@2`）：只会在 v2 内更新，v3 与其他跨大版本一样被拒绝；若已安装的 CLI 不在 v2 上，`ocp web` 会先给出警告。行为要点：
 
 - **全新会话**：若已有 OpenChamber 实例在运行，会先将其停止（否则携带新 `--ui-password` 的启动会因端口占用而失败，白白泄露一个密码）；
 - **密码**：除非你自己传入 `--ui-password`，否则会自动生成并打印一个随机密码（`🔑 OpenChamber web UI password: ...`）；

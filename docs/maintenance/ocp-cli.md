@@ -89,7 +89,7 @@ ocp serve --port 4096       # pin the port
 
 ### `ocp web` — OpenChamber web UI
 
-Requires the `openchamber` CLI (opt in to auto-provisioning with `"openchamber_web": true` in `install/options.jsonc`; needs Node.js 22+). Behavior:
+Requires the `openchamber` CLI (opt in to auto-provisioning with `"openchamber_web": true` in `install/options.jsonc`; needs Node.js 22+). The package is pinned to **major 2** (`@openchamber/web@2`), so only in-major updates are ever pulled — a v3 CLI is refused like any other cross-major jump, and `ocp web` warns when the installed CLI sits on another major. Behavior:
 
 - **Fresh session**: if an OpenChamber instance is already running, it is stopped first (a fresh `--ui-password` launch would otherwise die on the occupied port and leak a useless password);
 - **Password**: a random UI password is generated and printed (`🔑 OpenChamber web UI password: ...`) unless you pass your own `--ui-password`;

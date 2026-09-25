@@ -1022,6 +1022,8 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-package-manager-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-openchamber-pin-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-shell-command-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-session-clean-flags-unit.ts"

@@ -6,5 +6,10 @@
     "layout": "hierarchical",
     "governance": "review",
     "suite": "ocp"
-  }
+  },
+  "adrGuard": "on",
+  "adrLayout": "auto",
+  "adrDir": "docs/adr",
+  "envGuard": "on",
+  "projectMemory": "on"
 }

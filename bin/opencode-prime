@@ -187,7 +187,7 @@ case "$sub" in
     web)
         if ! command -v openchamber >/dev/null 2>&1; then
             echo "✗ openchamber was not found on PATH." >&2
-            echo "  Install OpenChamber first: npm install -g @openchamber/web" >&2
+            echo "  Install OpenChamber first: npm install -g @openchamber/web@2" >&2
             echo "  or download the native app from https://openchamber.dev/download" >&2
             exit 1
         fi

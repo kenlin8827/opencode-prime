@@ -45,7 +45,8 @@
         // 它不是 MCP、LSP 或代码图谱；.tgrep/ 不可提交。
          "tgrep": { "enabled": true, "requestLog": false },
        // OpenChamber 拆分为三个独立面，各自一个开关：
-        // 网页版 CLI（缺失时自动安装 @openchamber/web；提供 `ocp web`，需 Node.js 22+）
+        // 网页版 CLI（缺失时自动安装 @openchamber/web@2；提供 `ocp web`，需 Node.js 22+）
+        // 锁定大版本 2：v2 内的修复照常更新，未来的 v3 不会被静默装上
         // 默认关闭：启用后会安装全局包。
         "openchamber_web": false,
        // `ocp desktop` / `ocp ui` 的原生桌面应用——始终需另行下载
@@ -211,7 +212,7 @@ watcher 负责日常增量更新。将 `tools.tgrep` 设为 `false` 可完全退
 
 | 开关 | 表面 | 安装时的行为 |
 |---|---|---|
-| `tools.openchamber_web` | **网页版** —— `@openchamber/web` CLI，提供 `ocp web` | **默认：false。** 启用后，本地缺少 `openchamber` 命令时通过检测到的第一个包管理器（pnpm > bun > yarn > npm）全局安装（需 Node.js 22+） |
+| `tools.openchamber_web` | **网页版** —— `@openchamber/web@2` CLI，提供 `ocp web` | **默认：false。** 启用后，本地缺少 `openchamber` 命令时通过检测到的第一个包管理器（pnpm > bun > yarn > npm）全局安装（需 Node.js 22+）。大版本锁定为 2（semver 范围 `@2`），`ocp update` 只在 v2 内升级——v3 发布时按跨大版本规则拒绝 |
 | `tools.openchamber_desktop` | **桌面版** —— 提供 `ocp desktop` / `ocp ui` 的原生应用 | 仅检测是否已安装，缺失时打印下载链接——安装器**从不**下载桌面应用（[openchamber.dev/download](https://openchamber.dev/download)） |
 | `tools.openchamber_vscode` | **VS Code 扩展** —— 提供 `ocp code` | **默认：false。** 启用后，本地缺少扩展时通过检测到的第一个编辑器 CLI（`code`、`code-insiders`、`codium`、`cursor`、`windsurf`）安装 `fedaykindev.openchamber` |
 

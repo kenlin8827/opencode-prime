@@ -45,7 +45,8 @@ Learn about installer commands, configuration options, token savings, and preser
         // It is not MCP, LSP, or a code graph; .tgrep/ must stay uncommitted.
          "tgrep": { "enabled": true, "requestLog": false },
        // OpenChamber ships as three independent surfaces, one switch each:
-        // Web UI CLI (@openchamber/web; powers `ocp web`, needs Node.js 22+)
+        // Web UI CLI (@openchamber/web@2; powers `ocp web`, needs Node.js 22+)
+        // Pinned to major 2 — in-major fixes still flow through, v3 never installs silently.
         // Disabled by default: enabling it installs a global package.
         "openchamber_web": false,
        // Native desktop app for `ocp desktop` / `ocp ui` — always a separate
@@ -231,7 +232,7 @@ Install can provision [OpenChamber](https://openchamber.dev) — the GUI layer t
 
 | Switch | Surface | What install does |
 |---|---|---|
-| `tools.openchamber_web` | **Web** — `@openchamber/web` CLI powering `ocp web` | **Default: false.** When enabled, installs the package globally via the first package manager found (pnpm > bun > yarn > npm) when the `openchamber` binary is missing (needs Node.js 22+) |
+| `tools.openchamber_web` | **Web** — `@openchamber/web@2` CLI powering `ocp web` | **Default: false.** When enabled, installs the package globally via the first package manager found (pnpm > bun > yarn > npm) when the `openchamber` binary is missing (needs Node.js 22+). Pinned to major 2 (semver range `@2`), so `ocp update` only ever moves inside v2 — a v3 release is refused like any other cross-major jump |
 | `tools.openchamber_desktop` | **Desktop** — native app powering `ocp desktop` / `ocp ui` | Checks presence only and prints the download link when missing — the installer **never** downloads the desktop app ([openchamber.dev/download](https://openchamber.dev/download)) |
 | `tools.openchamber_vscode` | **VS Code** — editor extension powering `ocp code` | **Default: false.** When enabled, installs `fedaykindev.openchamber` via the first editor CLI found (`code`, `code-insiders`, `codium`, `cursor`, `windsurf`) when the extension is missing |
 

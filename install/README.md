@@ -487,10 +487,11 @@ on install).
   already-installed `rtk` binary on PATH stays put).
 - OpenChamber ships as three independent surfaces, one `tools.openchamber_*`
   switch each:
-   - `openchamber_web` — `false` by default. `true` installs the `@openchamber/web` CLI
+   - `openchamber_web` — `false` by default. `true` installs the `@openchamber/web@2` CLI
     globally via the first detected package manager (pnpm > bun > yarn > npm)
     when the `openchamber` binary is missing — it powers `ocp web` and needs
-    Node.js 22+.
+    Node.js 22+. The major is pinned (semver range `@2`): in-major fixes
+    still flow through, a future v3 never installs silently.
   - `openchamber_desktop` — the native desktop app behind `ocp desktop` /
     `ocp ui` is always a separate download from https://openchamber.dev/download;
     the installer never downloads it — this switch only gates a presence

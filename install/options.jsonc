@@ -24,8 +24,9 @@
       "requestLog": false
     },
     // OpenChamber ships as three independent surfaces, one switch each.
-    // Web UI CLI (@openchamber/web) — powers `ocp web`. Needs Node.js 22+;
-    // disabled by default because it installs a global package.
+    // Web UI CLI (@openchamber/web@2) — powers `ocp web`. Needs Node.js 22+;
+    // disabled by default because it installs a global package. Pinned to
+    // major 2 by install/tools.jsonc, same contract as the opencode runtime.
     "openchamber_web": false,
     // Native desktop app — powers `ocp desktop` / `ocp ui`. Always a
     // separate download (https://openchamber.dev/download); install only
