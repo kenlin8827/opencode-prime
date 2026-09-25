@@ -2,6 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import enLocale from '../locales/en.json' with { type: 'json' };
 import zhLocale from '../locales/zh-CN.json' with { type: 'json' };
+import esLocale from '../locales/es.json' with { type: 'json' };
+import frLocale from '../locales/fr.json' with { type: 'json' };
+import ruLocale from '../locales/ru.json' with { type: 'json' };
+import arLocale from '../locales/ar.json' with { type: 'json' };
+import ptLocale from '../locales/pt.json' with { type: 'json' };
+import jaLocale from '../locales/ja.json' with { type: 'json' };
 import { readOcpField, writeOcpField } from '../../plugins/shared/ocp-config';
 
 export interface I18nMeta {
@@ -10,9 +16,24 @@ export interface I18nMeta {
   hint: string;
 }
 
+/**
+ * The 8 major world locales mirrored from `plugins/tui/i18n.ts LOCALES`.
+ * The install flow's translation surface is much smaller (install wizard
+ * strings only, no wizard plugins), so the 6 newer locales ship with just
+ * the `_meta` block and fall back to English for every missing key via
+ * `loadLocale`'s `{ ...FALLBACK_EN, ...raw }` merge — mirroring the
+ * plugin's `tr()` fallback behavior, so the user can cycle through 8
+ * languages even before the install-flow strings are translated.
+ */
 export const EMBEDDED_LOCALES: Record<string, I18nText> = {
   'en': enLocale as unknown as I18nText,
   'zh-CN': zhLocale as unknown as I18nText,
+  'es': esLocale as unknown as I18nText,
+  'fr': frLocale as unknown as I18nText,
+  'ru': ruLocale as unknown as I18nText,
+  'ar': arLocale as unknown as I18nText,
+  'pt': ptLocale as unknown as I18nText,
+  'ja': jaLocale as unknown as I18nText,
 };
 
 export interface I18nText {
@@ -157,7 +178,7 @@ export const FALLBACK_EN: I18nText = {
   dashboardTabPlugins: 'Plugins',
   dashboardTabReview: 'Review',
   dashboardTabsLabel: 'Tabs',
-  dashboardTabsHint: 'Tabs · ←/→',
+  dashboardTabsHint: 'Tabs · ←/→ · 1-5 jump · click to switch',
   dashboardTargetLabel: 'Installation target',
   dashboardChangeSummaryLabel: 'Change summary',
   dashboardEnabledSummary: '{count} enabled integrations will be saved.',
@@ -240,7 +261,7 @@ export const FALLBACK_EN: I18nText = {
   exitBtnHint: 'Close control center without saving',
   backBtn: '↩ BACK TO MAIN MENU',
   backBtnHint: 'Return to the wizard main menu',
-  footerHelp: '[ ↑/↓/j/k: Move ]  [ Space: Toggle ]  [ L: Lang ]  [ Enter: Apply ]  [ ^S: Save ]  [ ^Z: Reset ]  [ ^T: Install ]  [ ^Q: Quit ]  [ Esc: Back ]',
+  footerHelp: '[ ↑/↓/j/k: Move ]  [ ←/→: Tab ]  [ 1-5: Jump ]  [ Space/Enter: Apply ]  [ L: Lang ]  [ ^S: Save ]  [ ^T: Install ]  [ Esc: Back ]',
   switchLangHint: 'Language switched to English',
   enabled: 'ENABLED',
   disabled: 'DISABLED',
@@ -296,6 +317,12 @@ const localeCache: Record<string, I18nText> = {};
 export const BUILTIN_LOCALE_METAS: I18nMeta[] = [
   { code: 'zh-CN', name: '简体中文', hint: '简体中文界面' },
   { code: 'en', name: 'English', hint: 'US English interface' },
+  { code: 'es', name: 'Español', hint: 'Interfaz en español' },
+  { code: 'fr', name: 'Français', hint: 'Interface en français' },
+  { code: 'ru', name: 'Русский', hint: 'Интерфейс на русском' },
+  { code: 'ar', name: 'العربية', hint: 'واجهة عربية' },
+  { code: 'pt', name: 'Português', hint: 'Interface em português' },
+  { code: 'ja', name: '日本語', hint: '日本語インターフェース' },
 ];
 
 export function getLocalesDir(repoDir: string): string {
@@ -384,15 +411,26 @@ export function detectDefaultLocaleCode(): string {
   return 'en';
 }
 
-/** The locale selected in any OCP wizard is shared by the TUI and CLI. */
+/**
+ * The locale selected in any OCP wizard is shared by the TUI and CLI.
+ * Recognises any of the 8 registered locales (mirrors `plugins/tui/i18n.ts
+ * LOCALES`) so the same `ocp.json` value drives the install flow and the
+ * wizard plugins without one side silently dropping the other's choice.
+ */
 export function getPreferredLocaleCode(): string {
   const saved = readOcpField<string>('language');
-  return EMBEDDED_LOCALES[saved ?? ''] ? saved! : detectDefaultLocaleCode();
+  return BUILTIN_LOCALE_METAS.some((meta) => meta.code === saved) ? saved! : detectDefaultLocaleCode();
 }
 
-/** Persist an explicit user choice; environment detection remains transient. */
+/**
+ * Persist an explicit user choice; environment detection remains transient.
+ * Accepts any of the 8 registered locales (mirrors `plugins/tui/i18n.ts
+ * LOCALES`); the dashboard cycles through the same registry so the saved
+ * code always has a displayable name and falls back to English for any
+ * missing translation strings.
+ */
 export function setPreferredLocaleCode(code: string): void {
-  if (EMBEDDED_LOCALES[code]) writeOcpField('language', code);
+  if (BUILTIN_LOCALE_METAS.some((meta) => meta.code === code)) writeOcpField('language', code);
 }
 
 export function formatI18n(template: string, values: Record<string, string | number> = {}): string {

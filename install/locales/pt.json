@@ -1,10 +1,10 @@
 {
   "_meta": {
-    "code": "en",
-    "name": "🇺🇸 English",
-    "hint": "Use standard English wizard & control dashboard"
+    "code": "pt",
+    "name": "Português",
+    "hint": "Interface em português"
   },
-  "wizardTitle": "⚡ OpenCode Prime (OCP) — Interactive Setup Wizard",
+  "wizardTitle": "Assistente interativo do OpenCode Prime",
   "installedNote": "Installed version: v{version} (Target: {target})",
   "notInstalledNote": "Target not yet initialized (Target: {target})",
   "versionUpgradePrompt": "Version Upgrade Detected",
@@ -13,18 +13,18 @@
   "menuPrompt": "Select an action to proceed:",
   "dashboardLabel": "🎛️ Open Control Center (Single-Screen TUI Switch Matrix)",
   "dashboardHint": "Full overview of default agent, RTK, and all MCP/Plugin switches",
-  "dashboardTitle": "Dashboard",
-  "dashboardTabBasic": "Basic",
-  "dashboardTabTools": "Tools",
+  "dashboardTitle": "Painel de controle",
+  "dashboardTabBasic": "Básico",
+  "dashboardTabTools": "Ferramentas",
   "dashboardTabMcp": "MCP",
   "dashboardTabPlugins": "Plugins",
-  "dashboardTabReview": "Review",
-  "dashboardTabsLabel": "Tabs",
-  "dashboardTabsHint": "Tabs · ←/→ · 1-5 jump · click to switch",
-  "dashboardTargetLabel": "Installation target",
-  "dashboardChangeSummaryLabel": "Change summary",
-  "dashboardEnabledSummary": "{count} enabled integrations will be saved.",
-  "dashboardReviewHint": "Use the shortcuts below to save or install.",
+  "dashboardTabReview": "Revisar",
+  "dashboardTabsLabel": "Abas",
+  "dashboardTabsHint": "Abas · ←/→ · 1-5 pular · clique para alternar",
+  "dashboardTargetLabel": "Diretório de instalação",
+  "dashboardChangeSummaryLabel": "Resumo das alterações",
+  "dashboardEnabledSummary": "{count} integrações ativas serão salvas.",
+  "dashboardReviewHint": "Use os atalhos abaixo para salvar ou instalar.",
   "quickInstallLabel": "⚡ Quick Install (Recommended defaults)",
   "quickInstallHint": "Apply options.jsonc directly to your config directory",
   "statusLabel": "📊 Check Status & Tracked Files",
@@ -47,42 +47,102 @@
   "installSuccessNote": "Configuration successfully installed!",
   "saveOptionsSuccess": "Updated options saved to ~/.config/opencode/options.jsonc",
   "installSummaryTitle": "📦 Installation Summary",
-  "primaryAgentLabel": "Primary Agent",
-  "primaryAgentHint": "Default agent loaded on session start (default_agent)",
+  "primaryAgentLabel": "Agente principal",
+  "primaryAgentHint": "Agente ativo por padrão ao iniciar a sessão (default_agent)",
   "agentLabels": {
-    "lite": { "label": "Lite", "hint": "Lean daily agent for quick fixes, lookups, Q&A, and small edits." },
-    "code": { "label": "Code", "hint": "Direct developer for implementation, fixes, refactoring, and tests." },
-    "build": { "label": "Build", "hint": "Task coordinator that routes coding work to the appropriate specialist." },
-    "plan": { "label": "Plan", "hint": "Planning coordinator for analysis, structured plans, and execution handoffs." }
+    "lite": {
+      "label": "Lite",
+      "hint": "Lean daily agent for quick fixes, lookups, Q&A, and small edits."
+    },
+    "code": {
+      "label": "Code",
+      "hint": "Direct developer for implementation, fixes, refactoring, and tests."
+    },
+    "build": {
+      "label": "Build",
+      "hint": "Task coordinator that routes coding work to the appropriate specialist."
+    },
+    "plan": {
+      "label": "Plan",
+      "hint": "Planning coordinator for analysis, structured plans, and execution handoffs."
+    }
   },
   "rtkLabel": "RTK Tokenizer",
   "rtkHint": "Rust Token Killer proxy & plugin",
-  "tuiModeLabel": "TUI Mode",
-  "tuiModeHint": "How `ocp tui` starts: direct (current shell), Herdr workspace, or Luvus workspace. Selecting a workspace mode provisions its integration.",
+  "tuiModeLabel": "Modo TUI",
+  "tuiModeHint": "Como `ocp tui` inicia: direto (shell atual), workspace Herdr ou Luvus. Escolher um modo provisiona sua integração.",
   "toolLabels": {
-    "rtk": { "label": "RTK Tokenizer", "hint": "Rust Token Killer proxy & plugin" },
-    "ripgrep": { "label": "ripgrep (rg)", "hint": "Fast .gitignore-aware grep (BurntSushi/ripgrep); preferred backend for the in-agent search tool." },
-    "tgrep": { "label": "tgrep search index", "hint": "Trigram-indexed full-text search (microsoft/tgrep); accelerates regex search in large repositories." },
-    "openchamber_web": { "label": "OpenChamber Web", "hint": "Install the OpenChamber web UI CLI powering `ocp web` (needs Node.js 22+)" },
-    "openchamber_desktop": { "label": "OpenChamber Desktop", "hint": "Native desktop app powering `ocp desktop` / `ocp ui` — separate download (https://openchamber.dev/download); install only checks presence" },
-    "openchamber_vscode": { "label": "OpenChamber VS Code", "hint": "Editor extension powering `ocp code` — auto-installs fedaykindev.openchamber via the editor CLI" },
-    "herdr": { "label": "Herdr", "hint": "Terminal workspace manager for AI coding agents (https://herdr.dev) — `ocp herdr` opens current dir as workspace" },
-    "opencode": { "label": "OpenCode", "hint": "AI coding agent — powers `ocp tui`" }
+    "rtk": {
+      "label": "RTK Tokenizer",
+      "hint": "Proxy e plugin Rust Token Killer"
+    },
+    "ripgrep": {
+      "label": "ripgrep (rg)",
+      "hint": "Buscador grep rápido ciente de .gitignore (BurntSushi/ripgrep); backend preferido pelo agente."
+    },
+    "tgrep": {
+      "label": "Índice tgrep",
+      "hint": "Busca full-text indexada por trigramas (microsoft/tgrep); acelera buscas em repos grandes."
+    },
+    "openchamber_web": {
+      "label": "OpenChamber Web",
+      "hint": "Instala a CLI web do OpenChamber para `ocp web` (precisa Node.js 22+)"
+    },
+    "openchamber_desktop": {
+      "label": "OpenChamber Desktop",
+      "hint": "App desktop nativo para `ocp desktop` / `ocp ui` — download separado (https://openchamber.dev/download); a instalação só checa presença."
+    },
+    "openchamber_vscode": {
+      "label": "OpenChamber VS Code",
+      "hint": "Extensão do editor para `ocp code` — instala fedaykindev.openchamber via CLI do editor se ausente."
+    },
+    "herdr": {
+      "label": "Herdr",
+      "hint": "Gerenciador de workspaces de terminal para agentes de IA (https://herdr.dev) — `ocp herdr` abre o diretório atual."
+    },
+    "opencode": {
+      "label": "OpenCode",
+      "hint": "Agente de codificação IA — motor do `ocp tui`"
+    }
   },
   "mcpLabels": {
-    "serena": { "label": "Serena", "hint": "Semantic code navigation and editing through its MCP server." },
-    "codegraph": { "label": "CodeGraph", "hint": "Repository relationship analysis; run `codegraph init` once per project." },
-    "gitnexus": { "label": "GitNexus", "hint": "Repository intelligence integration; enable only when licensed and indexed." },
-    "dbhub": { "label": "DBHub", "hint": "Database gateway; requires a project `dbhub.toml` and DSN." },
-    "headroom": { "label": "Headroom", "hint": "Local compression MCP; its first run downloads a runtime and model." },
-    "idea": { "label": "JetBrains IDEA", "hint": "JetBrains IDE MCP integration; enable the server in the IDE first." }
+    "serena": {
+      "label": "Serena",
+      "hint": "Navegação e edição semântica de código via servidor MCP."
+    },
+    "codegraph": {
+      "label": "CodeGraph",
+      "hint": "Análise de relacionamentos do repo; rode `codegraph init` uma vez por projeto."
+    },
+    "gitnexus": {
+      "label": "GitNexus",
+      "hint": "Inteligência do repo; habilite somente quando licenciado e indexado."
+    },
+    "dbhub": {
+      "label": "DBHub",
+      "hint": "Gateway de banco de dados; requer `dbhub.toml` e DSN no projeto."
+    },
+    "headroom": {
+      "label": "Headroom",
+      "hint": "MCP de compressão local; a primeira execução baixa runtime e modelo."
+    },
+    "idea": {
+      "label": "JetBrains IDEA",
+      "hint": "Integração MCP do JetBrains IDE; habilite o servidor na IDE primeiro."
+    }
   },
   "pluginLabels": {
-    "opencode-qoder-bridge": { "label": "Qoder Bridge", "hint": "Qoder integration; requires a supported Node.js version and `qoder login`." },
-    "opencode-mem@2.24.3": { "label": "OpenCode Memory", "hint": "Captures persistent memory and may incur an LLM cost after idle sessions." }
+    "opencode-qoder-bridge": {
+      "label": "Qoder Bridge",
+      "hint": "Integração com Qoder; requer versão de Node.js compatível e `qoder login`."
+    },
+    "opencode-mem@2.24.3": {
+      "label": "OpenCode Memory",
+      "hint": "Captura memória persistente; pode incorrer em custo de LLM após sessões ociosas."
+    }
   },
-  "globalCommandsLabel": "Global Commands",
-  "globalCommandsHint": "Register ocp / opencode-prime shims into ~/.local/bin and add it to PATH",
+  "globalCommandsLabel": "Comandos globais",
+  "globalCommandsHint": "Registra os atalhos ocp / opencode-prime em ~/.local/bin e os adiciona ao PATH",
   "openchamberWebLabel": "OpenChamber Web",
   "openchamberWebHint": "Install the OpenChamber web UI CLI powering `ocp web` (needs Node.js 22+)",
   "openchamberDesktopLabel": "OpenChamber Desktop",
@@ -96,18 +156,18 @@
   "tiersSectionHeader": "── 🎯 Agent Tier Mappings (Space to cycle tier) ──",
   "tiersHint": "Model tier mapping (flash, standard, pro, max, vision) used by /profile wizard",
   "actionsSectionHeader": "── ⚡ Execution Actions ──",
-  "saveAndInstallBtn": "🚀 SAVE & INSTALL NOW",
+  "saveAndInstallBtn": "🚀 SALVAR E INSTALAR",
   "saveAndInstallHint": "Apply configuration and install all files to target",
-  "saveOnlyBtn": "💾 SAVE CONFIGURATION",
+  "saveOnlyBtn": "💾 SALVAR CONFIGURAÇÃO",
   "saveOnlyHint": "Persist settings to options.jsonc without copying files",
   "exitBtn": "🚪 EXIT",
   "exitBtnHint": "Close control center without saving",
   "backBtn": "↩ BACK TO MAIN MENU",
   "backBtnHint": "Return to the wizard main menu",
-  "footerHelp": "[ ↑/↓/j/k: Move ]  [ ←/→: Tab ]  [ 1-5: Jump ]  [ Space/Enter: Apply ]  [ L: Lang ]  [ ^S: Save ]  [ ^T: Install ]  [ Esc: Back ]",
-  "switchLangHint": "Language switched to English",
-  "enabled": "ENABLED",
-  "disabled": "DISABLED",
+  "footerHelp": "[ ↑/↓/j/k: Mover ]  [ ←/→: Aba ]  [ 1-5: Pular ]  [ Espaço/Enter: Aplicar ]  [ L: Idioma ]  [ ^S: Salvar ]  [ ^T: Instalar ]  [ Esc: Voltar ]",
+  "switchLangHint": "Idioma alterado para Português",
+  "enabled": "ATIVADO",
+  "disabled": "DESATIVADO",
   "on": "ON",
   "off": "OFF",
   "stepRegisterPrompt": "Register global commands (ocp / opencode-prime) into {binDir} and add it to your PATH?",
@@ -117,8 +177,8 @@
   "pathPresentMsg": "{binDir} is already on PATH — no changes needed",
   "pathFailedMsg": "Failed to update PATH automatically — please add {binDir} manually",
   "selectLanguagePrompt": "🌐 Select Language / 选择语言:",
-  "switchLanguageLabel": "🌐 Switch Language",
-  "switchLanguageHint": "Change UI display language",
+  "switchLanguageLabel": "Trocar idioma",
+  "switchLanguageHint": "Alterar o idioma de exibição",
   "thankYouOutro": "Thank you for using OpenCode Prime!",
   "configStatusDetail": "📊 Config Status Details",
   "globalRegTitle": "🌐 Global Command Registration",
@@ -152,5 +212,7 @@
   "registerGlobalNo": "Skip global commands",
   "installFailed": "Installation failed: {error}",
   "resetResult": "Cleared {target}. Backup: {backup}.",
-  "uninstallResult": "Removed {count} files from {target}."
+  "uninstallResult": "Removed {count} files from {target}.",
+  "globalCommandsEnabled": "ATIVADO",
+  "globalCommandsDisabled": "DESATIVADO"
 }

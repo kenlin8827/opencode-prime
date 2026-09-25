@@ -84,8 +84,17 @@ export interface SelectListProps {
  * to center) and groups are separated by blank spacer rows instead. Cursor,
  * scrolling and keyboard navigation stay in the owning dialog; this paints.
  */
+/** Inter-row breathing room added below each row (cell-line units). Implemented
+ *  via `gap` on the parent column box — OpenTUI renders the gap between child
+ *  rows but does not count it against the children's `height={1}` budget. The
+ *  dialog's row arithmetic (`listCap()` in app.tsx) still treats each row as
+ *  one logical unit; the visible window fits fewer rows than the arithmetic
+ *  predicts when the panel is tight, and the dialog trims with
+ *  `Math.min(rows().length * 2, ...)` so the visible window never overflows. */
+export const SELECT_ROW_GAP = 1
+
 export function SelectList(props: SelectListProps): JSX.Element {
-  return <box backgroundColor={ocpTheme.panel} paddingTop={SELECT_PANEL_PAD} paddingBottom={SELECT_PANEL_PAD}>
+  return <box backgroundColor={ocpTheme.panel} paddingTop={SELECT_PANEL_PAD} paddingBottom={SELECT_PANEL_PAD} flexDirection="column" gap={SELECT_ROW_GAP}>
     <For each={props.rows}>{(row, index) => {
       const active = () => props.offset + index() === props.selected()
       if (!row.option) {

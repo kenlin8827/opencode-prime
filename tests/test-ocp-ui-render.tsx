@@ -63,7 +63,7 @@ await dashboard.flush()
 let frame = dashboard.captureCharFrame()
 assert.match(frame, /OpenCode Prime — Dashboard|OpenCode Prime — 全景控制台/, 'dashboard presents the localized OpenTUI header')
 assert.match(frame, /Basic|基础/, 'dashboard renders the active Basic tab')
-assert.match(frame, /Tabs · ←\/→|标签 · ←\/→/, 'dashboard identifies its horizontal tab rail')
+assert.match(frame, /Tabs ·.*←\/→|标签 ·.*←\/→/, 'dashboard identifies its horizontal tab rail (and now also advertises ↑/↓)')
 assert.match(frame, /Basic|基础/, 'dashboard starts on Basic')
 assert.match(frame, /Switch Language|切换界面语言/, 'configuration exposes a clear language control')
 assert.match(frame, /保存|SAVE CONFIGURATION/, 'dashboard keeps actions in its fixed global context')
@@ -111,12 +111,12 @@ assert.match(frame, /Tools|工具/, 'dashboard renders Tools in the tab rail')
   dashboardFull.renderer.destroy()
 
   for (const key of ['return', 'space']) {
+  // Dashboard is now panel-focused by default — no rail/panel split — so the
+  // first key press is already operating on the <select> cursor. The Basic
+  // tab's fourth row is the Global Commands toggle; three `down` presses
+  // reach it without any intermediate `right`/`enter` dance.
   const booleanDashboard = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
   await settle(booleanDashboard)
-  booleanDashboard.renderer.keyInput.emit('keypress', { name: 'return' })
-  await booleanDashboard.flush()
-  booleanDashboard.renderer.keyInput.emit('keypress', { name: 'right' })
-  await booleanDashboard.flush()
   for (let index = 0; index < 3; index++) {
       booleanDashboard.renderer.keyInput.emit('keypress', { name: 'down' })
       await booleanDashboard.flush()
@@ -138,30 +138,46 @@ await dashboardNavigation.flush()
 dashboardNavigation.renderer.keyInput.emit('keypress', { name: 'right' })
 await dashboardNavigation.flush()
 assert.match(dashboardNavigation.captureCharFrame(), /Tools|工具/, 'keyboard tab navigation switches scoped panel content')
+// ↓ inside a tab now goes to the <select> (panel is always focused); on Tools
+// the second row is an actual tool entry, not the Basic "Primary agent".
 dashboardNavigation.renderer.keyInput.emit('keypress', { name: 'down' })
 await dashboardNavigation.flush()
-dashboardNavigation.renderer.keyInput.emit('keypress', { name: 'up' })
-await dashboardNavigation.flush()
-dashboardNavigation.renderer.keyInput.emit('keypress', { name: 'right' })
-await dashboardNavigation.flush()
-assert.match(dashboardNavigation.captureCharFrame(), /MCP/, 'Up on the first panel item returns focus to the tab row for horizontal navigation')
 assert.doesNotMatch(dashboardNavigation.captureCharFrame(), /Primary agent/, 'Tools panel does not repeat Basic content')
+// ← returns to the previous tab; the panel select gets the ↓ reset, so it
+// starts on its first row again (Basic → Language row) rather than retaining
+// the Tools scroll position.
+dashboardNavigation.renderer.keyInput.emit('keypress', { name: 'left' })
+await dashboardNavigation.flush()
+assert.match(dashboardNavigation.captureCharFrame(), /Basic|基础/, '← returns to the previous tab')
 assert.match(dashboardNavigation.captureCharFrame(), /SAVE CONFIGURATION|保存/, 'Review & Apply actions remain globally visible')
 dashboardNavigation.renderer.destroy()
 
-// Review tab: Enter on the rail focuses the panel, a second Enter on the
-// static review panel opens the save-and-install confirmation (the summary
-// has no select of its own, so Enter maps to the install action).
+// Number-key jump directly to a tab without cycling through ←/→. Useful for
+// power users and the regression guard for the dedicated `^[1-5]$` binding.
+const dashboardNumberKeys = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
+await dashboardNumberKeys.flush()
+dashboardNumberKeys.renderer.keyInput.emit('keypress', { name: '3' })
+await dashboardNumberKeys.flush()
+assert.match(dashboardNumberKeys.captureCharFrame(), /MCP/, '3 jumps straight to the MCP tab')
+dashboardNumberKeys.renderer.keyInput.emit('keypress', { name: '5' })
+await dashboardNumberKeys.flush()
+assert.match(dashboardNumberKeys.captureCharFrame(), /Installation target|安装目标/, '5 jumps straight to the Review tab')
+// Boundary: pressing 9 (no such tab) is ignored, not an off-by-one leak into
+// the next row of the panel.
+dashboardNumberKeys.renderer.keyInput.emit('keypress', { name: '9' })
+await dashboardNumberKeys.flush()
+assert.match(dashboardNumberKeys.captureCharFrame(), /Installation target|安装目标/, '9 leaves the user on Review (no 9th tab)')
+dashboardNumberKeys.renderer.destroy()
+
+// Review tab: Enter on the dashboard now equals the install action in a
+// single press — the panel is always focused and Review has no <select> of
+// its own, so Enter falls through to the dedicated review-tab handler.
 const reviewEnter = await testRender(() => <OcpApp initialRoute="dashboard" context={{ repoDir, root: projectSandbox }} />, { width: 110, height: 46 })
 await reviewEnter.flush()
-for (let index = 0; index < 4; index++) {
-  reviewEnter.renderer.keyInput.emit('keypress', { name: 'right' })
-  await reviewEnter.flush()
-}
-assert.match(reviewEnter.captureCharFrame(), /Installation target|安装目标/, 'the Review tab panel is focused by the tab rail')
-reviewEnter.renderer.keyInput.emit('keypress', { name: 'return' }) // rail → panel
+reviewEnter.renderer.keyInput.emit('keypress', { name: '5' })
 await settle(reviewEnter)
-reviewEnter.renderer.keyInput.emit('keypress', { name: 'return' }) // panel → install confirmation
+assert.match(reviewEnter.captureCharFrame(), /Installation target|安装目标/, 'the Review tab panel is rendered by the number-key jump')
+reviewEnter.renderer.keyInput.emit('keypress', { name: 'return' })
 await settle(reviewEnter)
 assert.match(reviewEnter.captureCharFrame(), /SAVE & INSTALL NOW|保存并立即安装/, 'Enter on the review panel opens the install confirmation')
 reviewEnter.renderer.keyInput.emit('keypress', { name: 'escape' })

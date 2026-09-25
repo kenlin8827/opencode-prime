@@ -5,7 +5,7 @@ import type { Context } from '@opencode/plugin/tui'
 import { createUsageClient, createWizardContext } from './wizard-context'
 import type { OcpRoute } from './router'
 import { Modal } from './components/modal'
-import { categoryRows, skipHeaderRow, SelectList, SELECT_PANEL_PAD, type SelectRow } from './components/select-list'
+import { categoryRows, skipHeaderRow, SelectList, SELECT_PANEL_PAD, SELECT_ROW_GAP, type SelectRow } from './components/select-list'
 import { ocpTheme } from './theme'
 import { executeInit, executeStatus, executeUninstall, getCurrentRepoVersion, getDefaultTargetDir, loadEffectiveOptions, loadToolRegistry } from '../installer'
 import { parseDynamicOptionsSchema, updateOptionsJsoncInPlace } from '../options-schema'
@@ -133,6 +133,12 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
   }
   const repoDir = props.context.repoDir
   const host = createTuiHost()
+  // Dashboard cursor survives a sub-picker dialog — when the user opens the
+  // agent/tui sub-select and closes it, `<Show keyed>` tears down and
+  // remounts the dashboard subtree, which would otherwise reset the
+  // controlled <select> cursor to row 0. Hoisting the cursor to the
+  // OcpApp-level closure keeps the anchor alive across that remount.
+  const [dashboardCursor, setDashboardCursor] = createSignal(0)
   const wizard = createWizardContext(host, {
     root: props.context.root,
     sessionId: props.context.sessionId,
@@ -147,7 +153,17 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
   // scrolling) are matched against the layers the wizards registered, BEFORE
   // the dialog layer — mirroring opencode's ordering. A consumed key calls
   // preventDefault so the focused renderable does not also react.
+  //
+  // The Dashboard route is an exception: it owns its own keyboard handler
+  // and the dashboard's `<select>` must receive `return` / `space` / `up` /
+  // `down` directly so the native `select-current` / `move-up` / `move-down`
+  // actions fire. Letting `dispatchKey` swallow those on dashboard would
+  // leave the user staring at an inert panel (a wizard plugin like
+  // `usage.close` registers `bind: "return"` once at setup time, so the
+  // bound map sticks across all routes — we have to skip the dispatch here
+  // when the active route is the dashboard).
   useKeyboard((key) => {
+    if (route() === 'dashboard') return
     if (wizard.dispatchKey(key.name ?? '')) key.preventDefault?.()
   })
 
@@ -191,8 +207,11 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
     // Fit the list naturally; scroll only when the terminal is too short. The
     // filter line (when shown) costs two more rows of vertical budget, and the
     // panel's inner top/bottom padding (SELECT_PANEL_PAD) reserves two more.
-    // Each row is exactly one cell line, so the line budget is also the row count.
-    const listCap = () => Math.max(4, ((Number((renderer as unknown as { height?: number }).height) || 46) - 14) - (filterable ? 2 : 0) - SELECT_PANEL_PAD * 2)
+    // Each painted row is one cell line PLUS one gap line (SELECT_ROW_GAP),
+    // so the row budget is (line_budget + gap_per_row * row_count). Solving
+    // for row_count: row_count = floor(line_budget / (1 + gap_per_row)).
+    // The panel has at least 4 visible rows even on a tiny terminal.
+    const listCap = () => Math.max(2, Math.floor(((Number((renderer as unknown as { height?: number }).height) || 46) - 14) - (filterable ? 2 : 0) - SELECT_PANEL_PAD * 2) / (1 + SELECT_ROW_GAP))
     // Keep the cursor inside the window after a move.
     const revealRow = (index: number) => setScrollOffset((o) => {
       const visible = listCap()
@@ -525,8 +544,24 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
     const [status, setStatus] = createSignal('')
     const [busy, setBusy] = createSignal(false)
     const [activeTab, setActiveTab] = createSignal(0)
-    const [focusArea, setFocusArea] = createSignal<'rail' | 'panel'>('rail')
-    const [panelIndex, setPanelIndex] = createSignal(0)
+    // The dashboard no longer splits focus between a tab rail and the panel
+    // select — every key that the user might press on the panel list is now
+    // owned by the focused <select> itself. The rail stays visible (the 5
+    // tabs at the top) but it is no longer a focus target: arrows that the
+    // user expects to move the panel cursor cannot silently land on the rail
+    // (the old "down enters the panel, down in panel scrolls" trap), and
+    // tab-switching becomes a single dedicated binding (←/→ or 1-5).
+    // The cursor is hoisted to the OcpApp-level closure so opening and
+    // closing a sub-picker dialog (which `<Show keyed>` remounts around)
+    // does not reset the highlight to row 0.
+    const panelIndex = dashboardCursor
+    const setPanelIndex = setDashboardCursor
+    // Scroll offset for the panel — own signal so opening/closing a sub-picker
+    // dialog (which remounts the dashboard subtree) resets the visible window
+    // but preserves the cursor via `dashboardCursor`. Two anchors survive the
+    // remount independently; coupling them here would lose scroll position
+    // on every dialog close.
+    const [scrollOffset, setScrollOffset] = createSignal(0)
     const text = () => loadLocale(repoDir, localeCode())
     const copy = (key: keyof ReturnType<typeof text>, fallback: string) => String(text()[key] ?? fallback)
     const tabs = () => [
@@ -543,7 +578,6 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
       persist()
       requestInstall()
     }
-    type Row = { value: string; name: string; description: string; heading?: boolean }
     const confirmSave = (withInstall: boolean) => {
       host.replace({
         kind: 'confirm',
@@ -558,36 +592,74 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
     }
     const enabled = (state: Record<string, boolean>) => Object.values(state).filter(Boolean).length
     const changeCount = () => enabled(toolState()) + enabled(mcpState()) + enabled(pluginState())
-    const rows = (): Row[] => {
+    const rows = (): SelectRow[] => {
+      // SelectList distinguishes presentation rows from real options by the
+      // presence of `option`; every dashboard row is actionable, so wrap
+      // each in a synthetic DialogOption carrying its `value`.
+      const asOption = (value: string, title: string, description: string): SelectRow => ({
+        value,
+        name: title,
+        description,
+        option: { title, description, value },
+      })
       const section = activeTab()
       if (section === 0) return [
-        { value: 'language', name: `${copy('switchLanguageLabel', 'Language')}: ${locales.find((locale) => locale.code === localeCode())?.name ?? localeCode()}`, description: copy('switchLanguageHint', 'Change UI display language') },
-        { value: 'agent', name: `${copy('primaryAgentLabel', 'Primary agent')}: ${agent()}`, description: copy('primaryAgentHint', 'Choose the default primary agent') },
-        { value: 'tui', name: `${copy('tuiModeLabel', 'TUI mode')}: ${tuiMode()}`, description: copy('tuiModeHint', 'Choose direct or herdr mode') },
-        { value: 'global', name: `${copy('globalCommandsLabel', 'Global commands')}: ${globalCommands() ? copy('enabled', 'enabled') : copy('disabled', 'disabled')}`, description: copy('globalCommandsHint', 'Register command shims') },
+        asOption('language', `${copy('switchLanguageLabel', 'Language')}: ${locales.find((locale) => locale.code === localeCode())?.name ?? localeCode()}`, copy('switchLanguageHint', 'Change UI display language')),
+        asOption('agent', `${copy('primaryAgentLabel', 'Primary agent')}: ${agent()}`, copy('primaryAgentHint', 'Choose the default primary agent')),
+        asOption('tui', `${copy('tuiModeLabel', 'TUI mode')}: ${tuiMode()}`, copy('tuiModeHint', 'Choose direct or herdr mode')),
+        asOption('global', `${copy('globalCommandsLabel', 'Global commands')}: ${globalCommands() ? copy('enabled', 'enabled') : copy('disabled', 'disabled')}`, copy('globalCommandsHint', 'Register command shims')),
       ]
-      if (section === 1) return Object.keys(tools?.tools ?? {}).map((key) => ({ value: `tool:${key}`, name: `${toolState()[key] ? '✓' : '○'} ${text().toolLabels?.[key]?.label ?? key}`, description: text().toolLabels?.[key]?.hint ?? String(tools?.tools?.[key]?.description ?? '') }))
-      if (section === 2) return schema.mcpItems.map((item) => ({ value: `mcp:${item.key}`, name: `${mcpState()[item.key] ? '✓' : '○'} ${text().mcpLabels?.[item.key]?.label ?? item.key}`, description: text().mcpLabels?.[item.key]?.hint ?? item.hint }))
-      if (section === 3) return schema.pluginItems.map((item) => ({ value: `plugin:${item.key}`, name: `${pluginState()[item.key] ? '✓' : '○'} ${text().pluginLabels?.[item.key]?.label ?? item.key}`, description: text().pluginLabels?.[item.key]?.hint ?? item.hint }))
+      if (section === 1) return Object.keys(tools?.tools ?? {}).map((key) => asOption(`tool:${key}`, `${toolState()[key] ? '✓' : '○'} ${text().toolLabels?.[key]?.label ?? key}`, text().toolLabels?.[key]?.hint ?? String(tools?.tools?.[key]?.description ?? '')))
+      if (section === 2) return schema.mcpItems.map((item) => asOption(`mcp:${item.key}`, `${mcpState()[item.key] ? '✓' : '○'} ${text().mcpLabels?.[item.key]?.label ?? item.key}`, text().mcpLabels?.[item.key]?.hint ?? item.hint))
+      if (section === 3) return schema.pluginItems.map((item) => asOption(`plugin:${item.key}`, `${pluginState()[item.key] ? '✓' : '○'} ${text().pluginLabels?.[item.key]?.label ?? item.key}`, text().pluginLabels?.[item.key]?.hint ?? item.hint))
       return [
-        { value: 'save', name: copy('saveOnlyBtn', 'Save configuration'), description: copy('saveOnlyHint', 'Write these settings to') },
-        { value: 'install', name: copy('saveAndInstallBtn', 'Save and install'), description: copy('saveAndInstallHint', 'Save these settings and install OpenCode Prime?') },
+        asOption('save', copy('saveOnlyBtn', 'Save configuration'), copy('saveOnlyHint', 'Write these settings to')),
+        asOption('install', copy('saveAndInstallBtn', 'Save and install'), copy('saveAndInstallHint', 'Save these settings and install OpenCode Prime?')),
       ]
     }
-    const cycleLocale = () => {
-      const index = locales.findIndex((locale) => locale.code === localeCode())
-      const next = locales[(index + 1) % locales.length]
-      if (!next) return
-      setLocaleCode(next.code)
-      setPreferredLocaleCode(next.code)
-      setStatus(loadLocale(repoDir, next.code).switchLangHint)
+    const pickLocale = (code: string) => {
+      if (!locales.some((locale) => locale.code === code)) return
+      setLocaleCode(code)
+      setPreferredLocaleCode(code)
+      // Surface the change in the status line so the user knows the choice
+      // persisted even when the new locale's `switchLangHint` is missing
+      // (English fallback) or identical to the current locale.
+      const hint = loadLocale(repoDir, code).switchLangHint
+      setStatus(typeof hint === 'string' && hint ? hint : `${code}`)
     }
     const select = (picked: { value?: string } | null) => {
       const value = picked?.value
       if (!value || busy()) return
-        if (value === 'language') cycleLocale()
-        else if (value === 'agent') host.replace({ kind: 'select', title: copy('primaryAgentLabel', 'Primary agent'), placeholder: copy('primaryAgentHint', 'Choose the default primary agent'), current: agent(), options: schema.defaultAgent.choices.map((choice) => ({ title: text().agentLabels?.[choice]?.label ?? choice, value: choice, description: text().agentLabels?.[choice]?.hint ?? schema.defaultAgent.hint })), onSelect: (option) => { setAgent(option.value); host.clear() } })
-        else if (value === 'tui') host.replace({ kind: 'select', title: copy('tuiModeLabel', 'TUI mode'), placeholder: copy('tuiModeHint', 'Choose how OpenCode opens its TUI'), current: tuiMode(), renderFilter: false, options: [{ title: 'Direct', value: 'direct', description: 'Open the TUI directly in the current shell' }, { title: 'Herdr', value: 'herdr', description: 'Open through a Herdr workspace' }, { title: 'Luvus', value: 'luvus', description: 'Open through a Luvus workspace with agent controls' }], onSelect: (option) => { setTuiMode(option.value === 'luvus' ? 'luvus' : option.value === 'herdr' ? 'herdr' : 'direct'); host.clear() } })
+      // Snapshot the row that opened this sub-picker so closing the dialog
+      // can restore the cursor on top of the same entry — `<Show>` tears
+      // down and remounts the main <select> when host.dialog clears, so the
+      // controlled selectedIndex defaults back to 0 without this anchor.
+      const rowAnchor = panelIndex()
+        if (value === 'language') {
+          // Mirror the agent/tui sub-pickers: open a real select dialog so
+          // the user can pick the language by name instead of cycling one
+          // step at a time. The dialog's `current` highlights the active
+          // locale, and `host.clear()` returns focus to the language row.
+          const currentLocale = localeCode()
+          host.replace({
+            kind: 'select',
+            title: copy('switchLanguageLabel', 'Language'),
+            placeholder: copy('switchLanguageHint', 'Change the display language'),
+            current: currentLocale,
+            options: locales.map((locale) => ({
+              title: `${locale.code === currentLocale ? '✓ ' : '  '}${locale.name}`,
+              value: locale.code,
+              description: locale.hint,
+            })),
+            onSelect: (option) => {
+              pickLocale(option.value)
+              host.clear()
+              setPanelIndex(rowAnchor)
+            },
+          })
+        }
+        else if (value === 'agent') host.replace({ kind: 'select', title: copy('primaryAgentLabel', 'Primary agent'), placeholder: copy('primaryAgentHint', 'Choose the default primary agent'), current: agent(), options: schema.defaultAgent.choices.map((choice) => ({ title: text().agentLabels?.[choice]?.label ?? choice, value: choice, description: text().agentLabels?.[choice]?.hint ?? schema.defaultAgent.hint })), onSelect: (option) => { setAgent(option.value); host.clear(); setPanelIndex(rowAnchor) } })
+        else if (value === 'tui') host.replace({ kind: 'select', title: copy('tuiModeLabel', 'TUI mode'), placeholder: copy('tuiModeHint', 'Choose how OpenCode opens its TUI'), current: tuiMode(), renderFilter: false, options: [{ title: 'Direct', value: 'direct', description: 'Open the TUI directly in the current shell' }, { title: 'Herdr', value: 'herdr', description: 'Open through a Herdr workspace' }, { title: 'Luvus', value: 'luvus', description: 'Open through a Luvus workspace with agent controls' }], onSelect: (option) => { setTuiMode(option.value === 'luvus' ? 'luvus' : option.value === 'herdr' ? 'herdr' : 'direct'); host.clear(); setPanelIndex(rowAnchor) } })
         else if (value === 'global') { const next = !globalCommands(); setGlobalCommands(next); setStatus(`${copy('globalCommandsLabel', 'Global commands')} ${next ? copy('enabled', 'enabled') : copy('disabled', 'disabled')}.`) }
         else if (value.startsWith('tool:')) { const key = value.slice(5); const next = !toolState()[key]; setToolState({ ...toolState(), [key]: next }); setStatus(`${key} ${next ? copy('enabled', 'enabled') : copy('disabled', 'disabled')}.`) }
         else if (value.startsWith('mcp:')) { const key = value.slice(4); const next = !mcpState()[key]; setMcpState({ ...mcpState(), [key]: next }); setStatus(`${key} ${next ? copy('enabled', 'enabled') : copy('disabled', 'disabled')}.`) }
@@ -597,7 +669,38 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
     }
     const listHeight = () => {
       const terminalHeight = Number((renderer as unknown as { height?: number }).height) || 46
-      return Math.max(2, Math.min(rows().length * 3, terminalHeight - 14))
+      const lineBudget = Math.max(2, terminalHeight - 14)
+      // Each row paints 1 logical line + 1 gap line, so divide by the same
+      // factor the wizard listCap uses — keeps the dashboard panel and the
+      // wizard sub-select visually consistent.
+      return Math.max(2, Math.min(rows().length, Math.floor(lineBudget / (1 + SELECT_ROW_GAP))))
+    }
+    // Visible window of `rows()` — the focused SelectList paints exactly
+    // `listHeight()` lines, matching opencode's compact inline layout.
+    // `scrollOffset` follows the cursor so the active row stays painted.
+    const listScrollOffset = () => {
+      const total = rows().length
+      if (total === 0) return 0
+      const visible = Math.max(1, listHeight())
+      const cursor = Math.max(0, Math.min(panelIndex(), total - 1))
+      if (cursor < scrollOffset()) return cursor
+      if (cursor >= scrollOffset() + visible) return cursor - visible + 1
+      return scrollOffset()
+    }
+    const ensureCursorVisible = () => {
+      const next = listScrollOffset()
+      if (next !== scrollOffset()) setScrollOffset(next)
+    }
+    const visibleRows = (): SelectRow[] => {
+      const all = rows()
+      const visible = Math.max(1, listHeight())
+      return all.slice(scrollOffset(), scrollOffset() + visible)
+    }
+    const commitPanelRow = () => {
+      const all = rows()
+      const cursor = Math.max(0, Math.min(panelIndex(), all.length - 1))
+      const row = all[cursor]
+      if (row) select({ value: row.value })
     }
     const activateTab = (index: number) => {
       const next = Math.max(0, Math.min(index, tabs().length - 1))
@@ -621,43 +724,155 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
       if (ctrlChar('s', '\u0013')) { key.preventDefault?.(); confirmSave(false); return }
       if (host.dialog()) return
       if (isBareEscape(key)) { setRoute('wizard'); return }
-      if (key.name === 'l') { cycleLocale(); return }
-      if (focusArea() === 'rail') {
-        if (key.name === 'left') { key.preventDefault?.(); activateTab(activeTab() - 1); return }
-        if (key.name === 'right') { key.preventDefault?.(); activateTab(activeTab() + 1); return }
-        if (key.name === 'down' || key.name === 'return' || key.name === 'tab') { key.preventDefault?.(); setFocusArea('panel'); return }
+      if (key.name === 'l') {
+        // Open the language picker directly so the user can jump to a
+        // specific locale without stepping through the cycle. Same UX as
+        // Enter on the language row in the Basic panel.
+        const currentLocale = localeCode()
+        host.replace({
+          kind: 'select',
+          title: copy('switchLanguageLabel', 'Language'),
+          placeholder: copy('switchLanguageHint', 'Change the display language'),
+          current: currentLocale,
+          options: locales.map((locale) => ({
+            title: `${locale.code === currentLocale ? '✓ ' : '  '}${locale.name}`,
+            value: locale.code,
+            description: locale.hint,
+          })),
+          onSelect: (option) => {
+            pickLocale(option.value)
+            host.clear()
+            setPanelIndex(dashboardCursor())
+          },
+        })
         return
       }
-      // Review tab: the panel is a static summary (no select to own Enter), so
-      // a second Enter on the focused panel equals the install action —
-      // rail Enter → panel → Enter opens the save-and-install confirmation.
-      if (activeTab() === 4 && (key.name === 'return' || key.name === 'enter' || key.name === 'linefeed')) {
+      // Tab switching: ←/→ move to the previous / next tab. Number keys 1-N
+      // jump directly. preventDefault stops the focused <select> from also
+      // interpreting ←/→ as its own bindings — its native left/right is, in
+      // practice, a no-op on every OpenTUI version we've tested, but leaving
+      // it to react is a footgun. We deliberately do NOT bind `h`/`l` here:
+      // `l` is already the language-cycle key, and re-purposing it for tab
+      // navigation would silently override that. `j`/`k` are likewise free —
+      // OpenTUI reports them as `down`/`up`, and the focused <select> moves
+      // its cursor on its own, which is the behavior the user expects.
+      if (key.name === 'left') { key.preventDefault?.(); activateTab(activeTab() - 1); return }
+      if (key.name === 'right') { key.preventDefault?.(); activateTab(activeTab() + 1); return }
+      if (!key.ctrl && !key.meta && !key.option && !key.shift && typeof key.name === 'string' && /^[1-9]$/.test(key.name)) {
+        const target = Number(key.name) - 1
+        if (target < tabs().length) { key.preventDefault?.(); activateTab(target); return }
+      }
+      // Cursor movement on the panel select: explicit ↑/↓/j/k handlers that
+      // move panelIndex directly. The focused <select> ALSO listens for
+      // these keys and would move on its own — but we cannot trust that
+      // OpenTUI's focus pipeline delivers the keypress to the select in
+      // every host (real TTY vs testRender vs Windows console all take
+      // slightly different paths through ink/kitty/wcwidth). Owning the
+      // state here is "make the right thing the easy thing": the user's
+      // expectation is "↓ moves the highlight", and we satisfy that
+      // ourselves before falling through to the select's own handler. The
+      // select's onChange reads panelIndex back, so the visible highlight
+      // is driven by this signal regardless of which side wrote it.
+      if (activeTab() !== tabs().length - 1) {
+        const movePanel = (delta: number) => {
+          const total = rows().length
+          if (total === 0) return
+          const next = Math.max(0, Math.min(panelIndex() + delta, total - 1))
+          if (next !== panelIndex()) {
+            key.preventDefault?.()
+            setPanelIndex(next)
+            ensureCursorVisible()
+          } else {
+            key.preventDefault?.()
+          }
+        }
+        if (key.name === 'down') { movePanel(1); return }
+        if (key.name === 'up') { movePanel(-1); return }
+        if (key.name === 'j') { movePanel(1); return }
+        if (key.name === 'k') { movePanel(-1); return }
+        // Activation: Enter (or numpad Enter / linefeed) and Space commit
+        // the highlighted row — same UX as a left-click on the painted row.
+        // The compat host's `select-current` binding (which the old kernel
+        // <select> listened for) no longer exists now that the panel is a
+        // self-rendered list, so we own Enter/Space here too.
+        if (key.name === 'return' || key.name === 'enter' || key.name === 'linefeed' || key.name === 'space') {
+          key.preventDefault?.()
+          commitPanelRow()
+          return
+        }
+      }
+      // Review tab: the panel is a static summary (no select to own Enter),
+      // so Enter on the dashboard equals the install action — the same UX
+      // the user used to get by hitting Enter twice in the old
+      // rail→panel→Enter chain, collapsed into one press.
+      if (activeTab() === tabs().length - 1 && (key.name === 'return' || key.name === 'enter' || key.name === 'linefeed')) {
         key.preventDefault?.()
         confirmSave(true)
         return
       }
-      if (key.name === 'left' || key.name === 'tab' || (key.name === 'up' && panelIndex() === 0)) {
-        key.preventDefault?.()
-        setFocusArea('rail')
-      }
     })
-    const content = () => <Modal title={`OpenCode Prime — ${copy('dashboardTitle', 'Dashboard')}`} footer={<>{copy('footerHelp', '↑/↓ selects · Enter opens choices or toggles · L language · Ctrl+T install · Esc exits')}{status() ? `\n${status()}` : ''}</>}>
+    const renderPanelFallback = () => (
+      <box
+        flexDirection="column"
+        onMouseDown={(event) => {
+          if (event.button !== 0) return
+          event.preventDefault?.()
+          const ev = event as { y?: number }
+          const y = Number(ev.y)
+          // The panel box has no own padding/margin in this layout, so its
+          // top edge aligns with whatever line the parent column reserves
+          // for it. The SelectList inside renders its own paddingTop, but
+          // that is internal to the SelectList — `y` is absolute to the
+          // frame, so subtract the same fixed top offset used by the panel
+          // (title 1 + blank 1 + tabsHint 1 + blank 1 + tabRow 3 + panel
+          // paddingTop 1 = 8). Rows are 1 logical line + 1 gap line.
+          const panelTop = 8
+          const yInPanel = y - panelTop
+          if (Number.isFinite(yInPanel) && yInPanel >= 0) {
+            // Adjust for SelectList's own paddingTop so click on the first
+            // row maps to logical row 0, not the padding line above it.
+            const rowInBand = Math.floor((yInPanel - 1) / (1 + SELECT_ROW_GAP))
+            const target = scrollOffset() + rowInBand
+            if (target >= 0 && target < rows().length) {
+              setPanelIndex(target)
+              ensureCursorVisible()
+              commitPanelRow()
+              return
+            }
+          }
+          commitPanelRow()
+        }}
+      >
+        <SelectList rows={visibleRows()} offset={scrollOffset()} selected={() => panelIndex()} />
+      </box>
+    )
+    const renderReviewFallback = () => (
+      <box flexDirection="column" gap={1}>
+        <text fg={ocpTheme.text}>{copy('dashboardTargetLabel', 'Installation target')}</text>
+        <text selectable fg={ocpTheme.muted}>{target}</text>
+        <text fg={ocpTheme.text}>{copy('dashboardChangeSummaryLabel', 'Change summary')}</text>
+        <text selectable fg={ocpTheme.muted}>{copy('dashboardEnabledSummary', '{count} enabled integrations will be saved.').replace('{count}', String(changeCount()))}</text>
+        <text selectable fg={ocpTheme.muted}>{copy('dashboardReviewHint', 'Use the shortcuts below to save or install.')}</text>
+      </box>
+    )
+    const content = () => <Modal title={`OpenCode Prime — ${copy('dashboardTitle', 'Dashboard')}`} footer={<>{copy('footerHelp', '↑/↓/j/k: move · ←/→: tab · 1-5: jump · Enter: open · Space: toggle · L: language · Ctrl+S save · Ctrl+T install · Esc back')}{status() ? `\n${status()}` : ''}</>}>
       <box flexDirection="column">
-        <text marginBottom={1} fg={focusArea() === 'rail' ? ocpTheme.accent : ocpTheme.muted}>{focusArea() === 'rail' ? copy('dashboardTabsHint', 'Tabs · ←/→') : copy('dashboardTabsLabel', 'Tabs')}</text>
+        <text marginBottom={1} fg={ocpTheme.muted}>{copy('dashboardTabsHint', 'Tabs · ←/→  1–5 jump · click to switch')}</text>
         <box flexDirection="row" height={3}>
-          <For each={tabs()}>{(name, index) => <box flexGrow={1} height="100%" justifyContent="center" alignItems="center" backgroundColor={index() === activeTab() ? ocpTheme.accent : ocpTheme.surface}>
+          <For each={tabs()}>{(name, index) => <box flexGrow={1} height="100%" justifyContent="center" alignItems="center" backgroundColor={index() === activeTab() ? ocpTheme.accent : ocpTheme.surface}
+            onMouseDown={(event) => {
+              if (event.button !== 0) return
+              event.preventDefault?.()
+              activateTab(index())
+              setPanelIndex(0)
+              setScrollOffset(0)
+            }}>
             <text fg={index() === activeTab() ? ocpTheme.surface : ocpTheme.text}>{name}</text>
           </box>}</For>
         </box>
         <box flexDirection="column" paddingTop={1}>
-          <Show when={activeTab() === 4} fallback={<select focused={focusArea() === 'panel'} selectedIndex={panelIndex()} height={listHeight()} showScrollIndicator={rows().length * 3 > listHeight()} backgroundColor={ocpTheme.surface} focusedBackgroundColor={ocpTheme.panel} textColor={ocpTheme.text} descriptionColor={ocpTheme.muted} selectedBackgroundColor={ocpTheme.accent} selectedTextColor={ocpTheme.surface} selectedDescriptionColor={ocpTheme.surface} itemSpacing={1} keyBindings={[{ name: 'space', action: 'select-current' }]} options={rows()} onChange={(index: number) => setPanelIndex(index)} onSelect={(_index: number, picked: { value?: string } | null) => select(picked)} />}>
-            <box flexDirection="column" gap={1}>
-              <text fg={ocpTheme.text}>{copy('dashboardTargetLabel', 'Installation target')}</text>
-              <text selectable fg={ocpTheme.muted}>{target}</text>
-              <text fg={ocpTheme.text}>{copy('dashboardChangeSummaryLabel', 'Change summary')}</text>
-              <text selectable fg={ocpTheme.muted}>{copy('dashboardEnabledSummary', '{count} enabled integrations will be saved.').replace('{count}', String(changeCount()))}</text>
-              <text selectable fg={ocpTheme.muted}>{copy('dashboardReviewHint', 'Use the shortcuts below to save or install.')}</text>
-            </box>
+          <Show when={activeTab() === tabs().length - 1} fallback={renderPanelFallback()}>
+            {renderReviewFallback()}
           </Show>
         </box>
       </box>
@@ -736,7 +951,29 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
           break
         case 'init': reset(); break
         case 'uninstall': uninstall(); break
-        case 'language': { const index = locales.findIndex((locale) => locale.code === localeCode()); const next = locales[(index + 1) % locales.length]; if (next) { setLocaleCode(next.code); setPreferredLocaleCode(next.code); setMessage(loadLocale(repoDir, next.code).switchLangHint) }; break }
+        case 'language': {
+          const currentLocale = localeCode()
+          host.replace({
+            kind: 'select',
+            title: copy('switchLanguageLabel', 'Switch language'),
+            placeholder: copy('switchLanguageHint', 'Change the display language'),
+            current: currentLocale,
+            options: locales.map((locale) => ({
+              title: `${locale.code === currentLocale ? '✓ ' : '  '}${locale.name}`,
+              value: locale.code,
+              description: locale.hint,
+            })),
+            onSelect: (option) => {
+              if (locales.some((locale) => locale.code === option.value)) {
+                setLocaleCode(option.value)
+                setPreferredLocaleCode(option.value)
+                setMessage(loadLocale(repoDir, option.value).switchLangHint)
+              }
+              host.clear()
+            },
+          })
+          break
+        }
         case 'exit': exit(); break
       }
     }
