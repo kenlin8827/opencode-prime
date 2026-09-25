@@ -5,6 +5,8 @@ description: Review-fix loop - iterative review and fix until no P0/P1 findings 
 
 # Review-Fix Loop Protocol
 
+> **Session language.** Write all prose in the session language (`output-protocol.md` §Session language); keep template labels, tokens, and headings (`Verdict:`, `[fixed]`, `P0`, `### Review Round N`) verbatim in English.
+
 You are now running the **review-fix-loop** — an automated iterative review → verify → fix → re-review cycle. Follow this protocol until an exit condition is met.
 
 ## Arguments

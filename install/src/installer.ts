@@ -29,6 +29,8 @@ import {
 import { isBinaryOnPath, probeRunningOpencodeConfigDir } from './shared/opencode-detect';
 import { section } from './shared/output';
 import { resolvePmForSpec } from './package-manager';
+import { getPreferredLocaleCode } from './i18n';
+import { readOcpField, realOcpConfigPath, writeOcpField } from '../../plugins/shared/ocp-config';
 
 // Detection primitives live in shared/opencode-detect.ts (self-contained
 // leaf module); re-exported here so existing importers of installer.ts
@@ -1294,20 +1296,20 @@ function extractJsonSummary(stdout: string): string | null {
  * own message) rather than a new action, so the caller's ✓/⚠ classification
  * (renamed=✓) stays correct and unchanged.
  *
- * Keep-in-sync: `pluginDir` mirrors `ocpConfigPath()` in
- * plugins/shared/ocp-config.ts (the runtime resolver) — that file owns
- * the path contract; this is the documented installer-side mirror. The
- * runtime `OCP_CONFIG_PATH` override is deliberately NOT consulted here:
- * it is a test/sandbox pin, and the migration must move the REAL runtime
- * file the plugins read after install.
+ * Path resolution is delegated to `realOcpConfigPath()` in
+ * plugins/shared/ocp-config.ts (the same helper the runtime resolver
+ * builds on, minus the `OCP_CONFIG_PATH` test pin which is deliberately
+ * ignored here — the migration must move the REAL runtime file the
+ * plugins will read after install, not whatever a test pinned to a
+ * sandbox path for this process).
  */
 export function migrateGlobalOcpConfig(targetDir: string): {
   action: 'renamed' | 'collision' | 'skipped' | 'error';
   message: string;
 } {
-  // Mirror of the runtime resolver — see keep-in-sync note above.
-  const pluginDir = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'opencode');
-  const current = path.join(pluginDir, 'ocp.json');
+  // Single source of truth for the ocp config dir (ignores OCP_CONFIG_PATH).
+  const current = realOcpConfigPath();
+  const pluginDir = path.dirname(current);
   const legacyHere = path.join(pluginDir, 'ocp.jsonc');
   const fail = (err: unknown) => ({
     action: 'error' as const,
@@ -1347,6 +1349,54 @@ export function migrateGlobalOcpConfig(targetDir: string): {
     }
   }
   return { action: 'skipped', message: '' };
+}
+
+/**
+ * Seed `language` into `~/.config/opencode/ocp.json` from environment
+ * detection when the key is absent. Rationale: `instructions/output-protocol
+ * .md §Session language` makes ocp.json the "pre-prose default" for slash
+ * commands and skills. That contract only matters when ocp.json actually
+ * carries a `language` value — without seeding, every new install falls
+ * back to per-process environment probing (see `plugins/tui/i18n.ts#
+ * detectLocale`), which can drift between the install shell and the
+ * opencode TUI process. Seeding once at install time turns the user's
+ * detected language into a persistent default they can later edit or
+ * override in the dashboard / `/lang` wizard.
+ *
+ * All path resolution, JSON I/O, and locale detection are delegated to the
+ * existing single-source helpers (`install/src/i18n.ts#getPreferredLocaleCode`
+ * + `plugins/shared/ocp-config.ts#readOcpField` / `writeOcpField`) so this
+ * function never drifts from the runtime resolver or the install wizard.
+ *
+ * Behaviour:
+ * - No-op when ocp.json already has a `language` key (explicit choice wins).
+ * - No-op when the resolved preferred locale is English (the runtime
+ *   fallback; writing `{"language":"en"}` would be a noisy edit to a file
+ *   the user never asked to touch and gain nothing).
+ */
+export function seedOcpLanguageFromEnv(_targetDir: string): {
+  action: 'seeded' | 'skipped' | 'error';
+  message: string;
+} {
+  const fail = (err: unknown) => ({
+    action: 'error' as const,
+    message: `Could not seed ocp.json language (${err instanceof Error ? err.message : String(err)}) — runtime will re-detect per process.`,
+  });
+  try {
+    // `getPreferredLocaleCode` already implements the "saved ?? detection"
+    // contract: returns the persisted value when valid, else falls back to
+    // environment detection. Re-implementing it here would drift.
+    if (readOcpField<string>('language')) return { action: 'skipped', message: '' };
+    const preferred = getPreferredLocaleCode();
+    if (preferred === 'en') return { action: 'skipped', message: '' };
+    if (!writeOcpField('language', preferred)) return { action: 'skipped', message: '' };
+    return {
+      action: 'seeded',
+      message: `Seeded ocp.json language from environment: ${preferred}`,
+    };
+  } catch (err) {
+    return fail(err);
+  }
 }
 
 /**
@@ -1545,6 +1595,24 @@ export function executeInstall(
   const ocpCfg = migrateGlobalOcpConfig(targetDir);
   if (ocpCfg.action !== 'skipped') {
     console.log(`${ocpCfg.action === 'renamed' ? '✓' : '⚠'} [ocp-config] ${ocpCfg.message}`);
+  }
+
+  // 5.6 Seed `ocp.json` `language` from environment detection when absent —
+  // turns the user's "pre-prose default" into something persistent, so a
+  // slash command or skill fired before any user prose locks the same
+  // language instead of re-detecting every session (mirrors
+  // install/src/i18n.ts#detectDefaultLocaleCode; kept inline to avoid a
+  // new import edge and to keep the seeding logic readable in context).
+  // No-op when ocp.json already has `language` (explicit user choice wins)
+  // and when detection is English (English is the runtime fallback; writing
+  // it would be a noisy change to a file the user never asked to touch).
+  try {
+    const seed = seedOcpLanguageFromEnv(targetDir);
+    if (seed.action !== 'skipped') {
+      console.log(`✓ [ocp-config] ${seed.message}`);
+    }
+  } catch (err) {
+    console.log(colorize.yellow(`⚠ [ocp-config] language seed skipped (${err instanceof Error ? err.message : String(err)})`));
   }
 
   // 6. Write installed version

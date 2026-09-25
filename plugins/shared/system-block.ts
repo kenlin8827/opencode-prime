@@ -96,6 +96,34 @@ export function stripBlockByLine(system: Array<unknown>, marker: string): boolea
   return changed
 }
 
+/** Cut every line-start `[PREFIX …]` marker off every entry (line-anchored
+ *  prefix match: `(?:^|\n)PREFIX` — variant-tolerant like a substring match,
+ *  since any full marker sharing the prefix is removed, e.g. a locale change
+ *  producing `[SESSION LANGUAGE: en]` after `[SESSION LANGUAGE: zh-CN]`,
+ *  but anchored to line starts so inline prose that merely NAMES the prefix
+ *  (L0 rules reference `[SESSION LANGUAGE: …]` mid-line) is never truncated.
+ *  Trailing whitespace before the cut is trimmed. Idempotent.
+ *
+ *  Same strip loop shape as auto-advisor's and deepseek-anchor's inlined
+ *  `stripMarker`; session-language is the first prefix-family consumer.
+ *
+ *  Pure function — mutates `system` in place, returns whether anything
+ *  changed. Exported for unit tests, no I/O. */
+export function stripBlockByPrefix(system: Array<unknown>, prefix: string): boolean {
+  const re = new RegExp(`(?:^|\\n)${escapeRegExp(prefix)}`)
+  let changed = false
+  for (let i = 0; i < system.length; i++) {
+    const entry = system[i]
+    const text = entryText(entry)
+    if (text === null) continue
+    const m = re.exec(text)
+    if (m === null) continue
+    setEntryText(system, i, text.substring(0, m.index).replace(/\s+$/, ""))
+    changed = true
+  }
+  return changed
+}
+
 /** Mutable-text view of a v2 `SystemPart[]` (or a v1 `string[]`): returns a
  *  plain string array plugins can run their existing string logic over.
  *  Call `writeBackSystem` afterwards to flush changes into the parts. */

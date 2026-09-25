@@ -7,7 +7,7 @@
 
 *Directory: `docs/adr`*
 
-## Records (9)
+## Records (12)
 
 | ID | Decision Title | Style | Layer | Status | Domain | Iteration | Created |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -20,6 +20,9 @@
 | [ADR-0.40.1](./0.40.1-project-level-adr-overrides.md) | Iteration 0.40.1 · Project-level ADR overrides (4 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 1 | 2026-09-18 |
 | [ADR-0.40.2](./0.40.2-rename-adr-guard-plugin-to-adr.md) | Iteration 0.40.2 · Rename adr-guard plugin to adr (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 2 | 2026-09-19 |
 | [ADR-0.40.3](./0.40.3-appealability-of-accepted-decisions.md) | Iteration 0.40.3 · Appealability of accepted decisions (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 3 | 2026-09-21 |
+| [ADR-0.41.0](./0.41.0-major-version-upgrade-lock.md) | Iteration 0.41.0 · Major-version upgrade lock (6 sections) | `ocp` | `system` | 🟢 Accepted | updater | 0 | 2026-09-22 |
+| [ADR-2.0.0](./2.0.0-adapt-opencode-prime-to-v2-runtime.md) | Iteration 2.0.0 · Adapt OpenCode Prime to the OpenCode v2 runtime (1 sections) | `ocp` | `system` | 🟢 Accepted | runtime | 0 | 2026-09-24 |
+| [ADR-2.0.0](./2.0.0-session-language-marker-injection.md) | · Session language via runtime marker injection | `madr` | `system` | 🟢 Accepted | i18n |  | 2026-09-25 |
 
 ## Label glossary
 

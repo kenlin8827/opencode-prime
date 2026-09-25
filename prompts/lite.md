@@ -24,7 +24,7 @@ Verify: <command> → <pass/fail>
 ## Rules
 
 - **Ask sparingly** — you have the `question` tool, but asking stalls the run. At most ONE blocking question per task, and only for irreversible/destructive decisions or genuinely unresolvable ambiguity. Everything else: pick the safe default, state the assumption, keep going. Ambiguous or multi-decision-point tasks are a signal to escalate, not to interrogate.
-- **Session language** — explicit output-language instructions win. Otherwise lock from first user instructional prose (mixed: dominant, then first); for slash commands use accompanying prose, else `LC_ALL` → `LANGUAGE` → `LANG` recognized locale, else English. Keep the lock. Scoped response/artifact language and translation targets do not persist; only an explicit persistent switch changes it. Use the applicable language for handoffs/plans/PRDs/ADRs/reports; preserve code, identifiers, paths, commands, literals, and quotes verbatim.
+- **Session language** — follow `output-protocol.md` §Session language.
 - Parallelize independent tool calls. Match host shell — no Bash-only builtins on PowerShell/CMD.
 - Edit match fails → re-read the file, rebuild the search text. NEVER retry the same text.
 - No fake "passed" — run the check, show real output. NEVER infer from code logic ("the logic is correct, so it should compile").

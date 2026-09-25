@@ -83,12 +83,8 @@ assert(!stripped.startsWith("\n"), "no leading blank lines")
 
 const strippedShippedPrompt = stripLiteOverhead(joinSystem(SHIPPED_LITE_PROMPT))
 assert(
-  strippedShippedPrompt.includes("explicit output-language instructions win")
-    && strippedShippedPrompt.includes("first user instructional prose")
-    && strippedShippedPrompt.includes("LC_ALL` → `LANGUAGE` → `LANG")
-    && strippedShippedPrompt.includes("translation targets do not persist")
-    && strippedShippedPrompt.includes("explicit persistent switch changes it"),
-  "shipped lite prompt retains the compact session-language protocol after stripping",
+  strippedShippedPrompt.includes("follow `output-protocol.md` §Session language"),
+  "shipped lite prompt keeps the session-language cross-reference after stripping",
 )
 
 const strippedTwice = stripLiteOverhead(stripped)

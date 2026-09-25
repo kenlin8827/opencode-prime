@@ -148,6 +148,7 @@ plugins/sdd.ts
 plugins/sdd/sdd-command.ts
 plugins/sdd/sdd-engine.ts
 plugins/sdd/sdd.ts
+plugins/session-language.ts
 plugins/shared/agent-scope.ts
 plugins/shared/assets/mermaid.min.js
 plugins/shared/last-good.ts

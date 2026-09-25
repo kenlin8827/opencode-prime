@@ -3,7 +3,7 @@
  * by every plugin that appends a marker-guarded fragment to output.system.
  * Run: bun tests/test-system-block-unit.ts
  */
-import { appendBlock, escapeRegExp, stripBlockByLine } from "../plugins/shared/system-block"
+import { appendBlock, escapeRegExp, stripBlockByLine, stripBlockByPrefix } from "../plugins/shared/system-block"
 
 let pass = 0
 let fail = 0
@@ -120,6 +120,64 @@ function check(name: string, ok: boolean) {
   stripBlockByLine(sys, marker)
   check("stripBlockByLine: handles markers with bracket characters",
     !(sys[0] as string).includes(marker))
+}
+
+// ── stripBlockByPrefix: prefix-family marker removal ───────────────────
+// Substring match on the prefix (not line-start anchored): prefix-family
+// injectors append the full marker at line start but need variant-tolerant
+// removal — e.g. a locale change produces [SESSION LANGUAGE: en] after
+// [SESSION LANGUAGE: zh-CN], and only the shared prefix is stable.
+
+// Marker present: cuts at the prefix occurrence, trims trailing whitespace.
+{
+  const sys: unknown[] = ["ROOT\n[SESSION LANGUAGE: zh-CN]\nSession language: 中文 — stale"]
+  const r = stripBlockByPrefix(sys, "[SESSION LANGUAGE:")
+  check("stripBlockByPrefix: returns true when prefix is present", r === true)
+  check("stripBlockByPrefix: removes the marker and its body", !(sys[0] as string).includes("SESSION LANGUAGE") && !(sys[0] as string).includes("stale"))
+  check("stripBlockByPrefix: preserves text before the marker", (sys[0] as string) === "ROOT")
+}
+
+// Variant tolerance: a DIFFERENT full marker sharing the prefix is also cut
+// (the property stripBlockByLine's exact-match anchor cannot provide).
+{
+  const sys: unknown[] = ["base\n[SESSION LANGUAGE: zh-CN]\nold"]
+  stripBlockByPrefix(sys, "[SESSION LANGUAGE:")
+  appendBlock(sys, "\n[SESSION LANGUAGE: en]\nSession language: English — fresh")
+  check("stripBlockByPrefix + appendBlock: variant round-trip leaves one marker",
+    (sys[0] as string).split("[SESSION LANGUAGE:").length === 2)
+  check("stripBlockByPrefix + appendBlock: variant round-trip carries fresh body",
+    (sys[0] as string).includes("English — fresh") && !(sys[0] as string).includes("old"))
+}
+
+// No marker: idempotent no-op.
+{
+  const sys: unknown[] = ["ROOT", "Lite content"]
+  const before = JSON.stringify(sys)
+  const r = stripBlockByPrefix(sys, "[SESSION LANGUAGE:")
+  check("stripBlockByPrefix: returns false when prefix is absent", r === false)
+  check("stripBlockByPrefix: no-op when prefix absent", JSON.stringify(sys) === before)
+}
+
+// L0-style inline reference: output-protocol.md NAMES the marker mid-line in
+// prose; the strip must anchor at line starts so such references are never
+// truncated (regression for the substring-match P0).
+{
+  const sys: unknown[] = [
+    "- **Session lock.** (3) the `[SESSION LANGUAGE: …]` marker in this system prompt — the pre-prose default.\n- **Overrides.** Keep the result for the entire session.",
+  ]
+  const r = stripBlockByPrefix(sys, "[SESSION LANGUAGE:")
+  check("stripBlockByPrefix: mid-line marker reference is untouched", r === false)
+  check("stripBlockByPrefix: quoted reference and later rules survive",
+    (sys[0] as string).includes("`[SESSION LANGUAGE: …]` marker") && (sys[0] as string).includes("Keep the result"))
+}
+
+// Object entries: mutated through .text, identity preserved; non-text skipped.
+{
+  const sys: unknown[] = [{ type: "text", text: "a\n[SESSION LANGUAGE: ja]\n旧" }, { role: "x" }]
+  const r = stripBlockByPrefix(sys, "[SESSION LANGUAGE:")
+  check("stripBlockByPrefix: text-part mutated through .text", (sys[0] as any).text === "a")
+  check("stripBlockByPrefix: non-text entries skipped", typeof sys[1] === "object" && !(sys[1] as any).text)
+  check("stripBlockByPrefix: returns true when a part changed", r === true)
 }
 
 // ── escapeRegExp: keeps RegExp construction safe across the codebase ──

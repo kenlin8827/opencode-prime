@@ -18,15 +18,41 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { homedir } from "node:os"
+import os from "node:os"
 import { dirname, join } from "node:path"
 import { stripJsonc } from "./opencode-prime"
+
+/**
+ * Base directory of the global ocp config — `XDG_CONFIG_HOME/opencode`
+ * or, when that is unset, `~/.config/opencode`. No env override: callers
+ * that need to honour `OCP_CONFIG_PATH` should go through `ocpConfigPath`.
+ * Kept as a single function so every consumer (plugins, installer,
+ * installer-side migration) sees the same resolution rule.
+ */
+export function ocpConfigDir(): string {
+  // Call-time `os.homedir()` (default import), not a destructured named
+  // import: Bun snapshots named bindings from node:os, so test-time patches
+  // of `os.homedir` would be invisible and installer tests would resolve —
+  // and mutate — the REAL user config instead of their sandbox.
+  const base = process.env.XDG_CONFIG_HOME || join(os.homedir(), ".config")
+  return join(base, "opencode")
+}
+
+/**
+ * The real on-disk location of `ocp.json` — `ocpConfigDir() + "ocp.json"`.
+ * Unlike `ocpConfigPath`, this deliberately ignores `OCP_CONFIG_PATH`,
+ * which is a test/sandbox pin. The installer migration uses it because
+ * the migration must move the file the plugins will actually read after
+ * install, not whatever a test pinned `OCP_CONFIG_PATH` to for this run.
+ */
+export function realOcpConfigPath(): string {
+  return join(ocpConfigDir(), "ocp.json")
+}
 
 /** Config file location; OCP_CONFIG_PATH overrides (tests, sandboxes). */
 export function ocpConfigPath(): string {
   if (process.env.OCP_CONFIG_PATH) return process.env.OCP_CONFIG_PATH
-  const base = process.env.XDG_CONFIG_HOME || join(homedir(), ".config")
-  return join(base, "opencode", "ocp.json")
+  return realOcpConfigPath()
 }
 
 /** Tolerant JSONC parse via the shared stripper (comments, trailing commas); never throws. */
