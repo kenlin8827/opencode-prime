@@ -18,6 +18,7 @@ import {
   scaffoldLine,
   initReport,
   breadcrumbHeader,
+  showBusyModal,
   WIZARD_GROUPS,
 } from "../plugins/tui/_wizard-helpers"
 import { initI18nHeadless } from "../plugins/tui/i18n"
@@ -196,6 +197,69 @@ check(
   `all ${WIZARD_GROUPS.length} segments are non-empty`,
   segments.length === WIZARD_GROUPS.length && segments.every((s) => s.length > 0),
 )
+
+// ─── showBusyModal: dual-@opentui/solid-instance regression guard ─────
+//
+// When opencode loads our plugin files from `~/.config/opencode/plugins/
+// tui/*.ts`, every `import { jsx } from "@opentui/solid/jsx-runtime"`
+// resolves to a separate physical module from the host's bundled copy.
+// Solid resolves contexts by Symbol identity, so `useContext(RendererContext)`
+// inside the plugin's `createElement` looks up the wrong symbol and throws
+// `Error: No renderer found` on the host's render loop, killing the TUI
+// (opencode issues #27447 and #33884).
+//
+// `showBusyModal` used to draw a JSX panel via `dialog.show(() => jsx(...))`
+// and crashed. The fix routes the indicator through `ctx.ui.toast.show`,
+// which is plain options (no plugin JSX). This test asserts showBusyModal
+// never invokes `ctx.ui.dialog.show` — and routes the message through toast.
+console.log("\n=== showBusyModal dual-instance guard ===")
+
+let dialogShowCalls = 0
+let toastCalls: { title?: string; message: string; variant?: string }[] = []
+const stubCtx = {
+  ui: {
+    dialog: {
+      show: () => {
+        dialogShowCalls++
+        throw new Error("showBusyModal must not touch dialog.show — would crash on dual-instance hosts")
+      },
+      set: () => undefined,
+      clear: () => undefined,
+    },
+    toast: {
+      show: (options: { title?: string; message: string; variant?: string }) => {
+        toastCalls.push(options)
+      },
+    },
+  },
+  theme: { text: { base: "#fff", muted: "#888", feedback: { info: { base: "#5cf" } } } },
+} as never
+
+showBusyModal(stubCtx, {
+  title: "Initializing",
+  message: "Scaffolding files…",
+  busyText: "Working",
+})
+check("showBusyModal does NOT call ctx.ui.dialog.show", dialogShowCalls === 0)
+check("showBusyModal routes through ctx.ui.toast.show", toastCalls.length === 1)
+check("showBusyModal toast carries the title", toastCalls[0]?.message.includes("Initializing"))
+check("showBusyModal toast carries the message", toastCalls[0]?.message.includes("Scaffolding files…"))
+check("showBusyModal toast carries the busyText", toastCalls[0]?.message.includes("Working"))
+check("showBusyModal toast contains a spinner glyph", toastCalls[0]?.message.includes("⏳"))
+
+// showBusyModal must not throw if the host lacks `dialog` (only `toast`).
+const minimalCtx = {
+  ui: {
+    toast: { show: () => undefined },
+  },
+} as never
+let minimalThrew = false
+try {
+  showBusyModal(minimalCtx, { title: "x", message: "y" })
+} catch {
+  minimalThrew = true
+}
+check("showBusyModal tolerates a ctx without dialog (toast-only fallback)", !minimalThrew)
 
 console.log(`\n${"─".repeat(40)}`)
 console.log(`Results: ${passed} passed, ${failed} failed`)

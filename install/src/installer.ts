@@ -391,10 +391,21 @@ const PLUGIN_RUNTIME_SPEC_FALLBACK = '^2.0.15';
  * a bare `import()` (no dependency injection): every TUI plugin imports
  * `solid-js` and `@opentui/solid/jsx-runtime`, and `@opencode/plugin/tui`
  * itself imports `solid-js` — none of which opencode provides to plugin code.
+ *
  * Versions pin opencode's own TUI catalog (v2.0.16: solid-js 1.9.15,
  * @opentui/solid 0.5.10) so the plugin-side copy stays aligned with the
- * host's across the two-instance boundary (mismatched solid instances break
- * signals/context sharing).
+ * host's across the two-instance boundary. The pin is necessary but NOT
+ * sufficient: SolidJS resolves `RendererContext` by `Symbol` identity, and
+ * the plugin's installed copy of `@opentui/solid` is a separate physical
+ * module from the host's bundled copy — even with matching versions, the
+ * symbols differ and `useContext(RendererContext)` inside the plugin's
+ * `createElement` returns `undefined`, throwing `Error: No renderer found`
+ * on the host's render loop (opencode issues #27447 and #33884). OCP's
+ * plugin code routes transient busy indicators through `ctx.ui.toast.show`
+ * (host-renderer, no plugin JSX) to avoid the trap; see DEVELOPING.md
+ * "JSX in TUI plugins — dual `@opentui/solid` instance trap" and the
+ * `showBusyModal`/`showBusyFetch` docblocks.
+ *
  * License — both MIT (AGENTS.md License section: compatible to bundle;
  * this comment is the inline license statement): solid-js MIT,
  * @opentui/solid MIT.

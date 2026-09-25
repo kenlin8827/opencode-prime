@@ -78,8 +78,6 @@ import { appKeymapLayer } from "../_keymap-app"
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
-// Programmatically create JSX elements (busy panel) — no tsconfig jsxImportSource needed.
-import { jsx } from "@opentui/solid/jsx-runtime"
 import { tr, initI18n, refreshLocale, languageOption, switchLanguage, SWITCH_LANG, parseSlashArgs, type DialogOption } from "../i18n"
 import {
   CONFIG_FILE,
@@ -774,21 +772,18 @@ async function fetchRemoteModels(
 
 /**
  * v1 re-used the compat host's DialogPrompt busy prop (spinner + key
- * swallowing) while a remote fetch ran. v2 has no busy prop, so the
- * placeholder is a plugin-drawn panel; the next promise dialog replaces
- * it through the single-active-dialog model.
+ * swallowing) while a remote fetch ran. v2 has no busy prop. A plugin-drawn
+ * panel via `dialog.show(() => jsx(...))` is the documented path, but every
+ * `import { jsx } from "@opentui/solid/jsx-runtime"` resolves to a separate
+ * physical module from the host's bundled copy — the dual-instance trap
+ * causes `useContext(RendererContext)` inside `createElement` to throw "No
+ * renderer found" on the host's render loop, killing the TUI (opencode
+ * issues #27447 and #33884). A toast bypasses the plugin JSX entirely; the
+ * follow-up promise dialog (alert / select) replaces it as soon as the
+ * fetch resolves.
  */
 function showBusyFetch(ctx: Context, id: string): void {
-  const theme = ctx.theme
-  ctx.ui.dialog.show(() =>
-    jsx("box", {
-      style: { flexDirection: "column", paddingLeft: 1, paddingRight: 1 },
-      children: [
-        jsx("text", { style: { fg: theme.text.base }, children: jsx("span", { children: tr("provider.fetchingTitle", { id }) }) }),
-        jsx("text", { style: { fg: theme.text.feedback.info.base }, children: jsx("span", { children: `⏳ ${tr("provider.fetchingBusy")}` }) }),
-      ],
-    }),
-  )
+  toast(ctx, `${tr("provider.fetchingTitle", { id })}\n⏳ ${tr("provider.fetchingBusy")}`, "info")
 }
 
 // ─── Level 1: provider list ──────────────────────────────────────────

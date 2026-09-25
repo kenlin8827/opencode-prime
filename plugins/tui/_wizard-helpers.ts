@@ -13,9 +13,6 @@
  */
 
 import type { Context } from "@opencode/plugin/tui/context"
-// Programmatically create JSX elements via the SolidJS factory — avoids
-// tsconfig jsxImportSource complications in .ts files.
-import { jsx } from "@opentui/solid/jsx-runtime"
 import { tr } from "./i18n"
 import type { BackendResult } from "../project-manager/project-manager-index"
 import type { HookResult } from "../project-manager/project-manager-hooks"
@@ -106,37 +103,41 @@ export async function showAlertModal(
   await (params.onConfirm ?? params.onDismiss)()
 }
 
-// ─── Busy modal ──────────────────────────────────────────────────────
+// ─── Busy indicator ──────────────────────────────────────────────────
 
 /**
- * Replaces the current dialog with a non-dismissable busy placeholder
- * while an async operation runs. v2 has no busy prop on the built-in
- * dialogs, so this draws a minimal panel via dialog.show; the operation's
- * result dialog (alert/select/prompt) replaces it through the normal
- * single-active-dialog model. Escape while busy is swallowed — the
- * result always lands.
+ * Surfaces a transient "working…" indicator while an async operation runs.
+ * The operation's result dialog (alert/select/prompt) replaces it through
+ * the normal single-active-dialog model.
+ *
+ * Why a toast, not `dialog.show(jsx)`: when opencode loads our plugin files
+ * from `~/.config/opencode/plugins/tui/*.ts`, every `import { jsx } from
+ * "@opentui/solid/jsx-runtime"` resolves to the *plugin's* installed copy of
+ * `@opentui/solid` — a separate physical module from the host's bundled
+ * copy. Solid resolves contexts by Symbol identity, so `useContext(
+ * RendererContext)` inside the plugin's `createElement` looks up the wrong
+ * symbol and throws `Error: No renderer found`. The throw happens inside the
+ * JSX evaluation that opencode invokes on its render loop, which propagates
+ * and kills the TUI (opencode issues #27447 and #33884 document the same
+ * dual-instance failure mode for npm-spec and local TUI plugins).
+ *
+ * `ctx.ui.toast.show` takes plain options and renders through the host's
+ * own renderer — no plugin JSX is involved, so the dual-instance trap is
+ * bypassed. The toast's auto-dismiss matches the busy panel's "result
+ * dialog replaces it" semantics in practice: every caller in this file
+ * awaits the operation and immediately shows a result dialog, which lands
+ * before the toast's 5s window expires for the slow network ops the busy
+ * indicator originally covered (provider fetch/clear).
+ *
+ * The standalone OCP host (`ocp provider|project|...`) routes the plugin's
+ * `dialog.show(jsx)` through `install/src/ui/app.tsx` and would hit the
+ * same dual-instance throw — toast works there too.
  */
 export function showBusyModal(
   ctx: Context,
   params: { title: string; message: string; busyText?: string },
 ): void {
-  ctx.ui.dialog.show(() =>
-    busyPanel(ctx, params.title, params.message, params.busyText ?? tr("common.working")),
-  )
-}
-
-// Minimal text panel for the busy state.
-function busyPanel(ctx: Context, title: string, message: string, busyText: string) {
-  const theme = ctx.theme
-  return jsx("box", {
-    style: { flexDirection: "column", paddingLeft: 1, paddingRight: 1 },
-    children: [
-      jsx("text", { style: { fg: theme.text.base }, children: jsx("span", { children: title }) }),
-      ...message.split("\n").map((line) =>
-        jsx("text", { style: { fg: theme.text.muted }, children: jsx("span", { children: line }) })),
-      jsx("text", { style: { fg: theme.text.feedback.info.base }, children: jsx("span", { children: `⏳ ${busyText}` }) }),
-    ],
-  })
+  toast(ctx, `${params.title}\n${params.message}\n⏳ ${params.busyText ?? tr("common.working")}`)
 }
 
 // ─── Badge formatters ────────────────────────────────────────────────
