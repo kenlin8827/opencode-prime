@@ -73,7 +73,7 @@ function mcpEnabled(name: string): boolean {
 function codegraphCliInstalled(): boolean {
   try {
     // `--version` — the CLI has no `version` subcommand (commander rejects it).
-    execSync("codegraph --version", { encoding: "utf8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"] })
+    execSync("codegraph --version", { encoding: "utf8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"], windowsHide: true })
     return true
   } catch { /* not installed or not on PATH */ }
   return false
@@ -81,7 +81,7 @@ function codegraphCliInstalled(): boolean {
 
 function gitnexusCliInstalled(): boolean {
   try {
-    execSync("gitnexus --version", { encoding: "utf8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"] })
+    execSync("gitnexus --version", { encoding: "utf8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"], windowsHide: true })
     return true
   } catch { /* not installed or not on PATH */ }
   return false
@@ -93,7 +93,7 @@ function gitnexusCliInstalled(): boolean {
 function dbhubCliInstalled(): boolean {
   const probe = process.platform === "win32" ? "where.exe dbhub" : "command -v dbhub"
   try {
-    execSync(probe, { encoding: "utf8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"] })
+    execSync(probe, { encoding: "utf8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"], windowsHide: true })
     return true
   } catch { /* not installed or not on PATH */ }
   return false
@@ -106,8 +106,8 @@ function cliInstalled(name: string): boolean {
   if (name === "tgrep") {
     const probe = process.platform === "win32" ? "where.exe tgrep" : "command -v tgrep"
     try {
-      execSync(probe, { encoding: "utf8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"] })
-      execSync("tgrep --version", { encoding: "utf8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"] })
+      execSync(probe, { encoding: "utf8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"], windowsHide: true })
+      execSync("tgrep --version", { encoding: "utf8", timeout: 8000, stdio: ["ignore", "pipe", "ignore"], windowsHide: true })
       return true
     } catch { return false }
   }
@@ -130,6 +130,7 @@ function gitnexusIndexState(root: string): "ready" | "stale" | "missing" {
     const head = execSync("git log -1 --format=%ct", {
       cwd: root, encoding: "utf8", timeout: 5000,
       stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
     }).trim()
     const headSec = parseInt(head, 10)
     if (!Number.isNaN(headSec) && headSec * 1000 > indexMtime) return "stale"
@@ -436,7 +437,7 @@ function runBackend(plan: BackendPlan, root: string): Promise<BackendResult> {
   }
   const [cmd, ...args] = shellwords(plan.command)
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd: root, shell: true, stdio: ["ignore", "ignore", "pipe"] })
+    const child = spawn(cmd, args, { cwd: root, shell: true, stdio: ["ignore", "ignore", "pipe"], windowsHide: true })
     let stderr = ""
     child.stderr.on("data", (d) => (stderr += String(d)))
     child.on("error", (e) => resolve({ backend: plan.backend, status: "failed", detail: String(e) }))

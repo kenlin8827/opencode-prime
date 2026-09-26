@@ -299,6 +299,7 @@ function spawnSyncGitDiff(projectDir: string, dirs: string[], staged: boolean): 
       cwd: projectDir,
       encoding: "utf-8",
       timeout: 5000,
+      windowsHide: true,
     },
   )
   if (r.error || r.status !== 0) return null

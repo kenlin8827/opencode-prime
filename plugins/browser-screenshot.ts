@@ -106,7 +106,10 @@ async function loadPlaywright(): Promise<any> {
   } catch {
     // Browser binary missing — download it via `playwright install`
     try {
-      const { exitCode } = await Bun.$`bunx playwright install chromium`.quiet()
+      // Bun Shell (Bun.$) has no windowsHide option — use Bun.spawn to avoid a
+      // visible console window on Windows (console-less serve --service, upstream anomalyco/opencode#31629)
+      const proc = Bun.spawn(["bunx", "playwright", "install", "chromium"], { stdout: "ignore", stderr: "ignore", windowsHide: true })
+      const exitCode = await proc.exited
       if (exitCode !== 0) {
         throw new Error("Failed to install Playwright chromium browser")
       }

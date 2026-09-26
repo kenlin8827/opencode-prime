@@ -105,7 +105,7 @@ ${logNotice}`
 
 export function checkPandoc(): boolean {
   try {
-    const res = spawnSync("pandoc", ["--version"], { stdio: "ignore" })
+    const res = spawnSync("pandoc", ["--version"], { stdio: "ignore", windowsHide: true })
     return res.status === 0
   } catch {
     return false
@@ -114,7 +114,7 @@ export function checkPandoc(): boolean {
 
 export function checkNode(): boolean {
   try {
-    const res = spawnSync("node", ["--version"], { stdio: "ignore" })
+    const res = spawnSync("node", ["--version"], { stdio: "ignore", windowsHide: true })
     return res.status === 0
   } catch {
     return false
@@ -124,7 +124,7 @@ export function checkNode(): boolean {
 export function checkChromium(): boolean {
   try {
     const testCode = "const { chromium } = require('playwright'); chromium.launch({ headless: true }).then(b => b.close());"
-    const res = spawnSync("node", ["-e", testCode], { stdio: "ignore" })
+    const res = spawnSync("node", ["-e", testCode], { stdio: "ignore", windowsHide: true })
     return res.status === 0
   } catch {
     return false
@@ -143,7 +143,7 @@ export function autoInstallPandoc(projectDir: string = process.cwd()): { success
     const proc = spawnSync(
       "winget",
       ["install", "--id", "JohnMacFarlane.Pandoc", "-e", "--accept-source-agreements", "--accept-package-agreements"],
-      { stdio: "pipe", encoding: "utf8", shell: true },
+      { stdio: "pipe", encoding: "utf8", shell: true, windowsHide: true },
     )
     if (proc.status !== 0) {
       const logFile = writeErrorLog("autoInstallPandoc", proc.stderr || "winget install failed", proc.stdout + "\n" + proc.stderr, projectDir)
@@ -244,7 +244,7 @@ export async function convertSingleFile(
     }
 
     try {
-      execFileSync("pandoc", pandocArgs, { stdio: "pipe" })
+      execFileSync("pandoc", pandocArgs, { stdio: "pipe", windowsHide: true })
     } catch (err: any) {
       const errorMsg = err?.stderr?.toString() || err?.stdout?.toString() || (err as Error).message || "Pandoc conversion failed"
       const logFile = writeErrorLog(`Pandoc execution (${resolvedInput})`, errorMsg, "", projectDir)

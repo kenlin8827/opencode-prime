@@ -580,6 +580,7 @@ const fs = require('fs');
     execFileSync(nodeExecutable, [scriptPath], {
       stdio: "pipe",
       timeout: 60000,
+      windowsHide: true,
     })
 
     for (const item of renderPayload) {

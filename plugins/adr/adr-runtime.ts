@@ -288,6 +288,7 @@ export function hasAdrChanges(projectDir: string, adrDir: string | string[] = "d
       cwd: projectDir,
       encoding: "utf-8",
       timeout: 5000,
+      windowsHide: true,
     })
     if (r.error || r.status !== 0) return true
     const stdout = (r.stdout || "").trim()

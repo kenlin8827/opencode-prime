@@ -124,7 +124,7 @@ async function formatFile(filePath: string, projectRoot: string, echoHashes: Map
   if (echoHashes.get(filePath) === before) return
 
   const cmd = formatter.command(filePath)
-  const process = Bun.spawn(cmd, { stdout: "ignore", stderr: "pipe" })
+  const process = Bun.spawn(cmd, { stdout: "ignore", stderr: "pipe", windowsHide: true })
   if (await process.exited !== 0) {
     throw new Error((await new Response(process.stderr).text()).trim() || "formatter exited with an error")
   }

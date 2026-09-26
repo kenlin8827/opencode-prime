@@ -116,7 +116,7 @@ ${logNotice}`
 
 export function checkPandoc(): boolean {
   try {
-    const res = spawnSync("pandoc", ["--version"], { stdio: "ignore" })
+    const res = spawnSync("pandoc", ["--version"], { stdio: "ignore", windowsHide: true })
     return res.status === 0
   } catch {
     return false
@@ -125,7 +125,7 @@ export function checkPandoc(): boolean {
 
 export function checkNode(): boolean {
   try {
-    const res = spawnSync("node", ["--version"], { stdio: "ignore" })
+    const res = spawnSync("node", ["--version"], { stdio: "ignore", windowsHide: true })
     return res.status === 0
   } catch {
     return false
@@ -135,7 +135,7 @@ export function checkNode(): boolean {
 export function checkChromium(): boolean {
   try {
     const testCode = "const { chromium } = require('playwright'); chromium.launch({ headless: true }).then(b => b.close());"
-    const res = spawnSync("node", ["-e", testCode], { stdio: "ignore" })
+    const res = spawnSync("node", ["-e", testCode], { stdio: "ignore", windowsHide: true })
     return res.status === 0
   } catch {
     return false
@@ -172,6 +172,7 @@ export function autoInstallChromium(projectDir: string = process.cwd()): { succe
       encoding: "utf8",
       shell: true,
       env,
+      windowsHide: true,
     })
 
     const output = proc.stdout + "\n" + proc.stderr
@@ -202,7 +203,7 @@ export function autoInstallPandoc(projectDir: string = process.cwd()): { success
     const proc = spawnSync(
       "winget",
       ["install", "--id", "JohnMacFarlane.Pandoc", "-e", "--accept-source-agreements", "--accept-package-agreements"],
-      { stdio: "pipe", encoding: "utf8", shell: true },
+      { stdio: "pipe", encoding: "utf8", shell: true, windowsHide: true },
     )
     if (proc.status !== 0) {
       const logFile = writeErrorLog("autoInstallPandoc", proc.stderr || "winget install failed", proc.stdout + "\n" + proc.stderr, projectDir)
@@ -276,7 +277,7 @@ export function renderMarkdownToHtml(
         "-M", "document-css=false",
         "-o", htmlAbsPath,
       ],
-      { stdio: "pipe" },
+      { stdio: "pipe", windowsHide: true },
     )
   } catch (err) {
     const logFile = writeErrorLog(`renderMarkdownToHtml (${mdAbsPath})`, err as Error, "", projectDir)
@@ -339,6 +340,7 @@ const { chromium } = require('playwright');
       stdio: "pipe",
       encoding: "utf8",
       env,
+      windowsHide: true,
     })
   } catch (err: any) {
     const stderr = err?.stderr || err?.stdout || (err as Error).message || ""

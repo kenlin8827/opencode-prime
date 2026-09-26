@@ -75,6 +75,7 @@ function runCommand(command: Command, root: string): Promise<void> {
       cwd: root,
       shell: process.platform === "win32",
       stdio: "ignore",
+      windowsHide: true,
     })
     child.once("error", reject)
     child.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`${command.command} exited with ${code}`)))
