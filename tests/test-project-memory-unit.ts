@@ -9,7 +9,8 @@
  *   - system prompt transform hook: injects when any file present, strips
  *     on 'off', byte-stable on replay
  *   - command hook: --public / --private flag parsing, status reports both
- *   - public shareability probe: tri-state git check-ignore verdict
+ *   - public-scope reach probe: 4-state tracked/untracked/ignored/unknown
+ *     from two pure exit-code classifiers
  *   - memory_note tool: 2-value scope enum, default private (ADR-2.0.2#01)
  *
  * Run: bun run tests/test-project-memory-unit.ts
@@ -22,7 +23,9 @@ import { join } from "node:path"
 
 import {
   appendLesson,
-  classifyCheckIgnore,
+  classifyIsIgnored,
+  classifyLsFiles,
+  classifyPublicScope,
   countEntries,
   formatMemoryEntry,
   getState,
@@ -31,7 +34,7 @@ import {
   normalizeState,
   privatePath,
   publicPath,
-  publicScopeShared,
+  publicScopeReach,
   readPrivate,
   readPublic,
   setProjectDir,
@@ -154,6 +157,23 @@ try {
 }
 assert(emptyThrew, "whitespace-only lesson throws after sanitize")
 assertEq((formatMemoryEntry("x".repeat(2000)).match(/x/g) ?? []).length, 1000, "lesson capped at 1000 chars")
+
+// The cap counts UTF-16 units, so it can slice a surrogate pair in half and
+// leave a lone high surrogate that serializes as U+FFFD — into a file that is
+// now committed repo content. Public entries must stay well-formed.
+{
+  // An emoji is 2 units. At 998/999 it fits inside slice(0, 1000) whole.
+  const fits = formatMemoryEntry("a".repeat(998) + "\u{1F600}" + "b".repeat(50))
+  assert(fits.includes("\u{1F600}"), "a complete pair ending exactly at the cap survives")
+
+  // At 999/1000 the cap cuts between the halves: the orphan must be dropped.
+  const split = formatMemoryEntry("a".repeat(999) + "\u{1F600}" + "b".repeat(50))
+  assert(!split.includes("\uFFFD"), "a pair split by the cap leaves no replacement char")
+  const lone = [...split].filter((c) => c.charCodeAt(0) >= 0xd800 && c.charCodeAt(0) <= 0xdfff)
+  assertEq(lone.length, 0, "no lone surrogate half survives the cap")
+  assertEq((split.match(/a/g) ?? []).length, 999, "the 999 clean units before the split pair are kept")
+  assert(split.startsWith("- ["), "a split pair still yields a valid entry")
+}
 
 // Public scope
 const pubReturned = appendLesson("public", "bun test needs --preload for opentui")
@@ -372,11 +392,20 @@ assertEq(
     command: { transform: async (cb: any) => { cb({ add: (d: any) => added.push(d) }); return { dispose: async () => {} } } },
     tool: { transform: async (cb: any) => { cb({ add: (d: any) => toolAdds.push(d) }); return { dispose: async () => {} } } },
   }
+  // Poison the global BEFORE setup. `setup` calls
+  // setProjectDir(ctx.location.directory), so asserting the sandbox after it
+  // returns only proves setup ran — which the line above already shows. Seeding
+  // a different directory first makes the assertion bite: it fails if setup
+  // ever stops setting the project dir, or sets the wrong one.
+  setProjectDir(join(tmp, "poison"))
   await ProjectMemoryPlugin.setup(ctx)
   assert(added.some((c) => c.name === COMMAND_NAME), "v2 entry registers /memory via command transform")
   assert((added.find((c) => c.name === COMMAND_NAME)?.description ?? "").includes("memory"), "command description present")
   assert(toolAdds.some((t) => t.name === TOOL_NAME), "v2 entry registers memory_note via tool transform")
-  assert(getProjectDir() === tmp, "plugin setup injected the sandbox as project dir (not the real repo)")
+  assert(
+    getProjectDir() === tmp,
+    "plugin setup overwrote the poisoned project dir with the sandbox (never the real repo)",
+  )
 }
 
 let replied = ""
@@ -437,27 +466,65 @@ assert(showBoth.includes("last edited"), "show includes last-edited timestamp")
 assertEq(formatMtime(null), "?", "formatMtime(null) → '?'")
 assertEq(fileMtimeMs(join(tmp, "does-not-exist")), null, "fileMtimeMs on missing path → null")
 
-// ─── public shareability probe (ADR-2.0.2#02) ────────────────────────
-// The failure this closes is silent: a broad root-ignore of `.ocp/` makes
-// public.md local-only while every entry still looks filed.
+// ─── public-scope reach probe (ADR-2.0.2#02) ───────────────────────────
+// The failure this closes is silent AND has two distinct shapes. A broad
+// root-ignore of `.ocp/` makes public.md ignored. An UNTRACKED file passes
+// every ignore check and still never leaves the machine — the state this very
+// repo was in when the ADR was written. `git check-ignore` alone is blind to
+// the second shape, which is why the probe asks the index first.
 
-// Pure classifier first — every arm, no git and no repo required. The 128
+/** Is `dir` inside some enclosing git work tree? git walks up from the cwd,
+ *  so a sandbox under an unusual `os.tmpdir()` inherits an outer repo's index
+ *  and any "not a repository" assertion below would be unsound. */
+function insideGitTree(dir: string): boolean {
+  try {
+    execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: dir, stdio: "ignore", windowsHide: true })
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Pure classifiers first — every arm, no git and no repo required. The 128
 // arm is the one a `status !== 0` shortcut gets wrong: a fatal "not a git
-// repository" is ALSO non-zero, so it must not read as "shared".
-assertEq(classifyCheckIgnore(0), false, "exit 0 (ignored) → not shared")
-assertEq(classifyCheckIgnore(1), true, "exit 1 (not ignored) → shared")
-assertEq(classifyCheckIgnore(128), null, "exit 128 (fatal, not a repo) → unknown")
-assertEq(classifyCheckIgnore(129), null, "exit 129 (usage) → unknown")
-assertEq(classifyCheckIgnore(null), null, "null status (killed/timeout) → unknown")
-assertEq(classifyCheckIgnore(0, new Error("ENOENT")), null, "spawn error → unknown, never a verdict")
-assertEq(classifyCheckIgnore(1, new Error("ENOENT")), null, "spawn error outranks a stale status code")
+// repository" is ALSO non-zero, so it must not read as a verdict.
+assertEq(classifyLsFiles(0), true, "ls-files exit 0 → tracked")
+assertEq(classifyLsFiles(1), false, "ls-files exit 1 → not tracked")
+assertEq(classifyLsFiles(128), null, "ls-files exit 128 (fatal, not a repo) → unknown")
+assertEq(classifyLsFiles(129), null, "ls-files exit 129 (usage) → unknown")
+assertEq(classifyLsFiles(null), null, "null status (killed/timeout) → unknown")
+assertEq(classifyLsFiles(0, new Error("ENOENT")), null, "spawn error → unknown, never a verdict")
+assertEq(classifyLsFiles(1, new Error("ENOENT")), null, "spawn error outranks a stale status code")
 
-// Live probe: tmp dir is not a repo → unknown, and status must stay silent
-assertEq(publicScopeShared(), null, "publicScopeShared → null when git cannot decide (not a repo)")
-assert(
-  !statusText().includes("git-ignored") && !statusText().includes("被 git"),
-  "statusText stays silent on an unknown verdict (no false alarm)",
-)
+assertEq(classifyIsIgnored(0), true, "check-ignore exit 0 → ignored")
+assertEq(classifyIsIgnored(1), false, "check-ignore exit 1 → not ignored")
+assertEq(classifyIsIgnored(128), null, "check-ignore exit 128 (fatal) → unknown")
+assertEq(classifyIsIgnored(129), null, "check-ignore exit 129 (usage) → unknown")
+assertEq(classifyIsIgnored(null), null, "null status (killed/timeout) → unknown")
+assertEq(classifyIsIgnored(0, new Error("ENOENT")), null, "spawn error → unknown, never a verdict")
+assertEq(classifyIsIgnored(1, new Error("ENOENT")), null, "spawn error outranks a stale status code")
+
+// Composition — the matrix callers actually act on.
+assertEq(classifyPublicScope(true, null), "tracked", "tracked wins outright, no ignore verdict consulted")
+assertEq(classifyPublicScope(true, true), "tracked", "tracked outranks a stale ignore verdict")
+assertEq(classifyPublicScope(false, true), "ignored", "untracked + ignored → ignored")
+assertEq(classifyPublicScope(false, false), "untracked", "untracked + not ignored → untracked")
+assertEq(classifyPublicScope(null, true), "ignored", "check-ignore consults the index, so 'ignored' is conclusive")
+assertEq(classifyPublicScope(null, false), "unknown", "unknown trackedness + not ignored → unknown")
+assertEq(classifyPublicScope(false, null), "unknown", "unknown ignore verdict → unknown")
+assertEq(classifyPublicScope(null, null), "unknown", "git answered neither question → unknown")
+
+if (insideGitTree(tmp)) {
+  console.log("  ⚠️  os.tmpdir() is inside a git work tree — SKIPPED 2 unknown-verdict probe assertions (git walks up to the outer repo)")
+} else {
+  // Live probe: sandbox is not a repo → unknown, and status must stay silent
+  assertEq(publicScopeReach(), "unknown", "publicScopeReach → unknown when git cannot decide (not a repo)")
+  const unknownOut = statusText()
+  assert(
+    !unknownOut.includes("git-ignored") && !unknownOut.includes("被 git") && !unknownOut.includes("not tracking it yet"),
+    "statusText stays silent on an unknown verdict (no false alarm)",
+  )
+}
 
 const gtmp = mkdtempSync(join(tmpdir(), "memory-git-"))
 let gitUsable = true
@@ -465,43 +532,65 @@ try {
   execFileSync("git", ["init", "-q"], { cwd: gtmp, stdio: "ignore", windowsHide: true })
 } catch {
   gitUsable = false
-  console.log("  ⚠️  git unavailable — SKIPPED 2 publicScopeShared repo-branch assertions (loud, not a silent pass)")
+  console.log("  ⚠️  git unavailable — SKIPPED 3 publicScopeReach repo-branch assertions (loud, not a silent pass)")
 }
 if (gitUsable) {
-  setSharedProjectDir(gtmp)
-  mkdirSync(join(gtmp, ".ocp", "memory"), { recursive: true })
-  writeFileSync(join(gtmp, ".ocp", "memory", "public.md"), "# Project memory — public lessons (committed)\n", "utf-8")
+  try {
+    setSharedProjectDir(gtmp)
+    mkdirSync(join(gtmp, ".ocp", "memory"), { recursive: true })
+    writeFileSync(join(gtmp, ".ocp", "memory", "public.md"), "# Project memory — public lessons (committed)\n", "utf-8")
+    const gitignore = (...rules: string[]) =>
+      writeFileSync(join(gtmp, ".gitignore"), [...rules, ""].join("\n"), "utf-8")
 
-  // (a) the shipped .gitignore shape: tree ignored, one file re-included
-  writeFileSync(
-    join(gtmp, ".gitignore"),
-    [".ocp/*", "!.ocp/memory/", ".ocp/memory/*", "!.ocp/memory/public.md", ""].join("\n"),
-    "utf-8",
-  )
-  assertEq(publicScopeShared(), true, "re-included public.md reports shared")
+    // (a) the shipped .gitignore shape, file created but never `git add`ed:
+    //     passes every ignore check and STILL ships nothing.
+    gitignore(".ocp/*", "!.ocp/memory/", ".ocp/memory/*", "!.ocp/memory/public.md")
+    assertEq(publicScopeReach(), "untracked", "re-included but unadded public.md reports untracked, not tracked")
+    const untrackedWarn = statusText()
+    assert(
+      untrackedWarn.includes("not tracking it yet") || untrackedWarn.includes("还没追踪"),
+      "statusText warns that an untracked public.md stays local",
+    )
+    assert(untrackedWarn.includes("public.md"), "untracked warning names the file path")
+    assert(untrackedWarn.includes("git add"), "untracked warning carries the remedy")
 
-  // (b) the silent-failure shape: whole `.ocp/` tree ignored
-  writeFileSync(join(gtmp, ".gitignore"), ".ocp/\n", "utf-8")
-  assertEq(publicScopeShared(), false, "broadly ignored .ocp/ reports NOT shared")
-  const warn = statusText()
-  assert(
-    warn.includes("git-ignored") || warn.includes("被 git"),
-    "statusText warns that public entries never reach the team",
-  )
-  assert(warn.includes("public.md"), "warning names the offending file path")
+    // (b) the silent-failure shape: whole `.ocp/` tree ignored
+    gitignore(".ocp/")
+    assertEq(publicScopeReach(), "ignored", "broadly ignored .ocp/ reports ignored")
+    const ignoredWarn = statusText()
+    assert(
+      ignoredWarn.includes("git-ignored") || ignoredWarn.includes("被 git"),
+      "statusText warns that ignored public entries never reach the team",
+    )
+    assert(ignoredWarn.includes(".ocp/*") || ignoredWarn.includes(".gitignore"), "ignored warning carries the remedy")
 
-  // (c) tracked file + stale ignore rule → still healthy (no --no-index)
-  writeFileSync(join(gtmp, ".gitignore"), ".ocp/\n", "utf-8")
-  execFileSync("git", ["add", "-f", ".ocp/memory/public.md"], { cwd: gtmp, stdio: "ignore", windowsHide: true })
-  assertEq(publicScopeShared(), true, "tracked public.md reports shared even with a stale ignore rule")
-  setSharedProjectDir(tmp)
+    // (c) tracked file + stale ignore rule → healthy (no --no-index), and the
+    //     warning goes quiet.
+    let staged = false
+    try {
+      execFileSync("git", ["add", "-f", ".ocp/memory/public.md"], { cwd: gtmp, stdio: "ignore", windowsHide: true })
+      staged = true
+    } catch {
+      console.log("  ⚠️  git add -f refused — SKIPPED the tracked-file probe branch (loud, not a silent pass)")
+    }
+    if (staged) {
+      assertEq(publicScopeReach(), "tracked", "tracked public.md reports tracked even with a stale ignore rule")
+      assert(!statusText().includes("git-ignored"), "tracked public.md raises no ignore warning")
+    }
+  } finally {
+    setSharedProjectDir(tmp)
+    rmSync(gtmp, { recursive: true, force: true })
+  }
 }
 
 writeFileSync(switchFile, `{ "projectMemory": "on" }`)
 rmSync(publicPath(), { force: true })
 rmSync(privatePath(), { force: true })
+// One statusText() call, one assertion — calling it twice in the same assert
+// ran the git probe twice for one verdict.
+const bothMissing = statusText()
 assert(
-  statusText().includes("both files are missing") || statusText().includes("memory/private"),
+  bothMissing.includes("both files are missing") || bothMissing.includes("memory/private"),
   "statusText names the next action when gate on but both files missing",
 )
 writeFileSync(publicPath(), "# Project memory — public lessons (committed)\n\n- [2026-09-12] public A\n", "utf-8")

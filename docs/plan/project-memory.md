@@ -2,7 +2,9 @@
 
 Status: implemented 2026-09-11. Re-scoped 2026-09-12 to add the second
 personal scope and the `memory_note` tool / `/memory-summarize` skill on top of
-the original phase 1 capture + inject loop.
+the original phase 1 capture + inject loop. The `memory_note` tool default
+flipped `public` → `private` on 2026-09-26 (ADR-2.0.2#01); the human-typed
+`/memory note` command still defaults to `public`.
 
 ## What
 
@@ -57,8 +59,8 @@ User command (`/memory note`):
 LLM-initiated (`memory_note`):
 
 The agent can call the `memory_note` tool itself when it discovers a
-durable rule. Defaults to `public`; pass `scope: "private"` for
-current-user-only notes. Confidence (`high` / `medium` / `low`) is
+durable rule. Defaults to `private` (ADR-2.0.2#01); pass `scope: "public"`
+for team-visible lessons. Confidence (`high` / `medium` / `low`) is
 self-rated metadata only — the tool does not gate on it.
 
 Session summary (`/memory-summarize`):
@@ -91,7 +93,9 @@ useful?"
 
 - YES → public (committed, team benefits)
 - NO → private (your environment, your preferences, your hacks — only you see it)
-- When in doubt → public (PR review routes misclassified entries back)
+- When in doubt → private (ADR-2.0.2#01: misfiling costs are asymmetric. A
+  private entry the team should have had is one `scope` edit away; a public
+  entry that was machine-local is committed content nobody can un-learn.)
 
 ## Layout
 

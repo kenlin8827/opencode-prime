@@ -537,7 +537,7 @@ const en = {
   //   protocol/injection fragments stay English and are NOT here.
   // ════════════════════════════════════════════════════════════════
   // ── project-memory (/memory) ──
-  "guard.memory.help": "[project-memory] Project-level lessons memory — two scopes, one gate.\n  Public file:  {public} (committed to git, reviewed via PR flow)\n  Private file: {private} (project-scoped, gitignored — escape hatch for notes the team should not see)\n\nUsage:\n/memory note <lesson>           → append a dated entry to public.md (default)\n/memory note --private <lesson> → append to gitignored private.md (escape hatch)\n/memory on | off                → toggle injection of both into the system prompt\n/memory status                  → gate state + public/private entry counts\n\nBoth scopes are advisory — AGENTS.md stays authoritative on conflict.",
+  "guard.memory.help": "[project-memory] Project-level lessons memory — two scopes, one gate.\n  Public file:  {public} (committed to git, reviewed via PR flow)\n  Private file: {private} (project-scoped, gitignored — escape hatch for notes the team should not see)\n\nUsage:\n/memory note <lesson>           → append a dated entry to public.md (default)\n/memory note --private <lesson> → append to gitignored private.md (escape hatch)\n/memory on | off                → toggle injection of both into the system prompt\n/memory status                  → gate state + entry counts + public reach (warns if public.md is git-ignored or untracked)\n\nBoth scopes are advisory — AGENTS.md stays authoritative on conflict.",
   "guard.memory.noted": "[project-memory] Noted to {path} — entry is live in {memory} ({scope} scope).",
   "guard.memory.scopePublic": "public",
   "guard.memory.scopePrivate": "private",
@@ -554,7 +554,8 @@ const en = {
   "guard.memory.showStale": " — STALE (>30 days), consider review",
   "guard.memory.showPaths": "Files:\n  public:  {public}\n  private: {private}",
   "guard.memory.showEmpty": "[project-memory] No memory captured yet — nothing injected.\nNote with /memory note \"<lesson>\" (public) or /memory note --private \"<note>\" (private).\nFiles:\n  public:  {public}\n  private: {private}",
-  "guard.memory.publicUnshared": "[project-memory] WARNING: {public} is git-ignored, so public entries never reach the team — they stay local. Un-ignore the file in .gitignore (its parent directory must stay un-ignored too), or file the lesson privately: /memory note --private \"<note>\".",
+  "guard.memory.publicUnshared": "[project-memory] WARNING: {public} is git-ignored and untracked, so public entries never reach the team. In the root .gitignore: `.ocp/*`, then `!.ocp/memory/`, then `.ocp/memory/*`, then `!.ocp/memory/public.md` (the directory must be un-ignored first), or file the lesson privately.",
+  "guard.memory.publicUntracked": "[project-memory] NOTE: {public} is not ignored, but git is not tracking it yet — public entries stay local until it is committed. Add it with `git add .ocp/memory/public.md` from the repo root, or file the lesson privately.",
   // ── e2e-adopt (/e2e-adopt) ──
   "guard.e2eadopt.help": "[e2e-adopt] Adopt the E2E red-line policy into project docs (baijiu-shop-style documentation governance — no runtime switch).\nUsage:\n/e2e-adopt        → detect E2E setup, write docs/e2e-redline.md + insert the red-line section into AGENTS.md\n/e2e-adopt dry    → preview detection + placeholders, write nothing\n/e2e-adopt status → report whether the policy is adopted\nUninstall: delete docs/e2e-redline.md and the <!-- e2e-redline --> section in AGENTS.md.",
   "guard.e2eadopt.detect": "Detection: e2e-dir={dir} · runner-config={runner} · command=to be filled (stack-agnostic by design)",

@@ -1,4 +1,4 @@
-// Full-catalog i18n coverage — every registered locale must carry all 613
+// Full-catalog i18n coverage — every registered locale must carry all 614
 // STRINGS keys, not just the 13 command-surface keys.
 //
 // Design rationale: tr() silently falls back to English, so a missing key is
@@ -19,7 +19,7 @@
 //   6. no cross-script contamination — a kanji inside a Russian line passes
 //      every structural rule above while reading as nonsense to the user
 //   7. no duplicate keys in the raw source — Object.keys() silently keeps
-//      only the last value, so a duplicated key reports 613 and passes while
+//      only the last value, so a duplicated key reports 614 and passes while
 //      one translation is dropped without a trace
 //   8. angle-bracket metasyntax balanced as in en (`<ADR-x.y.z>`, `<title>`)
 //      — usage syntax like "<ADR-x.y.z]" is not caught by the slash-token rule
@@ -269,5 +269,5 @@ if (hard.length) {
   assert.fail(`${hard.length} i18n coverage failure(s)`)
 }
 
-assert.equal(enKeys.length, 613, "en registry holds 613 keys")
+assert.equal(enKeys.length, 614, "en registry holds 614 keys")
 console.log(`\n✅ ${enKeys.length} keys × ${Object.keys(CATALOGS).length + 1} locales complete (structure, placeholders, slash tokens preserved)`)

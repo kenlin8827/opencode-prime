@@ -60,8 +60,9 @@ dist/
 # artifact by contract — a lesson filed as public scope is worthless if it
 # never reaches the repo. Git cannot re-include a file whose parent
 # directory is excluded, so the directory is un-ignored first, then
-# narrowed again to the single shared file. `/memory status` probes
-# `git check-ignore` and warns if this ever regresses.
+# narrowed again to the single shared file. `/memory status` probes the
+# index first (`git ls-files`) and then the ignore rules, and warns on
+# both non-shipping states — ignored AND merely untracked.
 .ocp/*
 !.ocp/memory/
 .ocp/memory/*

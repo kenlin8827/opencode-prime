@@ -40,7 +40,7 @@ OpenCode 多智能体配置自带一系列生产级工作流斜杠命令。
 | **`/md-to-pdf <file.md> [output.pdf]`** | 出版级导出 | Markdown 一键转高清 A4 PDF，支持 300 DPI Mermaid 图表、CSS 样式定制与 `--doctor` 自检修复 |
 | **`/md-to-docx <file.md> [output.docx]`** | 出版级导出 | Markdown 导出为行政级 Word (.docx)，支持纯 TS 引擎、中西双字排版、Mermaid 渲染与样式定制 |
 | **`/project`（或 `init`/`index`/`sync` 子命令）** | 项目管理 | `init\|index\|sync` 子命令用于脚手架生成项目基线文件（`.ocp/ocp.json` 等），并自动触发 CodeGraph 与 GitNexus 索引；裸的 `/project` 打开交互式项目配置向导（通过终端可视化菜单一键开启或关闭各项 MCP 服务与功能插件） |
-| **`/memory [note\|status\|on\|off]`** (+ `/memory-summarize [focus]`) | 项目记忆 | 项目级记忆双 scope：`/memory note "<经验>"` 写入 `.ocp/memory/public.md`（进 git，PR 审阅）；`--private` 写入 `private.md`（gitignored，仅当前用户）。LLM 发现可复用规则时也可调用 `memory_note` 工具 —— 该工具默认 `private`（ADR-2.0.2#01），团队可见条目需显式传 `scope: "public"`。`/memory status` 还会在 `public.md` 被 git 忽略、永远到不了团队时给出警告。`/memory-summarize [focus]` 回顾当前会话并沉淀持久经验。两个文件均以 `[PROJECT MEMORY]` 注入（冲突时 AGENTS.md 权威）。每段超 16k 字符上限改为指针块。 |
+| **`/memory [note\|status\|on\|off]`** (+ `/memory-summarize [focus]`) | 项目记忆 | 项目级记忆双 scope：`/memory note "<经验>"` 写入 `.ocp/memory/public.md`（进 git，PR 审阅）；`--private` 写入 `private.md`（gitignored，仅当前用户）。LLM 发现可复用规则时也可调用 `memory_note` 工具 —— 该工具默认 `private`（ADR-2.0.2#01），团队可见条目需显式传 `scope: "public"`。`/memory status` 还会在 `public.md` 到不了团队时告警 —— 被 git 忽略（永远发不出去）与仅仅未被追踪（通过所有 ignore 检查，却仍留在本机直到有人 stage）两种情况都算。`/memory-summarize [focus]` 回顾当前会话并沉淀持久经验。两个文件均以 `[PROJECT MEMORY]` 注入（冲突时 AGENTS.md 权威）。每段超 16k 字符上限改为指针块。 |
 | **`/profile`** | 交互向导 (TUI) | 打开模型预设弹窗选择器：一键切换或精细配置 Auto / Ultimate / Performance / Economy / Lightweight 各层级模型 |
 | **`/provider`** | 交互向导 (TUI) | 打开服务商向导：为已激活或仓库自带的服务商配置凭证（baseURL / apiKey），管理模型清单 |
 | **`/disconnect [id\|--all]`** | 交互向导 (TUI) | 断开服务商密钥：裸打开连接向导；`<id>` 直达确认；`--all` 一次确认所有连接 |

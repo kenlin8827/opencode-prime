@@ -69,7 +69,7 @@ export const ProjectMemoryPlugin: Plugin.Plugin = {
       editor.add({
         name: COMMAND_NAME,
         description:
-          "Project memory — two scopes, one gate. /memory note \"<lesson>\" appends a dated entry to .ocp/memory/public.md (committed to git, reviewed via the normal PR flow); /memory note --private \"<note>\" appends to .ocp/memory/private.md (gitignored escape hatch for notes the team should not see); /memory on|off toggles injection of both into the system prompt; /memory status reports gate + public/private entry counts. The agent may also call the `memory_note` tool itself (with scope='public' or 'private').",
+          "Project memory — two scopes, one gate. /memory note \"<lesson>\" appends a dated entry to .ocp/memory/public.md (committed to git, reviewed via the normal PR flow); /memory note --private \"<note>\" appends to .ocp/memory/private.md (gitignored escape hatch for notes the team should not see); /memory on|off toggles injection of both into the system prompt; /memory status reports gate + public/private entry counts, and warns when public.md is git-ignored or untracked (public entries would stay local). The agent may also call the `memory_note` tool itself — it defaults to scope='private', so pass scope='public' deliberately.",
         execute: async (invocation) => {
           await handler({ arguments: commandArgumentText(invocation.prompt?.text, COMMAND_NAME), sessionID: invocation.sessionID })
         },

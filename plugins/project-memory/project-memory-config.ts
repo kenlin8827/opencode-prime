@@ -39,6 +39,7 @@
 
 import { spawnSync } from "node:child_process"
 import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
+import { relative, sep } from "node:path"
 import {
   ensureOcpGitignore,
   getProjectDir,
@@ -129,7 +130,16 @@ export function readPrivate(): string | null {
  *  throw on empty-after-clean (the command path keeps its own earlier
  *  empty pre-check for nicer UX). */
 export function formatMemoryEntry(lesson: string, date = new Date()): string {
-  const clean = lesson.replace(/\s+/g, " ").trim().slice(0, 1000)
+  const clean = lesson
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 1000)
+    // `slice` counts UTF-16 units, so the cap can land between a surrogate
+    // pair and orphan the high half — which serializes as U+FFFD. Public
+    // entries are committed repo content now (ADR-2.0.2), so a mojibake
+    // character is the team's file, not a local note. Drop the orphan; one
+    // code point of headroom is not worth a broken glyph.
+    .replace(/[\uD800-\uDBFF]$/, "")
   if (clean === "") throw new Error("memory lesson is empty after sanitize")
   return `- [${date.toISOString().slice(0, 10)}] ${clean}\n`
 }
@@ -218,45 +228,92 @@ export function countEntries(content: string): number {
   return content.split(/\r?\n/).filter((line) => line.startsWith("- [")).length
 }
 
-/** Classify a `git check-ignore -q` exit code. Pure — exported for tests.
- *    0 → ignored (false)   1 → not ignored (true)
+/** How far a public-scope entry actually travels. The predicate is
+ *  "will a teammate receive this", not "is a rule matching it" — an
+ *  untracked-but-unignored file passes every ignore check and still never
+ *  leaves the machine, which is exactly the state ADR-2.0.2#02 was written
+ *  for (this repo's own `public.md` had never been tracked). */
+export type PublicScopeReach = "tracked" | "untracked" | "ignored" | "unknown"
+
+/** `git ls-files --error-unmatch` verdict. Pure — exported for tests.
+ *    0 → tracked   1 → not tracked
  *    anything else (128 fatal "not a git repository", 129 usage, null when
- *    the child was killed or timed out) → unknown (null)
- *
- *  The "anything else" arm is load-bearing, not defensive padding: a fatal
- *  128 also arrives as a non-zero status, so a naive `status !== 0` would
- *  report "shared" precisely when git could not answer at all. */
-export function classifyCheckIgnore(status: number | null, error?: unknown): boolean | null {
+ *    the child was killed or timed out) → unknown (null) */
+export function classifyLsFiles(status: number | null, error?: unknown): boolean | null {
   if (error) return null
-  if (status === 0) return false
-  if (status === 1) return true
+  if (status === 0) return true
+  if (status === 1) return false
   return null
 }
 
-/** Is the public scope actually reaching the team? Tri-state:
- *    true  — public.md is shareable (tracked, or matched by no ignore rule)
- *    false — public.md is ignored by a git rule, so the "committed,
- *            PR-reviewed" contract is broken and entries stay local. The
- *            usual cause is a broad root-ignore of the whole `.ocp/` tree.
- *    null  — undeterminable (no git, not a repo, spawn timeout); callers stay
- *            silent rather than cry wolf.
+/** `git check-ignore -q` verdict. Pure — exported for tests.
+ *    0 → ignored   1 → not ignored
+ *    anything else → unknown (null)
  *
- *  `git check-ignore` WITHOUT `--no-index` is deliberate: it consults the
- *  index, so an already-tracked public.md reports "not ignored" even when a
- *  stale rule still matches it — exactly the state we call healthy.
+ *  The "anything else" arm is load-bearing, not defensive padding: a fatal
+ *  128 also arrives as a non-zero status, so a naive `status !== 0` would
+ *  read as "clean" precisely when git could not answer at all. */
+export function classifyIsIgnored(status: number | null, error?: unknown): boolean | null {
+  if (error) return null
+  if (status === 0) return true
+  if (status === 1) return false
+  return null
+}
+
+/** Compose both verdicts into the four states callers act on. Pure —
+ *  exported for tests.
+ *    tracked   — in the index: it is in the repo, whatever ignore rules say
+ *    ignored   — matched by an ignore rule AND unindexed, so it silently
+ *                never ships. The usual cause is a broad root-ignore of the
+ *                whole `.ocp/` tree.
+ *    untracked — unindexed but not ignored: it ships the moment somebody
+ *                runs `git add`; today it is still local-only.
+ *    unknown   — git could not answer; callers stay silent, never cry wolf */
+export function classifyPublicScope(
+  tracked: boolean | null,
+  ignored: boolean | null,
+): PublicScopeReach {
+  if (tracked === true) return "tracked"
+  // check-ignore consults the index, so "ignored" already implies untracked.
+  if (ignored === true) return "ignored"
+  if (tracked === false && ignored === false) return "untracked"
+  return "unknown"
+}
+
+/** Git pathspec for the public file, repo-relative with POSIX separators.
+ *  A cwd-relative POSIX path is what git's own docs and error messages are
+ *  written against; a native absolute path (`D:\…`) is at best tolerated and
+ *  at worst parsed as a pathspec with a drive-letter component, and that
+ *  failure would surface only as exit 128 → "unknown" → silence. `ocpDir()`
+ *  only ever nests under the project dir, so the relative path always
+ *  resolves. */
+function publicPathspec(): string {
+  return relative(getProjectDir(), publicPath()).split(sep).join("/")
+}
+
+/** How far public-scope entries actually reach. One subprocess in the healthy
+ *  (tracked) case, two when the file is absent from the index.
+ *
+ *  `check-ignore` runs WITHOUT `--no-index` on purpose: it consults the
+ *  index, so a tracked file under a stale ignore rule is not misreported.
  *
  *  Hard timeout, errors swallowed: `/memory status` is a read-only report and
- *  must never fail because git is unavailable. */
-export function publicScopeShared(): boolean | null {
-  try {
-    const r = spawnSync("git", ["check-ignore", "-q", "--", publicPath()], {
-      cwd: getProjectDir(),
-      windowsHide: true,
-      timeout: 5000,
-      stdio: "ignore",
-    })
-    return classifyCheckIgnore(r.status, r.error)
-  } catch {
-    return null
+ *  must never fail because git is unavailable. This is a SYNCHRONOUS spawn on
+ *  the shared plugin process — hence the 5s ceiling and the fail-soft shape,
+ *  not a 30s one. */
+export function publicScopeReach(): PublicScopeReach {
+  const root = getProjectDir()
+  const spec = publicPathspec()
+  const run = (args: string[]) => {
+    try {
+      return spawnSync("git", args, { cwd: root, windowsHide: true, timeout: 5000, stdio: "ignore" })
+    } catch {
+      return null
+    }
   }
+  const ls = run(["ls-files", "--error-unmatch", "-z", "--", spec])
+  const tracked = classifyLsFiles(ls?.status ?? null, ls?.error)
+  if (tracked === true) return "tracked"
+  const ci = run(["check-ignore", "-q", "--", spec])
+  return classifyPublicScope(tracked, classifyIsIgnored(ci?.status ?? null, ci?.error))
 }

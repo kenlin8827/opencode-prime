@@ -42,7 +42,7 @@ import {
   getState,
   privatePath,
   publicPath,
-  publicScopeShared,
+  publicScopeReach,
   readPrivate,
   readPublic,
   setState,
@@ -130,11 +130,17 @@ export function statusText(): string {
     refreshLocale()
     text += `\n${tr("guard.memory.noCurated", { public: publicPath(), private: privatePath() })}`
   }
-  // public scope that no git rule would ever share is the failure mode users
-  // cannot see: entries look filed, but the team never receives them.
-  if (publicScopeShared() === false) {
+  // How far public entries actually travel. Both non-tracking states are the
+  // failure users cannot see: entries look filed, the reply says saved, and
+  // the team simply never receives them.
+  const reach = publicScopeReach()
+  if (reach === "ignored" || reach === "untracked") {
     refreshLocale()
-    text += `\n${tr("guard.memory.publicUnshared", { public: publicPath() })}`
+    text += `\n${
+      reach === "ignored"
+        ? tr("guard.memory.publicUnshared", { public: publicPath() })
+        : tr("guard.memory.publicUntracked", { public: publicPath() })
+    }`
   }
   return text
 }

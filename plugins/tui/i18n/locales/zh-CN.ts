@@ -536,7 +536,7 @@ export default {
   //   protocol/injection fragments stay English and are NOT here.
   // ════════════════════════════════════════════════════════════════
   // ── project-memory (/memory) ──
-  "guard.memory.help": "[project-memory] 项目级经验记忆 —— 两个 scope，一个开关。\n  公开文件：{public}（进 git，通过常规 PR 流程由团队把关）。\n  私人文件：{private}（项目作用域，gitignored —— 仅当前用户可见，团队不应该看到的笔记的逃生口）。\n\n用法：\n/memory note <lesson>           → 将一条带日期条目追加到 public.md（默认）\n/memory note --private <lesson> → 追加到 gitignored 的 private.md（个人逃生口）\n/memory on | off                → 切换是否把两个文件注入系统提示\n/memory status                  → 开关状态 + 公开/私人条目计数\n\n两个 scope 都只是建议 —— 冲突时以 AGENTS.md 为准。",
+  "guard.memory.help": "[project-memory] 项目级经验记忆 —— 两个 scope，一个开关。\n  公开文件：{public}（进 git，通过常规 PR 流程由团队把关）。\n  私人文件：{private}（项目作用域，gitignored —— 仅当前用户可见，团队不应该看到的笔记的逃生口）。\n\n用法：\n/memory note <lesson>           → 将一条带日期条目追加到 public.md（默认）\n/memory note --private <lesson> → 追加到 gitignored 的 private.md（个人逃生口）\n/memory on | off                → 切换是否把两个文件注入系统提示\n/memory status                  → 开关状态 + 条目计数 + 公开文件去向（public.md 被忽略或未追踪时告警）\n\n两个 scope 都只是建议 —— 冲突时以 AGENTS.md 为准。",
   "guard.memory.noted": "[project-memory] 已记入 {path} — 条目已在 {memory} 中生效（{scope} scope）。",
   "guard.memory.scopePublic": "公开",
   "guard.memory.scopePrivate": "私人",
@@ -553,7 +553,8 @@ export default {
   "guard.memory.showStale": " —— 已过期（>30 天），建议 review",
   "guard.memory.showPaths": "文件路径：\n  公开：  {public}\n  私人：{private}",
   "guard.memory.showEmpty": "[project-memory] 暂无任何记录——当前无注入内容。\n用 /memory note \"<经验>\"（公开）或 /memory note --private \"<笔记>\"（私人）写入第一条。\n文件路径：\n  公开：  {public}\n  私人：{private}",
-  "guard.memory.publicUnshared": "[project-memory] 注意：{public} 被 git 规则忽略 —— 公开条目不会进仓库，团队看不到，等于个人笔记。请在 .gitignore 中取消忽略该文件（父目录也必须保持未被排除），或改用 /memory note --private \"<笔记>\" 记为私人条目。",
+  "guard.memory.publicUnshared": "[project-memory] 警告：{public} 被 git 规则忽略且未被追踪 —— 公开条目永远到不了团队。在根 .gitignore 中依次写 `.ocp/*`、`!.ocp/memory/`、`.ocp/memory/*`、`!.ocp/memory/public.md`（必须先放行父目录），或改用私人条目。",
+  "guard.memory.publicUntracked": "[project-memory] 注意：{public} 未被忽略，但 git 还没追踪它 —— 在提交之前公开条目仍然只在本机。在仓库根执行 `git add .ocp/memory/public.md`，或改用私人条目。",
   // ── e2e-adopt (/e2e-adopt) ──
   "guard.e2eadopt.help": "[e2e-adopt] 将 E2E 红线政策落进项目文档（baijiu-shop 式文档治理——无运行时开关）。\n用法：\n/e2e-adopt        → 检测 E2E 环境，写入 docs/e2e-redline.md 并在 AGENTS.md 插入红线小节\n/e2e-adopt dry    → 仅预览检测结果与待填占位符，不写任何文件\n/e2e-adopt status → 报告政策是否已采纳\n卸载：删除 docs/e2e-redline.md 和 AGENTS.md 中的 <!-- e2e-redline --> 小节。",
   "guard.e2eadopt.detect": "检测结果：e2e 目录={dir} · runner 配置={runner} · 命令=待填（按设计不猜测技术栈）",

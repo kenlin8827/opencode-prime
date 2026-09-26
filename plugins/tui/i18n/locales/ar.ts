@@ -540,7 +540,7 @@ export default {
   //   protocol/injection fragments stay English and are NOT here.
   // ════════════════════════════════════════════════════════════════
   // ── project-memory (/memory) ──
-  "guard.memory.help": "[project-memory] ذاكرة الدروس على مستوى المشروع — نطاقان، بوابة واحدة.\n  الملف العام:  {public} (مُثبَّت في git، يُراجع عبر تدفّق PR)\n  الملف الخاص: {private} (ضمن المشروع، gitignored — مخرج لِملاحظات لا ينبغي للفريق رؤيتها)\n\nالاستخدام:\n/memory note <درس>           → يضيف قيدًا مؤرَّخًا إلى public.md (الافتراضي)\n/memory note --private <ملاحظة> → يضيف إلى private.md (المخرج الخاص)\n/memory on | off                → يبدّل حقن الاثنين في موجّه النظام\n/memory status                  → حالة البوابة + عدد القيود العام/الخاص\n\nكلا النطاقين استشاري فقط — عند التعارض يبقى AGENTS.md مرجعيًّا.",
+  "guard.memory.help": "[project-memory] ذاكرة الدروس على مستوى المشروع — نطاقان، بوابة واحدة.\n  الملف العام:  {public} (مُثبَّت في git، يُراجع عبر تدفّق PR)\n  الملف الخاص: {private} (ضمن المشروع، gitignored — مخرج لِملاحظات لا ينبغي للفريق رؤيتها)\n\nالاستخدام:\n/memory note <درس>           → يضيف قيدًا مؤرَّخًا إلى public.md (الافتراضي)\n/memory note --private <ملاحظة> → يضيف إلى private.md (المخرج الخاص)\n/memory on | off                → يبدّل حقن الاثنين في موجّه النظام\n/memory status                  → حالة البوابة + عدد القيود + وصول public.md (تحذير إن كان مُتجاهَلًا أو غير متتبَّع)\n\nكلا النطاقين استشاري فقط — عند التعارض يبقى AGENTS.md مرجعيًّا.",
   "guard.memory.noted": "[project-memory] سُجِّل في {path} — القيد نشط في {memory} (نطاق {scope}).",
   "guard.memory.scopePublic": "عام",
   "guard.memory.scopePrivate": "خاص",
@@ -557,7 +557,8 @@ export default {
   "guard.memory.showStale": " — قديم (>30 يومًا)، يُفضَّل المراجعة",
   "guard.memory.showPaths": "الملفات:\n  العام:  {public}\n  الخاص: {private}",
   "guard.memory.showEmpty": "[project-memory] لم تُلتقط ذاكرة بعد — لا شيء يُحَنَّ.\nسجّل عبر /memory note \"<درس>\" (عام) أو /memory note --private \"<ملاحظة>\" (خاص).\nالملفات:\n  العام:  {public}\n  الخاص: {private}",
-  "guard.memory.publicUnshared": "[project-memory] تحذير: الملف {public} مُتجاهَل من git، لذا لا تصل الإدخالات العامة إلى الفريق — تبقى محلية. أوقف تجاهل الملف في .gitignore (يجب أن يبقى المجلد الأصلي غير مُستبعَد) أو سجّلها خاصة: /memory note --private \"<ملاحظة>\".",
+  "guard.memory.publicUnshared": "[project-memory] تحذير: الملف {public} مُتجاهَل من git وغير متتبَّع، لذا لا تصل الإدخالات العامة إلى الفريق. في ملف .gitignore الجذري: `.ocp/*` ثم `!.ocp/memory/` ثم `.ocp/memory/*` ثم `!.ocp/memory/public.md` (يجب إخراج المجلد الأب من التجاهل أولاً)، أو سجّلها خاصة.",
+  "guard.memory.publicUntracked": "[project-memory] ملاحظة: الملف {public} غير مُتجاهَل، لكن git لا يتتبّعه بعد — تبقى الإدخالات العامة محلية حتى يتم الالتزام به. أضِفه عبر `git add .ocp/memory/public.md` من جذر المستودع، أو سجّلها خاصة.",
   // ── e2e-adopt (/e2e-adopt) ──
   "guard.e2eadopt.help": "[e2e-adopt] يعتم سياسة الخط الأحمر E2E في مستندات المشروع (حوكمة مستندات على طراز baijiu-shop — دون مفتاح تشغيل).\nالاستخدام:\n/e2e-adopt        → يكتشف إعداد E2E، ويدوّن docs/e2e-redline.md ويدرج قسم الخط الأحمر في AGENTS.md\n/e2e-adopt dry    → يعرض معاينة الاكتشاف والعنصر البديل، ولا يكتب شيئًا\n/e2e-adopt status → يُبلغ إن كانت السياسة معتمدة\nالإزالة: احذف docs/e2e-redline.md وقسم <!-- e2e-redline --> في AGENTS.md.",
   "guard.e2eadopt.detect": "الاكتشاف: مجلد e2e={dir} · إعداد العدّاد={runner} · الأمر=للتعبئة (مُصمَّم أصلًا دون افتراض تقنية)",
