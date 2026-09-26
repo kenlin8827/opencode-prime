@@ -1,7 +1,7 @@
 import type { StringKey } from "./en"
 
 /**
- * Chinese (Simplified) catalog — full coverage (611 keys — kept in lockstep with ./en.ts).
+ * Chinese (Simplified) catalog — full coverage (609 keys — kept in lockstep with ./en.ts).
  * Keys must exist in ./en.ts (satisfies below → unknown key = compile
  * error); a key absent here falls back to English via tr() as the RUNTIME
  * NET only — completeness is asserted by tests/test-i18n-coverage-unit.ts.
@@ -57,9 +57,7 @@ export default {
   "profile.mainTitle": "配置方案向导",
   "profile.agentsHeader": "Agents",
   "profile.tiersHeader": "模型层级",
-  "profile.selectionHeader": "选择",
   "profile.editHeader": "编辑",
-  "profile.manageHeader": "管理",
   "profile.providersHeader": "服务商",
   "profile.connectedProvidersHeader": "✅ 已连接服务商",
   "profile.profilesHeader": "配置方案",
@@ -113,7 +111,7 @@ export default {
   "profile.editTierModelsPlaceholder": "选择模型层级修改其模型 (Esc: 返回)",
   "profile.applyTierModelsDesc": "将 {count} 个模型变更热应用到当前配置",
   "profile.noTierModels": "未找到模型层级映射 — 配置中 Agent 没有模型。",
-  "profile.pickTierModelProviderTitle": "模型层级 {tier} → 服务商",
+  "profile.pickTierModelProviderTitle": "模型层级 {tier} → 模型",
   "profile.pickTierModelModelTitle": "模型层级 {tier} → {provider} 上的模型",
   "profile.promptTierModelRefTitle": "模型层级 {tier} — 手动输入引用",
   "profile.liveTierModelChanged": "模型层级 {tier} → {provider}/{model} (待应用)",
@@ -122,15 +120,18 @@ export default {
   "profile.manageTitle": "管理: 配置方案→模型",
   "profile.managePlaceholder": "选择配置方案编辑其 模型层级→模型 映射 (Esc: 返回)",
   "profile.addProfile": "➕ 添加: 配置方案",
-  "profile.addProfileDesc": "在 ~/.config/opencode/profiles/ 创建空白配置方案 JSON",
+  "profile.addProfileDesc": "选择快速与旗舰模型，自动填入 flash/standard/vision 和 pro/max；之后仍可单独调整",
   "profile.deleteProfile": "🗑️ 删除",
   "profile.deleteProfileDesc": "删除此配置方案的 JSON 文件（删除前需确认）",
-  "profile.reviewTiersTitle": "{name} — 审阅模型层级",
-  "profile.reviewTiersPlaceholder": "选择模型层级修改其模型 (服务商 → 模型)，或应用 (Esc: 返回)",
+  "profile.reviewTiersTitle": "{name} — 编辑模型分配",
+  "profile.reviewTiersPlaceholder": "选择要修改的层级字段；模型列表可搜索并按服务商分组 (Esc: 返回)",
+  "profile.quickSetTiers": "⚡ 快速设置：两档映射五档",
+  "profile.quickSetTiersDesc": "选择快速与旗舰模型，自动填入 flash/standard/vision 和 pro/max",
+  "profile.quickSetTiersDone": "'{name}' 已按两档模型填入全部五档；检查后点击 Apply。",
   "profile.applyChangesModelDesc": "将以下映射写入配置方案 JSON 并应用",
   "profile.cancelDiscard": "丢弃覆写，返回配置方案列表",
-  "profile.pickProviderTitle": "{name} — 模型层级 {tier} → 服务商",
-  "profile.pickProviderPlaceholder": "选择服务商 (Esc: 返回)",
+  "profile.pickProviderTitle": "{name} — 模型层级 {tier} → 模型",
+  "profile.pickProviderPlaceholder": "搜索模型（按服务商分组，Esc 返回）",
   "profile.typeCustomRef": "( 手动输入引用 )",
   "profile.typeCustomRefDesc": "用于未列出的服务商",
   "profile.pickModelTitle": "{name} — 模型层级 {tier} → {provider} 上的模型",

@@ -1,5 +1,5 @@
 /**
- * English catalog — the canonical STRINGS key registry (611 keys).
+ * English catalog — the canonical STRINGS key registry (609 keys).
  * StringKey derives from this file (`keyof typeof en`): every key tr()
  * accepts must exist here. ../i18n.ts assembles en + the sibling catalogs
  * into STRINGS at module load; siblings declare
@@ -58,9 +58,7 @@ const en = {
   "profile.mainTitle": "Profile wizard",
   "profile.agentsHeader": "Agents",
   "profile.tiersHeader": "Tiers",
-  "profile.selectionHeader": "Selection",
   "profile.editHeader": "Edit",
-  "profile.manageHeader": "Manage",
   "profile.providersHeader": "Providers",
   "profile.connectedProvidersHeader": "✅ Connected providers",
   "profile.profilesHeader": "Profiles",
@@ -114,7 +112,7 @@ const en = {
   "profile.editTierModelsPlaceholder": "Pick a tier to change its model (Esc: back)",
   "profile.applyTierModelsDesc": "Apply {count} model change{s} to the live config",
   "profile.noTierModels": "No tier mapping found — agents have no models in the config.",
-  "profile.pickTierModelProviderTitle": "tier.{tier} → provider",
+  "profile.pickTierModelProviderTitle": "tier.{tier} → model",
   "profile.pickTierModelModelTitle": "tier.{tier} → model on {provider}",
   "profile.promptTierModelRefTitle": "tier.{tier} — custom ref",
   "profile.liveTierModelChanged": "tier.{tier} → {provider}/{model} (pending)",
@@ -123,15 +121,18 @@ const en = {
   "profile.manageTitle": "Manage: Profile→Models",
   "profile.managePlaceholder": "Pick a profile to edit its tier→model mapping (Esc: back)",
   "profile.addProfile": "➕ Add: Profile",
-  "profile.addProfileDesc": "Create a new blank profile JSON in ~/.config/opencode/profiles/",
+  "profile.addProfileDesc": "Choose fast and flagship models; auto-fill flash/standard/vision and pro/max, then customize if needed",
   "profile.deleteProfile": "🗑️ Delete",
   "profile.deleteProfileDesc": "Delete this profile's JSON file (asks for confirmation)",
-  "profile.reviewTiersTitle": "{name} — review tiers",
-  "profile.reviewTiersPlaceholder": "Pick a tier to change its model (provider → model), or apply (Esc: back)",
+  "profile.reviewTiersTitle": "{name} — edit profile models",
+  "profile.reviewTiersPlaceholder": "Pick a tier field; its model list is searchable and grouped by provider (Esc: back)",
+  "profile.quickSetTiers": "⚡ Quick setup: 2 models",
+  "profile.quickSetTiersDesc": "Pick fast + flagship models to fill flash/standard/vision and pro/max",
+  "profile.quickSetTiersDone": "'{name}' now has two-model defaults across all five tiers; review and Apply.",
   "profile.applyChangesModelDesc": "Write the mapping below to the profile JSON and apply",
   "profile.cancelDiscard": "Discard overrides and return to profile list",
-  "profile.pickProviderTitle": "{name} — tier.{tier} → provider",
-  "profile.pickProviderPlaceholder": "Pick a provider (Esc: back)",
+  "profile.pickProviderTitle": "{name} — tier.{tier} → model",
+  "profile.pickProviderPlaceholder": "Search models, grouped by provider (Esc: back)",
   "profile.typeCustomRef": "( Type a custom ref )",
   "profile.typeCustomRefDesc": "For providers not listed above",
   "profile.pickModelTitle": "{name} — tier.{tier} → model on {provider}",

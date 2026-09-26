@@ -177,11 +177,11 @@
   │  ├─ opencode-go-glm  ← active  — 描述...
   │  ├─ opencode-go-kimi          — 描述...
   │  ├─ ...
-  │  ├─ "( Add profile )"  ────→ 输入名称，创建空白 JSON
+  │  ├─ "( Add profile )"  ────→ 输入名称，选择快速与旗舰模型
   │  ├─ "( Delete profile )"  ──→ 选中预设删除（保留 .bak 备份）
   │  └─ "( Back )"  ─────────→ 返回主菜单
   │
-  └─ 第三层：层级审阅（按预设）
+   └─ 第三层：预设编辑器（层级字段 + 操作）
      │
      │  列出选中预设的各层级及其 provider/model 引用：
      │    flash     glm-4-flash
@@ -190,32 +190,30 @@
      │    max       glm-4-long
      │    vision    glm-4v
      │
+     │  ├─ 选中任意层级  ─────→ 第四层：可搜索模型选择器
+     │  ├─ "( Quick setup: 2 models )" → 选择快速与旗舰模型，自动填满五档
      │  ├─ "( Apply changes )"  → 写入预设 JSON + 应用到 opencode.jsonc
-     │  ├─ 选中任意层级  ─────→ 第四层：provider 选择器
      │  ├─ "( Back )"  ──────→ 返回预设列表（保留覆写）
      │  └─ "( Cancel )"  ────→ 丢弃覆写，返回预设列表
      │
-     └─ 第四层：Provider 选择器
+     └─ 第四层：可搜索模型选择器（所有 provider 合并显示）
         │
-        ├─ anthropic  — 5 model(s) · built-in · connected
-        ├─ openai     — 3 model(s) · built-in
+        ├─ anthropic/claude-sonnet  — Claude 3.7 Sonnet · 分类：anthropic
+        ├─ openai/gpt-5             · 分类：openai
         ├─ ...
         ├─ "( Type a custom ref )"  ──→ 手动输入 '<provider>/<model_id>'
-        └─ "( Back )"  ───────────→ 返回层级审阅
-        │
-        └─ 第五层：Model 选择器（按 provider）
-           │
-           ├─ claude-sonnet  — Claude 3.7 Sonnet
-           ├─ claude-opus    — Claude 3.7 Opus
-           ├─ ...
-           └─ "( Back )"  ──→ 返回 provider 列表
+        └─ 直接输入关键词筛选，再选中模型
 ```
+
+这是原生选择器实现的类表单页面：每行显示一个层级及当前模型；选中后打开按 provider 分组、可直接搜索的模型列表；最后用 Apply/Cancel 保存或丢弃待编辑项。TUI 对话框 API 没有原生多字段表单，因此这里采用平台支持的选择器交互。
 
 **Apply 时发生什么：**
 
 1. 预设 JSON 文件（`~/.config/opencode/profiles/<name>.json`）原子重写（备份 `.bak` → 写 tmp → rename），写入覆写后的 tier→model 引用。
 2. 更新后的预设应用到 `opencode.jsonc` — 每个 agent 的 `model` 按其层级重写为新的引用。
 3. 更新 `.active-profile`。优先通过服务端全局配置 API 热生效（无需重启）。
+
+**两档快速设置：** 新建和编辑预设时都可用。选择快速模型填入 `flash`/`standard`/`vision`，选择旗舰模型填入 `pro`/`max`；检查生成的映射后，仍可单独调整各层级再应用。
 
 #### Select: Profile
 

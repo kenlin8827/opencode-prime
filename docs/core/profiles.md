@@ -179,11 +179,11 @@ Edit a profile's tier→model mapping, or add/delete profiles:
   │  ├─ opencode-go-glm  ← active  — desc...
   │  ├─ opencode-go-kimi          — desc...
   │  ├─ ...
-  │  ├─ "( Add profile )"  ────→ prompt for name, creates blank JSON
+  │  ├─ "( Add profile )"  ────→ enter a name, pick fast + flagship models
   │  ├─ "( Delete profile )"  ──→ pick a profile to remove (.bak kept)
   │  └─ "( Back )"  ─────────→ return to main menu
   │
-  └─ Level 3: Tier review (per profile)
+   └─ Level 3: Profile editor (tier fields + actions)
      │
      │  Lists the picked profile's tiers with their provider/model refs:
      │    flash     glm-4-flash
@@ -192,32 +192,30 @@ Edit a profile's tier→model mapping, or add/delete profiles:
      │    max       glm-4-long
      │    vision    glm-4v
      │
+     │  ├─ Pick any tier  ─────→ Level 4: searchable model picker
+     │  ├─ "( Quick setup: 2 models )" → choose fast + flagship; fill all tiers
      │  ├─ "( Apply changes )"  → write profile JSON + apply to opencode.jsonc
-     │  ├─ Pick any tier  ─────→ Level 4: provider picker
      │  ├─ "( Back )"  ───────→ return to profile list (keep overrides)
      │  └─ "( Cancel )"  ─────→ discard overrides, return to profile list
      │
-     └─ Level 4: Provider picker
+     └─ Level 4: Searchable model picker (all providers in one list)
         │
-        ├─ anthropic  — 5 model(s) · built-in · connected
-        ├─ openai     — 3 model(s) · built-in
+        ├─ anthropic/claude-sonnet  — Claude 3.7 Sonnet · category: anthropic
+        ├─ openai/gpt-5             — category: openai
         ├─ ...
         ├─ "( Type a custom ref )"  ──→ manual '<provider>/<model_id>' entry
-        └─ "( Back )"  ───────────→ return to tier review
-        │
-        └─ Level 5: Model picker (per provider)
-           │
-           ├─ claude-sonnet  — Claude 3.7 Sonnet
-           ├─ claude-opus    — Claude 3.7 Opus
-           ├─ ...
-           └─ "( Back )"  ──→ return to provider list
+        └─ Type to filter, then select a model directly
 ```
+
+This is a form-like native select screen: each tier row shows its current model, selecting a row opens the searchable all-provider model picker, and Apply/Cancel commits or discards the pending edits. The TUI dialog API has no native multi-field form, so this keeps the editor on the supported dialog surface.
 
 **What happens on Apply:**
 
 1. The profile JSON file (`~/.config/opencode/profiles/<name>.json`) is rewritten atomically (backup `.bak` → write tmp → rename) with the overridden tier→model refs.
 2. The updated profile is applied to `opencode.jsonc` — every agent's `model` is rewritten to match its tier's new ref.
 3. `.active-profile` is updated. Live-apply is attempted first via the server's global config API (no restart).
+
+**Two-model quick setup:** available when adding or editing a profile. Choose a fast model for `flash`/`standard`/`vision` and a flagship model for `pro`/`max`; review the generated mapping and adjust individual tiers before applying if needed.
 
 #### Select: Profile
 

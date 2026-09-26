@@ -1,7 +1,7 @@
 import type { StringKey } from "./en"
 
 /**
- * Japanese catalog — full coverage (611 keys — kept in lockstep with ./en.ts).
+ * Japanese catalog — full coverage (609 keys — kept in lockstep with ./en.ts).
  * Keys must exist in ./en.ts (satisfies below → unknown key = compile
  * error); a key absent here falls back to English via tr() as the RUNTIME
  * NET only — completeness is asserted by tests/test-i18n-coverage-unit.ts.
@@ -57,9 +57,7 @@ export default {
   "profile.mainTitle": "プロファイルウィザード",
   "profile.agentsHeader": "エージェント",
   "profile.tiersHeader": "ティア",
-  "profile.selectionHeader": "選択",
   "profile.editHeader": "編集",
-  "profile.manageHeader": "管理",
   "profile.providersHeader": "プロバイダー",
   "profile.connectedProvidersHeader": "✅ 接続済みプロバイダー",
   "profile.profilesHeader": "プロファイル",
@@ -113,7 +111,7 @@ export default {
   "profile.editTierModelsPlaceholder": "モデルを変更するティアを選択（Esc: 戻る）",
   "profile.applyTierModelsDesc": "{count} 件のモデル変更を実行中の設定に適用",
   "profile.noTierModels": "ティア対応が見つかりません — 設定上でエージェントにモデルがありません。",
-  "profile.pickTierModelProviderTitle": "tier.{tier} → プロバイダー",
+  "profile.pickTierModelProviderTitle": "tier.{tier} → モデル",
   "profile.pickTierModelModelTitle": "tier.{tier} → {provider} のモデル",
   "profile.promptTierModelRefTitle": "tier.{tier} — カスタム参照",
   "profile.liveTierModelChanged": "tier.{tier} → {provider}/{model}（保留）",
@@ -122,15 +120,18 @@ export default {
   "profile.manageTitle": "管理: プロファイル→モデル",
   "profile.managePlaceholder": "ティア→モデル対応を編集するプロファイルを選択（Esc: 戻る）",
   "profile.addProfile": "➕ 追加: プロファイル",
-  "profile.addProfileDesc": "~/.config/opencode/profiles/ に新しい空のプロファイル JSON を作成",
+  "profile.addProfileDesc": "高速モデルと最上位モデルを選ぶと flash/standard/vision と pro/max を自動入力します（後から個別に変更可能）",
   "profile.deleteProfile": "🗑️ 削除",
   "profile.deleteProfileDesc": "このプロファイルの JSON ファイルを削除（確認あり）",
-  "profile.reviewTiersTitle": "{name} — ティアを確認",
-  "profile.reviewTiersPlaceholder": "モデルを変更するティアを選択（プロバイダー→モデル）、または適用（Esc: 戻る）",
+  "profile.reviewTiersTitle": "{name} — プロファイルモデルを編集",
+  "profile.reviewTiersPlaceholder": "編集するティアを選択（モデル一覧は検索可能・プロバイダー別に表示、Esc: 戻る）",
+  "profile.quickSetTiers": "⚡ クイック設定：2モデル",
+  "profile.quickSetTiersDesc": "高速モデルと最上位モデルを選び、flash/standard/vision と pro/max に割り当てます",
+  "profile.quickSetTiersDone": "'{name}' の5ティアに2モデルの既定値を設定しました。確認して適用してください。",
   "profile.applyChangesModelDesc": "下記の対応をプロファイル JSON に書き込み、適用",
   "profile.cancelDiscard": "上書きを破棄してプロファイル一覧に戻る",
-  "profile.pickProviderTitle": "{name} — tier.{tier} → プロバイダー",
-  "profile.pickProviderPlaceholder": "プロバイダーを選択（Esc: 戻る）",
+  "profile.pickProviderTitle": "{name} — tier.{tier} → モデル",
+  "profile.pickProviderPlaceholder": "プロバイダー別にグループ化されたモデルを検索（Esc: 戻る）",
   "profile.typeCustomRef": "（ カスタム参照を入力 ）",
   "profile.typeCustomRefDesc": "上記にないプロバイダー用",
   "profile.pickModelTitle": "{name} — tier.{tier} → {provider} のモデル",

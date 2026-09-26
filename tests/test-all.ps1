@@ -1065,7 +1065,7 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-ocp-ui-theme-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 # i18n: command-surface contract (13 keys × 8 locales) and full-catalog
-# coverage (611 keys × 8 locales — structure/placeholder/slash-token parity,
+# coverage (612 keys × 8 locales — structure/placeholder/slash-token parity,
 # cross-script contamination, duplicate keys, angle-bracket balance). Both
 # must gate the release: tr() falls back to English silently, so an
 # untranslated key is invisible at runtime and only these tests catch it.

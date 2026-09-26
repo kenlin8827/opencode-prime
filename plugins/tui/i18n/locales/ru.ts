@@ -1,7 +1,7 @@
 import type { StringKey } from "./en"
 
 /**
- * Russian catalog — full coverage (611 keys — kept in lockstep with ./en.ts).
+ * Russian catalog — full coverage (609 keys — kept in lockstep with ./en.ts).
  * Keys must exist in ./en.ts (satisfies below → unknown key = compile
  * error); a key absent here falls back to English via tr() as the RUNTIME
  * NET only — completeness is asserted by tests/test-i18n-coverage-unit.ts.
@@ -57,9 +57,7 @@ export default {
   "profile.mainTitle": "Мастер профилей",
   "profile.agentsHeader": "Агенты",
   "profile.tiersHeader": "Уровни",
-  "profile.selectionHeader": "Выбор",
   "profile.editHeader": "Правка",
-  "profile.manageHeader": "Управление",
   "profile.providersHeader": "Провайдеры",
   "profile.connectedProvidersHeader": "✅ Подключённые провайдеры",
   "profile.profilesHeader": "Профили",
@@ -113,7 +111,7 @@ export default {
   "profile.editTierModelsPlaceholder": "Выберите уровень, чтобы изменить его модель (Esc: назад)",
   "profile.applyTierModelsDesc": "Применяет {count} изменени(й) модели к конфигу вживую",
   "profile.noTierModels": "Отображение уровней не найдено — у агентов нет моделей в конфиге.",
-  "profile.pickTierModelProviderTitle": "tier.{tier} → провайдер",
+  "profile.pickTierModelProviderTitle": "tier.{tier} → модель",
   "profile.pickTierModelModelTitle": "tier.{tier} → модель у {provider}",
   "profile.promptTierModelRefTitle": "tier.{tier} — пользовательская ссылка",
   "profile.liveTierModelChanged": "tier.{tier} → {provider}/{model} (в ожидании)",
@@ -122,15 +120,18 @@ export default {
   "profile.manageTitle": "Управление: Профиль→Модели",
   "profile.managePlaceholder": "Выберите профиль, чтобы отредактировать его отображение уровень→модель (Esc: назад)",
   "profile.addProfile": "➕ Добавить: Профиль",
-  "profile.addProfileDesc": "Создаёт новый пустой JSON профиля в ~/.config/opencode/profiles/",
+  "profile.addProfileDesc": "Выберите быструю и флагманскую модели: уровни flash/standard/vision и pro/max заполнятся автоматически; их можно настроить отдельно",
   "profile.deleteProfile": "🗑️ Удалить",
   "profile.deleteProfileDesc": "Удаляет JSON-файл этого профиля (спрашивает подтверждения)",
-  "profile.reviewTiersTitle": "{name} — проверка уровней",
-  "profile.reviewTiersPlaceholder": "Выберите уровень, чтобы изменить его модель (провайдер → модель), либо примените (Esc: назад)",
+  "profile.reviewTiersTitle": "{name} — редактирование моделей профиля",
+  "profile.reviewTiersPlaceholder": "Выберите уровень; список моделей доступен для поиска и сгруппирован по провайдеру (Esc: назад)",
+  "profile.quickSetTiers": "⚡ Быстрая настройка: 2 модели",
+  "profile.quickSetTiersDesc": "Выберите быструю и флагманскую модели для уровней flash/standard/vision и pro/max",
+  "profile.quickSetTiersDone": "'{name}': все пять уровней заполнены по двум моделям; проверьте и примените.",
   "profile.applyChangesModelDesc": "Записывает приведённое ниже отображение в JSON профиля и применяет его",
   "profile.cancelDiscard": "Отменить переопределения и вернуться к списку профилей",
-  "profile.pickProviderTitle": "{name} — tier.{tier} → провайдер",
-  "profile.pickProviderPlaceholder": "Выберите провайдера (Esc: назад)",
+  "profile.pickProviderTitle": "{name} — tier.{tier} → модель",
+  "profile.pickProviderPlaceholder": "Поиск моделей с группировкой по провайдеру (Esc: назад)",
   "profile.typeCustomRef": "( Введите пользовательскую ссылку )",
   "profile.typeCustomRefDesc": "Для провайдеров, не перечисленных выше",
   "profile.pickModelTitle": "{name} — tier.{tier} → модель у {provider}",

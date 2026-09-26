@@ -230,8 +230,11 @@ export function planTierModelChange(
   return { mapping: { ...current, [tier]: ref }, changed: current[tier] !== ref }
 }
 
-export function createCustomProfile(tiers: Record<string, string>): Profile {
-  return { description: "Custom profile", tiers: Object.fromEntries(PROFILE_TIERS.map((tier) => [tier, tiers[tier] ?? ""])) }
+export function createCustomProfile(fast: string, flagship: string): Profile {
+  return {
+    description: "Custom profile",
+    tiers: { flash: fast, standard: fast, pro: flagship, max: flagship, vision: fast },
+  }
 }
 
 const commandTokens = new Set(["profile.switch", "profile", "/profile"])

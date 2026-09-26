@@ -1,7 +1,7 @@
 import type { StringKey } from "./en"
 
 /**
- * Portuguese catalog — full coverage (611 keys — kept in lockstep with ./en.ts).
+ * Portuguese catalog — full coverage (609 keys — kept in lockstep with ./en.ts).
  * Keys must exist in ./en.ts (satisfies below → unknown key = compile
  * error); a key absent here falls back to English via tr() as the RUNTIME
  * NET only — completeness is asserted by tests/test-i18n-coverage-unit.ts.
@@ -57,9 +57,7 @@ export default {
   "profile.mainTitle": "Assistente de perfis",
   "profile.agentsHeader": "Agentes",
   "profile.tiersHeader": "Níveis",
-  "profile.selectionHeader": "Seleção",
   "profile.editHeader": "Editar",
-  "profile.manageHeader": "Gerenciar",
   "profile.providersHeader": "Provedores",
   "profile.connectedProvidersHeader": "✅ Provedores conectados",
   "profile.profilesHeader": "Perfis",
@@ -113,7 +111,7 @@ export default {
   "profile.editTierModelsPlaceholder": "Escolha um nível para alterar seu modelo (Esc: voltar)",
   "profile.applyTierModelsDesc": "Aplica {count} alteração(ões) de modelo à configuração ao vivo",
   "profile.noTierModels": "Nenhum mapeamento de nível encontrado — os agentes não têm modelos na configuração.",
-  "profile.pickTierModelProviderTitle": "tier.{tier} → provedor",
+  "profile.pickTierModelProviderTitle": "tier.{tier} → modelo",
   "profile.pickTierModelModelTitle": "tier.{tier} → modelo em {provider}",
   "profile.promptTierModelRefTitle": "tier.{tier} — referência personalizada",
   "profile.liveTierModelChanged": "tier.{tier} → {provider}/{model} (pendente)",
@@ -122,15 +120,18 @@ export default {
   "profile.manageTitle": "Gerenciar: Perfil→Modelos",
   "profile.managePlaceholder": "Escolha um perfil para editar seu mapeamento nível→modelo (Esc: voltar)",
   "profile.addProfile": "➕ Adicionar: Perfil",
-  "profile.addProfileDesc": "Cria um novo perfil JSON em branco em ~/.config/opencode/profiles/",
+  "profile.addProfileDesc": "Escolha modelos rápido e topo de linha; flash/standard/vision e pro/max serão preenchidos automaticamente e podem ser ajustados",
   "profile.deleteProfile": "🗑️ Excluir",
   "profile.deleteProfileDesc": "Exclui o arquivo JSON deste perfil (pede confirmação)",
-  "profile.reviewTiersTitle": "{name} — revisar níveis",
-  "profile.reviewTiersPlaceholder": "Escolha um nível para alterar seu modelo (provedor → modelo), ou aplique (Esc: voltar)",
+  "profile.reviewTiersTitle": "{name} — editar modelos do perfil",
+  "profile.reviewTiersPlaceholder": "Escolha um nível; a lista de modelos pode ser pesquisada e é agrupada por provedor (Esc: voltar)",
+  "profile.quickSetTiers": "⚡ Configuração rápida: 2 modelos",
+  "profile.quickSetTiersDesc": "Escolha modelos rápido e topo de linha para preencher flash/standard/vision e pro/max",
+  "profile.quickSetTiersDone": "'{name}' recebeu os padrões de dois modelos nos cinco níveis; revise e aplique.",
   "profile.applyChangesModelDesc": "Grava o mapeamento abaixo no JSON do perfil e o aplica",
   "profile.cancelDiscard": "Descartar overrides e voltar à lista de perfis",
-  "profile.pickProviderTitle": "{name} — tier.{tier} → provedor",
-  "profile.pickProviderPlaceholder": "Escolha um provedor (Esc: voltar)",
+  "profile.pickProviderTitle": "{name} — tier.{tier} → modelo",
+  "profile.pickProviderPlaceholder": "Pesquise modelos agrupados por provedor (Esc: voltar)",
   "profile.typeCustomRef": "( Digite uma referência personalizada )",
   "profile.typeCustomRefDesc": "Para provedores não listados acima",
   "profile.pickModelTitle": "{name} — tier.{tier} → modelo em {provider}",

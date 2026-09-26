@@ -25,29 +25,29 @@ import { appKeymapLayer } from "../_keymap-app"
  *                             opencode falls back to its model picker)
  *   command palette         — "Switch model profile"
  *
- * Main menu entry points (most frequent first):
+ * Main menu entry points, grouped by daily frequency (Profiles trio first):
  *
- *   1. Select: Profile     — pick a profile, review its tier→model
- *      mapping, then confirm to apply (profile list → confirm)
+ *   Profiles — the daily trio:
+ *     1. Select: Profile        — pick a profile, review its tier→model
+ *        mapping, then confirm to apply (profile list → confirm)
+ *     2. Manage: Profile→Models — edit a profile's tier→model mapping
+ *        (profile list → tier list with model refs → pick provider →
+ *        pick model → Apply/Cancel; add profile from the list, delete
+ *        it from its tier review screen with a confirm dialog)
+ *     3. Add: Profile           — create a profile from fast + flagship
+ *        picks (flash tier auto-filled)
  *
- *   2. Edit: Agent→Tier   — reassign which tier an agent belongs to
- *      (writes tiers.json; agent list → tier picker → Apply/Cancel)
+ *   Edit — live mappings, not routed through a profile:
+ *     4. Edit: Tier→Model       — change the live tier→model mapping
+ *        directly (tier list → pick provider → pick model → Apply; syncs
+ *        the active profile file if present; no profile required)
+ *     5. Edit: Agent→Tier       — reassign which tier an agent belongs to
+ *        (writes tiers.json; agent list → tier picker → Apply/Cancel)
  *
- *   3. Edit: Tier→Model   — change the live tier→model mapping directly
- *      (tier list → pick provider → pick model → Apply; syncs the
- *      active profile file if present; no profile required)
- *
- *   4. Manage: Profile→Models — edit a profile's tier→model mapping
- *      (profile list → tier list with model refs → pick provider →
- *      pick model → Apply/Cancel; add profile from the list, delete
- *      it from its tier review screen with a confirm dialog)
- *
- *   5. Reset: Model refs   — remove every model ref from opencode.jsonc
- *      and deactivate the profile (confirm dialog; profile files and
- *      tiers.json are kept)
- *
- *   "Add: Profile" also lives in the Actions group (low-frequency —
- *   not pinned on top like the provider wizard's ➕ Add custom provider).
+ *   Actions — maintenance:
+ *     6. Reset: Model refs      — remove every model ref from
+ *        opencode.jsonc and deactivate the profile (confirm dialog;
+ *        profile files and tiers.json are kept)
  *
  * Every dialog level uses Esc as the only back navigation: an unresolved
  * promise-dialog selection returns to the parent loop one level up. No
@@ -93,8 +93,6 @@ import {
   parseProfileSubcommand as parseProfileSubcommandCore,
   PROFILE_TIERS,
   type Catalog,
-  type CatalogModel,
-  type CatalogProvider,
   type Profile,
   type ProfileListEntry,
   listModelRefs,
@@ -129,6 +127,7 @@ const TYPE_CUSTOM = "__type_custom__"
 const TIER_PREFIX = "tier:"
 const ADD_PROFILE = "__add_profile__"
 const DELETE_PROFILE = "__delete_profile__"
+const QUICK_SET_PROFILE = "__quick_set_profile__"
 const EDIT_TIERS = "__edit_tiers__"
 const EDIT_TIER_MODELS = "__edit_tier_models__"
 const MANAGE_MODELS = "__manage_models__"
@@ -187,17 +186,7 @@ function providerCategory(id: string, connected: ProviderConnectionRanks): strin
   return isProviderConnectedByRank(id, connected) ? tr("profile.connectedProvidersHeader") : tr("profile.providersHeader")
 }
 
-function providerDescription(id: string, provider: CatalogProvider, connected: ProviderConnectionRanks): string {
-  const tags = [
-    tr("common.modelCount", { count: Object.keys(provider.models).length }),
-    provider.source === "config" ? tr("common.config") : tr("common.builtin"),
-  ]
-  if (isProviderConnectedByRank(id, connected)) tags.push(tr("common.connected"))
-  return tags.join(" · ")
-}
-
-function sortedProviderIds(catalog: Catalog): string[] {
-  const connected = connectedProviderRanks()
+function sortedProviderIds(catalog: Catalog, connected: ProviderConnectionRanks): string[] {
   return Object.keys(catalog).sort((a, b) => {
     const authA = connected.auth.get(a)
     const authB = connected.auth.get(b)
@@ -209,6 +198,21 @@ function sortedProviderIds(catalog: Catalog): string[] {
     const cfgB = connected.config.has(b)
     if (cfgA !== cfgB) return cfgA ? -1 : 1
     return providerNameCmp(a, b)
+  })
+}
+
+function modelOptions(catalog: Catalog, connected: ProviderConnectionRanks) {
+  return sortedProviderIds(catalog, connected).flatMap((providerId) => {
+    const provider = catalog[providerId]
+    if (!provider) return []
+    return Object.entries(provider.models)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, model]) => ({
+        title: `${providerId}/${key}`,
+        value: `${providerId}/${key}`,
+        description: model.name && model.name !== key ? model.name : undefined,
+        category: `${providerCategory(providerId, connected)} · ${providerId}`,
+      }))
   })
 }
 
@@ -254,7 +258,7 @@ function tierDescription(tier: string): string {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// ┌─ Level 1: Main menu — four entry points ──────────────────────────────
+// ┌─ Level 1: Main menu — grouped by frequency ────────────────────────────
 // ════════════════════════════════════════════════════════════════════
 
 async function startWizard(ctx: Context): Promise<void> {
@@ -269,9 +273,8 @@ async function startWizard(ctx: Context): Promise<void> {
   for (;;) {
     // Rebuilt per iteration: an in-wizard switchLanguage updates the
     // module locale directly, so headers must re-run tr() to follow it.
-    const selectionCat = tr("profile.selectionHeader")
+    const profilesCat = tr("profile.profilesHeader")
     const editCat = tr("profile.editHeader")
-    const manageCat = tr("profile.manageHeader")
     const actionsCat = tr("profile.actionsHeader")
     const interfaceCat = tr("common.interfaceHeader")
     const active = getActiveProfile()
@@ -279,20 +282,26 @@ async function startWizard(ctx: Context): Promise<void> {
       title: tr("profile.mainTitle"),
       placeholder: tr("profile.mainPlaceholder"),
       options: [
-        // ── Selection: pick a profile to apply
+        // ── Profiles: the daily trio — select / edit / add (most frequent first)
         {
           title: active ? tr("profile.selectProfileActive", { active }) : tr("profile.selectProfile"),
           value: SELECT_PROFILE,
           description: tr("profile.selectProfileDesc"),
-          category: selectionCat,
+          category: profilesCat,
         },
-        // ── Edit: change tier/model mappings
         {
-          title: tr("profile.editAgentTier"),
-          value: EDIT_TIERS,
-          description: tr("profile.editAgentTierDesc"),
-          category: editCat,
+          title: tr("profile.manageModels"),
+          value: MANAGE_MODELS,
+          description: tr("profile.manageModelsDesc"),
+          category: profilesCat,
         },
+        {
+          title: tr("profile.addProfile"),
+          value: ADD_PROFILE,
+          description: tr("profile.addProfileDesc"),
+          category: profilesCat,
+        },
+        // ── Edit: live mappings, not routed through a profile
         {
           title: tr("profile.editTierModels"),
           value: EDIT_TIER_MODELS,
@@ -300,17 +309,10 @@ async function startWizard(ctx: Context): Promise<void> {
           category: editCat,
         },
         {
-          title: tr("profile.manageModels"),
-          value: MANAGE_MODELS,
-          description: tr("profile.manageModelsDesc"),
+          title: tr("profile.editAgentTier"),
+          value: EDIT_TIERS,
+          description: tr("profile.editAgentTierDesc"),
           category: editCat,
-        },
-        // ── Manage: add a new profile
-        {
-          title: tr("profile.addProfile"),
-          value: ADD_PROFILE,
-          description: tr("profile.addProfileDesc"),
-          category: manageCat,
         },
         // ── Actions: destructive / low-frequency
         {
@@ -564,20 +566,20 @@ async function editTierModels(ctx: Context, overrides: Record<string, string>): 
       return true
     }
     const tier = pick.slice(TIER_PREFIX.length)
-    await pickLiveTierProvider(ctx, overrides, tier)
+    await pickLiveTierModel(ctx, overrides, tier)
   }
 }
 
-// Level 3: Provider picker (live tier edit)
-async function pickLiveTierProvider(
+// Level 3: Searchable model picker grouped by provider (live tier edit).
+async function pickLiveTierModel(
   ctx: Context,
   overrides: Record<string, string>,
   tier: string,
 ): Promise<void> {
   const catalog = await loadCatalog(ctx)
   const connected = connectedProviderRanks()
-  const ids = sortedProviderIds(catalog)
-  if (ids.length === 0) {
+  const options = modelOptions(catalog, connected)
+  if (options.length === 0) {
     await promptLiveTierRef(ctx, overrides, tier)
     return
   }
@@ -586,15 +588,7 @@ async function pickLiveTierProvider(
     title: tr("profile.pickTierModelProviderTitle", { tier }),
     placeholder: tr("profile.pickProviderPlaceholder"),
     options: [
-      ...ids.map((id) => {
-        const p = catalog[id]
-        return {
-          title: id,
-          value: id,
-          description: providerDescription(id, p, connected),
-          category: providerCategory(id, connected),
-        }
-      }),
+      ...options,
       {
         title: tr("profile.typeCustomRef"),
         value: TYPE_CUSTOM,
@@ -608,31 +602,12 @@ async function pickLiveTierProvider(
     await promptLiveTierRef(ctx, overrides, tier)
     return
   }
-  const provider = catalog[pick]
-  if (!provider) return
-  const model = await pickLiveTierModel(ctx, tier, pick, provider.models)
-  if (model === undefined) return
-  overrides[tier] = `${pick}/${model}`
-  toast(ctx, tr("profile.liveTierModelChanged", { tier, provider: pick, model }), "info")
-}
-
-// Level 4: Model picker (live tier edit) — returns the chosen key.
-async function pickLiveTierModel(
-  ctx: Context,
-  tier: string,
-  providerId: string,
-  models: Record<string, CatalogModel>,
-): Promise<string | undefined> {
-  const entries = Object.entries(models)
-  return ctx.ui.dialog.select<string>({
-    title: tr("profile.pickTierModelModelTitle", { tier, provider: providerId }),
-    placeholder: tr("profile.pickModelPlaceholder", { count: entries.length }),
-    options: entries.map(([key, m]) => ({
-      title: key,
-      value: key,
-      description: m.name && m.name !== key ? m.name : undefined,
-    })),
-  })
+  const slash = pick.indexOf("/")
+  if (slash <= 0) return
+  const provider = pick.slice(0, slash)
+  const model = pick.slice(slash + 1)
+  overrides[tier] = pick
+  toast(ctx, tr("profile.liveTierModelChanged", { tier, provider, model }), "info")
 }
 
 // Manual entry fallback (live tier edit)
@@ -788,6 +763,12 @@ async function reviewProfileTiers(
           category: tr("profile.tiersHeader"),
         })),
         {
+          title: tr("profile.quickSetTiers"),
+          value: QUICK_SET_PROFILE,
+          description: tr("profile.quickSetTiersDesc"),
+          category: tr("profile.actionsHeader"),
+        },
+        {
           title: tr("common.applyChanges"),
           value: APPLY,
           description: tr("profile.applyChangesModelDesc"),
@@ -812,6 +793,10 @@ async function reviewProfileTiers(
       await applyProfileModelChanges(ctx, name, profile, overrides)
       return
     }
+    if (pick === QUICK_SET_PROFILE) {
+      await quickSetProfileTiers(ctx, name, overrides)
+      continue
+    }
     if (pick === DELETE_PROFILE) {
       const confirmed = await ctx.ui.dialog.confirm({
         title: tr("profile.deleteProfileTitle"),
@@ -831,38 +816,31 @@ async function reviewProfileTiers(
     }
     const tier = pick.slice(TIER_PREFIX.length)
     if (!(tier in effective.tiers)) continue
-    await pickProviderForTier(ctx, name, effective.tiers[tier] ?? "", overrides, tier)
+    await pickModelForTier(ctx, name, effective.tiers[tier] ?? "", overrides, tier)
   }
 }
 
-// Level 4: Provider picker (profile tier edit)
-async function pickProviderForTier(
+// Level 4: Searchable model picker grouped by provider (profile tier edit).
+async function pickModelForTier(
   ctx: Context,
   name: string,
   currentRef: string,
   overrides: Record<string, string>,
   tier: string,
+  notify = true,
 ): Promise<void> {
   const catalog = await loadCatalog(ctx)
   const connected = connectedProviderRanks()
-  const ids = sortedProviderIds(catalog)
-  if (ids.length === 0) {
-    await promptTierRef(ctx, name, currentRef, overrides, tier)
+  const options = modelOptions(catalog, connected)
+  if (options.length === 0) {
+    await promptTierRef(ctx, name, currentRef, overrides, tier, notify)
     return
   }
   const pick = await ctx.ui.dialog.select<string>({
     title: tr("profile.pickProviderTitle", { name, tier }),
     placeholder: tr("profile.pickProviderPlaceholder"),
     options: [
-      ...ids.map((id) => {
-        const p = catalog[id]
-        return {
-          title: id,
-          value: id,
-          description: providerDescription(id, p, connected),
-          category: providerCategory(id, connected),
-        }
-      }),
+      ...options,
       {
         title: tr("profile.typeCustomRef"),
         value: TYPE_CUSTOM,
@@ -873,24 +851,29 @@ async function pickProviderForTier(
   })
   if (pick === undefined) return
   if (pick === TYPE_CUSTOM) {
-    await promptTierRef(ctx, name, currentRef, overrides, tier)
+    await promptTierRef(ctx, name, currentRef, overrides, tier, notify)
     return
   }
-  const provider = catalog[pick]
-  if (!provider) return
-  const entries = Object.entries(provider.models)
-  const model = await ctx.ui.dialog.select<string>({
-    title: tr("profile.pickModelTitle", { name, tier, provider: pick }),
-    placeholder: tr("profile.pickModelPlaceholder", { count: entries.length }),
-    options: entries.map(([key, m]) => ({
-      title: key,
-      value: key,
-      description: m.name && m.name !== key ? m.name : undefined,
-    })),
-  })
-  if (model === undefined) return
-  overrides[tier] = `${pick}/${model}`
-  toast(ctx, tr("profile.modelChanged", { name, tier, provider: pick, model }), "info")
+  const slash = pick.indexOf("/")
+  if (slash <= 0) return
+  const provider = pick.slice(0, slash)
+  const model = pick.slice(slash + 1)
+  overrides[tier] = pick
+  if (notify) toast(ctx, tr("profile.modelChanged", { name, tier, provider, model }), "info")
+}
+
+async function quickSetProfileTiers(
+  ctx: Context,
+  name: string,
+  overrides: Record<string, string>,
+): Promise<void> {
+  const picks: Record<string, string> = {}
+  await pickModelForTier(ctx, name, "", picks, "flash", false)
+  if (!picks.flash) return
+  await pickModelForTier(ctx, name, "", picks, "max", false)
+  if (!picks.max) return
+  Object.assign(overrides, createCustomProfile(picks.flash, picks.max).tiers)
+  toast(ctx, tr("profile.quickSetTiersDone", { name }), "info")
 }
 
 // Manual entry fallback for providers missing from every catalog source.
@@ -900,6 +883,7 @@ async function promptTierRef(
   currentRef: string,
   overrides: Record<string, string>,
   tier: string,
+  notify = true,
 ): Promise<void> {
   const value = await ctx.ui.dialog.prompt({
     title: tr("profile.promptTierRefTitle", { name, tier }),
@@ -913,7 +897,7 @@ async function promptTierRef(
       toast(ctx, tr("profile.invalidRef", { ref: v }), "error")
     } else {
       overrides[tier] = v
-      toast(ctx, tr("profile.modelChanged", { name, tier, provider: v.split("/")[0] ?? "", model: v.split("/")[1] ?? v }), "info")
+      if (notify) toast(ctx, tr("profile.modelChanged", { name, tier, provider: v.split("/")[0] ?? "", model: v.split("/")[1] ?? v }), "info")
     }
   }
 }
@@ -962,9 +946,9 @@ async function applyProfileModelChanges(
 
 // ─── Add / Delete profile ────────────────────────────────────────────
 
-// Add a profile: prompt for the name, create a blank five-tier profile,
-// and jump straight into its tier review. The caller's loop re-presents
-// itself when this returns.
+// Add a profile from two model picks, expand them to the common five-tier
+// mapping, then open review so specialized tiers (especially vision) remain
+// easy to customize.
 async function promptAddProfile(ctx: Context): Promise<void> {
   for (;;) {
     const value = await ctx.ui.dialog.prompt({
@@ -978,21 +962,17 @@ async function promptAddProfile(ctx: Context): Promise<void> {
       toast(ctx, tr("profile.profileExists", { name }), "error")
       continue
     }
-    const blankProfile: Profile = {
-      description: tr("profile.customProfile"),
-      tiers: {
-        flash: "",
-        standard: "",
-        pro: "",
-        max: "",
-        vision: "",
-      },
-    }
+    const picks: Record<string, string> = {}
+    await pickLiveTierModel(ctx, picks, "flash")
+    if (!picks.flash) return
+    await pickLiveTierModel(ctx, picks, "max")
+    if (!picks.max) return
+    const profile = createCustomProfile(picks.flash, picks.max)
     try {
-      writeProfileAtomic(name, blankProfile)
+      writeProfileAtomic(name, profile)
       markCustomProfile(name)
       toast(ctx, tr("profile.profileCreated", { name }), "success")
-      await reviewProfileTiers(ctx, name, blankProfile)
+      await reviewProfileTiers(ctx, name, profile)
       return
     } catch (err) {
       toast(ctx, tr("profile.createProfileFailed", { err: (err as Error).message }), "error")

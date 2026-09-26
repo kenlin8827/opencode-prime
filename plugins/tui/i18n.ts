@@ -44,7 +44,7 @@ export type Locale = string
  * at compile time. To add a language: register it here and fill its glossary
  * meanings; detection, persistence, switching and menus pick it up
  * automatically. Both surfaces are complete per locale and enforced by
- * tests: `STRINGS` by tests/test-i18n-coverage-unit.ts (all 611 keys ×
+ * tests: `STRINGS` by tests/test-i18n-coverage-unit.ts (all 612 keys ×
  * 8 locales, structure/placeholder/slash-token parity), and glossary
  * meanings at compile time via `GlossaryLocale` (unit-test enforced too).
  * `tr()` still falls back to en — that is the runtime safety net for an
@@ -181,7 +181,7 @@ export function localeName(locale: Locale): string {
 // "project.xxx", "usage.xxx".  Placeholders use {name} syntax.
 // String CONTENT lives in ./i18n/locales/<code>.ts — one catalog per
 // language: en.ts is the canonical key registry (`StringKey` derives from
-// it). Every catalog is COMPLETE (611 keys) — completeness is asserted by
+// it). Every catalog is COMPLETE (612 keys) — completeness is asserted by
 // tests/test-i18n-coverage-unit.ts, while the `Partial` type below keeps a
 // missing translation a test failure rather than a compile error, so a newly
 // added en key can land before its 7 translations. `tr()` still falls back to

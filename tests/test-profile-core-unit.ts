@@ -1,9 +1,11 @@
-import { applyProfile, ensureNativeAgents, listModelRefs, parseProfileSubcommand, stripModelRefs } from "../plugins/shared/profile-core"
+import { applyProfile, createCustomProfile, ensureNativeAgents, listModelRefs, parseProfileSubcommand, stripModelRefs } from "../plugins/shared/profile-core"
 let passed = 0; let failed = 0
 const assert = (value: unknown, message: string) => value ? (passed++, console.log(`  ✅ ${message}`)) : (failed++, console.error(`  ❌ ${message}`))
 assert(parseProfileSubcommand({ input: "profile.switch reset" }) === "reset", "parses input source")
 assert(parseProfileSubcommand({ payload: "/profile apply fast" }) === "apply", "parses payload source")
 assert(parseProfileSubcommand({ data: { args: "profile list" } }) === "list", "parses data.args source")
+const custom = createCustomProfile("fast/model", "strong/model")
+assert(JSON.stringify(custom.tiers) === JSON.stringify({ flash: "fast/model", standard: "fast/model", pro: "strong/model", max: "strong/model", vision: "fast/model" }), "two custom model picks expand to the five-tier defaults")
 // ─── v1-shaped config (legacy agent / small_model read surface) ──────
 const config: any = { model: "p/root", small_model: "p/small", agent: { a: { model: "p/a", keep: true }, b: {} } }
 assert(listModelRefs(config).length === 3 && stripModelRefs(config) === 3 && config.agent.a.keep, "reset lists and strips only model refs on v1-shaped config")

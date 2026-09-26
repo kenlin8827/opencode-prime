@@ -1,7 +1,7 @@
 import type { StringKey } from "./en"
 
 /**
- * Arabic catalog — full coverage (611 keys — kept in lockstep with ./en.ts).
+ * Arabic catalog — full coverage (609 keys — kept in lockstep with ./en.ts).
  * Keys must exist in ./en.ts (satisfies below → unknown key = compile
  * error); a key absent here falls back to English via tr() as the RUNTIME
  * NET only — completeness is asserted by tests/test-i18n-coverage-unit.ts.
@@ -61,9 +61,7 @@ export default {
   "profile.mainTitle": "معالج الملفات",
   "profile.agentsHeader": "الوكلاء",
   "profile.tiersHeader": "المستويات",
-  "profile.selectionHeader": "الاختيار",
   "profile.editHeader": "تحرير",
-  "profile.manageHeader": "إدارة",
   "profile.providersHeader": "المزوّدون",
   "profile.connectedProvidersHeader": "✅ المزوّدون المتصلون",
   "profile.profilesHeader": "الملفات",
@@ -117,7 +115,7 @@ export default {
   "profile.editTierModelsPlaceholder": "اختر مستوى لتغيير نموذجه (Esc: رجوع)",
   "profile.applyTierModelsDesc": "يطبّق {count} تغيير نموذج على الإعدادات الحية",
   "profile.noTierModels": "لا يوجد تعيين مستويات — لا نماذج للوكلاء في الإعدادات.",
-  "profile.pickTierModelProviderTitle": "tier.{tier} → مزوّد",
+  "profile.pickTierModelProviderTitle": "tier.{tier} → نموذج",
   "profile.pickTierModelModelTitle": "tier.{tier} → نموذج لدى {provider}",
   "profile.promptTierModelRefTitle": "tier.{tier} — مرجع مخصّص",
   "profile.liveTierModelChanged": "tier.{tier} → {provider}/{model} (معلّق)",
@@ -126,15 +124,18 @@ export default {
   "profile.manageTitle": "إدارة: ملف→نماذج",
   "profile.managePlaceholder": "اختر ملفًا لتحرير تعيين المستوى→النموذج (Esc: رجوع)",
   "profile.addProfile": "➕ إضافة: ملف",
-  "profile.addProfileDesc": "ينشئ ملف JSON فارغًا في ~/.config/opencode/profiles/",
+  "profile.addProfileDesc": "اختر نموذجًا سريعًا وآخر رائدًا؛ ستُملأ مستويات flash/standard/vision وpro/max تلقائيًا ويمكن تعديلها لاحقًا",
   "profile.deleteProfile": "🗑️ حذف",
   "profile.deleteProfileDesc": "يحذف ملف JSON لهذا الملف (يطلب تأكيدًا)",
-  "profile.reviewTiersTitle": "{name} — مراجعة المستويات",
-  "profile.reviewTiersPlaceholder": "اختر مستوى لتغيير نموذجه (مزوّد→نموذج)، أو طبّق (Esc: رجوع)",
+  "profile.reviewTiersTitle": "{name} — تعديل نماذج الملف الشخصي",
+  "profile.reviewTiersPlaceholder": "اختر مستوى؛ قائمة النماذج قابلة للبحث ومجمّعة حسب المزوّد (Esc: رجوع)",
+  "profile.quickSetTiers": "⚡ إعداد سريع: نموذجان",
+  "profile.quickSetTiersDesc": "اختر نموذجًا سريعًا وآخر رائدًا لملء flash/standard/vision وpro/max",
+  "profile.quickSetTiersDone": "تم ملء المستويات الخمسة في '{name}' اعتمادًا على نموذجين؛ راجعها ثم طبّق.",
   "profile.applyChangesModelDesc": "يكتب التعيين أدناه في ملف JSON ثم يطبّقه",
   "profile.cancelDiscard": "تجاهل التجاوزات والعودة إلى قائمة الملفات",
-  "profile.pickProviderTitle": "{name} — tier.{tier} → مزوّد",
-  "profile.pickProviderPlaceholder": "اختر مزوّدًا (Esc: رجوع)",
+  "profile.pickProviderTitle": "{name} — tier.{tier} → نموذج",
+  "profile.pickProviderPlaceholder": "ابحث عن النماذج مجمّعة حسب المزوّد (Esc: رجوع)",
   "profile.typeCustomRef": "( اكتب مرجعًا مخصّصًا )",
   "profile.typeCustomRefDesc": "للمزوّدين غير المدرجين أعلاه",
   "profile.pickModelTitle": "{name} — tier.{tier} → نموذج لدى {provider}",
