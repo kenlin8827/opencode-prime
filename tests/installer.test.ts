@@ -26,13 +26,19 @@ import {
   executeInit,
   executeUninstall,
   computeTargetManagedFiles,
+  ensurePluginRuntimeDeps,
   getCurrentRepoVersion,
   getTargetInstalledManifestPath,
   loadEffectiveOptions,
+  LOCAL_PM_ORDER,
+  localPmOrder,
   mcpProvisionPlan,
   migrateGlobalOcpConfig,
   readTargetInstalledManifest,
+  TUI_PLUGIN_RUNTIME_DEPS,
 } from '../install/src/installer';
+import { findPackageManager } from '../install/src/package-manager';
+import type { ShellCommandResult } from '../install/src/shared/shell-command';
 import { registerShim, unregisterShim } from '../install/src/shim';
 import {
   parseDynamicOptionsSchema,
@@ -1086,6 +1092,69 @@ const uninstRes = executeUninstall(repoDir, {
 });
 if (uninstRes.removedCount === 0) throw new Error('Uninstall did not remove files');
 console.log(`✓ Safe uninstall passed (${uninstRes.removedCount} files safely removed)`);
+
+// 8.5 Plugin runtime deps: local PM probe order + honest post-install re-check
+console.log('\nTest 8.5: Plugin runtime dep PM order & marker re-check');
+{
+  const depDir = path.join(os.tmpdir(), `opencode-dep-test-${Date.now()}`);
+  fs.mkdirSync(depDir, { recursive: true });
+  const okResult: ShellCommandResult = { status: 0, stdout: '', stderr: '' };
+  try {
+    // 8.5a selection: flat-layout PMs (bun→npm) always beat isolated/PnP layouts
+    const sel = (avail: string[]) => findPackageManager(LOCAL_PM_ORDER, (pm) => avail.includes(pm));
+    if (sel(['npm', 'pnpm']) !== 'npm') throw new Error('must pick npm over yarn/pnpm when bun missing');
+    if (sel(['pnpm', 'yarn']) !== 'yarn') throw new Error('must pick yarn before pnpm (last resort)');
+    if (sel(['bun', 'npm']) !== 'bun') throw new Error('bun must win when available');
+    if (sel([]) !== null) throw new Error('must return null when nothing usable');
+    // 8.5a2 opencode-install-method may re-order the flat pair, never promote a demoted layout
+    const flatOnly = (pm: string) => !['yarn', 'pnpm'].includes(pm);
+    if (localPmOrder('npm').join(',') !== 'npm,bun,yarn,pnpm')
+      throw new Error(`detect=npm must lead with npm, keep flat-first tail: ${localPmOrder('npm').join(',')}`);
+    if (localPmOrder('bun').join(',') !== LOCAL_PM_ORDER.join(',')) throw new Error('detect=bun must be the baseline order');
+    for (const dead of ['pnpm', 'yarn', 'official', 'unknown'] as const) {
+      if (localPmOrder(dead) !== LOCAL_PM_ORDER)
+        throw new Error(`detect=${dead} must fall through to the baseline (no layout violation)`);
+    }
+    // detect-driven selection stays inside the contract even when followed
+    if (findPackageManager(localPmOrder('npm'), flatOnly) !== 'npm') throw new Error('npm detect must select npm');
+    if (findPackageManager(localPmOrder('pnpm'), flatOnly) !== 'bun') throw new Error('pnpm detect must NOT select pnpm/yarn head');
+    // 8.5b exit-0 install WITHOUT markers = honest failure (non-flat layout), not fake success
+    const r1 = ensurePluginRuntimeDeps(depDir, { run: () => okResult, pmMethod: 'unknown' });
+    if (r1.install !== 'failed' || !r1.message.includes('non-flat layout'))
+      throw new Error(`missing-marker install must report failed/non-flat: ${r1.message}`);
+    const merged = JSON.parse(fs.readFileSync(path.join(depDir, 'package.json'), 'utf8'));
+    if (merged.dependencies?.['@opentui/solid'] !== TUI_PLUGIN_RUNTIME_DEPS['@opentui/solid'])
+      throw new Error('target package.json must pin @opentui/solid');
+    // 8.5c install writing markers → ok; foreign lockfile surfaced in message, never deleted
+    const r2 = ensurePluginRuntimeDeps(depDir, {
+      pmMethod: 'bun',
+      run: (_cmd, opts) => {
+        for (const dep of ['@opentui/solid', 'solid-js']) {
+          const d = path.join(opts.cwd, 'node_modules', dep);
+          fs.mkdirSync(d, { recursive: true });
+          fs.writeFileSync(path.join(d, 'package.json'), '{}');
+        }
+        fs.writeFileSync(path.join(opts.cwd, 'pnpm-lock.yaml'), 'lockfileVersion: "9.0"\n');
+        return okResult;
+      },
+    });
+    if (r2.install !== 'ok' || !r2.message.includes('foreign lockfile') || !r2.message.includes('pnpm-lock.yaml'))
+      throw new Error(`marker-complete install must be ok + foreign-lock note: ${r2.message}`);
+    if (!fs.existsSync(path.join(depDir, 'pnpm-lock.yaml')))
+      throw new Error('foreign lockfile must be left untouched');
+    // 8.5d markers already present → fast path skips the network install entirely
+    const r3 = ensurePluginRuntimeDeps(depDir, {
+      run: () => {
+        throw new Error('install must not run when markers are present');
+      },
+    });
+    if (r3.install !== 'skipped' || !r3.message.includes('present'))
+      throw new Error(`expected skipped fast path: ${r3.message}`);
+  } finally {
+    fs.rmSync(depDir, { recursive: true, force: true });
+  }
+  console.log('✓ Plugin runtime dep PM order & re-check passed');
+}
 
 // 9. Clean up scratch dirs
 if (fs.existsSync(testTargetDir)) fs.rmSync(testTargetDir, { recursive: true, force: true });

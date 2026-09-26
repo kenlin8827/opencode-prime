@@ -26,7 +26,7 @@ import {
   mergeUserOptions,
 } from './merger';
 import { mergeTuiConfig } from './cli-merger';
-import { isBinaryOnPath, probeRunningOpencodeConfigDir } from './shared/opencode-detect';
+import { getInstallMethod, isBinaryOnPath, type InstallMethod, probeRunningOpencodeConfigDir } from './shared/opencode-detect';
 import { section } from './shared/output';
 import { findPackageManager, type PackageManager, resolvePmForSpec } from './package-manager';
 import { getPreferredLocaleCode } from './i18n';
@@ -460,22 +460,77 @@ const LOCAL_INSTALL_COMMANDS: Record<PackageManager, string> = {
   npm: 'npm install',
 };
 
-/** Run a local (non-global) install inside targetDir. Prefers bun, then pnpm/yarn/npm. */
+/**
+ * Baseline probe order for the local install: bun → npm → yarn → pnpm. The
+ * order is a LOADER CONTRACT, not a user-preference proxy: the TUI resolves
+ * plugins' bare `import()` through root-level `node_modules`, which requires
+ * a FLAT layout — exactly what bun and npm produce ("Both target PMs", see
+ * TUI_PLUGIN_RUNTIME_DEPS docblock). pnpm's default isolated layout keeps
+ * auto-installed peers out of reach of plugin files (the root
+ * `node_modules/solid-js` marker never exists), and yarn-berry PnP is
+ * stricter still — so both are demoted to last-resort fallbacks for
+ * machines without bun/npm, and the post-install marker re-check in
+ * `ensurePluginRuntimeDeps` reports their trees honestly.
+ * opencode's own install method may re-order the two contract-legal PMs at
+ * the head (see `localPmOrder`) but can never promote a demoted layout.
+ */
+export const LOCAL_PM_ORDER: readonly PackageManager[] = ['bun', 'npm', 'yarn', 'pnpm'];
+
+/**
+ * Align the probe with opencode's own install method — but only WITHIN the
+ * flat-layout contract: `bun`/`npm` from detect may lead, everything else
+ * (`pnpm`/`yarn` = the layouts this order demotes, `official`/`unknown` =
+ * no signal) falls through to the plain order. The chosen PM is still
+ * availability-gated by findPackageManager (path shape proves "installed
+ * once", not "runs now").
+ */
+export function localPmOrder(method: InstallMethod): readonly PackageManager[] {
+  return method === 'bun' || method === 'npm'
+    ? [method, ...LOCAL_PM_ORDER.filter((pm) => pm !== method)]
+    : LOCAL_PM_ORDER;
+}
+
+/** Lockfiles naming which PM last managed a target tree. Informational only — OCP never deletes user files. */
+const LOCKFILE_OWNERS: ReadonlyArray<readonly [string, PackageManager]> = [
+  ['bun.lock', 'bun'],
+  ['bun.lockb', 'bun'],
+  ['pnpm-lock.yaml', 'pnpm'],
+  ['yarn.lock', 'yarn'],
+  ['package-lock.json', 'npm'],
+];
+
+/** Run a local (non-global) install inside targetDir with the first usable PM from localPmOrder(opencode's install method). Returns the chosen manager (null when none) alongside the install result. */
 export function installTargetPluginDeps(
   targetDir: string,
   run: (cmd: string, opts: { cwd: string }) => ShellCommandResult = (cmd, opts) =>
     runShellCommand(cmd, { cwd: opts.cwd, output: 'inherit', timeoutMs: 600000 }),
-): ShellCommandResult {
-  const manager = findPackageManager(['bun', 'pnpm', 'yarn', 'npm']);
+  method: InstallMethod = getInstallMethod(),
+): { manager: PackageManager | null; result: ShellCommandResult } {
+  const manager = findPackageManager(localPmOrder(method));
   if (!manager) {
     return {
-      status: null,
-      error: new Error('No usable package manager found on PATH (tried bun, pnpm, yarn, npm)'),
-      stdout: '',
-      stderr: '',
+      manager: null,
+      result: {
+        status: null,
+        error: new Error('No usable package manager found on PATH (tried bun, npm, yarn, pnpm)'),
+        stdout: '',
+        stderr: '',
+      },
     };
   }
-  return run(LOCAL_INSTALL_COMMANDS[manager], { cwd: targetDir });
+  return { manager, result: run(LOCAL_INSTALL_COMMANDS[manager], { cwd: targetDir }) };
+}
+
+/** Dep markers the TUI loader's bare `import()` walk needs at root-level node_modules. */
+function findMissingTuiDepMarkers(targetDir: string): string[] {
+  // All markers must exist: a target missing solid-js is exactly the broken
+  // TUI-plugin state this step repairs. solid-js arrives as @opentui/solid's
+  // auto-installed peer, not a root dep (see TUI_PLUGIN_RUNTIME_DEPS) —
+  // verified here, not written.
+  const verified = [...Object.keys(TUI_PLUGIN_RUNTIME_DEPS), 'solid-js'];
+  return verified.filter(
+    (name) => !fs.existsSync(path.join(targetDir, 'node_modules', ...name.split('/'), 'package.json')),
+  );
 }
 
 /** Orchestrator: package.json merge + local install. Never throws — returns a loggable summary. */
@@ -483,6 +538,8 @@ export function ensurePluginRuntimeDeps(
   targetDir: string,
   overrides?: {
     run?: (cmd: string, opts: { cwd: string }) => ShellCommandResult;
+    /** Test seam for the opencode-install-method probe (see installTargetPluginDeps). */
+    pmMethod?: InstallMethod;
   },
 ): { pkg: 'created' | 'updated' | 'uptodate' | 'error'; install: 'ok' | 'failed' | 'skipped'; message: string } {
   try {
@@ -493,16 +550,9 @@ export function ensurePluginRuntimeDeps(
       return { pkg: 'error', install: 'skipped', message: `could not write package.json (${err instanceof Error ? err.message : String(err)})` };
     }
     // Fast path: every runtime dep already resolvable — skip the network
-    // install. All markers must exist: a target missing solid-js is exactly
-    // the broken TUI-plugin state this step repairs. solid-js arrives as
-    // @opentui/solid's auto-installed peer, not a root dep (see
-    // TUI_PLUGIN_RUNTIME_DEPS) — verified here, not written.
+    // install.
     try {
-      const verified = [...Object.keys(TUI_PLUGIN_RUNTIME_DEPS), 'solid-js'];
-      const missing = verified.filter(
-        (name) => !fs.existsSync(path.join(targetDir, 'node_modules', ...name.split('/'), 'package.json')),
-      );
-      if (missing.length === 0) {
+      if (findMissingTuiDepMarkers(targetDir).length === 0) {
         return { pkg, install: 'skipped', message: 'TUI plugin deps present — install skipped' };
       }
     } catch {
@@ -512,9 +562,21 @@ export function ensurePluginRuntimeDeps(
     if (process.env.OCP_SKIP_PLUGIN_INSTALL) {
       return { pkg, install: 'skipped', message: `package.json ${pkg} — install skipped via OCP_SKIP_PLUGIN_INSTALL` };
     }
-    const res = installTargetPluginDeps(targetDir, overrides?.run);
+    const { manager, result: res } = installTargetPluginDeps(targetDir, overrides?.run, overrides?.pmMethod);
     if (!res.error && res.status === 0) {
-      return { pkg, install: 'ok', message: `package.json ${pkg}, deps installed` };
+      // Honest success: a zero exit code alone cannot prove the tree is
+      // resolvable — a non-flat layout (last-resort yarn/pnpm isolated, or a
+      // partial install) exits 0 yet leaves TUI plugins broken. Re-check the
+      // markers on the result side and report failure when absent.
+      const stillMissing = findMissingTuiDepMarkers(targetDir);
+      if (stillMissing.length > 0) {
+        return { pkg, install: 'failed', message: `package.json ${pkg}, ${manager ?? 'unknown-pm'} install exited 0 but ${stillMissing.join(', ')} not resolvable at root node_modules (non-flat layout) — TUI plugins will fail until \`bun install\` or \`npm install\` succeeds in ${targetDir}` };
+      }
+      const foreign = manager
+        ? LOCKFILE_OWNERS.filter(([file, owner]) => owner !== manager && fs.existsSync(path.join(targetDir, file))).map(([file]) => file)
+        : [];
+      const note = foreign.length > 0 ? ` — foreign lockfile(s) ${foreign.join(', ')} left untouched` : '';
+      return { pkg, install: 'ok', message: `package.json ${pkg}, deps installed${note}` };
     }
     const detail = res.error ? res.error.message : `exit code ${res.status ?? '?'}`;
     return { pkg, install: 'failed', message: `package.json ${pkg}, install failed (${detail}) — plugins will fail until \`bun install\`/\`pnpm install\`/\`yarn install\`/\`npm install\` succeeds in ${targetDir}` };
