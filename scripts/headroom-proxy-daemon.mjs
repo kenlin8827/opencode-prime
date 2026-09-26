@@ -107,13 +107,13 @@ async function main() {
   const args = ["mcp", "serve", ...process.argv.slice(2)]
 
   try {
-    const mcp = spawn(cmd, args, { stdio: "inherit" })
+    const mcp = spawn(cmd, args, { stdio: "inherit", windowsHide: true })
     mcp.on("exit", (code) => process.exit(code ?? 0))
     mcp.on("error", () => process.exit(1))
   } catch {
     // Fallback: execFileSync blocks until the child exits
     try {
-      execFileSync(cmd, args, { stdio: "inherit" })
+      execFileSync(cmd, args, { stdio: "inherit", windowsHide: true })
     } catch (e) {
       process.stderr.write(`[headroom-daemon] Failed to start headroom mcp serve: ${e.message}\n`)
       process.exit(1)

@@ -201,14 +201,14 @@ function launchDaemon() {
     function killPortProcess(targetPort) {
       try {
         if (process.platform === 'win32') {
-          const out = cp.execSync('netstat -ano | findstr :' + targetPort, { encoding: 'utf-8' });
+          const out = cp.execSync('netstat -ano | findstr :' + targetPort, { encoding: 'utf-8', windowsHide: true });
           const lines = out.trim().split('\\n');
           for (const line of lines) {
             const parts = line.trim().split(/\\s+/);
             if (parts.length >= 5 && parts[1].endsWith(':' + targetPort)) {
               const pid = parseInt(parts[parts.length - 1], 10);
               if (pid && pid > 0 && pid !== process.pid) {
-                try { cp.execSync('taskkill /F /T /PID ' + pid); } catch {}
+                try { cp.execSync('taskkill /F /T /PID ' + pid, { windowsHide: true }); } catch {}
               }
             }
           }
@@ -237,7 +237,7 @@ function launchDaemon() {
             if (state.serenaPid && isAlive(state.serenaPid)) {
               try {
                 if (process.platform === 'win32') {
-                  cp.execSync('taskkill /F /T /PID ' + state.serenaPid);
+                  cp.execSync('taskkill /F /T /PID ' + state.serenaPid, { windowsHide: true });
                 } else {
                   process.kill(-state.serenaPid, 'SIGTERM');
                 }
