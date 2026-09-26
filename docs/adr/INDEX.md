@@ -7,7 +7,7 @@
 
 *Directory: `docs/adr`*
 
-## Records (15)
+## Records (16)
 
 | ID | Decision Title | Style | Layer | Status | Domain | Iteration | Created |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -22,10 +22,11 @@
 | [ADR-0.40.3](./0.40.3-appealability-of-accepted-decisions.md) | Iteration 0.40.3 · Appealability of accepted decisions (1 sections) | `ocp` | `system` | 🟢 Accepted | adr-governance | 3 | 2026-09-21 |
 | [ADR-0.41.0](./0.41.0-major-version-upgrade-lock.md) | Iteration 0.41.0 · Major-version upgrade lock (6 sections) | `ocp` | `system` | 🟢 Accepted | updater | 0 | 2026-09-22 |
 | [ADR-0.44.0](./0.44.0-per-task-checkpoint-dirs.md) | Iteration 0.44.0 · Per-task checkpoint directories (1 sections) | `ocp` | `system` | 🟢 Accepted | runtime | 0 | 2026-09-24 |
-| [ADR-2.0.0](./2.0.0-adapt-opencode-prime-to-v2-runtime.md) | Iteration 2.0.0 · Adapt OpenCode Prime to the OpenCode v2 runtime (2 sections) | `ocp` | `system` | 🟢 Accepted | runtime | 0 | 2026-09-24 |
+| [ADR-2.0.0](./2.0.0-adapt-opencode-prime-to-v2-runtime.md) | Iteration 2.0.0 · Adapt OpenCode Prime to the OpenCode v2 runtime (1 sections) | `ocp` | `system` | 🟢 Accepted | runtime | 0 | 2026-09-24 |
 | [ADR-2.0.0](./2.0.0-session-language-marker-injection.md) | · Session language via runtime marker injection | `madr` | `system` | 🟢 Accepted | i18n |  | 2026-09-25 |
 | [ADR-2.0.0](./2.0.0-flat-layout-pm-probe-and-method-alignment.md) | · Flat-layout PM probe with opencode-method alignment | `madr` | `system` | 🟢 Accepted | installer |  | 2026-09-26 |
 | [ADR-2.0.0](./2.0.0-typed-plugin-literals-namespaced-ids.md) | · Typed plugin literals, namespaced plugin ids, zero runtime imports | `madr` | `system` | 🟢 Accepted | runtime |  | 2026-09-26 |
+| [ADR-2.0.1](./2.0.1-searchable-two-model-profile-setup.md) | Iteration 2.0.1 · Searchable two-model profile setup (1 sections) | `ocp` | `system` | 🔵 Proposed | profiles | 1 | 2026-09-26 |
 
 ## Label glossary
 

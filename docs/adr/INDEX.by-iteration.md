@@ -35,11 +35,12 @@
 | [ADR-0.2.61.01](./../../tests/fixtures/adr/evolution/0.2.61.01-decimal-snapshots.md) | Use Decimal snapshots for the commission ledger | `madr` | accepted | 2026-09-10 | `0.2.61.01-decimal-snapshots.md` |
 | [ADR-0.2.61.02](./../../tests/fixtures/adr/evolution/0.2.61.02-empty-options.md) | Reconsider the commission posting pipeline | `madr` | proposed | 2026-09-12 | `0.2.61.02-empty-options.md` |
 
-## Iteration `1` (1 record)
+## Iteration `1` (2 records)
 
 | ID | Decision Title | Style | Status | Created | Source |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | [ADR-0.40.1](./0.40.1-project-level-adr-overrides.md) | Iteration 0.40.1 · Project-level ADR overrides | `ocp` | accepted | 2026-09-18 | `0.40.1-project-level-adr-overrides.md` |
+| [ADR-2.0.1](./2.0.1-searchable-two-model-profile-setup.md) | Iteration 2.0.1 · Searchable two-model profile setup | `ocp` | proposed | 2026-09-26 | `2.0.1-searchable-two-model-profile-setup.md` |
 
 ## Iteration `2` (1 record)
 
