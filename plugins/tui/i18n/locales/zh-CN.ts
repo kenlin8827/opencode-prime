@@ -536,7 +536,7 @@ export default {
   //   protocol/injection fragments stay English and are NOT here.
   // ════════════════════════════════════════════════════════════════
   // ── project-memory (/memory) ──
-  "guard.memory.help": "[project-memory] 项目级经验记忆 —— 两个 scope，一个开关。\n  公开文件：{public}（进 git，通过常规 PR 流程由团队把关）。\n  私人文件：{private}（项目作用域，gitignored —— 仅当前用户可见，团队不应该看到的笔记的逃生口）。\n\n用法：\n/memory note <lesson>           → 将一条带日期条目追加到 public.md（默认）\n/memory note --private <lesson> → 追加到 gitignored 的 private.md（个人逃生口）\n/memory on | off                → 切换是否把两个文件注入系统提示\n/memory status                  → 开关状态 + 条目计数 + 公开文件去向（public.md 被忽略或未追踪时告警）\n\n两个 scope 都只是建议 —— 冲突时以 AGENTS.md 为准。",
+  "guard.memory.help": "[project-memory] 项目级经验记忆 —— 两个 scope，一个开关。\n  公开文件：{public}（进 git，通过常规 PR 流程由团队把关）。\n  私人文件：{private}（项目作用域，gitignored —— 仅当前用户可见，团队不应该看到的笔记的逃生口）。\n\n用法：\n/memory note <lesson>           → 将一条带日期条目追加到 public.md（默认）\n/memory note --private <lesson> → 追加到 gitignored 的 private.md（个人逃生口）\n/memory on | off                → 切换是否把两个文件注入系统提示\n/memory status                  → 开关状态 + 公开/私人条目计数\n\n两个 scope 都只是建议 —— 冲突时以 AGENTS.md 为准。",
   "guard.memory.noted": "[project-memory] 已记入 {path} — 条目已在 {memory} 中生效（{scope} scope）。",
   "guard.memory.scopePublic": "公开",
   "guard.memory.scopePrivate": "私人",

@@ -536,7 +536,7 @@ export default {
   //   protocol/injection fragments stay English and are NOT here.
   // ════════════════════════════════════════════════════════════════
   // ── project-memory (/memory) ──
-  "guard.memory.help": "[project-memory] プロジェクト階層の教訓メモリ — 2 つのスコープ、1 つのゲート。\n  公開ファイル:  {public}（git にコミット、PR フローでレビュー）\n  非公開ファイル: {private}（プロジェクト作用域、gitignored — チームに見せたくないメモの非常口）\n\n使い方:\n/memory note <教訓>           → 日付付きエントリを public.md に追記（既定）\n/memory note --private <メモ> → gitignored の private.md に追記（非常口）\n/memory on | off                → 両方をシステムプロンプトへ注入するか切替\n/memory status                  → ゲートの状態 + エントリ数 + public.md の到達性（無視・未追跡なら警告）\n\nどちらのスコープも助言にとどまり — 衝突時は AGENTS.md が優先します。",
+  "guard.memory.help": "[project-memory] プロジェクト階層の教訓メモリ — 2 つのスコープ、1 つのゲート。\n  公開ファイル:  {public}（git にコミット、PR フローでレビュー）\n  非公開ファイル: {private}（プロジェクト作用域、gitignored — チームに見せたくないメモの非常口）\n\n使い方:\n/memory note <教訓>           → 日付付きエントリを public.md に追記（既定）\n/memory note --private <メモ> → gitignored の private.md に追記（非常口）\n/memory on | off                → 両方をシステムプロンプトへ注入するか切替\n/memory status                  → ゲートの状態 + 公開/非公開のエントリ数\n\nどちらのスコープも助言にとどまり — 衝突時は AGENTS.md が優先します。",
   "guard.memory.noted": "[project-memory] {path} に記録しました — エントリは {memory} で有効です（{scope} スコープ）。",
   "guard.memory.scopePublic": "公開",
   "guard.memory.scopePrivate": "非公開",

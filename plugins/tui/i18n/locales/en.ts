@@ -537,7 +537,7 @@ const en = {
   //   protocol/injection fragments stay English and are NOT here.
   // ════════════════════════════════════════════════════════════════
   // ── project-memory (/memory) ──
-  "guard.memory.help": "[project-memory] Project-level lessons memory — two scopes, one gate.\n  Public file:  {public} (committed to git, reviewed via PR flow)\n  Private file: {private} (project-scoped, gitignored — escape hatch for notes the team should not see)\n\nUsage:\n/memory note <lesson>           → append a dated entry to public.md (default)\n/memory note --private <lesson> → append to gitignored private.md (escape hatch)\n/memory on | off                → toggle injection of both into the system prompt\n/memory status                  → gate state + entry counts + public reach (warns if public.md is git-ignored or untracked)\n\nBoth scopes are advisory — AGENTS.md stays authoritative on conflict.",
+  "guard.memory.help": "[project-memory] Project-level lessons memory — two scopes, one gate.\n  Public file:  {public} (committed to git, reviewed via PR flow)\n  Private file: {private} (project-scoped, gitignored — escape hatch for notes the team should not see)\n\nUsage:\n/memory note <lesson>           → append a dated entry to public.md (default)\n/memory note --private <lesson> → append to gitignored private.md (escape hatch)\n/memory on | off                → toggle injection of both into the system prompt\n/memory status                  → gate state + public/private entry counts\n\nBoth scopes are advisory — AGENTS.md stays authoritative on conflict.",
   "guard.memory.noted": "[project-memory] Noted to {path} — entry is live in {memory} ({scope} scope).",
   "guard.memory.scopePublic": "public",
   "guard.memory.scopePrivate": "private",

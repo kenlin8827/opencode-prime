@@ -540,7 +540,7 @@ export default {
   //   protocol/injection fragments stay English and are NOT here.
   // ════════════════════════════════════════════════════════════════
   // ── project-memory (/memory) ──
-  "guard.memory.help": "[project-memory] ذاكرة الدروس على مستوى المشروع — نطاقان، بوابة واحدة.\n  الملف العام:  {public} (مُثبَّت في git، يُراجع عبر تدفّق PR)\n  الملف الخاص: {private} (ضمن المشروع، gitignored — مخرج لِملاحظات لا ينبغي للفريق رؤيتها)\n\nالاستخدام:\n/memory note <درس>           → يضيف قيدًا مؤرَّخًا إلى public.md (الافتراضي)\n/memory note --private <ملاحظة> → يضيف إلى private.md (المخرج الخاص)\n/memory on | off                → يبدّل حقن الاثنين في موجّه النظام\n/memory status                  → حالة البوابة + عدد القيود + وصول public.md (تحذير إن كان مُتجاهَلًا أو غير متتبَّع)\n\nكلا النطاقين استشاري فقط — عند التعارض يبقى AGENTS.md مرجعيًّا.",
+  "guard.memory.help": "[project-memory] ذاكرة الدروس على مستوى المشروع — نطاقان، بوابة واحدة.\n  الملف العام:  {public} (مُثبَّت في git، يُراجع عبر تدفّق PR)\n  الملف الخاص: {private} (ضمن المشروع، gitignored — مخرج لِملاحظات لا ينبغي للفريق رؤيتها)\n\nالاستخدام:\n/memory note <درس>           → يضيف قيدًا مؤرَّخًا إلى public.md (الافتراضي)\n/memory note --private <ملاحظة> → يضيف إلى private.md (المخرج الخاص)\n/memory on | off                → يبدّل حقن الاثنين في موجّه النظام\n/memory status                  → حالة البوابة + عدد القيود العام/الخاص\n\nكلا النطاقين استشاري فقط — عند التعارض يبقى AGENTS.md مرجعيًّا.",
   "guard.memory.noted": "[project-memory] سُجِّل في {path} — القيد نشط في {memory} (نطاق {scope}).",
   "guard.memory.scopePublic": "عام",
   "guard.memory.scopePrivate": "خاص",

@@ -181,7 +181,7 @@ ADR 治理系统支持 **Slash 命令（确定性脚手架 + AI 接力）** 与 
 
 **默认 scope 是不对称的**（ADR-2.0.2#01）。`/memory note` 命令默认 `public` —— 人手动敲这条命令是明确、可见的动作；而面向 agent 的 `memory_note` 工具默认 `private`，要进团队文件必须显式传 `scope: "public"`。取舍依据是代价：错判 private 只损失一条你自己也看不到的笔记，错判 public 则污染仓库、并被注入之后每一个 session。旧 rationale（"拿不准就 public，PR 会打回"）不成立 —— agent 写的文件当时根本不一定在任何 diff 里，没有任何环节会审它。public 条目是要进 git 的仓库内容：用英文写，一条一规则。
 
-一个文件可能以两种不同的方式发不出去，所以 `/memory status` 会问 git 两个问题，两种情况都告警。先查 `public.md` 是否**已被追踪**（`git ls-files`）；若没有，再查是否有 ignore 规则匹配它。**被忽略**的文件（常见成因：仓库把整个 `.ocp/` 目录排除了）永远发不出去 —— 提示里写清能修复它的 `.gitignore` 形状；**未追踪**的文件能通过所有 ignore 检查却依然留在本机，因为没人 stage 过它 —— 提示里点名那条能让它发出去的 `git add`。**已追踪**则保持沉默；任何无法判定的情形（没有 git、非仓库、子进程超时）同样保持沉默，不制造假警报。
+`.gitignore` 里一条宽规则可能悄悄让 `public.md` 不再共享（常见成因：仓库把整个 `.ocp/` 目录排除了），因此 `/memory status` 会探测 `git check-ignore`，在公开条目永远出不了本机时给出警告。探测是三态的 —— git 缺失 / 非仓库等致命退出时保持沉默，不制造假警报。
 
 无草稿 / 策展分层 —— 每条记录直接落地在 gate 注入的那个文件里。LLM 还有 `memory_note` 工具可以主动调用（发现 reusable rule 时），session 总结用 `/memory-summarize` skill（让模型挑选）。`projectMemory` 开启且任一文件非空时，其内容以 `[PROJECT MEMORY]` 块追加进系统提示（分 `=== Public ===` 和 `=== Private ===` 两段）—— 仅建议性质：冲突时以 AGENTS.md 为准。每段超过 16000 字符上限时，该段改为指针块、不注入正文，请及时精简。**默认开启**（文件为空时是 no-op，侧栏显示 `ON · empty` 提示去 `/memory note`）。设计文档：`docs/plan/project-memory.md`。
 
