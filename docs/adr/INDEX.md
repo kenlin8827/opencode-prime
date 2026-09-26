@@ -7,7 +7,7 @@
 
 *Directory: `docs/adr`*
 
-## Records (16)
+## Records (17)
 
 | ID | Decision Title | Style | Layer | Status | Domain | Iteration | Created |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -27,6 +27,7 @@
 | [ADR-2.0.0](./2.0.0-flat-layout-pm-probe-and-method-alignment.md) | · Flat-layout PM probe with opencode-method alignment | `madr` | `system` | 🟢 Accepted | installer |  | 2026-09-26 |
 | [ADR-2.0.0](./2.0.0-typed-plugin-literals-namespaced-ids.md) | · Typed plugin literals, namespaced plugin ids, zero runtime imports | `madr` | `system` | 🟢 Accepted | runtime |  | 2026-09-26 |
 | [ADR-2.0.1](./2.0.1-searchable-two-model-profile-setup.md) | Iteration 2.0.1 · Searchable two-model profile setup (1 sections) | `ocp` | `system` | 🔵 Proposed | profiles | 1 | 2026-09-26 |
+| [ADR-2.0.2](./2.0.2-honest-public-scope-in-project-memory.md) | Iteration 2.0.2 · Honest public scope in project memory (3 sections) | `ocp` | `system` | 🔵 Proposed | memory | 2 | 2026-09-26 |
 
 ## Label glossary
 

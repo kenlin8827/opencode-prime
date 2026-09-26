@@ -553,6 +553,7 @@ export default {
   "guard.memory.showStale": " — OBSOLETO (>30 días), considere revisarlo",
   "guard.memory.showPaths": "Archivos:\n  público:  {public}\n  privado: {private}",
   "guard.memory.showEmpty": "[project-memory] Aún no se ha capturado memoria — no se inyecta nada.\nAnote con /memory note \"<lección>\" (público) o /memory note --private \"<nota>\" (privado).\nArchivos:\n  público:  {public}\n  privado: {private}",
+  "guard.memory.publicUnshared": "[project-memory] ADVERTENCIA: {public} está ignorado por git, así que las entradas públicas nunca llegan al equipo — se quedan locales. Deja de ignorar el archivo en .gitignore (su directorio padre también debe quedar sin excluir) o anótalo en privado: /memory note --private \"<nota>\".",
   // ── e2e-adopt (/e2e-adopt) ──
   "guard.e2eadopt.help": "[e2e-adopt] Adopta la política de línea roja E2E en la documentación del proyecto (gobernanza de documentos estilo baijiu-shop — sin interruptor en tiempo de ejecución).\nUso:\n/e2e-adopt        → detecta la configuración E2E, escribe docs/e2e-redline.md e inserta la sección de línea roja en AGENTS.md\n/e2e-adopt dry    → previsualiza la detección y los marcadores, no escribe nada\n/e2e-adopt status → informa si la política está adoptada\nDesinstalación: elimine docs/e2e-redline.md y la sección <!-- e2e-redline --> de AGENTS.md.",
   "guard.e2eadopt.detect": "Detección: directorio e2e={dir} · config del runner={runner} · comando=pendiente (por diseño, independiente del stack)",

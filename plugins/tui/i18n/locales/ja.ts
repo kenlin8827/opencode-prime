@@ -553,6 +553,7 @@ export default {
   "guard.memory.showStale": " — 古い（30 日超）、レビューを検討してください",
   "guard.memory.showPaths": "ファイル:\n  公開:  {public}\n  非公開: {private}",
   "guard.memory.showEmpty": "[project-memory] まだメモリは記録されていません — 注入するものもありません。\n/memory note \"<教訓>\"（公開）または /memory note --private \"<メモ>\"（非公開）で記録してください。\nファイル:\n  公開:  {public}\n  非公開: {private}",
+  "guard.memory.publicUnshared": "[project-memory] 警告: {public} は git で無視されているため、公開エントリはリポジトリに入らずチームにも届きません（ローカルのみ）。.gitignore でそのファイルの無視を解除してください（親ディレクトリも除外したままにしないでください）。非公開で記録するには /memory note --private \"<メモ>\" を使います。",
   // ── e2e-adopt (/e2e-adopt) ──
   "guard.e2eadopt.help": "[e2e-adopt] E2E レッドライン方針をプロジェクト文書へ採用します（baijiu-shop スタイルの文書ガバナンス — 実行時スイッチなし）。\n使い方:\n/e2e-adopt        → E2E 環境を検出し、docs/e2e-redline.md に書き込み、AGENTS.md へレッドライン節を挿入\n/e2e-adopt dry    → 検出結果とプレースホルダーのプレビューのみ、何も書き込まない\n/e2e-adopt status → 方針が採用済みか報告\nアンインストール: docs/e2e-redline.md と AGENTS.md 内の <!-- e2e-redline --> 節を削除。",
   "guard.e2eadopt.detect": "検出: e2e ディレクトリ={dir} · ランナー設定={runner} · コマンド=未記入（設計上スタック非依存）",

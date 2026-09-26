@@ -557,6 +557,7 @@ export default {
   "guard.memory.showStale": " — قديم (>30 يومًا)، يُفضَّل المراجعة",
   "guard.memory.showPaths": "الملفات:\n  العام:  {public}\n  الخاص: {private}",
   "guard.memory.showEmpty": "[project-memory] لم تُلتقط ذاكرة بعد — لا شيء يُحَنَّ.\nسجّل عبر /memory note \"<درس>\" (عام) أو /memory note --private \"<ملاحظة>\" (خاص).\nالملفات:\n  العام:  {public}\n  الخاص: {private}",
+  "guard.memory.publicUnshared": "[project-memory] تحذير: الملف {public} مُتجاهَل من git، لذا لا تصل الإدخالات العامة إلى الفريق — تبقى محلية. أوقف تجاهل الملف في .gitignore (يجب أن يبقى المجلد الأصلي غير مُستبعَد) أو سجّلها خاصة: /memory note --private \"<ملاحظة>\".",
   // ── e2e-adopt (/e2e-adopt) ──
   "guard.e2eadopt.help": "[e2e-adopt] يعتم سياسة الخط الأحمر E2E في مستندات المشروع (حوكمة مستندات على طراز baijiu-shop — دون مفتاح تشغيل).\nالاستخدام:\n/e2e-adopt        → يكتشف إعداد E2E، ويدوّن docs/e2e-redline.md ويدرج قسم الخط الأحمر في AGENTS.md\n/e2e-adopt dry    → يعرض معاينة الاكتشاف والعنصر البديل، ولا يكتب شيئًا\n/e2e-adopt status → يُبلغ إن كانت السياسة معتمدة\nالإزالة: احذف docs/e2e-redline.md وقسم <!-- e2e-redline --> في AGENTS.md.",
   "guard.e2eadopt.detect": "الاكتشاف: مجلد e2e={dir} · إعداد العدّاد={runner} · الأمر=للتعبئة (مُصمَّم أصلًا دون افتراض تقنية)",

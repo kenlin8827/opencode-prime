@@ -9,17 +9,20 @@
  *   - system prompt transform hook: injects when any file present, strips
  *     on 'off', byte-stable on replay
  *   - command hook: --public / --private flag parsing, status reports both
- *   - memory_note tool: 2-value scope enum, default public
+ *   - public shareability probe: tri-state git check-ignore verdict
+ *   - memory_note tool: 2-value scope enum, default private (ADR-2.0.2#01)
  *
  * Run: bun run tests/test-project-memory-unit.ts
  */
 
+import { execFileSync } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import {
   appendLesson,
+  classifyCheckIgnore,
   countEntries,
   formatMemoryEntry,
   getState,
@@ -28,9 +31,11 @@ import {
   normalizeState,
   privatePath,
   publicPath,
+  publicScopeShared,
   readPrivate,
   readPublic,
   setProjectDir,
+  getProjectDir,
 } from "../plugins/project-memory/project-memory-config"
 import {
   COMMAND_NAME,
@@ -357,7 +362,12 @@ assertEq(
   const added: Array<{ name: string; description?: string }> = []
   const toolAdds: Array<{ name: string }> = []
   const ctx: any = {
-    location: { directory: process.cwd() },
+    // MUST be the sandbox, never process.cwd(): the entry calls
+    // setProjectDir(ctx.location.directory), and every later
+    // publicPath()/privatePath() in this file follows it. With cwd here the
+    // suite wrote its fixtures into the REAL `<repo>/.ocp/memory/` and
+    // destroyed the developer's own notes on every run.
+    location: { directory: tmp },
     session: { hook: async () => ({ dispose: async () => {} }) },
     command: { transform: async (cb: any) => { cb({ add: (d: any) => added.push(d) }); return { dispose: async () => {} } } },
     tool: { transform: async (cb: any) => { cb({ add: (d: any) => toolAdds.push(d) }); return { dispose: async () => {} } } },
@@ -366,6 +376,7 @@ assertEq(
   assert(added.some((c) => c.name === COMMAND_NAME), "v2 entry registers /memory via command transform")
   assert((added.find((c) => c.name === COMMAND_NAME)?.description ?? "").includes("memory"), "command description present")
   assert(toolAdds.some((t) => t.name === TOOL_NAME), "v2 entry registers memory_note via tool transform")
+  assert(getProjectDir() === tmp, "plugin setup injected the sandbox as project dir (not the real repo)")
 }
 
 let replied = ""
@@ -426,6 +437,66 @@ assert(showBoth.includes("last edited"), "show includes last-edited timestamp")
 assertEq(formatMtime(null), "?", "formatMtime(null) → '?'")
 assertEq(fileMtimeMs(join(tmp, "does-not-exist")), null, "fileMtimeMs on missing path → null")
 
+// ─── public shareability probe (ADR-2.0.2#02) ────────────────────────
+// The failure this closes is silent: a broad root-ignore of `.ocp/` makes
+// public.md local-only while every entry still looks filed.
+
+// Pure classifier first — every arm, no git and no repo required. The 128
+// arm is the one a `status !== 0` shortcut gets wrong: a fatal "not a git
+// repository" is ALSO non-zero, so it must not read as "shared".
+assertEq(classifyCheckIgnore(0), false, "exit 0 (ignored) → not shared")
+assertEq(classifyCheckIgnore(1), true, "exit 1 (not ignored) → shared")
+assertEq(classifyCheckIgnore(128), null, "exit 128 (fatal, not a repo) → unknown")
+assertEq(classifyCheckIgnore(129), null, "exit 129 (usage) → unknown")
+assertEq(classifyCheckIgnore(null), null, "null status (killed/timeout) → unknown")
+assertEq(classifyCheckIgnore(0, new Error("ENOENT")), null, "spawn error → unknown, never a verdict")
+assertEq(classifyCheckIgnore(1, new Error("ENOENT")), null, "spawn error outranks a stale status code")
+
+// Live probe: tmp dir is not a repo → unknown, and status must stay silent
+assertEq(publicScopeShared(), null, "publicScopeShared → null when git cannot decide (not a repo)")
+assert(
+  !statusText().includes("git-ignored") && !statusText().includes("被 git"),
+  "statusText stays silent on an unknown verdict (no false alarm)",
+)
+
+const gtmp = mkdtempSync(join(tmpdir(), "memory-git-"))
+let gitUsable = true
+try {
+  execFileSync("git", ["init", "-q"], { cwd: gtmp, stdio: "ignore", windowsHide: true })
+} catch {
+  gitUsable = false
+  console.log("  ⚠️  git unavailable — SKIPPED 2 publicScopeShared repo-branch assertions (loud, not a silent pass)")
+}
+if (gitUsable) {
+  setSharedProjectDir(gtmp)
+  mkdirSync(join(gtmp, ".ocp", "memory"), { recursive: true })
+  writeFileSync(join(gtmp, ".ocp", "memory", "public.md"), "# Project memory — public lessons (committed)\n", "utf-8")
+
+  // (a) the shipped .gitignore shape: tree ignored, one file re-included
+  writeFileSync(
+    join(gtmp, ".gitignore"),
+    [".ocp/*", "!.ocp/memory/", ".ocp/memory/*", "!.ocp/memory/public.md", ""].join("\n"),
+    "utf-8",
+  )
+  assertEq(publicScopeShared(), true, "re-included public.md reports shared")
+
+  // (b) the silent-failure shape: whole `.ocp/` tree ignored
+  writeFileSync(join(gtmp, ".gitignore"), ".ocp/\n", "utf-8")
+  assertEq(publicScopeShared(), false, "broadly ignored .ocp/ reports NOT shared")
+  const warn = statusText()
+  assert(
+    warn.includes("git-ignored") || warn.includes("被 git"),
+    "statusText warns that public entries never reach the team",
+  )
+  assert(warn.includes("public.md"), "warning names the offending file path")
+
+  // (c) tracked file + stale ignore rule → still healthy (no --no-index)
+  writeFileSync(join(gtmp, ".gitignore"), ".ocp/\n", "utf-8")
+  execFileSync("git", ["add", "-f", ".ocp/memory/public.md"], { cwd: gtmp, stdio: "ignore", windowsHide: true })
+  assertEq(publicScopeShared(), true, "tracked public.md reports shared even with a stale ignore rule")
+  setSharedProjectDir(tmp)
+}
+
 writeFileSync(switchFile, `{ "projectMemory": "on" }`)
 rmSync(publicPath(), { force: true })
 rmSync(privatePath(), { force: true })
@@ -467,18 +538,29 @@ assertEq(captureTool.description.length > 200, true, "tool description is substa
 assert(/USE WHEN/.test(captureTool.description), "description has USE WHEN")
 assert(/DO NOT USE FOR/.test(captureTool.description), "description has DO NOT USE FOR")
 assert(/scope.*public.*private/is.test(captureTool.description), "description explains 2-scope heuristic (public before private)")
+assert(/default.*private/i.test(captureTool.description), "description states private is the default scope")
+assert(/in English/.test(captureTool.description), "description pins English for public (committed) entries")
 assert(/confidence/i.test(captureTool.description), "description explains confidence")
 assert(/public\.md/.test(captureTool.description) && /private\.md/.test(captureTool.description), "description names both files")
 
 const mockContext = {} as any
 
-// Default scope = public
+// Default scope = private (ADR-2.0.2#01) — the cheap-to-be-wrong side
 const r1 = await captureTool.execute({ lesson: "use bun not node", confidence: "high" }, mockContext)
-assert(typeof r1 === "object" && r1.metadata.title.includes("public") && r1.metadata.title.includes("high"), "default scope=public, confidence=high")
-assert(typeof r1 === "object" && r1.metadata.path === publicPath(), "default-scope metadata.path is public.md")
-assert(typeof r1 === "object" && r1.metadata.scope === "public", "metadata.scope = public")
+assert(typeof r1 === "object" && r1.metadata.title.includes("private") && r1.metadata.title.includes("high"), "default scope=private, confidence=high")
+assert(typeof r1 === "object" && r1.metadata.path === privatePath(), "default-scope metadata.path is private.md")
+assert(typeof r1 === "object" && r1.metadata.scope === "private", "metadata.scope = private")
 assert(typeof r1 === "object" && r1.metadata.confidenceRank === 3, "rank = 3 for high")
-assert(readFileSync(publicPath(), "utf-8").includes("use bun not node"), "public entry persisted")
+assert(readFileSync(privatePath(), "utf-8").includes("use bun not node"), "private entry persisted")
+assert(!existsSync(publicPath()), "default scope never touches public.md")
+
+// Explicit public scope stays reachable (opt-in, not removed)
+const rPub = await captureTool.execute({ lesson: "team rule", scope: "public" }, mockContext)
+assert(typeof rPub === "object" && rPub.metadata.scope === "public" && rPub.metadata.path === publicPath(), "explicit scope=public still writes public.md")
+
+// Non-conforming / misspelled scope must not leak into the team file
+const rJunk = await captureTool.execute({ lesson: "junk scope value", scope: "team" }, mockContext)
+assert(typeof rJunk === "object" && rJunk.metadata.scope === "private", "unknown scope value falls back to private, not public")
 
 // Explicit private scope
 const r2 = await captureTool.execute({ lesson: "VPN slow", scope: "private", confidence: "medium" }, mockContext)
@@ -519,9 +601,10 @@ assert(typeof rEmpty === "object" && rEmpty.metadata.title.includes("failed"), "
 assert(!existsSync(publicPath()), "whitespace-only lesson → no file written")
 
 // Embedded-newline lesson via the tool → still exactly one bullet on disk
+rmSync(privatePath(), { force: true })
 const rForge = await captureTool.execute({ lesson: "rule A\n- [2020-01-01] rule B" }, mockContext)
-assert(typeof rForge === "object" && rForge.metadata.title.includes("public"), "newline lesson accepted by tool")
-assertEq(countEntries(readFileSync(publicPath(), "utf-8")), 1, "newline lesson → single bullet persisted")
+assert(typeof rForge === "object" && rForge.metadata.title.includes("private"), "newline lesson accepted by tool")
+assertEq(countEntries(readFileSync(privatePath(), "utf-8")), 1, "newline lesson → single bullet persisted")
 
 // Client threading: non-title agent with sessionID triggers scopedForTool's
 // parentID lookup (session.get) — proves `client` reached the gate.
@@ -534,22 +617,22 @@ assert(getCalls > 0, "tool gate invoked session.get (parentID subagent detection
 
 // Lite agent → allowed (default behavior)
 const ctxLite = { agent: "lite", metadata: () => {}, sessionID: "lite-sess" } as any
-rmSync(publicPath(), { force: true })
+rmSync(privatePath(), { force: true })
 const rLite = await captureTool.execute({ lesson: "lite allowed this" }, ctxLite)
-assert(typeof rLite === "object" && rLite.metadata.title.includes("public"), "lite agent → allowed, title is success")
-assert(readFileSync(publicPath(), "utf-8").includes("lite allowed this"), "lite agent → entry written")
+assert(typeof rLite === "object" && rLite.metadata.title.includes("private"), "lite agent → allowed, title is success")
+assert(readFileSync(privatePath(), "utf-8").includes("lite allowed this"), "lite agent → entry written")
 
 // Primary agent (build / code / etc., non-title non-lite) → allowed
 const ctxBuild = { agent: "build", metadata: () => {}, sessionID: "build-sess" } as any
-rmSync(publicPath(), { force: true })
+rmSync(privatePath(), { force: true })
 const rBuild = await captureTool.execute({ lesson: "primary build agent allowed" }, ctxBuild)
-assert(typeof rBuild === "object" && rBuild.metadata.title.includes("public"), "build (primary) agent → allowed")
-assert(readFileSync(publicPath(), "utf-8").includes("primary build agent allowed"), "primary agent → entry written")
+assert(typeof rBuild === "object" && rBuild.metadata.title.includes("private"), "build (primary) agent → allowed")
+assert(readFileSync(privatePath(), "utf-8").includes("primary build agent allowed"), "primary agent → entry written")
 
 // No agent field (fail-open) → allowed
-rmSync(publicPath(), { force: true })
+rmSync(privatePath(), { force: true })
 const rNoCtx = await captureTool.execute({ lesson: "no-ctx allowed" }, { metadata: () => {} } as any)
-assert(typeof rNoCtx === "object" && rNoCtx.metadata.title.includes("public"), "no ctx.agent → fail-open allowed")
+assert(typeof rNoCtx === "object" && rNoCtx.metadata.title.includes("private"), "no ctx.agent → fail-open allowed")
 
 // ─── §3 migration: memory rename + merge-append (pin e) ──────────────
 

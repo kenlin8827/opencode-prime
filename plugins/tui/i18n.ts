@@ -44,7 +44,7 @@ export type Locale = string
  * at compile time. To add a language: register it here and fill its glossary
  * meanings; detection, persistence, switching and menus pick it up
  * automatically. Both surfaces are complete per locale and enforced by
- * tests: `STRINGS` by tests/test-i18n-coverage-unit.ts (all 612 keys ×
+ * tests: `STRINGS` by tests/test-i18n-coverage-unit.ts (all 613 keys ×
  * 8 locales, structure/placeholder/slash-token parity), and glossary
  * meanings at compile time via `GlossaryLocale` (unit-test enforced too).
  * `tr()` still falls back to en — that is the runtime safety net for an

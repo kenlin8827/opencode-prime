@@ -553,6 +553,7 @@ export default {
   "guard.memory.showStale": " — OBSOLÈTE (>30 jours), envisagez une relecture",
   "guard.memory.showPaths": "Fichiers :\n  public :  {public}\n  privé : {private}",
   "guard.memory.showEmpty": "[project-memory] Aucune mémoire capturée pour l'instant — rien n'est injecté.\nNotez avec /memory note \"<leçon>\" (public) ou /memory note --private \"<note>\" (privé).\nFichiers :\n  public :  {public}\n  privé : {private}",
+  "guard.memory.publicUnshared": "[project-memory] AVERTISSEMENT : {public} est ignoré par git, les entrées publiques n'atteignent donc jamais l'équipe — elles restent locales. Cessez d'ignorer le fichier dans .gitignore (son répertoire parent doit rester non exclu) ou notez en privé : /memory note --private \"<note>\".",
   // ── e2e-adopt (/e2e-adopt) ──
   "guard.e2eadopt.help": "[e2e-adopt] Adopte la politique de ligne rouge E2E dans la doc du projet (gouvernance de documents façon baijiu-shop — aucun interrupteur d'exécution).\nUsage :\n/e2e-adopt        → détecte la config E2E, écrit docs/e2e-redline.md et insère la section de ligne rouge dans AGENTS.md\n/e2e-adopt dry    → prévisualise la détection et les espaces réservés, n'écrit rien\n/e2e-adopt status → indique si la politique est adoptée\nDésinstallation : supprimez docs/e2e-redline.md et la section <!-- e2e-redline --> d'AGENTS.md.",
   "guard.e2eadopt.detect": "Détection : répertoire e2e={dir} · config du runner={runner} · commande=à compléter (indépendant de la stack par conception)",

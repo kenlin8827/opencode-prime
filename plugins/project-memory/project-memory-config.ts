@@ -37,6 +37,7 @@
  * plugins are NOT project-scoped; the same pattern doesn't apply here.
  */
 
+import { spawnSync } from "node:child_process"
 import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import {
   ensureOcpGitignore,
@@ -215,4 +216,47 @@ export function appendLesson(scope: LessonScope, lesson: string): string {
  * sidebar. */
 export function countEntries(content: string): number {
   return content.split(/\r?\n/).filter((line) => line.startsWith("- [")).length
+}
+
+/** Classify a `git check-ignore -q` exit code. Pure — exported for tests.
+ *    0 → ignored (false)   1 → not ignored (true)
+ *    anything else (128 fatal "not a git repository", 129 usage, null when
+ *    the child was killed or timed out) → unknown (null)
+ *
+ *  The "anything else" arm is load-bearing, not defensive padding: a fatal
+ *  128 also arrives as a non-zero status, so a naive `status !== 0` would
+ *  report "shared" precisely when git could not answer at all. */
+export function classifyCheckIgnore(status: number | null, error?: unknown): boolean | null {
+  if (error) return null
+  if (status === 0) return false
+  if (status === 1) return true
+  return null
+}
+
+/** Is the public scope actually reaching the team? Tri-state:
+ *    true  — public.md is shareable (tracked, or matched by no ignore rule)
+ *    false — public.md is ignored by a git rule, so the "committed,
+ *            PR-reviewed" contract is broken and entries stay local. The
+ *            usual cause is a broad root-ignore of the whole `.ocp/` tree.
+ *    null  — undeterminable (no git, not a repo, spawn timeout); callers stay
+ *            silent rather than cry wolf.
+ *
+ *  `git check-ignore` WITHOUT `--no-index` is deliberate: it consults the
+ *  index, so an already-tracked public.md reports "not ignored" even when a
+ *  stale rule still matches it — exactly the state we call healthy.
+ *
+ *  Hard timeout, errors swallowed: `/memory status` is a read-only report and
+ *  must never fail because git is unavailable. */
+export function publicScopeShared(): boolean | null {
+  try {
+    const r = spawnSync("git", ["check-ignore", "-q", "--", publicPath()], {
+      cwd: getProjectDir(),
+      windowsHide: true,
+      timeout: 5000,
+      stdio: "ignore",
+    })
+    return classifyCheckIgnore(r.status, r.error)
+  } catch {
+    return null
+  }
 }

@@ -42,11 +42,12 @@
 | [ADR-0.40.1](./0.40.1-project-level-adr-overrides.md) | Iteration 0.40.1 · Project-level ADR overrides | `ocp` | accepted | 2026-09-18 | `0.40.1-project-level-adr-overrides.md` |
 | [ADR-2.0.1](./2.0.1-searchable-two-model-profile-setup.md) | Iteration 2.0.1 · Searchable two-model profile setup | `ocp` | proposed | 2026-09-26 | `2.0.1-searchable-two-model-profile-setup.md` |
 
-## Iteration `2` (1 record)
+## Iteration `2` (2 records)
 
 | ID | Decision Title | Style | Status | Created | Source |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | [ADR-0.40.2](./0.40.2-rename-adr-guard-plugin-to-adr.md) | Iteration 0.40.2 · Rename adr-guard plugin to adr | `ocp` | accepted | 2026-09-19 | `0.40.2-rename-adr-guard-plugin-to-adr.md` |
+| [ADR-2.0.2](./2.0.2-honest-public-scope-in-project-memory.md) | Iteration 2.0.2 · Honest public scope in project memory | `ocp` | proposed | 2026-09-26 | `2.0.2-honest-public-scope-in-project-memory.md` |
 
 ## Iteration `3` (1 record)
 

@@ -179,6 +179,10 @@ ADR 治理系统支持 **Slash 命令（确定性脚手架 + AI 接力）** 与 
 - `public.md` —— 进 git，通过常规 PR 流程由团队把关（同 AGENTS.md 权威等级）。
 - `private.md` —— gitignored，仅当前用户可见。首次捕获时自动写入 `.ocp/.gitignore`。
 
+**默认 scope 是不对称的**（ADR-2.0.2#01）。`/memory note` 命令默认 `public` —— 人手动敲这条命令是明确、可见的动作；而面向 agent 的 `memory_note` 工具默认 `private`，要进团队文件必须显式传 `scope: "public"`。取舍依据是代价：错判 private 只损失一条你自己也看不到的笔记，错判 public 则污染仓库、并被注入之后每一个 session。旧 rationale（"拿不准就 public，PR 会打回"）不成立 —— agent 写的文件当时根本不一定在任何 diff 里，没有任何环节会审它。public 条目是要进 git 的仓库内容：用英文写，一条一规则。
+
+`.gitignore` 里一条宽规则可能悄悄让 `public.md` 不再共享（常见成因：仓库把整个 `.ocp/` 目录排除了），因此 `/memory status` 会探测 `git check-ignore`，在公开条目永远出不了本机时给出警告。探测是三态的 —— git 缺失 / 非仓库等致命退出时保持沉默，不制造假警报。
+
 无草稿 / 策展分层 —— 每条记录直接落地在 gate 注入的那个文件里。LLM 还有 `memory_note` 工具可以主动调用（发现 reusable rule 时），session 总结用 `/memory-summarize` skill（让模型挑选）。`projectMemory` 开启且任一文件非空时，其内容以 `[PROJECT MEMORY]` 块追加进系统提示（分 `=== Public ===` 和 `=== Private ===` 两段）—— 仅建议性质：冲突时以 AGENTS.md 为准。每段超过 16000 字符上限时，该段改为指针块、不注入正文，请及时精简。**默认开启**（文件为空时是 no-op，侧栏显示 `ON · empty` 提示去 `/memory note`）。设计文档：`docs/plan/project-memory.md`。
 
 ### 使用示例
@@ -200,10 +204,10 @@ $ /memory on
 
 # 4. 状态 —— 开关 + 两个 scope 的计数
 $ /memory status
-[project-memory] gate: on — team: 3 条, personal: 1 条. 注入 ACTIVE.
+[project-memory] gate: on — public: 3 条, private: 1 条. 注入 ACTIVE.
 ```
 
-LLM 主动调用（`memory_note` 工具）—— 看到 reusable rule 时：
+LLM 主动调用（`memory_note` 工具）—— 看到 reusable rule 时。`scope` 默认为 `private`，所以进团队文件是一次显式选择：
 
 ```text
 # 代码 session 进行中，LLM 调：
