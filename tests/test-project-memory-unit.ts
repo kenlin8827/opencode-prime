@@ -170,9 +170,12 @@ assertEq(privReturned, privatePath(), "private scope → .ocp/memory/private.md"
 assert(existsSync(privatePath()), "private.md created")
 assert(existsSync(gitignorePath), ".ocp/.gitignore auto-created on first private capture")
 const giContent = readFileSync(gitignorePath, "utf-8")
-// Pin (f): ADR §5 bootstrap content — exactly the six lines; dev-ultra-state.md
-// added, node_modules/lockfile guards dropped, committed files NOT ignored.
-assertEq(giContent, ".gitignore\nlogs/\n*.log\nhandoffs/\nmemory/private.md\ndev-ultra-state.md\n", "gitignore bootstrap content per ADR §5")
+// Pin (f): ADR §5 bootstrap content — exactly the eight lines; dev-deep/ and
+// dev-ultra/ (per-task checkpoint dirs, ADR-0.44.0) + tgrep-state.json added,
+// node_modules/lockfile guards dropped, committed files NOT ignored. The
+// legacy dev-ultra single-file checkpoint is neither ignored nor migrated on
+// v2 (major-line cut — nothing reads it).
+assertEq(giContent, ".gitignore\nlogs/\n*.log\nhandoffs/\nmemory/private.md\ndev-deep/\ndev-ultra/\ntgrep-state.json\n", "gitignore bootstrap content per ADR §5 + per-task checkpoint dirs")
 assert(giContent.includes("memory/private.md"), "gitignore contains memory/private.md")
 assert(!giContent.includes("node_modules"), "gitignore drops the old .opencode node_modules guard")
 assert(!/\nocp\.json/.test(giContent) && !giContent.includes("memory/public.md\n") && !giContent.endsWith("memory/public.md"), "ocp.json + memory/public.md stay committed (not ignored)")
@@ -197,7 +200,8 @@ writeFileSync(gitignorePath, "user-keep-me\nlogs/\nhandoffs/\n", "utf-8")
 ensureOcpGitignore(tmp)
 const healedShared = readFileSync(gitignorePath, "utf-8")
 assert(healedShared.includes("memory/private.md"), "heal(shared): guard appended")
-assert(healedShared.includes("dev-ultra-state.md"), "heal(shared): dev-ultra-state.md appended")
+assert(healedShared.includes("dev-deep/"), "heal(shared): dev-deep/ appended")
+assert(healedShared.includes("dev-ultra/"), "heal(shared): dev-ultra/ appended")
 assert(healedShared.includes("user-keep-me") && (healedShared.match(/logs\//g) ?? []).length === 1, "heal(shared): user lines kept, logs block not duplicated")
 
 // Concurrency guard (wx/EEXIST) on the public file.

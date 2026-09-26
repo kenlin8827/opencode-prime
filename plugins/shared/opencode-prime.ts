@@ -552,7 +552,7 @@ function hasActiveKey(raw: string, key: string): boolean {
  * 2. memory/{public,private}.md: rename; merge-append + delete if target exists.
  * 3. md-to-pdf.css / md-to-docx.css / md-to-docx.docx: rename, skip if target exists.
  * 4. handoffs/: rename whole dir if `.ocp/handoffs` absent.
- * 5. best-effort: dev-ultra-state.md + logs/ (same target-exists rules).
+ * 5. best-effort: logs/ (same target-exists rules).
  */
 export function migrateLegacyProjectArtifacts(root: string = getProjectDir()): MigrationReport {
   const report: MigrationReport = { switchedKeys: [], movedFiles: [], skipped: [], warnings: [] }
@@ -662,9 +662,10 @@ export function migrateLegacyProjectArtifacts(root: string = getProjectDir()): M
     }
   }
 
-  // (4)+(5) disposable dirs and files — whole-dir moves, skipped when the
-  // target exists (handoffs required, logs/dev-ultra-state best-effort).
-  for (const name of ["handoffs", "logs", "dev-ultra-state.md"] as const) {
+  // (4)+(5) disposable dirs — whole-dir moves, skipped when the target
+  // exists (handoffs required, logs best-effort). The legacy dev-ultra
+  // single-file checkpoint is NOT migrated on v2: nothing reads it.
+  for (const name of ["handoffs", "logs"] as const) {
     const src = join(root, LEGACY_DIR, name)
     const dst = ocpArtifactPath(name, root)
     if (!existsSync(src)) continue
@@ -711,7 +712,7 @@ export function ensureOcpGitignore(root: string = getProjectDir()): void {
       mkdirSync(dir, { recursive: true })
     }
     const gitignorePath = join(dir, ".gitignore")
-    const defaultIgnore = ".gitignore\nlogs/\n*.log\nhandoffs/\nmemory/private.md\ndev-ultra-state.md\ntgrep-state.json\n"
+    const defaultIgnore = ".gitignore\nlogs/\n*.log\nhandoffs/\nmemory/private.md\ndev-deep/\ndev-ultra/\ntgrep-state.json\n"
     if (!existsSync(gitignorePath)) {
       writeFileSync(gitignorePath, defaultIgnore, "utf-8")
       return
@@ -731,8 +732,12 @@ export function ensureOcpGitignore(root: string = getProjectDir()): void {
       nextContent = nextContent.trimEnd() + "\nmemory/private.md\n"
       needsUpdate = true
     }
-    if (!content.includes("dev-ultra-state.md")) {
-      nextContent = nextContent.trimEnd() + "\ndev-ultra-state.md\n"
+    if (!content.includes("dev-deep/")) {
+      nextContent = nextContent.trimEnd() + "\ndev-deep/\n"
+      needsUpdate = true
+    }
+    if (!content.includes("dev-ultra/")) {
+      nextContent = nextContent.trimEnd() + "\ndev-ultra/\n"
       needsUpdate = true
     }
     if (!content.includes("tgrep-state.json")) {

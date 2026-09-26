@@ -1,5 +1,6 @@
 cli.template.jsonc
 commands/clean-dead-code.md
+commands/dev-deep.md
 commands/dev-flash.md
 commands/dev-plan.md
 commands/dev-prud.md
@@ -283,6 +284,7 @@ skills/adr-compaction/SKILL.md
 skills/adr-context/SKILL.md
 skills/adr-protocol/SKILL.md
 skills/clean-dead-code/SKILL.md
+skills/dev-deep/SKILL.md
 skills/dev-prud/SKILL.md
 skills/dev-ultra/SKILL.md
 skills/dev/SKILL.md
