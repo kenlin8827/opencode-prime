@@ -402,7 +402,7 @@ Actions:
   wizard       Launch the interactive TUI setup wizard
   tui          Launch the OpenCode terminal UI (exec opencode). With
                   tui_mode=herdr or tui_mode=luvus in options.jsonc launches a
-                  managed workspace rooted at cwd. Default tui_mode is herdr.
+                  managed workspace rooted at cwd. Default tui_mode is direct.
                   Pass --herdr / --luvus / --direct to override
                  the config for this invocation
   serve        Launch the headless opencode server (opencode serve; all args pass through)

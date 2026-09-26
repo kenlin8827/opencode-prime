@@ -11,7 +11,7 @@
 | 命令 | 别名 | 说明 |
 | :--- | :--- | :--- |
 | `ocp` *（无参数）* | | 在当前 shell **直接启动 OpenCode 终端界面** |
-| `ocp tui` | | 默认通过所选的**工作区包装器**（Herdr 或 Luvus）启动 OpenCode 终端 TUI。加 `--init` 可在启动前创建/激活当前目录的 OCP 项目；加 `--direct`、`--herdr` 或 `--luvus` 可单次覆盖启动模式。 |
+| `ocp tui` | | 按配置的模式启动 OpenCode 终端 TUI（默认为 direct）。加 `--init` 可在启动前创建/激活当前目录的 OCP 项目；加 `--direct`、`--herdr` 或 `--luvus` 可单次覆盖启动模式。 |
 | `ocp serve` | | 启动无头 OpenCode 服务（`opencode serve`）；额外参数透传（如 `ocp serve --port 4096`） |
 | `ocp web` | | 启动 **OpenChamber Web 界面**（`openchamber serve`）；自动生成 `--ui-password`，未指定端口时自动从 3000 起挑选空闲端口（详见[端口与密码策略](#web-端口与密码策略)） |
 | `ocp code` | | 在 **VS Code** 中打开当前项目（同时探测 `code-insiders` / `codium` / `cursor` / `windsurf`），并保证 OpenChamber 编辑器扩展就绪：缺失时自动通过编辑器 CLI 安装 `fedaykindev.openchamber`。加 `--init` 可在启动前创建/激活 OCP 项目；裸 `.` 会原样透传，让 VS Code 打开当前目录 |

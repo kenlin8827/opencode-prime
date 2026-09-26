@@ -11,7 +11,7 @@ After a one-time `register` (or a default install), the repo provisioned two glo
 | Command | Aliases | What it does |
 | :--- | :--- | :--- |
 | `ocp` *(no args)* | | Launch the **OpenCode terminal UI directly** in the current shell. |
-| `ocp tui` | | Launch the OpenCode terminal TUI through the selected **workspace wrapper** (Herdr or Luvus) by default. Add `--init` to create/activate the OCP project in the current directory before launching. Use `--direct`, `--herdr`, or `--luvus` to override the mode for one launch. |
+| `ocp tui` | | Launch the OpenCode terminal TUI using the configured mode (direct by default). Add `--init` to create/activate the OCP project in the current directory before launching. Use `--direct`, `--herdr`, or `--luvus` to override the mode for one launch. |
 | `ocp serve` | | Launch the headless OpenCode server (`opencode serve`); all extra args pass through (e.g. `ocp serve --port 4096`) |
 | `ocp web` | | Launch the **OpenChamber web UI** (`openchamber serve`); auto-generates a `--ui-password`, auto-picks a free port starting at 3000 (see [port policy](#web-port-and-password-policy)) |
 | `ocp code` | | Open the current project in **VS Code** (also probes `code-insiders` / `codium` / `cursor` / `windsurf`) with the OpenChamber editor extension guaranteed: `fedaykindev.openchamber` is auto-installed via the editor CLI when missing. Add `--init` to create/activate the OCP project before launching; a bare `.` passes through so VS Code opens the current folder |

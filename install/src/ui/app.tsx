@@ -533,7 +533,7 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
     const tools = loadToolRegistry(repoDir)
     const locales = getAvailableLocales(repoDir)
     const [agent, setAgent] = createSignal(effective.default_agent ?? schema.defaultAgent.value)
-    const [tuiMode, setTuiMode] = createSignal<'direct' | 'herdr' | 'luvus'>(effective.tui_mode ?? 'herdr')
+    const [tuiMode, setTuiMode] = createSignal<'direct' | 'herdr' | 'luvus'>(effective.tui_mode ?? 'direct')
     const [globalCommands, setGlobalCommands] = createSignal(effective.global_commands !== false)
     const [toolState, setToolState] = createSignal<Record<string, boolean>>(Object.fromEntries(Object.keys(tools?.tools ?? {}).map((key) => [key, effective.tools?.[key] !== false])))
     const [mcpState, setMcpState] = createSignal<Record<string, boolean>>(Object.fromEntries(schema.mcpItems.map((item) => [item.key, effective.mcp?.[item.key] ?? item.value])))

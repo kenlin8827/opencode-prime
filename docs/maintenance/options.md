@@ -211,15 +211,15 @@ The setup wizard lets you choose the workspace integration behind `ocp tui`: **H
 
 | Mode | Integration | What OCP configures |
 |---|---|---|
-| `"herdr"` *(default)* | [Herdr](https://herdr.dev) | A workspace rooted at the current directory; OCP provisions Herdr, its OpenCode integration, and the bundled auto-start plugin. |
+| `"herdr"` | [Herdr](https://herdr.dev) | A workspace rooted at the current directory; OCP provisions Herdr, its OpenCode integration, and the bundled auto-start plugin. |
 | `"luvus"` | [Luvus](https://luvus.dev) | A workspace rooted at the current directory; OCP runs Luvus's official installer, provisions its OpenCode session integration, and links the bundled auto-start module (every new tab/pane boots opencode), falling back to an explicit OpenCode agent start at launch. |
-| `"direct"` | None | OpenCode runs in the current shell. |
+| `"direct"` *(default)* | None | OpenCode runs in the current shell. |
 
 Choose the default in the wizard or set it manually:
 
 ```jsonc
 // install/options.jsonc
-"tui_mode": "luvus"   // "direct" | "herdr" (default) | "luvus"
+"tui_mode": "luvus"   // "direct" (default) | "herdr" | "luvus"
 ```
 
 Selecting a workspace mode auto-enables its matching `tools` entry, even when it was explicitly `false`. For a one-off override, use `ocp tui --direct`, `ocp tui --herdr`, or `ocp tui --luvus`.

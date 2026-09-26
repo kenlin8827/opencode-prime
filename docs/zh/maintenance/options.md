@@ -191,15 +191,15 @@ watcher 负责日常增量更新。将 `tools.tgrep` 设为 `false` 可完全退
 
 | 模式 | 集成 | OCP 的配置行为 |
 |---|---|---|
-| `"herdr"` *（默认）* | [Herdr](https://herdr.dev) | 建立以当前目录为根的工作区；OCP 会配置 Herdr、其 OpenCode 集成与内置自动启动插件。 |
+| `"herdr"` | [Herdr](https://herdr.dev) | 建立以当前目录为根的工作区；OCP 会配置 Herdr、其 OpenCode 集成与内置自动启动插件。 |
 | `"luvus"` | [Luvus](https://luvus.dev) | 建立以当前目录为根的工作区；OCP 运行 Luvus 官方安装器，配置其 OpenCode 会话集成，并链接内置自动启动模块（新标签页/窗格自动开启 opencode）；启动时若模块未生效则回退为显式启动一个 OpenCode agent。 |
-| `"direct"` | 无 | 在当前 shell 中直接运行 OpenCode。 |
+| `"direct"` *（默认）* | 无 | 在当前 shell 中直接运行 OpenCode。 |
 
 可在向导中选择默认值，也可手动设置：
 
 ```jsonc
 // install/options.jsonc
-"tui_mode": "luvus"   // "direct" | "herdr"（默认） | "luvus"
+"tui_mode": "luvus"   // "direct"（默认） | "herdr" | "luvus"
 ```
 
 选择工作区模式会自动启用匹配的 `tools` 项，即使它显式设为 `false`。单次覆盖可使用 `ocp tui --direct`、`ocp tui --herdr` 或 `ocp tui --luvus`。
