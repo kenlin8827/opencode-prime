@@ -7,7 +7,7 @@
 
 *Directory: `docs/adr`*
 
-## Records (17)
+## Records (18)
 
 | ID | Decision Title | Style | Layer | Status | Domain | Iteration | Created |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -24,6 +24,7 @@
 | [ADR-0.44.0](./0.44.0-per-task-checkpoint-dirs.md) | Iteration 0.44.0 · Per-task checkpoint directories (1 sections) | `ocp` | `system` | 🟢 Accepted | runtime | 0 | 2026-09-24 |
 | [ADR-2.0.0](./2.0.0-adapt-opencode-prime-to-v2-runtime.md) | Iteration 2.0.0 · Adapt OpenCode Prime to the OpenCode v2 runtime (1 sections) | `ocp` | `system` | 🟢 Accepted | runtime | 0 | 2026-09-24 |
 | [ADR-2.0.0](./2.0.0-session-language-marker-injection.md) | · Session language via runtime marker injection | `madr` | `system` | 🟢 Accepted | i18n |  | 2026-09-25 |
+| [ADR-0001](./0001-shell-guard-as-a-best-effort-gate.md) | · Shell Guard as a best-effort confirmation gate | `madr` | `system` | 🟢 Accepted | security |  | 2026-09-26 |
 | [ADR-2.0.0](./2.0.0-flat-layout-pm-probe-and-method-alignment.md) | · Flat-layout PM probe with opencode-method alignment | `madr` | `system` | 🟢 Accepted | installer |  | 2026-09-26 |
 | [ADR-2.0.0](./2.0.0-typed-plugin-literals-namespaced-ids.md) | · Typed plugin literals, namespaced plugin ids, zero runtime imports | `madr` | `system` | 🟢 Accepted | runtime |  | 2026-09-26 |
 | [ADR-2.0.1](./2.0.1-searchable-two-model-profile-setup.md) | Iteration 2.0.1 · Searchable two-model profile setup (1 sections) | `ocp` | `system` | 🔵 Proposed | profiles | 1 | 2026-09-26 |

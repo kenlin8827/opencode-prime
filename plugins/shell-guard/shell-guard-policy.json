@@ -1,0 +1,41 @@
+{
+  "$comment": "Weak shell-risk prompt guard, not an OS sandbox. It only guards child sessions; named primary agents are excluded. Agent include/exclude lists scope the guard; exclude wins.",
+  "agents": {
+    "include": ["*"],
+    "exclude": ["general", "lite", "code", "build", "plan"]
+  },
+  "rules": [
+    { "pattern": "git reset --hard *", "reason": "This can discard tracked changes." },
+    { "pattern": "git reset * --hard *", "reason": "This can discard tracked changes." },
+    { "pattern": "git clean -f*", "reason": "This can permanently delete untracked files." },
+    { "pattern": "git clean --force *", "reason": "This can permanently delete untracked files." },
+    { "pattern": "git push --force*", "reason": "This can overwrite remote history." },
+    { "pattern": "git push -f *", "reason": "This can overwrite remote history." },
+    { "pattern": "git push * --force*", "reason": "This can overwrite remote history." },
+    { "pattern": "git push * -f *", "reason": "This can overwrite remote history." },
+    { "pattern": "git branch -D *", "reason": "This forcibly deletes a branch." },
+    { "pattern": "git branch --delete --force *", "reason": "This forcibly deletes a branch." },
+    { "pattern": "git rebase -i *", "reason": "Interactive rebase rewrites commit history." },
+    { "pattern": "git rebase --interactive *", "reason": "Interactive rebase rewrites commit history." },
+    { "pattern": "git rebase --abort *", "reason": "Aborting can discard in-progress rebase state." },
+    { "pattern": "git cherry-pick --abort *", "reason": "Aborting can discard in-progress cherry-pick state." },
+    { "pattern": "git merge --abort *", "reason": "Aborting can discard in-progress merge state." },
+    { "pattern": "git am --abort *", "reason": "Aborting can discard in-progress patch application state." },
+    { "pattern": "git revert --abort *", "reason": "Aborting can discard in-progress revert state." },
+    { "pattern": "git stash drop *", "reason": "This permanently removes a stash entry." },
+    { "pattern": "git stash clear *", "reason": "This permanently removes all stash entries." },
+    { "pattern": "git filter-branch *", "reason": "This rewrites repository history." },
+    { "pattern": "git filter-repo *", "reason": "This rewrites repository history." },
+    { "pattern": "git worktree remove *", "reason": "This removes a working tree and its files." },
+    { "pattern": "rm -rf *", "reason": "Recursive forced deletion can destroy files irreversibly." },
+    { "pattern": "rm -fr *", "reason": "Recursive forced deletion can destroy files irreversibly." },
+    { "pattern": "Remove-Item -Recurse -Force *", "reason": "Recursive forced deletion can destroy files irreversibly." },
+    { "pattern": "Remove-Item -Force -Recurse *", "reason": "Recursive forced deletion can destroy files irreversibly." },
+    { "pattern": "rmdir /s *", "reason": "Recursive deletion can destroy directory contents." },
+    { "pattern": "rd /s *", "reason": "Recursive deletion can destroy directory contents." },
+    { "pattern": "del /s *", "reason": "Recursive deletion can destroy files irreversibly." },
+    { "pattern": "erase /s *", "reason": "Recursive deletion can destroy files irreversibly." },
+    { "pattern": "format ?:*", "reason": "Formatting a volume destroys its data." },
+    { "pattern": "diskpart *", "reason": "DiskPart can alter or erase disk partitions." }
+  ]
+}

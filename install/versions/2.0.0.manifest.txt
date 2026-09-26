@@ -166,6 +166,9 @@ plugins/shared/profile-core.ts
 plugins/shared/provider-core.ts
 plugins/shared/provider-creds.ts
 plugins/shared/system-block.ts
+plugins/shell-guard.ts
+plugins/shell-guard/shell-guard-policy.json
+plugins/shell-guard/shell-guard.ts
 plugins/tgrep.ts
 plugins/tgrep/tgrep-config.ts
 plugins/tgrep/tgrep-mode.ts
