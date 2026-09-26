@@ -103,21 +103,27 @@ OUT_DIR="$(mkdir -p "$OUT_DIR" && cd "$OUT_DIR" && pwd)"
 # Resolve the manifest through the single shipped-file inventory.
 check_manifest
 
+# Release archives must carry the bundled CLI; source fallback is dev-checkout
+# only, so packaging without Bun would produce an unusable release archive.
+DIST_SRC="$REPO_ROOT/install/dist"
+command -v bun >/dev/null 2>&1 || { echo "Bun is required to build the release installer bundle." >&2; exit 1; }
+echo "Building bundled installer..."
+bun build "$REPO_ROOT/install/src/index.ts" --outdir "$DIST_SRC" --target bun --external '@opentui/core-*'
+[[ -f "$DIST_SRC/index.js" ]] || { echo "installer bundle missing: $DIST_SRC/index.js" >&2; exit 1; }
+
 # Build a staging directory with the exact layout we want in the archive.
 STAGE="$(mktemp -d)"
 PKG_DIR="$STAGE/opencode-prime-$VERSION"
 mkdir -p "$PKG_DIR"
 
-# Pre-build zero-dependency bundled installer if bun is available
-DIST_SRC="$REPO_ROOT/install/dist"
-if command -v bun >/dev/null 2>&1; then
-    echo "Building zero-dependency bundled installer..."
-    bun build "$REPO_ROOT/install/src/index.ts" --outdir "$DIST_SRC" --target bun --external '@opentui/core-*'
-fi
+# Runtime deps resolve from package-root plugins, so publish the minimal
+# install runtime manifest/lock at the archive root, not the dev manifest.
+cp "$REPO_ROOT/install/package.json" "$PKG_DIR/package.json"
+cp "$REPO_ROOT/install/bun.lock" "$PKG_DIR/bun.lock"
 
-# 1. Fully mirror install/ directory
+# 1. Fully mirror install/ directory (excluding runtime metadata)
 mkdir -p "$PKG_DIR/install"
-(cd "$REPO_ROOT" && find install -type f ! -path '*/.*' ! -path '*/node_modules/*' ! -path '*/tests/*' | while read -r file; do
+(cd "$REPO_ROOT" && find install -type f ! -path '*/.*' ! -path '*/node_modules/*' ! -path '*/tests/*' ! -path 'install/package.json' ! -path 'install/bun.lock' | while read -r file; do
     mkdir -p "$PKG_DIR/$(dirname "$file")"
     cp "$file" "$PKG_DIR/$file"
 done)
@@ -128,11 +134,6 @@ mkdir -p "$PKG_DIR/bin"
     mkdir -p "$PKG_DIR/$(dirname "$file")"
     cp "$file" "$PKG_DIR/$file"
 done)
-
-# 3. Mirror package.json if present
-if [[ -f "$REPO_ROOT/package.json" ]]; then
-    cp "$REPO_ROOT/package.json" "$PKG_DIR/"
-fi
 
 # 3. Copy every file listed in the manifest
 manifest_files="$(read_manifest "$MANIFEST")"

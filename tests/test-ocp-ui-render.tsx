@@ -29,11 +29,11 @@ process.env.USERPROFILE = home
 // client build and applies the solid JSX transform. The real app loads it via
 // `--preload` (see ui/runtime.ts); the harness registers it before any import
 // that pulls in solid-js.
-const { ensureSolidTransformPlugin } = await import('../install/node_modules/@opentui/solid/scripts/solid-plugin.js')
+const { ensureSolidTransformPlugin } = await import('../node_modules/@opentui/solid/scripts/solid-plugin.js')
 ensureSolidTransformPlugin()
 
 const { OcpApp } = await import('../install/src/ui/app')
-const { testRender } = await import('../install/node_modules/@opentui/solid/index.bun.js')
+const { testRender } = await import('../node_modules/@opentui/solid/index.bun.js')
 
 // The wizards unwind Esc via `setTimeout(back, 0)` — let macrotasks drain.
 const settle = async (ui: { flush: () => Promise<unknown> }) => {
@@ -371,15 +371,24 @@ const usageMock = Bun.serve({
   port: 0,
   fetch: (req) => {
     const url = new URL(req.url)
-    const session = { id: 'ses_1', projectID: 'p', directory: '/', title: 'Test session', version: '1', time: { created: 1, updated: 2 } }
-    if (url.pathname === '/session') return Response.json([session])
-    if (url.pathname === '/session/ses_1') return Response.json(session)
-    if (url.pathname === '/session/ses_1/children') return Response.json([])
-    if (url.pathname === '/session/ses_1/message') {
-      return Response.json([1, 2, 3].map((i) => ({
-        info: { role: 'assistant', mode: 'build', agent: 'a-very-long-agent-name', providerID: 'anthropic', modelID: 'claude-pro', cost: 0.001 * i, tokens: { input: 1000 * i, output: 100 * i, reasoning: 0, cache: { read: 500 * i, write: 0 } } },
-        parts: [{ type: 'step-finish' }],
-      })))
+    const session = {
+      id: 'ses_1', projectID: 'p', location: { directory: '/' }, title: 'Test session',
+      cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      time: { created: 1, updated: 2 },
+    }
+    if (url.pathname === '/api/session') return Response.json({ data: [session], cursor: {} })
+    if (url.pathname === '/api/session/ses_1') return Response.json({ data: session })
+    if (url.pathname === '/api/session/ses_1/children') return Response.json({ data: [], cursor: {} })
+    if (url.pathname === '/api/session/ses_1/context') {
+      return Response.json({ data: [1, 2, 3].map((i) => ({
+        id: `msg_${i}`,
+        time: { created: i },
+        type: 'assistant',
+        agent: 'a-very-long-agent-name',
+        model: { providerID: 'anthropic', id: 'claude-pro' },
+        cost: 0.001 * i,
+        tokens: { input: 1000 * i, output: 100 * i, reasoning: 0, cache: { read: 500 * i, write: 0 } },
+      })) })
     }
     return Response.json({})
   },
@@ -441,7 +450,7 @@ assert.match(copyUi.captureCharFrame(), /No selection|未选中/, 'right-click w
 // tree mounts through slot mechanics, so `renderer.root.children` stays empty;
 // the shared Renderable registry (same @opentui/core copy the app imports)
 // lists every live renderable instead.
-const { Renderable } = await import('../install/node_modules/@opentui/core/index.bun.js') as typeof import('@opentui/core')
+const { Renderable } = await import('../node_modules/@opentui/core/index.bun.js') as typeof import('@opentui/core')
 const selectableText = [...(Renderable.renderablesByNumber as Map<number, unknown>).values()]
   .map((node) => node as { selectable?: boolean; x?: number; y?: number; width?: number })
   .filter((node) => node.selectable === true && typeof node.x === 'number' && typeof node.y === 'number' && typeof node.width === 'number')

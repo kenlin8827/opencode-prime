@@ -1076,12 +1076,12 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-i18n-coverage-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 # The render test mounts real OpenTUI Solid components — it needs the
-# @opentui/solid preload from install/node_modules so the app's imports
+# @opentui/solid preload from package-root node_modules so app and plugin imports
 # resolve to the SAME package copy (plain --jsx-import-source picks the
 # root copy and the renderer context mismatches).
-& bun --preload "$PSScriptRoot\..\install\node_modules\@opentui\solid\scripts\preload.js" "$PSScriptRoot\test-ocp-ui-render.tsx"
+& bun --preload "$PSScriptRoot\..\node_modules\@opentui\solid\scripts\preload.js" "$PSScriptRoot\test-ocp-ui-render.tsx"
 if ($LASTEXITCODE -ne 0) { $fail++ }
-& bun --preload "$PSScriptRoot\..\install\node_modules\@opentui\solid\scripts\preload.js" "$PSScriptRoot\test-ocp-busy-alert-render.tsx"
+& bun --preload "$PSScriptRoot\..\node_modules\@opentui\solid\scripts\preload.js" "$PSScriptRoot\test-ocp-busy-alert-render.tsx"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-provider-wizard-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }

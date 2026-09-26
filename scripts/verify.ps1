@@ -121,10 +121,15 @@ $manifest = Get-Content $manifestPath |
     ForEach-Object { $_.Trim() -replace '\\', '/' } |
     Where-Object { $_ -ne '' }
 
-# Dynamically mirror companion directories (install/, bin/, package.json)
+# Runtime manifest/lock are copied from install/ to archive root because
+# plugins/tui resolves their peers from package-root node_modules.
+$bundledEntry = Join-Path $RepoRoot 'install/dist/index.js'
+if (-not (Test-Path $bundledEntry)) { throw "release installer bundle missing: $bundledEntry (run scripts/pack.ps1 first)" }
+
 $installFiles = @(Get-ChildItem -Path (Join-Path $RepoRoot 'install') -Recurse -File |
     Where-Object { $_.FullName -notmatch '[\/\\](node_modules|\.git|tests|\.tmp)[\/\\]' } |
-    ForEach-Object { "install/" + $_.FullName.Substring((Join-Path $RepoRoot 'install').Length + 1).Replace('\', '/') })
+    ForEach-Object { "install/" + $_.FullName.Substring((Join-Path $RepoRoot 'install').Length + 1).Replace('\', '/') } |
+    Where-Object { $_ -notin @('install/package.json', 'install/bun.lock') })
 
 $binFiles = @(Get-ChildItem -Path (Join-Path $RepoRoot 'bin') -Recurse -File |
     ForEach-Object { "bin/" + $_.FullName.Substring((Join-Path $RepoRoot 'bin').Length + 1).Replace('\', '/') } |
@@ -133,9 +138,7 @@ $binFiles = @(Get-ChildItem -Path (Join-Path $RepoRoot 'bin') -Recurse -File |
     # wrongly exclude every file.
     Where-Object { $_ -notmatch '[\/\\]\.' })
 
-$pkgJson = if (Test-Path (Join-Path $RepoRoot 'package.json')) { @('package.json') } else { @() }
-
-$expected = ($manifest + $installFiles + $binFiles + $pkgJson) | Sort-Object -Unique
+$expected = ($manifest + $installFiles + $binFiles + @('package.json', 'bun.lock')) | Sort-Object -Unique
 
 $Work = Join-Path $DistDir '.verify-tmp'
 if (Test-Path $Work) { Remove-Item $Work -Recurse -Force }
@@ -190,6 +193,15 @@ function Verify-Archive([string]$archive, [string]$extractDir) {
         $h1 = (Get-FileHash $src -Algorithm SHA256).Hash
         $h2 = (Get-FileHash $dst -Algorithm SHA256).Hash
         if ($h1 -ne $h2) { Write-Host ("  CONTENT DIFF: {0}" -f $rel); $diffs++; $script:failures++ }
+    }
+    foreach ($meta in @(@{ Archive = 'package.json'; Source = 'install/package.json' }, @{ Archive = 'bun.lock'; Source = 'install/bun.lock' })) {
+        $src = Join-Path $RepoRoot $meta.Source
+        $dst = Join-Path $pkgRoot $meta.Archive
+        if (-not (Test-Path $dst)) { continue }
+        if ((Get-FileHash $src -Algorithm SHA256).Hash -ne (Get-FileHash $dst -Algorithm SHA256).Hash) {
+            Write-Host ("  CONTENT DIFF: {0} (from {1})" -f $meta.Archive, $meta.Source)
+            $diffs++; $script:failures++
+        }
     }
     if ($diffs -eq 0) { Write-Host ("content integrity: OK ({0} files)" -f $manifest.Count) }
     Write-Host ''

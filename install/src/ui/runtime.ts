@@ -41,20 +41,24 @@ export function readOcpUiRequestFile(file: string): OcpUiInstallRequest | undefi
 }
 
 function ensureOpenTuiRuntime(repoDir: string, bunExe: string): boolean {
-  const installDir = path.join(repoDir, 'install')
-  const preload = path.join(installDir, 'node_modules', '@opentui', 'solid', 'scripts', 'preload.js')
+  // UI plugins are loaded from the package root (plugins/tui), so install their
+  // runtime peers beside that root rather than under install/.
+  const preload = path.join(repoDir, 'node_modules', '@opentui', 'solid', 'scripts', 'preload.js')
   if (existsSync(preload)) return true
 
   let result: ReturnType<typeof spawnSync>
   try {
-    result = spawnSync(bunExe, ['install', '--production'], { cwd: installDir, stdio: 'ignore' })
+    // This is a first-run recovery path; keep Bun's output visible so network,
+    // registry, and lockfile failures explain why the UI runtime stays missing.
+    const isDevCheckout = existsSync(path.join(repoDir, '.git'))
+    result = spawnSync(bunExe, isDevCheckout ? ['install'] : ['install', '--production'], { cwd: repoDir, stdio: 'inherit' })
   } catch (error) {
     console.error(`[ocp] OpenTUI runtime install could not start with Bun ${bunExe}: ${error instanceof Error ? error.message : String(error)}`)
     return false
   }
   if (!result.error && result.status === 0 && existsSync(preload)) return true
 
-  console.error('[ocp] OpenTUI runtime is unavailable. Run `bun install --production` in the package\'s install directory, then retry the command.')
+  console.error('[ocp] OpenTUI runtime is unavailable. Run `bun install --production` in the package root, then retry the command.')
   return false
 }
 
@@ -129,7 +133,7 @@ export async function runOcpUi(initialRoute: OcpRoute = 'home', context: OcpUiRu
   }
   if (!ensureOpenTuiRuntime(context.repoDir, bunExe)) return { code: 1 }
   const installDir = path.join(context.repoDir, 'install')
-  const preload = path.join(installDir, 'node_modules', '@opentui', 'solid', 'scripts', 'preload.js')
+  const preload = path.join(context.repoDir, 'node_modules', '@opentui', 'solid', 'scripts', 'preload.js')
   const entry = path.join(installDir, 'src', 'ui', 'entry.tsx')
   // Sidecar for the child's install handoff (see app.tsx requestInstall):
   // unique per spawn, read+deleted after the child exits.

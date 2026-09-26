@@ -84,11 +84,14 @@ manifest_entries() {
     grep -v '^[[:space:]]*#' "$MANIFEST" | sed 's/[[:space:]]*$//' | grep -v '^$' | sort -u
 }
 
-# dynamically scan all companion files (install/, bin/, package.json)
+# Runtime manifest/lock are copied from install/ to archive root because
+# plugins/tui resolves their peers from package-root node_modules.
+[[ -f "$REPO_ROOT/install/dist/index.js" ]] || { echo "release installer bundle missing: $REPO_ROOT/install/dist/index.js (run scripts/pack.sh first)" >&2; exit 1; }
+
 extras() {
-    (cd "$REPO_ROOT" && find install -type f ! -path '*/.*' ! -path '*/node_modules/*' ! -path '*/tests/*' ! -path '*/.tmp/*')
+    (cd "$REPO_ROOT" && find install -type f ! -path '*/.*' ! -path '*/node_modules/*' ! -path '*/tests/*' ! -path '*/.tmp/*' ! -path 'install/package.json' ! -path 'install/bun.lock')
     (cd "$REPO_ROOT" && find bin -type f ! -path '*/.*')
-    [[ -f "$REPO_ROOT/package.json" ]] && echo "package.json"
+    printf '%s\n' package.json bun.lock
 }
 
 EXPECTED="$( { manifest_entries; extras; } | sort -u )"
@@ -157,6 +160,18 @@ verify_archive() {
             FAILURES=$((FAILURES + 1))
         fi
     done < <(manifest_entries)
+    for pair in 'package.json:install/package.json' 'bun.lock:install/bun.lock'; do
+        rel="${pair%%:*}"
+        src="${pair#*:}"
+        [[ -f "$pkg_root/$rel" ]] || continue
+        h1="$(sha256_of "$REPO_ROOT/$src")"
+        h2="$(sha256_of "$pkg_root/$rel")"
+        if [[ "$h1" != "$h2" ]]; then
+            echo "  CONTENT DIFF: $rel (from $src)"
+            diffs=$((diffs + 1))
+            FAILURES=$((FAILURES + 1))
+        fi
+    done
     [[ $diffs -eq 0 ]] && echo "content integrity: OK ($(manifest_entries | wc -l | tr -d ' ') files)"
     echo ''
 }

@@ -170,14 +170,15 @@ if (-not $isInfoCmd -and -not $BunExe) {
 # can hide fixes. Release installs still use the bundle for instant startup.
 $BundledFile = Join-Path $ScriptDir 'dist/index.js'
 $SrcFile = Join-Path $ScriptDir 'src/index.ts'
-$sourceRoots = @((Join-Path $RepoRoot 'install/src'), (Join-Path $RepoRoot 'plugins')) | Where-Object { Test-Path $_ }
+$isDevCheckout = Test-Path -LiteralPath (Join-Path $RepoRoot '.git')
+$sourceRoots = if ($isDevCheckout) { @((Join-Path $RepoRoot 'install/src'), (Join-Path $RepoRoot 'plugins')) | Where-Object { Test-Path $_ } } else { @() }
 $newestSource = $null
 if ($sourceRoots.Count -gt 0) {
     $newestSource = Get-ChildItem -Path $sourceRoots -Recurse -File -Include *.ts, *.tsx -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTimeUtc -Descending |
         Select-Object -First 1
 }
-$useSource = (Test-Path $SrcFile) -and ((-not (Test-Path $BundledFile)) -or ($newestSource -and $newestSource.LastWriteTimeUtc -gt (Get-Item $BundledFile).LastWriteTimeUtc))
+$useSource = $isDevCheckout -and (Test-Path $SrcFile) -and ((-not (Test-Path $BundledFile)) -or ($newestSource -and $newestSource.LastWriteTimeUtc -gt (Get-Item $BundledFile).LastWriteTimeUtc))
 
 if ($useSource -and $BunExe) {
     & $BunExe run "$SrcFile" @args
@@ -203,6 +204,13 @@ if (Test-Path $BundledFile) {
         & node "$BundledFile" @args
         exit $LASTEXITCODE
     }
+}
+
+# Release archives must use the bundled CLI. Source fallback is only valid in
+# a checkout, where the repository's development dependencies are available.
+if (-not $isDevCheckout) {
+    Write-Host "[ocp] Bundled installer missing: $BundledFile" -ForegroundColor Red
+    exit 1
 }
 
 # 2. Try Bun with source files

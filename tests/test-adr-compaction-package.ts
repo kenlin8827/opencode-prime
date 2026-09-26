@@ -83,9 +83,19 @@ try {
     assert.ok(zipList.includes(file), `ZIP archive is missing ${file}`)
     assert.ok(tarList.includes(file), `tar.gz archive is missing ${file}`)
   }
-  // pack.sh intentionally adds install/, bin/, scripts/, package.json and the
-  // generated manifest; everything else must be manifest-listed.
-  const extras = new Set(["package.json"])
+  // Runtime metadata is copied to the archive root for plugins/tui peer
+  // resolution; the repository's development manifest is never shipped.
+  const extras = new Set(["package.json", "bun.lock"])
+  assert.ok(zipList.includes("package.json"), "ZIP archive is missing the root runtime manifest")
+  assert.ok(tarList.includes("package.json"), "tar.gz archive is missing the root runtime manifest")
+  assert.ok(zipList.includes("bun.lock"), "ZIP archive is missing the root runtime lockfile")
+  assert.ok(tarList.includes("bun.lock"), "tar.gz archive is missing the root runtime lockfile")
+  assert.ok(!zipList.includes("install/package.json"), "ZIP archive must not duplicate runtime metadata under install/")
+  assert.ok(!tarList.includes("install/package.json"), "tar.gz archive must not duplicate runtime metadata under install/")
+  assert.ok(!zipList.includes("install/bun.lock"), "ZIP archive must not duplicate the lockfile under install/")
+  assert.ok(!tarList.includes("install/bun.lock"), "tar.gz archive must not duplicate the lockfile under install/")
+  assert.ok(zipList.includes("install/dist/index.js"), "ZIP archive is missing the bundled CLI")
+  assert.ok(tarList.includes("install/dist/index.js"), "tar.gz archive is missing the bundled CLI")
   for (const list of [zipList, tarList]) for (const file of list) assert.ok(!file || file.startsWith("install/") || file.startsWith("bin/") || file.startsWith("scripts/") || extras.has(file) || entries.includes(file), `Archive contains an unlisted file: ${file}`)
   console.log(`PASS archives carry ${packaged.length} required feature files and no unlisted payloads`)
 } finally {

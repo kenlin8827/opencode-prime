@@ -4,7 +4,7 @@
  * are no-ops while busy (the wizard always replaces the frame with the
  * operation's result).
  *
- * Run: bun --preload ./install/node_modules/@opentui/solid/scripts/preload.js tests/test-ocp-busy-alert-render.tsx
+ * Run: bun --preload ./node_modules/@opentui/solid/scripts/preload.js tests/test-ocp-busy-alert-render.tsx
  */
 import { strict as assert } from 'node:assert'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
@@ -32,12 +32,12 @@ process.env.USERPROFILE = home
 process.on('uncaughtException', (error) => { console.error(String((error as { message?: string })?.message ?? error)); process.exit(1) })
 process.on('unhandledRejection', (error) => { console.error(String((error as { message?: string })?.message ?? error)); process.exit(1) })
 
-const { ensureSolidTransformPlugin } = await import('../install/node_modules/@opentui/solid/scripts/solid-plugin.js')
+const { ensureSolidTransformPlugin } = await import('../node_modules/@opentui/solid/scripts/solid-plugin.js')
 ensureSolidTransformPlugin()
 
 const { createTuiHost } = await import('../install/src/ui/tui-host')
 const { OcpApp } = await import('../install/src/ui/app')
-const { testRender } = await import('../install/node_modules/@opentui/solid/index.bun.js')
+const { testRender } = await import('../node_modules/@opentui/solid/index.bun.js')
 
 const settle = async (ui: { flush: () => Promise<unknown> }) => {
   await new Promise((resolve) => setTimeout(resolve, 10))
