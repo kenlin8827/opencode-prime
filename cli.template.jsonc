@@ -17,7 +17,8 @@
     "sidebar": "auto",
     "scrollbar": true,
     "thinking": "hide",
-    "image_preview": true
+    "image_preview": true,
+    "tps": true
   },
   "tabs": {
     "layout": "vertical"
