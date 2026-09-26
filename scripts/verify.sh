@@ -84,11 +84,12 @@ manifest_entries() {
     grep -v '^[[:space:]]*#' "$MANIFEST" | sed 's/[[:space:]]*$//' | grep -v '^$' | sort -u
 }
 
-# dynamically scan all companion files (install/, bin/, package.json)
+# dynamically scan all companion files (install/, bin/)
+[[ -f "$REPO_ROOT/install/dist/index.js" ]] || { echo "release installer bundle missing: $REPO_ROOT/install/dist/index.js (run scripts/pack.sh first)" >&2; exit 1; }
+
 extras() {
     (cd "$REPO_ROOT" && find install -type f ! -path '*/.*' ! -path '*/node_modules/*' ! -path '*/tests/*' ! -path '*/.tmp/*')
     (cd "$REPO_ROOT" && find bin -type f ! -path '*/.*')
-    [[ -f "$REPO_ROOT/package.json" ]] && echo "package.json"
 }
 
 EXPECTED="$( { manifest_entries; extras; } | sort -u )"

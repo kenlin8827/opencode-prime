@@ -47,7 +47,9 @@ function ensureOpenTuiRuntime(repoDir: string, bunExe: string): boolean {
 
   let result: ReturnType<typeof spawnSync>
   try {
-    result = spawnSync(bunExe, ['install', '--production'], { cwd: installDir, stdio: 'ignore' })
+    // This is a first-run recovery path; keep Bun's output visible so network,
+    // registry, and lockfile failures explain why the UI runtime stays missing.
+    result = spawnSync(bunExe, ['install', '--production'], { cwd: installDir, stdio: 'inherit' })
   } catch (error) {
     console.error(`[ocp] OpenTUI runtime install could not start with Bun ${bunExe}: ${error instanceof Error ? error.message : String(error)}`)
     return false

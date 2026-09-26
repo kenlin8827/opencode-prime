@@ -109,17 +109,19 @@ if (-not $OutDir) { $OutDir = Join-Path $RepoRoot 'dist' }
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
 
 # Build staging directory
+# Release archives must carry the bundled CLI; source fallback is dev-checkout
+# only, so packaging without Bun would produce an unusable release archive.
+$distSrc = Join-Path $RepoRoot 'install/dist'
+if (-not (Get-Command bun -ErrorAction SilentlyContinue)) { throw 'Bun is required to build the release installer bundle.' }
+Write-Host "Building bundled installer..."
+& bun build (Join-Path $RepoRoot 'install/src/index.ts') --outdir $distSrc --target bun --external '@opentui/core-*'
+if ($LASTEXITCODE -ne 0) { throw "installer bundle failed (exit $LASTEXITCODE)" }
+$bundledEntry = Join-Path $distSrc 'index.js'
+if (-not (Test-Path $bundledEntry)) { throw "installer bundle missing: $bundledEntry" }
+
 $stage = New-Item -ItemType Directory -Path ([IO.Path]::Combine([IO.Path]::GetTempPath(), "oc-pack-$(Get-Random)")) -Force
 $pkgDir = Join-Path $stage.FullName "opencode-prime-$ver"
 New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
-
-# Pre-build zero-dependency bundled installer if bun is available
-$distSrc = Join-Path $RepoRoot 'install/dist'
-if (Get-Command bun -ErrorAction SilentlyContinue) {
-    Write-Host "Building zero-dependency bundled installer..."
-    & bun build (Join-Path $RepoRoot 'install/src/index.ts') --outdir $distSrc --target bun --external '@opentui/core-*'
-    if ($LASTEXITCODE -ne 0) { throw "installer bundle failed (exit $LASTEXITCODE)" }
-}
 
 # 1. Fully mirror install/ directory (excluding node_modules or temp files)
 $installDest = Join-Path $pkgDir 'install'
@@ -143,11 +145,6 @@ Get-ChildItem -Path (Join-Path $RepoRoot 'bin') -Recurse -File | ForEach-Object 
     $targetDir = Split-Path $target -Parent
     if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
     Copy-Item $_.FullName $target -Force
-}
-
-# 3. Mirror package.json if present
-if (Test-Path (Join-Path $RepoRoot 'package.json')) {
-    Copy-Item (Join-Path $RepoRoot 'package.json') $pkgDir -Force
 }
 
 # 2. Copy all bin dispatchers

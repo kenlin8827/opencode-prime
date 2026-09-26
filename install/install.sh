@@ -137,8 +137,12 @@ fi
 # can hide fixes. Release installs still use the bundle for instant startup.
 BUNDLED_FILE="$SCRIPT_DIR/dist/index.js"
 SRC_FILE="$SCRIPT_DIR/src/index.ts"
+IS_DEV_CHECKOUT=false
+if [ -e "$REPO_ROOT/.git" ]; then
+    IS_DEV_CHECKOUT=true
+fi
 USE_SOURCE=false
-if [ -f "$SRC_FILE" ]; then
+if [ "$IS_DEV_CHECKOUT" = true ] && [ -f "$SRC_FILE" ]; then
     if [ ! -f "$BUNDLED_FILE" ]; then
         USE_SOURCE=true
     elif find "$REPO_ROOT/install/src" "$REPO_ROOT/plugins" -type f \( -name '*.ts' -o -name '*.tsx' \) -newer "$BUNDLED_FILE" 2>/dev/null | grep -q .; then

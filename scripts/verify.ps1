@@ -121,7 +121,10 @@ $manifest = Get-Content $manifestPath |
     ForEach-Object { $_.Trim() -replace '\\', '/' } |
     Where-Object { $_ -ne '' }
 
-# Dynamically mirror companion directories (install/, bin/, package.json)
+# Dynamically mirror companion directories (install/, bin/)
+$bundledEntry = Join-Path $RepoRoot 'install/dist/index.js'
+if (-not (Test-Path $bundledEntry)) { throw "release installer bundle missing: $bundledEntry (run scripts/pack.ps1 first)" }
+
 $installFiles = @(Get-ChildItem -Path (Join-Path $RepoRoot 'install') -Recurse -File |
     Where-Object { $_.FullName -notmatch '[\/\\](node_modules|\.git|tests|\.tmp)[\/\\]' } |
     ForEach-Object { "install/" + $_.FullName.Substring((Join-Path $RepoRoot 'install').Length + 1).Replace('\', '/') })
@@ -133,9 +136,7 @@ $binFiles = @(Get-ChildItem -Path (Join-Path $RepoRoot 'bin') -Recurse -File |
     # wrongly exclude every file.
     Where-Object { $_ -notmatch '[\/\\]\.' })
 
-$pkgJson = if (Test-Path (Join-Path $RepoRoot 'package.json')) { @('package.json') } else { @() }
-
-$expected = ($manifest + $installFiles + $binFiles + $pkgJson) | Sort-Object -Unique
+$expected = ($manifest + $installFiles + $binFiles) | Sort-Object -Unique
 
 $Work = Join-Path $DistDir '.verify-tmp'
 if (Test-Path $Work) { Remove-Item $Work -Recurse -Force }

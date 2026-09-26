@@ -83,9 +83,15 @@ try {
     assert.ok(zipList.includes(file), `ZIP archive is missing ${file}`)
     assert.ok(tarList.includes(file), `tar.gz archive is missing ${file}`)
   }
-  // pack.sh intentionally adds install/, bin/, scripts/, package.json and the
-  // generated manifest; everything else must be manifest-listed.
-  const extras = new Set(["package.json"])
+  // Release bundles carry install/ and bin/, but not the repository's root
+  // development package.json; runtime dependencies live under install/.
+  const extras = new Set<string>()
+  assert.ok(zipList.includes("install/package.json"), "ZIP archive is missing the runtime package manifest")
+  assert.ok(tarList.includes("install/package.json"), "tar.gz archive is missing the runtime package manifest")
+  assert.ok(zipList.includes("install/dist/index.js"), "ZIP archive is missing the bundled CLI")
+  assert.ok(tarList.includes("install/dist/index.js"), "tar.gz archive is missing the bundled CLI")
+  assert.ok(!zipList.includes("package.json"), "ZIP archive must not include the repository package manifest")
+  assert.ok(!tarList.includes("package.json"), "tar.gz archive must not include the repository package manifest")
   for (const list of [zipList, tarList]) for (const file of list) assert.ok(!file || file.startsWith("install/") || file.startsWith("bin/") || file.startsWith("scripts/") || extras.has(file) || entries.includes(file), `Archive contains an unlisted file: ${file}`)
   console.log(`PASS archives carry ${packaged.length} required feature files and no unlisted payloads`)
 } finally {
