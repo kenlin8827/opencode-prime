@@ -53,7 +53,19 @@ dist/
 .gitnexus/
 .codegraph/
 .opencode/
-.ocp/
+
+# OCP runtime state: ignored wholesale, EXCEPT the team-shared memory file.
+# `.ocp/` is mostly per-developer runtime state (ocp.json toggles, logs,
+# handoffs, tgrep index), but `.ocp/memory/public.md` is a committed team
+# artifact by contract — a lesson filed as public scope is worthless if it
+# never reaches the repo. Git cannot re-include a file whose parent
+# directory is excluded, so the directory is un-ignored first, then
+# narrowed again to the single shared file. `/memory status` probes
+# `git check-ignore` and warns if this ever regresses.
+.ocp/*
+!.ocp/memory/
+.ocp/memory/*
+!.ocp/memory/public.md
 
 # VitePress documentation build output & cache
 docs/.vitepress/dist/

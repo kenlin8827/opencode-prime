@@ -553,6 +553,8 @@ export default {
   "guard.memory.showStale": " — УСТАРЕЛО (>30 дней), стоит проверить",
   "guard.memory.showPaths": "Файлы:\n  публичный:  {public}\n  частный: {private}",
   "guard.memory.showEmpty": "[project-memory] Память пока не собрана — внедрять нечего.\nЗапишите через /memory note \"<урок>\" (публично) или /memory note --private \"<заметка>\" (частно).\nФайлы:\n  публичный:  {public}\n  частный: {private}",
+  "guard.memory.publicUnshared": "[project-memory] ВНИМАНИЕ: {public} игнорируется git и не отслеживается, поэтому публичные записи не доходят до команды. В корневом .gitignore: `.ocp/*`, затем `!.ocp/memory/`, затем `.ocp/memory/*`, затем `!.ocp/memory/public.md` (каталог нужно сначала исключить из игнора), или запишите в частный scope.",
+  "guard.memory.publicUntracked": "[project-memory] ПРИМЕЧАНИЕ: {public} не игнорируется, но git ещё не отслеживает его — публичные записи остаются локальными до коммита. Добавьте его командой `git add .ocp/memory/public.md` из корня репозитория, или запишите в частный scope.",
   // ── e2e-adopt (/e2e-adopt) ──
   "guard.e2eadopt.help": "[e2e-adopt] Переносит политику E2E-красной линии в документы проекта (документоуправление в стиле baijiu-shop — без переключателя времени выполнения).\nИспользование:\n/e2e-adopt        → обнаруживает настройку E2E, пишет docs/e2e-redline.md и вставляет раздел красной линии в AGENTS.md\n/e2e-adopt dry    → только показывает обнаружение и заполнители, ничего не пишет\n/e2e-adopt status → сообщает, принята ли политика\nУдаление: удалите docs/e2e-redline.md и раздел <!-- e2e-redline --> в AGENTS.md.",
   "guard.e2eadopt.detect": "Обнаружение: e2e-каталог={dir} · конфиг раннера={runner} · команда=заполнить (по замыслу не привязано к стеку)",

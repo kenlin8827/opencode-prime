@@ -1026,6 +1026,8 @@ if ($LASTEXITCODE -ne 0) { $fail++ }
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-plugin-scope-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
+& bun "$PSScriptRoot\test-shell-guard-unit.ts"
+if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-project-profiler-unit.ts"
 if ($LASTEXITCODE -ne 0) { $fail++ }
 & bun "$PSScriptRoot\test-project-memory-unit.ts"

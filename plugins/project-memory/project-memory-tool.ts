@@ -14,13 +14,23 @@
  *   private → private.md  — gitignored (auto-gitignored on first capture
  *                            via `.ocp/.gitignore`)
  *
- * SCOPE HEURISTIC (the only thing the agent really has to decide):
- *   "Will another developer at this same machine, on this project,
- *    tomorrow find this rule useful?"
- *     YES → public
- *     NO  → private (your environment, your preferences, your hacks —
- *                     only you see it)
- *   When in doubt → public. PR review will route misclassified entries back.
+ * ASYMMETRIC DEFAULT (ADR-2.0.2#01): the TOOL defaults to `private`, the
+ * COMMAND to `public`. The agent files notes speculatively and nobody
+ * reviews its output; the user typing `/memory note "..."` is a deliberate,
+ * visible act, so their explicit command keeps the team-facing default.
+ * Cost of a wrong guess is what sets the tool's default:
+ *   misfiled private → one note only you never see (≈ free)
+ *   misfiled public  → repo pollution + a permanent per-session injection
+ *                       charge for text nobody curated
+ * so the cheap-to-be-wrong side wins. The old "when in doubt → public,
+ * PR review will route it back" rationale was unsound: the agent's file
+ * was not necessarily in the diff at all (root `.gitignore` can exclude
+ * the whole `.ocp/` tree), so nothing ever reviewed it.
+ *
+ * The team/private question itself is unchanged: "Will another developer
+ * on this project want this rule next week?" — YES → public, NO →
+ * private. Only the tie-break moved. Public entries are committed repo
+ * content, so they follow the repo's English-only content rule.
  *
  * Noise control lives in `description` (USE WHEN / DO NOT USE FOR / scope
  * rules / confidence semantics). The tool does NOT enforce a confidence
@@ -73,7 +83,7 @@ export function memoryNoteTool(session: V2Session | undefined) {
           type: "string",
           enum: ["public", "private"],
           description:
-            "'public' (default, committed to git) or 'private' (gitignored, only the current user sees it).",
+            "'private' (DEFAULT — gitignored, only the current user sees it) or 'public' (committed to git, team-visible, PR-reviewed).",
         },
         confidence: {
           type: "string",
@@ -85,16 +95,16 @@ export function memoryNoteTool(session: V2Session | undefined) {
       required: ["lesson"],
     },
     description:
-      "Note a durable 'lesson learned' to this project's memory. Two scopes — pick the one that fits:\n\n" +
-      "SCOPE HEURISTIC: 'Will another developer at this same machine, on this project, tomorrow find this useful?'\n" +
-      "  YES → scope='public' (default). <projectDir>/.ocp/memory/public.md, committed to git, reviewed by your team via the normal PR flow. " +
-      "Examples: 'this repo uses pnpm not npm', 'do not import from packages/legacy/', 'test runner needs --preload for opentui', 'CI fails on Windows without <flag>'.\n" +
-      "  NO  → scope='private'. <projectDir>/.ocp/memory/private.md, gitignored (auto-gitignored on first capture via .ocp/.gitignore) — only you see it. " +
-      "Examples: 'user prefers no semicolons', 'VPN slow, set API timeout to 60s', 'my private TODO list for this codebase'.\n" +
-      "  When in doubt → leave scope unset (defaults to public); PR review will route misclassified entries back.\n\n" +
-      "USE WHEN you discover a clear, reusable rule worth the next session's attention.\n\n" +
+      "Note a durable 'lesson learned' to this project's memory. Two scopes; scope defaults to 'private' — pass 'public' only for a rule the whole team needs.\n\n" +
+      "SCOPE: 'Would another developer on this project want this rule next week?'\n" +
+      "  public  → <projectDir>/.ocp/memory/public.md, committed to git, reviewed by the team via the normal PR flow. Team conventions and shared gotchas: 'this repo uses pnpm not npm', 'CI fails on Windows without <flag>'.\n" +
+      "  private → <projectDir>/.ocp/memory/private.md, gitignored (auto-gitignored on first capture), only you see it. Environment quirks, personal preferences, local hacks. THIS IS THE DEFAULT.\n" +
+      "  When in doubt → leave scope unset (private). A misfiled private note costs one unseen note; a misfiled public one pollutes the repo and is injected into every future session.\n\n" +
+      "USE WHEN you discover a clear, reusable rule worth the next session's attention.\n" +
+      "Public entries are committed repo content — write them in English, one rule per entry.\n\n" +
       "DO NOT USE FOR: session-specific facts, current task state, anything already in AGENTS.md, " +
-      "one-off bug fixes, or speculative guesses that haven't been validated against real code.\n\n" +
+      "one-off bug fixes, conclusions from your own research about external tools or services (those belong in a design doc or ADR), " +
+      "or speculative guesses that haven't been validated against real code.\n\n" +
       "Confidence is metadata only — the tool does not gate on it. " +
       "Rating (default medium): high = rule you will act on next session; low = a hunch, prefer to surface to the user instead of silently filing.",
     execute: async (args: unknown, context: { agent?: string; sessionID?: string }) => {
@@ -105,7 +115,10 @@ export function memoryNoteTool(session: V2Session | undefined) {
       const a = (args ?? {}) as { lesson?: unknown; scope?: unknown; confidence?: unknown }
       if (typeof a.lesson !== "string")
         throw new Error("memory_note: `lesson` must be a string")
-      const scope: LessonScope = a.scope === "private" ? "private" : "public"
+      // Default = private (ADR-2.0.2#01). The previous `=== "private" ? … : "public"`
+      // made public the fallback for every unset / misspelled / non-conforming
+      // value, so the team-visible file was the path of least resistance.
+      const scope: LessonScope = a.scope === "public" ? "public" : "private"
       const conf: Confidence =
         a.confidence === "low" || a.confidence === "high" ? a.confidence : "medium"
 

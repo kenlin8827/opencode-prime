@@ -188,6 +188,10 @@ File names self-describe visibility:
 - `public.md` — committed to git, reviewed by your team through the normal PR flow (same authority tier as AGENTS.md).
 - `private.md` — gitignored, only the current user sees it. Auto-gitignored on first capture via `.ocp/.gitignore`.
 
+**Default scope is asymmetric** (ADR-2.0.2#01). The `/memory note` command defaults to `public` — a human typing it is a deliberate, visible act. The agent-facing `memory_note` tool defaults to `private`; the agent must pass `scope: "public"` to reach the team file. The tie-break is cost: a misfiled private note costs one note only you never see, while a misfiled public one pollutes the repo and is injected into every future session. The old "when in doubt → public, PR review will route it back" rationale was unsound — the agent's file was not necessarily in any diff, so nothing reviewed it. Public entries are committed repo content: write them in English, one rule per entry.
+
+Because a broad root-ignore can silently un-share `public.md` (a repo whose `.gitignore` excludes the whole `.ocp/` tree is the usual cause), `/memory status` probes `git check-ignore` and warns when public entries would never leave your machine. The probe is tri-state — a fatal exit (no git, not a repo) stays silent rather than crying wolf.
+
 No draft/curated split — every entry lands directly in the file that the gate injects. The agent also has a `memory_note` tool it can call proactively when it discovers a reusable rule; a session-level `/memory-summarize` skill summarizes durable lessons for users who'd rather have the model pick. While `projectMemory` is on and either file is non-empty, content is appended to the system prompt under `[PROJECT MEMORY]` (with `=== Public ===` and `=== Private ===` sections) — advisory: AGENTS.md wins on conflict. Over the 16 000-char cap per section, that section falls back to a pointer block instead of injecting the content. Default on (an empty file is a no-op; the sidebar shows `ON · empty` to nudge a first capture).
 Design: `docs/plan/project-memory.md`.
 
@@ -210,10 +214,10 @@ $ /memory on
 
 # 4. Status — gate + both scope counts
 $ /memory status
-[project-memory] gate: on — team: 3 entries, personal: 1 entries. Injection ACTIVE.
+[project-memory] gate: on — public: 3 entries, private: 1 entries. Injection ACTIVE.
 ```
 
-LLM-initiated (`memory_note` tool) — called by the agent when it spots a reusable rule:
+LLM-initiated (`memory_note` tool) — called by the agent when it spots a reusable rule. `scope` defaults to `private`, so reaching the team file is an explicit choice:
 
 ```text
 # In the middle of a code session, the LLM calls:

@@ -6,6 +6,8 @@
  *                                      only the current user sees it)
  *   /memory on | off                  → flip the `projectMemory` switch
  *   /memory status                    → gate state + public/private entry counts
+ *                                      + a warning when public.md is git-ignored
+ *                                        (entries look filed but never ship)
  *   /memory show                      → preview what's currently injected
  *   /memory                           → help
  *
@@ -13,6 +15,11 @@
  * file names self-describe visibility:
  *   public  → public.md   (committed)
  *   private → private.md  (gitignored)
+ *
+ * The COMMAND keeps public as its default scope; only the agent-facing
+ * `memory_note` tool defaults to private (ADR-2.0.2#01 — the user typing
+ * `/memory note` is a deliberate, visible act, the agent filing notes is
+ * neither).
  *
  * Why no global personal scope: this plugin is project-scoped, so personal
  * notes ride along with the project (gitignored, not in user home). The
@@ -35,6 +42,7 @@ import {
   getState,
   privatePath,
   publicPath,
+  publicScopeShared,
   readPrivate,
   readPublic,
   setState,
@@ -121,6 +129,12 @@ export function statusText(): string {
   if (gate === "on" && pub === null && priv === null) {
     refreshLocale()
     text += `\n${tr("guard.memory.noCurated", { public: publicPath(), private: privatePath() })}`
+  }
+  // public scope that no git rule would ever share is the failure mode users
+  // cannot see: entries look filed, but the team never receives them.
+  if (publicScopeShared() === false) {
+    refreshLocale()
+    text += `\n${tr("guard.memory.publicUnshared", { public: publicPath() })}`
   }
   return text
 }

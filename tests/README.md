@@ -34,6 +34,7 @@ $env:LLM_ROUTER_API_KEY = "<your-api-key>"
 | `test-md-to-docx-unit.ts` | Markdown to Word (.docx) export unit tests (no API, 24 assertions) — Pandoc engine, reference docx, styles |
 | `test-md-to-pdf-unit.ts` | Markdown to PDF export unit tests (no API, 18 assertions) — Puppeteer/Typst engine, offline Mermaid |
 | `test-anchor-unit.ts` | DeepSeek Anchor plugin unit tests (no API, 46 assertions) — verifies anchor injection, idempotency, model detection, tool block/restore |
+| `test-shell-guard-unit.ts` | Shell Guard permission-hook unit tests (no API) — checks agent scope, high-risk command prompts, safe pipelines, and native deny preservation |
 | `test-anchor-benchmark.ps1` | DeepSeek Anchor benchmark: on vs off comparison (requires API) |
 | `test-project-manager-unit.ts` | Project Manager plugin unit tests (no API, 126 assertions) |
 | `test-project-wizard-unit.ts` | Project Wizard TUI plugin unit tests (no API, 48 assertions) |

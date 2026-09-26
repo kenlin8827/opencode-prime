@@ -553,6 +553,8 @@ export default {
   "guard.memory.showStale": " —— 已过期（>30 天），建议 review",
   "guard.memory.showPaths": "文件路径：\n  公开：  {public}\n  私人：{private}",
   "guard.memory.showEmpty": "[project-memory] 暂无任何记录——当前无注入内容。\n用 /memory note \"<经验>\"（公开）或 /memory note --private \"<笔记>\"（私人）写入第一条。\n文件路径：\n  公开：  {public}\n  私人：{private}",
+  "guard.memory.publicUnshared": "[project-memory] 警告：{public} 被 git 规则忽略且未被追踪 —— 公开条目永远到不了团队。在根 .gitignore 中依次写 `.ocp/*`、`!.ocp/memory/`、`.ocp/memory/*`、`!.ocp/memory/public.md`（必须先放行父目录），或改用私人条目。",
+  "guard.memory.publicUntracked": "[project-memory] 注意：{public} 未被忽略，但 git 还没追踪它 —— 在提交之前公开条目仍然只在本机。在仓库根执行 `git add .ocp/memory/public.md`，或改用私人条目。",
   // ── e2e-adopt (/e2e-adopt) ──
   "guard.e2eadopt.help": "[e2e-adopt] 将 E2E 红线政策落进项目文档（baijiu-shop 式文档治理——无运行时开关）。\n用法：\n/e2e-adopt        → 检测 E2E 环境，写入 docs/e2e-redline.md 并在 AGENTS.md 插入红线小节\n/e2e-adopt dry    → 仅预览检测结果与待填占位符，不写任何文件\n/e2e-adopt status → 报告政策是否已采纳\n卸载：删除 docs/e2e-redline.md 和 AGENTS.md 中的 <!-- e2e-redline --> 小节。",
   "guard.e2eadopt.detect": "检测结果：e2e 目录={dir} · runner 配置={runner} · 命令=待填（按设计不猜测技术栈）",

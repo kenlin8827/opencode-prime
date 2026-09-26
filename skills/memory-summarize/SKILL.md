@@ -29,8 +29,10 @@ Combinations: `<focus>` and `--public`/`--private` can be used together — e.g.
 2. **Read existing memory before proposing** — run `read` (or your file-reading tool) on `.ocp/memory/public.md` and `.ocp/memory/private.md` to avoid duplicates. If a candidate lesson already exists, skip silently or refresh its wording only if genuinely improved.
 
 3. **For each lesson you propose, pick scope** using the same SCOPE HEURISTIC documented in the `memory_note` tool description:
-   - **public** — team-visible: project conventions, cross-developer rules, shared gotchas. Goes to `.ocp/memory/public.md` (committed, PR review).
-   - **private** — current-user-only: personal preferences, environment quirks, local hacks. Goes to `.ocp/memory/private.md` (gitignored).
+   - **public** — team-visible: project conventions, cross-developer rules, shared gotchas. Goes to `.ocp/memory/public.md` (committed, PR review). **Write these in English** — they are committed repo content, and one rule per entry.
+   - **private** — current-user-only: personal preferences, environment quirks, local hacks. Goes to `.ocp/memory/private.md` (gitignored). This is the tool's default; pass `scope` explicitly for every call so the choice is deliberate.
+
+   When a candidate sits between the two, file it **private** and mention it in your report — a misfiled private note costs one unseen note, a misfiled public one pollutes the repo and is injected into every future session.
 
 4. **Call `memory_note` tool once per lesson.** NEVER write the file directly, NEVER batch multiple lessons into one call. The tool handles:
    - Dated-bullet prefix + scope-specific header
