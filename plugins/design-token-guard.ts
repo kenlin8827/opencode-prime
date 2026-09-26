@@ -75,7 +75,7 @@ function checkWrite(filePath: string, content: string): void {
 }
 
 const plugin: Plugin.Plugin = {
-  id: "design-token-guard",
+  id: "opencode-prime.design-token-guard",
   async setup(ctx) {
     await ctx.tool.hook("execute.before", async (event) => {
       if (event.tool !== "write") return

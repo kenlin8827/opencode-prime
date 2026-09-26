@@ -57,7 +57,7 @@ const TARGET_MODEL_PATTERN = /deepseek[-_ ]?v4[-_ ]?pro/i
 // make the fragment harder to reason about for cache byte-identity.
 const ANCHOR_PROMPT = `\n---\n${MARKER}\n\n**Session anchor** — before your very first turn, you MUST:\n1. Restate the goal (what, not how).\n2. List 2-3 key constraints/assumptions.\n3. State your intended approach in one sentence.\n\nHARD RULE: You MUST NOT invoke any tool until you have completed steps 1-3.\nViolating this order will result in failure.\n`
 
-import { Plugin } from "@opencode/plugin"
+import type { Plugin } from "@opencode/plugin"
 import { commandArgumentText, scopedForAgent, type V2Session } from "../shared/agent-scope"
 import { systemTexts } from "../shared/plugin-scope"
 import { isEnabled, COMMAND_NAME } from "./deepseek-anchor-config"
@@ -150,8 +150,8 @@ export function handleAnchorEvent(event: unknown): void {
 // Do NOT add a bypass for subagents; if the gate ever needs tuning, edit
 // plugin-scope.json, not this file.
 
-export const DeepSeekAnchorPlugin = Plugin.define({
-  id: "deepseek-anchor",
+export const DeepSeekAnchorPlugin: Plugin.Plugin = {
+  id: "opencode-prime.deepseek-anchor",
   async setup(ctx) {
     // Note: no setProjectDir() — deepseek-anchor config is global (user
     // preference, follows the user), not project-scoped.
@@ -253,6 +253,6 @@ export const DeepSeekAnchorPlugin = Plugin.define({
       await Promise.allSettled([commands.dispose(), context.dispose(), toolGuard.dispose()])
     }
   },
-})
+}
 
 export default DeepSeekAnchorPlugin

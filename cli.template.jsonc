@@ -1,21 +1,26 @@
 {
   // V2 terminal-client config: ONE global file (~/.config/opencode/cli.json),
-  // owned by the TUI (the background service never loads it) — replacing the
-  // layered v1 tui.json(c). The installer merges this template with the
-  // user's existing cli.json (and migrates a legacy v1 tui.jsonc plugin list
-  // on upgrade); user scalars and plugins are preserved. Every OCP TUI plugin
-  // must be registered here.
-  // Entries MUST be DIRECTORIES, never bare files: the v2 TUI reconcile
-  // silently skips file entries (packages/tui/src/plugin/context.tsx —
-  // stat().isFile() → continue, no toast/log). Each directory's entrypoint
-  // is its `tui.ts` (Host.resolve probes <dir>/tui). The standalone OpenTUI
-  // CLI (`ocp provider|profile`) loads the SAME wizard plugin modules through
-  // a TuiPluginApi-compatible host — one wizard, two hosts. v2 renames:
-  // plugin→plugins (entries: string or {package, options}),
-  // display_thinking→session.thinking ("show"/"hide").
+  // owned by the TUI (the server never loads it). The installer merges this
+  // template with the user's existing cli.json (leaf-granularity defaults
+  // fill) and migrates a legacy v1 tui.jsonc on upgrade.
+  // Plugin entries MUST be DIRECTORIES, never bare files: the v2 TUI
+  // reconcile silently skips file entries (stat().isFile() → continue, no
+  // toast/log). Each directory's entrypoint is its `tui.ts`.
+  // `removed_plugins`: installer-only retirement list (mirrors
+  // opencode.template.jsonc's removed_agents) — package keys dropped from
+  // `plugins` below get stripped from the user's cli.json on next install;
+  // without it a deleted plugin's entry survives forever while the
+  // stale-file prune already removed its files. Stripped from the output.
+  "removed_plugins": [],
   "$schema": "https://opencode.ai/v2/cli.json",
   "session": {
-    "thinking": "show"
+    "sidebar": "auto",
+    "scrollbar": true,
+    "thinking": "hide",
+    "image_preview": true
+  },
+  "tabs": {
+    "layout": "vertical"
   },
   "plugins": [
     "./plugins/tui/provider-wizard",

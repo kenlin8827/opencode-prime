@@ -32,7 +32,7 @@
  * Fail-open: any error leaves `e.tools` untouched.
  */
 
-import { Plugin } from "@opencode/plugin"
+import type { Plugin } from "@opencode/plugin"
 
 /** Agents that pay full stock tool schemas every step and get compression. */
 const COMPRESS_AGENTS = new Set(["lite", "build"])
@@ -98,14 +98,14 @@ export async function toolCompressContextHook(e: {
   }
 }
 
-export const ToolCompressPlugin = Plugin.define({
-  id: "tool-compress",
+export const ToolCompressPlugin: Plugin.Plugin = {
+  id: "opencode-prime.tool-compress",
   async setup(ctx) {
     const context = await ctx.session.hook("context", (e) => toolCompressContextHook(e))
     return async () => {
       await context.dispose()
     }
   },
-})
+}
 
 export default ToolCompressPlugin

@@ -38,7 +38,7 @@ import { createHash } from "node:crypto"
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
-import { Plugin } from "@opencode/plugin"
+import type { Plugin } from "@opencode/plugin"
 import { scopedForAgent, type V2Session } from "../shared/agent-scope"
 import { appendBlock, escapeRegExp, stripBlockByLine } from "../shared/system-block"
 import { loadTgrepOptions } from "../tgrep/tgrep-config"
@@ -165,8 +165,8 @@ export function profileKey(profile: ProjectProfile): string {
   return createHash("sha256").update(JSON.stringify(profile), "utf8").digest("hex")
 }
 
-export const ProjectProfilerPlugin = Plugin.define({
-  id: "project-profiler",
+export const ProjectProfilerPlugin: Plugin.Plugin = {
+  id: "opencode-prime.project-profiler",
   async setup(ctx) {
     const session = ctx.session as unknown as V2Session
     ensureTgrepWatchdog(async () => {
@@ -268,7 +268,7 @@ export const ProjectProfilerPlugin = Plugin.define({
       await context.dispose()
     }
   },
-})
+}
 
 export default ProjectProfilerPlugin
 

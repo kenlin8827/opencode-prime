@@ -95,17 +95,17 @@ export async function liteModeContextHook(e: {
 
 // V2 SDK import — types resolve once @opencode/plugin is installed
 // (package.json is owned by the parallel migration stream).
-import { Plugin } from "@opencode/plugin"
+import type { Plugin } from "@opencode/plugin"
 
 /** V2 plugin definition (id kept identical to the v1 plugin name). */
-export const LiteModePlugin = Plugin.define({
-  id: "lite-mode",
+export const LiteModePlugin: Plugin.Plugin = {
+  id: "opencode-prime.lite-mode",
   async setup(ctx) {
     const context = await ctx.session.hook("context", (e) => liteModeContextHook(e))
     return async () => {
       await context.dispose()
     }
   },
-})
+}
 
 export default LiteModePlugin

@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import type { Context } from "@opencode/plugin/tui/context"
-import { Plugin } from "@opencode/plugin/tui"
+import type { Plugin } from "@opencode/plugin/tui"
 import { appKeymapLayer } from "../_keymap-app"
 import { createMemo, createSignal } from "solid-js"
 import { jsx } from "@opentui/solid/jsx-runtime"
@@ -1198,8 +1198,8 @@ export function renderScrollView(rendered: UsageRender, dim: UsageDimension, ter
 
 // ─── Plugin entry ───────────────────────────────────────────────────────────
 
-export default Plugin.define({
-  id: "usage",
+const plugin: Plugin.Definition = {
+  id: "opencode-prime.usage",
   setup(ctx: Context) {
     initI18n()
 
@@ -1392,4 +1392,6 @@ export default Plugin.define({
       ],
     }))
   },
-})
+}
+
+export default plugin

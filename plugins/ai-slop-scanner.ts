@@ -80,7 +80,7 @@ function scanForSlop(content: string): string[] {
 }
 
 const plugin: Plugin.Plugin = {
-  id: "ai-slop-scanner",
+  id: "opencode-prime.ai-slop-scanner",
   setup(ctx) {
     const controller = new AbortController()
 

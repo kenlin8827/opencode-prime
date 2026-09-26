@@ -153,6 +153,26 @@ async function main(): Promise<void> {
     await tick()
     check("bound key ran its command", runs.includes("key"))
     check("dispatchKey ignores unbound keys", wizard.dispatchKey("f9") === false)
+
+    // Reactive gating: a layer's `enabled` predicate (e.g. the usage plugin's
+    // modal layer) must be evaluated AT DISPATCH TIME — a disabled layer's
+    // binds stay inert so they cannot swallow the focused select's arrows.
+    let layerOn = false
+    const gated: string[] = []
+    wizard.context.keymap.layer(() => ({
+      enabled: () => layerOn,
+      commands: [
+        { id: "gated.up", bind: "up", run: () => { gated.push("up") } },
+        // run() === false means "not consumed — keep propagating".
+        { id: "gated.left", bind: "left", run: () => false },
+      ],
+    }))
+    check("disabled layer's bind is not consumed", wizard.dispatchKey("up") === false)
+    layerOn = true
+    check("enabled layer's bind is consumed", wizard.dispatchKey("up") === true)
+    await tick()
+    check("enabled layer's bind ran", gated.includes("up"))
+    check("run() returning false keeps propagating", wizard.dispatchKey("left") === false)
   }
 
   console.log("\n── 6. ui.dialog.show owns a custom JSX frame ──")

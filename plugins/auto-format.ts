@@ -138,7 +138,7 @@ async function formatFile(filePath: string, projectRoot: string, echoHashes: Map
 }
 
 const plugin: Plugin.Plugin = {
-  id: "auto-format",
+  id: "opencode-prime.auto-format",
   setup(ctx) {
     const projectRoot = ctx.location.directory
     const controller = new AbortController()

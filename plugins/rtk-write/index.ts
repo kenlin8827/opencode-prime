@@ -235,7 +235,7 @@ const appendToResult = (result: MutableToolResult, suffix: string): MutableToolR
 };
 
 const plugin: Plugin.Plugin = {
-  id: "rtk-write",
+  id: "opencode-prime.rtk-write",
   async setup(ctx) {
     const options = loadRtkWriteOptions();
     if (!options.enabled) return;

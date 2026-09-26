@@ -58,7 +58,7 @@ const result = (content: string, metadata?: Record<string, unknown>) =>
  * (options.codemode:false — without it the tool folds into the code-mode
  * dispatcher and the model never sees it). */
 const plugin: Plugin.Plugin = {
-  id: "tgrep",
+  id: "opencode-prime.tgrep",
   async setup(ctx) {
     const directory = ctx.location.directory
     const config = loadTgrepOptions(directory)

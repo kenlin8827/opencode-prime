@@ -36,7 +36,7 @@
 
 /// <reference types="bun" />
 import type { Context } from "@opencode/plugin/tui/context"
-import { Plugin } from "@opencode/plugin/tui"
+import type { Plugin } from "@opencode/plugin/tui"
 import { appKeymapLayer } from "../_keymap-app"
 import { migrateLegacyProjectArtifacts, type MigrationReport } from "../../shared/opencode-prime"
 import { tr, initI18n, refreshLocale, languageOption, switchLanguage, SWITCH_LANG, type DialogOption, type StringKey } from "../i18n"
@@ -808,7 +808,7 @@ async function runDprintSetup(ctx: Context, state: WizardState, rootDir: string)
 
 // ─── Plugin entry ───────────────────────────────────────────────────
 
-export default Plugin.define({
+const plugin: Plugin.Definition = {
   id: PLUGIN_ID,
   setup(ctx: Context) {
     initI18n()
@@ -833,4 +833,6 @@ export default Plugin.define({
       ],
     }))
   },
-})
+}
+
+export default plugin

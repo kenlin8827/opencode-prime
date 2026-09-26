@@ -90,7 +90,7 @@ try {
   server = await startV2Server(runtime, { project: dir, listenTimeoutMs: 240_000 })
   // v2 replaced v1's /experimental/tool/ids listing: plugin activation is the
   // server-visible proof that setup() registered the ADR tools/commands.
-  await server.waitForPlugin("adr")
+  await server.waitForPlugin("opencode-prime.adr")
   await server.waitForSkill("adr-compaction")
   const readPlan = (id: string) => JSON.parse(readFileSync(join(dir, ".ocp/adr-compaction", `${id}.json`), "utf8"))
   const answer = async (sessionID: string, form: FormInfo, header: string, optionIndex: number) => {

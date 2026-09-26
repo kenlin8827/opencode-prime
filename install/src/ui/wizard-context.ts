@@ -57,15 +57,32 @@ export function createWizardContext(host: TuiHost, options: WizardContextOptions
   const location = { directory }
 
   // ---- keymap: V2 reactive layers → host command registry + bind routing ----
-  const bound = new Map<string, (input?: string) => void | false | Promise<void>>()
+  // `enabled` (layer-level AND command-level) may be a reactive predicate —
+  // e.g. the usage plugin's modal layer binds up/down/j/k/return with
+  // `enabled: () => dialogOpen()`. The predicates are captured as closures and
+  // evaluated AT DISPATCH TIME, so a layer registered once at setup stays
+  // inert until its dialog is actually open. Snapshotting the binds without
+  // the predicates lets a background plugin swallow the focused select's
+  // arrow keys on every route.
+  type BoundKey = { run: (input?: string) => void | false | Promise<void>; enabled: () => boolean }
+  const bound = new Map<string, BoundKey[]>()
+  const asEnabled = (value: boolean | (() => boolean) | undefined): (() => boolean) =>
+    typeof value === 'function' ? value : () => value !== false
   const keymap = {
     layer(input: () => KeymapLayer | undefined): void {
       const layer = input()
+      const layerEnabled = asEnabled(layer?.enabled)
       for (const command of layer?.commands ?? []) {
         if (command.enabled === false) continue
         const id = command.id ?? command.slash?.name
         if (id) host.register(id, (argv) => { void command.run(argv) })
-        if (typeof command.bind === 'string') bound.set(command.bind, command.run)
+        if (typeof command.bind === 'string') {
+          const commandEnabled = asEnabled(command.enabled)
+          const entry: BoundKey = { run: command.run, enabled: () => layerEnabled() && commandEnabled() }
+          const list = bound.get(command.bind)
+          if (list) list.push(entry)
+          else bound.set(command.bind, [entry])
+        }
       }
     },
     dispatch(id: string, input?: string): void { host.dispatch(id, input) },
@@ -239,10 +256,17 @@ export function createWizardContext(host: TuiHost, options: WizardContextOptions
     context,
     setSessionId(next: string | undefined) { sessionId = next },
     dispatchKey(name: string): boolean {
-      const run = bound.get(name)
-      if (!run) return false
-      void run()
-      return true
+      const candidates = bound.get(name)
+      if (!candidates) return false
+      // Last-enabled registration wins (the V2 keymap's conflict rule); a
+      // `false` return means "not consumed — keep propagating".
+      for (let i = candidates.length - 1; i >= 0; i--) {
+        const candidate = candidates[i]
+        if (!candidate.enabled()) continue
+        if (candidate.run() === false) continue
+        return true
+      }
+      return false
     },
   }
 }

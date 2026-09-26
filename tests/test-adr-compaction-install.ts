@@ -162,7 +162,7 @@ try {
           const response = await get("/api/plugin")
           if (response.ok) {
             plugins = ((await response.json() as { data?: PluginEntry[] }).data ?? [])
-            if (plugins.some(p => p.id === "adr" && p.state?.status === "active")) break
+            if (plugins.some(p => p.id === "opencode-prime.adr" && p.state?.status === "active")) break
           }
         }
       } catch (error) {
@@ -175,7 +175,7 @@ try {
     // status is the server-visible proof that setup (and the ADR tool/command
     // transforms) completed without throwing. Tool payload unit coverage
     // lives in tests/test-v2-hook-wiring-unit.ts and the compaction unit tests.
-    const adr = plugins.find(p => p.id === "adr")
+    const adr = plugins.find(p => p.id === "opencode-prime.adr")
     assert.equal(adr?.state?.status, "active", `Installed ADR plugin did not activate in the v2 runtime: ${JSON.stringify(plugins.filter(p => String(p.id ?? "").includes("adr") || String(p.id ?? "").includes(".opencode") === false))}`)
     const commands = await get("/api/command")
     assert.ok(commands.ok, `Command listing failed: ${commands.status}`)

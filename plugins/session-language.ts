@@ -29,7 +29,7 @@
  * language. Fail-open — an injector error must never abort a request.
  */
 
-import { Plugin } from "@opencode/plugin"
+import type { Plugin } from "@opencode/plugin"
 import { readOcpField } from "./shared/ocp-config"
 import { appendBlock, stripBlockByPrefix } from "./shared/system-block"
 import { LOCALES } from "./tui/i18n"
@@ -74,8 +74,8 @@ function renderFragment(locale: string): string {
   )
 }
 
-export const SessionLanguagePlugin = Plugin.define({
-  id: "session-language",
+export const SessionLanguagePlugin: Plugin.Plugin = {
+  id: "opencode-prime.session-language",
   async setup(ctx) {
     const context = await ctx.session.hook("context", async (e) => {
       try {
@@ -93,6 +93,6 @@ export const SessionLanguagePlugin = Plugin.define({
       await context.dispose()
     }
   },
-})
+}
 
 export default SessionLanguagePlugin

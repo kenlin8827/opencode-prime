@@ -151,17 +151,17 @@ export function OcpApp(props: { initialRoute?: OcpRoute; context: OcpUiContext }
 
   // Global keypress routing: V2 keymap binds (usage dimension keys / report
   // scrolling) are matched against the layers the wizards registered, BEFORE
-  // the dialog layer — mirroring opencode's ordering. A consumed key calls
-  // preventDefault so the focused renderable does not also react.
+  // the dialog layer — mirroring opencode's ordering. Binds are gated on
+  // their layer's `enabled` predicate at dispatch time (see wizard-context),
+  // so a plugin's modal layer stays inert until its dialog is open. A
+  // consumed key calls preventDefault so the focused renderable does not
+  // also react.
   //
   // The Dashboard route is an exception: it owns its own keyboard handler
   // and the dashboard's `<select>` must receive `return` / `space` / `up` /
   // `down` directly so the native `select-current` / `move-up` / `move-down`
-  // actions fire. Letting `dispatchKey` swallow those on dashboard would
-  // leave the user staring at an inert panel (a wizard plugin like
-  // `usage.close` registers `bind: "return"` once at setup time, so the
-  // bound map sticks across all routes — we have to skip the dispatch here
-  // when the active route is the dashboard).
+  // actions fire — skip the dispatch here as defense against any future
+  // UNGATED global bind shadowing them.
   useKeyboard((key) => {
     if (route() === 'dashboard') return
     if (wizard.dispatchKey(key.name ?? '')) key.preventDefault?.()

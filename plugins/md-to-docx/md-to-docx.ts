@@ -1,4 +1,4 @@
-import { Plugin } from "@opencode/plugin"
+import type { Plugin } from "@opencode/plugin"
 import { readFileSync } from "node:fs"
 import { basename } from "node:path"
 import { commandArgumentText, type V2Session } from "../shared/agent-scope"
@@ -30,8 +30,8 @@ const TOOL_INPUT = {
   required: ["inputPath"],
 } as const
 
-export const MdToDocxPlugin = Plugin.define({
-  id: "md-to-docx",
+export const MdToDocxPlugin: Plugin.Plugin = {
+  id: "opencode-prime.md-to-docx",
   async setup(ctx) {
     const directory = ctx.location.directory
     const session = ctx.session as unknown as V2Session
@@ -123,6 +123,6 @@ export const MdToDocxPlugin = Plugin.define({
       await Promise.allSettled([commands.dispose(), tools.dispose()])
     }
   },
-})
+}
 
 export default MdToDocxPlugin

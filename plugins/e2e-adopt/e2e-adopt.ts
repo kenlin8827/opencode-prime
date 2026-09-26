@@ -29,7 +29,7 @@
  * semantics).
  */
 
-import { Plugin } from "@opencode/plugin"
+import type { Plugin } from "@opencode/plugin"
 import { commandArgumentText, injectReply, type V2Session } from "../shared/agent-scope"
 import { getProjectDir, setProjectDir } from "../shared/opencode-prime"
 import { refreshLocale, tr } from "../tui/i18n"
@@ -147,8 +147,8 @@ export function makeCommandHandler() {
   }
 }
 
-export const E2eAdoptPlugin = Plugin.define({
-  id: "e2e-adopt",
+export const E2eAdoptPlugin: Plugin.Plugin = {
+  id: "opencode-prime.e2e-adopt",
   async setup(ctx) {
     setProjectDir(ctx.location.directory)
     const handler = makeCommandHandler()
@@ -180,6 +180,6 @@ export const E2eAdoptPlugin = Plugin.define({
       await commands.dispose()
     }
   },
-})
+}
 
 export default E2eAdoptPlugin

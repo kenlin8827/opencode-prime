@@ -63,7 +63,7 @@
  *     fallback (OCP-V2-GAP: v2 Context exposes no TUI surface).
  */
 
-import { Plugin } from "@opencode/plugin"
+import type { Plugin } from "@opencode/plugin"
 import { refreshLocale, tr } from "../tui/i18n"
 import { commandArgumentText, type V2Session } from "../shared/agent-scope"
 import { makeAnnounceHandler } from "./project-manager-announce"
@@ -72,8 +72,8 @@ import { COMMAND_NAME, setProjectDir } from "./project-manager-config"
 import { makeSystemHook } from "./project-manager-system-inject"
 import { makeToolGuardHook } from "./project-manager-tool-guard"
 
-export const ProjectManagerPlugin = Plugin.define({
-  id: "project-manager",
+export const ProjectManagerPlugin: Plugin.Plugin = {
+  id: "opencode-prime.project-manager",
   async setup(ctx) {
     // Scaffolding is project-level: pin target paths to this project's directory.
     setProjectDir(ctx.location.directory)
@@ -116,6 +116,6 @@ export const ProjectManagerPlugin = Plugin.define({
       await Promise.allSettled([context.dispose(), toolGuard.dispose(), commands.dispose()])
     }
   },
-})
+}
 
 export default ProjectManagerPlugin

@@ -48,15 +48,15 @@
  *   project-memory-system-inject.ts — context hook: inject both files
  */
 
-import { Plugin } from "@opencode/plugin"
+import type { Plugin } from "@opencode/plugin"
 import { commandArgumentText, type V2Session } from "../shared/agent-scope"
 import { setProjectDir } from "./project-memory-config"
 import { COMMAND_NAME, makeCommandHandler } from "./project-memory-command"
 import { makeSystemHook } from "./project-memory-system-inject"
 import { memoryNoteTool } from "./project-memory-tool"
 
-export const ProjectMemoryPlugin = Plugin.define({
-  id: "project-memory",
+export const ProjectMemoryPlugin: Plugin.Plugin = {
+  id: "opencode-prime.project-memory",
   async setup(ctx) {
     // Switch + files are project-level: pin paths to this project's directory.
     const directory = ctx.location.directory
@@ -85,6 +85,6 @@ export const ProjectMemoryPlugin = Plugin.define({
       await Promise.allSettled([context.dispose(), commands.dispose(), tools.dispose()])
     }
   },
-})
+}
 
 export default ProjectMemoryPlugin

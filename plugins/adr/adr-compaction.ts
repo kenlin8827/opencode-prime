@@ -4,8 +4,6 @@
  */
 import { randomBytes } from "node:crypto"
 import { basename } from "node:path"
-// zod: direct dep, MIT license (AGPL-compatible) — tool parameter schemas.
-import { z } from "zod"
 import { getAdrConfig, getAdrLayout } from "./adr-config"
 import { renderAdrFilename, slugify } from "./adr-engine"
 import { getAdrStyleAdapter } from "./adr-style-registry"
@@ -17,18 +15,59 @@ import { applyJournal, atomicWrite, digest, maintenancePath, projectPath, readOp
 import { planPublication } from "./adr-publication"
 import { inverseArchive, planArchiveChanges } from "./adr-archive"
 
-export const candidateSchema = z.object({
-  summary: z.array(z.object({ text: z.string().min(1).max(12000), sources: z.array(z.string()).min(1) })).min(1),
-  replacements: z.array(z.object({ id: z.string(), title: z.string().min(1).max(200), content: z.string().min(1).max(200000) })).default([]),
-  coverage: z.array(z.object({ source: z.string(), disposition: z.enum(["retain", "replace", "historical", "unresolved"]), targets: z.array(z.string()).default([]), note: z.string().min(1).max(2000) })),
-})
+// Zero-bare-import rule: OpenCode v2's plugin loader cannot resolve ANY bare
+// package import from user plugins (verified on v2.0.15 — even CJS-ready
+// packages with a proper node_modules fail with `Cannot find package`), so
+// candidate validation is a hand-rolled parser, not zod. Keep shapes in sync
+// with the JSON Schema tool inputs in adr-compaction-runtime.ts.
+export interface CandidateSummaryItem { text: string; sources: string[] }
+export interface CandidateReplacement { id: string; title: string; content: string }
+export interface CandidateCoverage { source: string; disposition: "retain" | "replace" | "historical" | "unresolved"; targets: string[]; note: string }
+export interface Candidate { summary: CandidateSummaryItem[]; replacements: CandidateReplacement[]; coverage: CandidateCoverage[] }
+export type CandidateBatch = Candidate
+
+const DISPOSITIONS = ["retain", "replace", "historical", "unresolved"] as const
+const bad = (msg: string): never => { throw new Error(`Invalid ADR candidate: ${msg}`) }
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v)
+const str = (v: unknown, f: string, min: number, max: number): string =>
+  typeof v === "string" && v.length >= min && v.length <= max ? v : bad(`${f} must be a string of ${min}–${max} chars`)
+const strList = (v: unknown, f: string, min: number): string[] =>
+  Array.isArray(v) && v.length >= min && v.every((x) => typeof x === "string") ? v as string[] : bad(`${f} must be an array of ${min}+ strings`)
+
+function parseSummaryItem(v: unknown): CandidateSummaryItem {
+  if (!isObj(v)) return bad("summary item must be an object")
+  return { text: str(v.text, "summary.text", 1, 12000), sources: strList(v.sources, "summary.sources", 1) }
+}
+function parseReplacement(v: unknown): CandidateReplacement {
+  if (!isObj(v)) return bad("replacement must be an object")
+  return { id: str(v.id, "replacements.id", 0, Infinity), title: str(v.title, "replacements.title", 1, 200), content: str(v.content, "replacements.content", 1, 200000) }
+}
+function parseCoverage(v: unknown): CandidateCoverage {
+  if (!isObj(v)) return bad("coverage item must be an object")
+  if (!DISPOSITIONS.includes(v.disposition as never)) bad("coverage.disposition must be retain|replace|historical|unresolved")
+  return {
+    source: str(v.source, "coverage.source", 0, Infinity),
+    disposition: v.disposition as CandidateCoverage["disposition"],
+    targets: v.targets === undefined ? [] : strList(v.targets, "coverage.targets", 0),
+    note: str(v.note, "coverage.note", 1, 2000),
+  }
+}
+function parseCandidateInternal(input: unknown, requireSummary: boolean): Candidate {
+  if (!isObj(input)) return bad("must be an object")
+  if (!Array.isArray(input.summary) || (requireSummary && input.summary.length === 0)) return bad(`summary must be an array (${requireSummary ? "1+" : "0+"} items)`)
+  if (!Array.isArray(input.coverage)) return bad("coverage must be an array")
+  if (input.replacements !== undefined && !Array.isArray(input.replacements)) return bad("replacements must be an array")
+  return {
+    summary: (input.summary as unknown[]).map(parseSummaryItem),
+    replacements: ((input.replacements ?? []) as unknown[]).map(parseReplacement),
+    coverage: (input.coverage as unknown[]).map(parseCoverage),
+  }
+}
+/** Final candidate: all-or-nothing, summary must be non-empty. */
+export const parseCandidate = (input: unknown): Candidate => parseCandidateInternal(input, true)
 /** Batches may contain just coverage, prose, or replacements; final validation
  * remains all-or-nothing. Stable batch keys make retries replace, never append. */
-export const candidateBatchSchema = candidateSchema.extend({
-  summary: z.array(candidateSchema.shape.summary.element),
-})
-export type CandidateBatch = (typeof candidateBatchSchema)["_output"]
-export type Candidate = (typeof candidateSchema)["_output"]
+export const parseCandidateBatch = (input: unknown): CandidateBatch => parseCandidateInternal(input, false)
 export interface CompactionOptions { mode?: "summary" | "consolidate"; domain?: string; sources?: string[]; archive?: boolean; style?: AdrStyle; baseline?: string; iteration?: string; dryRun?: boolean }
 export interface Plan {
   version: 1; id: string; sessionID: string; fingerprint: string; root: string; configHash: string
@@ -246,7 +285,7 @@ export function stageCandidate(project: string, id: string, session: string, bat
     const p = loadPlan(project, id, session)
     if (!["drafting", "review"].includes(p.state) || !["summary", "consolidate"].includes(p.kind)) throw new Error("Plan is not open for candidate batches")
     const s = assertFresh(project, p)
-    const data = candidateBatchSchema.parse(input)
+    const data = parseCandidateBatch(input)
     if (Array.from(JSON.stringify(data)).length > 12000) throw new Error("Candidate batch exceeds 12,000 codepoints; split it into smaller batches")
     if (p.kind === "summary" && data.replacements.length) throw new Error("Summary cannot stage replacement ADRs")
     const units = new Set(s.records.filter(r => p.evidencePaths.includes(r.sourcePath)).flatMap(decisionUnits))
@@ -286,7 +325,7 @@ export function submitCandidate(project: string, id: string, session: string, in
     if (!["summary", "consolidate"].includes(p.kind)) throw new Error("Archive/restore plans cannot accept semantic candidates")
     assertRead(p, s)
     const batches = Object.entries(p.batches ?? {}).sort(([a], [b]) => a.localeCompare(b, "en")).map(([, value]) => value)
-    const c = candidateSchema.parse(input ?? {
+    const c = parseCandidate(input ?? {
       summary: batches.flatMap(b => b.summary), replacements: batches.flatMap(b => b.replacements), coverage: batches.flatMap(b => b.coverage),
     })
     if (p.kind === "summary" && c.replacements.length) throw new Error("Summary cannot create replacement ADRs")

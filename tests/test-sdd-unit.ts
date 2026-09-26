@@ -156,7 +156,7 @@ assert(implLauncher.includes("agent: code"), "/impl routes to @code")
 // -------------------------------------------------------------
 header("06: Plugin shape — engine-only (v2)")
 
-assert(SddPlugin.id === "sdd", "stable plugin id kept from v1 name")
+assert(SddPlugin.id === "opencode-prime.sdd", "plugin id carries the opencode-prime. prefix")
 assert(typeof SddPlugin.setup === "function", "setup() present (Plugin.define shape)")
 
 {

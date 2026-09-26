@@ -37,7 +37,7 @@
  * "no injection".
  */
 
-import { Plugin } from "@opencode/plugin"
+import type { Plugin } from "@opencode/plugin"
 import { forgetSession, isSubagentSession, type V2Session } from "../shared/agent-scope"
 
 // Tier thresholds — single source of truth, also imported by /usage's
@@ -145,8 +145,8 @@ export function handleContextWatchEvent(event: unknown): void {
   forgetSession(sessionID)
 }
 
-export const ContextWatchPlugin = Plugin.define({
-  id: "context-watch",
+export const ContextWatchPlugin: Plugin.Plugin = {
+  id: "opencode-prime.context-watch",
   async setup(ctx) {
     const abort = new AbortController()
     const context = await ctx.session.hook("context", (e) =>
@@ -170,6 +170,6 @@ export const ContextWatchPlugin = Plugin.define({
       await context.dispose()
     }
   },
-})
+}
 
 export default ContextWatchPlugin

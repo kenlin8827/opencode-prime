@@ -186,7 +186,7 @@ const closeAll = () => {
 }
 
 // --- plugin shape checks ---
-assertEq(plugin.id, "usage", "plugin id")
+assertEq(plugin.id, "opencode-prime.usage", "plugin id")
 assertEq(typeof plugin.setup, "function", "setup entry exported")
 assertEq(layers.length, 2, "two keymap layers (global commands + dialog modal layer)")
 for (const id of ["usage.show", "usage.dim.session", "usage.dim.agent", "usage.dim.model"]) {

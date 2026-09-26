@@ -26,12 +26,22 @@
 import { readdirSync } from "node:fs"
 import { injectReply, scopedForCall, type V2Session } from "../shared/agent-scope"
 import { notify } from "../shared/notify"
-// zod: direct dep, MIT license (AGPL-compatible) — tool parameter schemas.
-import { z } from "zod"
 import { refreshLocale, tr } from "../tui/i18n"
-import { analyzeCompaction, checkCompaction, approveDrafting, applyPlan, candidateBatchSchema, candidateBatchPage, stageCandidate, compactionEvidence, loadPlan, planArchive, reviewPage, sealPlan, startCompaction, submitCandidate, type CompactionOptions, type Plan } from "./adr-compaction"
+import { analyzeCompaction, checkCompaction, approveDrafting, applyPlan, candidateBatchPage, stageCandidate, compactionEvidence, loadPlan, planArchive, reviewPage, sealPlan, startCompaction, submitCandidate, type CompactionOptions, type Plan } from "./adr-compaction"
 import { currentState, queryAdrContext, takeSnapshot } from "./adr-context"
 import { maintenancePath, projectPath, readOptional } from "./adr-storage"
+
+// V2 Tool.Info.input is plain JSON Schema. Mirrors the runtime validators in
+// adr-compaction.ts (parseCandidateBatch) — keep both in sync.
+const candidateBatchInputSchema = {
+  type: "object",
+  properties: {
+    summary: { type: "array", items: { type: "object", properties: { text: { type: "string", minLength: 1, maxLength: 12000 }, sources: { type: "array", items: { type: "string" }, minItems: 1 } }, required: ["text", "sources"], additionalProperties: false } },
+    replacements: { type: "array", items: { type: "object", properties: { id: { type: "string" }, title: { type: "string", minLength: 1, maxLength: 200 }, content: { type: "string", minLength: 1, maxLength: 200000 } }, required: ["id", "title", "content"], additionalProperties: false } },
+    coverage: { type: "array", items: { type: "object", properties: { source: { type: "string" }, disposition: { type: "string", enum: ["retain", "replace", "historical", "unresolved"] }, targets: { type: "array", items: { type: "string" } }, note: { type: "string", minLength: 1, maxLength: 2000 } }, required: ["source", "disposition", "note"], additionalProperties: false } },
+  },
+  additionalProperties: false,
+} as const
 
 export const COMPACTION_HELP = `/adr compaction [--dry-run] [--domain <slug> | --sources <id,id>]
 /adr compaction --mode summary|consolidate [--archive] [--style ocp|madr|nygard] [--baseline N.N --iteration N]
@@ -158,7 +168,7 @@ export function createCompactionRuntime(project: string, session: V2Session) {
       name: "adr_context",
       options: { codemode: false as const },
       description: "Bounded architecture decision evidence. Select an ID/domain/iteration; current follows accepted successors, history expands archive bodies at most one hop. Read next pages only when evidence is incomplete. Checks CURRENT freshness.",
-      input: z.object({ id: z.string().optional(), domain: z.string().optional(), iteration: z.string().optional(), intent: z.enum(["current", "rationale", "history"]).optional(), cursor: z.string().optional() }),
+      input: { type: "object", properties: { id: { type: "string" }, domain: { type: "string" }, iteration: { type: "string" }, intent: { type: "string", enum: ["current", "rationale", "history"] }, cursor: { type: "string" } }, additionalProperties: false } as const,
       execute: async (args: { id?: string; domain?: string; iteration?: string; intent?: "current" | "rationale" | "history"; cursor?: string }, ctx: ExecuteCtx): Promise<ToolResult> => {
         await allowed(ctx, "adr-context-tool")
         const page = queryAdrContext(project, args)
@@ -173,7 +183,7 @@ export function createCompactionRuntime(project: string, session: V2Session) {
       name: "adr_compaction",
       options: { codemode: false as const },
       description: "Draft/review a USER-started ADR compaction plan. evidence returns bounded full-source batches; slots returns reserved scaffolds; stage saves a bounded named candidate batch, batches pages saved drafts; submit without candidate assembles batches and validates a candidate and offers native Ask; review pages the complete changes. No model argument can accept a decision or bypass user review. Load adr-compaction skill.",
-      input: z.object({ plan: z.string(), action: z.enum(["evidence", "slots", "stage", "batches", "submit", "review", "ask", "status"]), cursor: z.string().optional(), candidate: candidateBatchSchema.optional(), batch: z.string().optional() }),
+      input: { type: "object", properties: { plan: { type: "string" }, action: { type: "string", enum: ["evidence", "slots", "stage", "batches", "submit", "review", "ask", "status"] }, cursor: { type: "string" }, candidate: candidateBatchInputSchema, batch: { type: "string" } }, required: ["plan", "action"], additionalProperties: false } as const,
       execute: async (args: { plan: string; action: "evidence" | "slots" | "stage" | "batches" | "submit" | "review" | "ask" | "status"; cursor?: string; candidate?: unknown; batch?: string }, ctx: ExecuteCtx): Promise<ToolResult> => {
         await allowed(ctx)
         const sessionID = ctx.sessionID ?? ""

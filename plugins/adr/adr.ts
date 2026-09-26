@@ -35,7 +35,7 @@
  * Switch: `adrGuard` field in the project-level .ocp/ocp.json (no state file).
  */
 
-import { Plugin } from "@opencode/plugin"
+import type { Plugin } from "@opencode/plugin"
 import { commandArgumentText, type V2Session } from "../shared/agent-scope"
 import { makeCommandHandler } from "./adr-command"
 import { ADR_COMMAND, COMMAND_NAME, setProjectDir } from "./adr-config"
@@ -68,8 +68,8 @@ function partsText(parts: Array<unknown>): string {
 //   • `event` hook → ctx.event.subscribe for-await loop (session.deleted
 //     cleanup), aborted on plugin cleanup.
 
-export const AdrPlugin = Plugin.define({
-  id: "adr",
+export const AdrPlugin: Plugin.Plugin = {
+  id: "opencode-prime.adr",
   async setup(ctx) {
     // Switch is project-level: pin state/config paths to this project's directory.
     const directory = ctx.location.directory
@@ -170,6 +170,6 @@ export const AdrPlugin = Plugin.define({
       await Promise.allSettled([context.dispose(), before.dispose(), after.dispose(), tools.dispose(), commands.dispose()])
     }
   },
-})
+}
 
 export default AdrPlugin

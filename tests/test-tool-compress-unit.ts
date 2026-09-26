@@ -49,7 +49,7 @@ function eventWith(agent: string | undefined, tools: Tools): { agent?: string; t
 
 section("plugin entry (Plugin.define shape)")
 
-assert(ToolCompressPlugin.id === "tool-compress", "stable id kept from v1 name")
+assert(ToolCompressPlugin.id === "opencode-prime.tool-compress", "plugin id carries the opencode-prime. prefix")
 assert(typeof ToolCompressPlugin.setup === "function", "setup() present")
 
 {

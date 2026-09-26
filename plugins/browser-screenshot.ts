@@ -255,7 +255,7 @@ async function runScreenshot(args: ScreenshotOptions): Promise<{ content: Conten
 // ─── Plugin ──────────────────────────────────────────────────────────
 
 const plugin: Plugin.Plugin = {
-  id: "browser-screenshot",
+  id: "opencode-prime.browser-screenshot",
   async setup(ctx) {
     await ctx.tool.transform((editor) => {
       editor.add({

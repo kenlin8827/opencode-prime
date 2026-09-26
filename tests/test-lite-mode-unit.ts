@@ -120,7 +120,7 @@ assert(!isInstructionPath(""), "empty rejected")
 
 section("LiteModePlugin v2 entry")
 
-assert(LiteModePlugin.id === "lite-mode", "plugin id kept from v1 name")
+assert(LiteModePlugin.id === "opencode-prime.lite-mode", "plugin id carries the opencode-prime. prefix")
 assert(typeof LiteModePlugin.setup === "function", "setup() present (Plugin.define shape)")
 
 type Hook = (e: { agent?: string; system?: Array<{ type: string; text: string }> }) => Promise<void>

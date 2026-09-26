@@ -122,7 +122,7 @@ function resolveSiblingRef(
 }
 
 const plugin: Plugin.Plugin = {
-  id: "model-variants",
+  id: "opencode-prime.model-variants",
   async setup(ctx) {
     // Leaf stripping needs no external data — pure editor logic, replay-safe.
     await ctx.model.transform((editor) => {

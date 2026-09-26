@@ -7,11 +7,11 @@ import {
   readTierMap,
   extractPreserveBag,
   mergeConfig,
-  mergeTuiConfig,
   mergeUserOptions,
   getUserOptionsPath,
   normalizeLegacyAgent,
 } from '../install/src/merger';
+import { mergeTuiConfig } from '../install/src/cli-merger';
 import {
   collectHistoricalShippedFiles,
   collectShippedFiles,
@@ -207,6 +207,79 @@ if (migrated.theme?.name !== 'gruvbox') {
   throw new Error('Legacy theme scalar must migrate to theme.name');
 }
 console.log('✓ Legacy tui.jsonc migrated on first V2 merge (plugins tuple→object, theme→theme.name)');
+
+// Subtest 5: removed_plugins retirement — a plugin dropped from the template
+// (and listed in removed_plugins) is stripped from the user's cli.json on the
+// next merge; the marker itself must not leak into the output. Mirrors the
+// removed_agents contract on the opencode.jsonc side: without the list, the
+// template-first union preserves the dead entry forever while the stale-file
+// prune has already deleted its files.
+fs.writeFileSync(
+  path.join(tuiRepoDir, 'cli.template.jsonc'),
+  '{\n  "removed_plugins": ["./plugins/tui/legacy-user.ts"],\n  "$schema": "https://opencode.ai/v2/cli.json",\n  "plugins": [\n    "./plugins/tui/a.ts",\n  ]\n}\n',
+  'utf8'
+);
+mergeTuiConfig(tuiRepoDir, tuiTargetDir);
+const afterRetire = readJsoncFile<Record<string, any>>(path.join(tuiTargetDir, 'cli.json'));
+const retirePaths = (afterRetire.plugins as Array<string | { package: string }>).map((p) => (typeof p === 'string' ? p : p.package));
+if (retirePaths.includes('./plugins/tui/legacy-user.ts')) {
+  throw new Error('removed_plugins entry must be stripped from the merged cli.json');
+}
+if (!retirePaths.includes('./plugins/tui/a.ts') || !retirePaths.includes('./plugins/tui/tuple.ts')) {
+  throw new Error('removed_plugins must not touch template or surviving user plugins (incl. object-form entries)');
+}
+if (afterRetire.removed_plugins !== undefined) {
+  throw new Error('removed_plugins marker must not leak into cli.json');
+}
+console.log('✓ removed_plugins retires deleted factory plugins, marker stripped from output');
+
+// Subtest 6: leaf-granularity defaults fill — a NEW template key nested
+// inside a section the user already customized must propagate (the old
+// top-level shallow merge lost it: the user's `session` object blocked the
+// whole section), while existing leaves (incl. explicit false) never move.
+fs.writeFileSync(
+  path.join(tuiRepoDir, 'cli.template.jsonc'),
+  '{\n  "$schema": "https://opencode.ai/v2/cli.json",\n  "session": { "thinking": "show", "compact": "auto" },\n  "keybinds": { "leader": "ctrl+x" },\n  "plugins": [ "./plugins/tui/a.ts" ]\n}\n',
+  'utf8'
+);
+{
+  const cur = readJsoncFile<Record<string, any>>(path.join(tuiTargetDir, 'cli.json'));
+  cur.session = { thinking: 'hide' };   // user customized the section
+  cur.keybinds = { quit: false };       // explicit false must survive
+  fs.writeFileSync(path.join(tuiTargetDir, 'cli.json'), JSON.stringify(cur, null, 2) + '\n', 'utf8');
+}
+mergeTuiConfig(tuiRepoDir, tuiTargetDir);
+const afterDeep = readJsoncFile<Record<string, any>>(path.join(tuiTargetDir, 'cli.json'));
+if (afterDeep.session?.thinking !== 'hide') {
+  throw new Error('Deep merge must not overwrite an existing user leaf');
+}
+if (afterDeep.session?.compact !== 'auto') {
+  throw new Error('New template key inside a user-customized section must propagate');
+}
+if (afterDeep.keybinds?.quit !== false || afterDeep.keybinds?.leader !== 'ctrl+x') {
+  throw new Error('Deep merge: explicit-false user leaf must survive, missing template leaf must fill');
+}
+console.log('✓ Leaf-granularity merge: template defaults fill missing keys, user leaves never overwritten');
+
+// Subtest 7: malformed cli.json (external, user-editable input) — a JSON
+// scalar or array at the top level is garbage, not state: the merge must
+// re-seed from the template instead of crashing (scalar: property assignment
+// throws in strict mode) or writing the bare array back (plugins lost).
+for (const garbage of ['"just a string"', '[1, 2, 3]']) {
+  fs.writeFileSync(path.join(tuiTargetDir, 'cli.json'), garbage + '\n', 'utf8');
+  mergeTuiConfig(tuiRepoDir, tuiTargetDir);
+  const reseeded = readJsoncFile<Record<string, any>>(path.join(tuiTargetDir, 'cli.json'));
+  if (!reseeded || typeof reseeded !== 'object' || Array.isArray(reseeded)) {
+    throw new Error(`Malformed cli.json (${garbage}) was written back instead of re-seeded`);
+  }
+  if (!Array.isArray(reseeded.plugins) || !reseeded.plugins.includes('./plugins/tui/a.ts')) {
+    throw new Error(`Malformed cli.json (${garbage}): template plugins must be re-seeded`);
+  }
+  if (reseeded.$schema !== 'https://opencode.ai/v2/cli.json') {
+    throw new Error(`Malformed cli.json (${garbage}): $schema must come from the template`);
+  }
+}
+console.log('✓ Malformed cli.json (scalar/array) re-seeds from template instead of crashing/corrupting');
 
 if (fs.existsSync(tuiMergeDir)) fs.rmSync(tuiMergeDir, { recursive: true, force: true });
 
@@ -663,6 +736,39 @@ if (fs.existsSync(getHistoryManifestPath(repoDir))) {
   if (!new Set(histAll).has(historical[0])) throw new Error('history.manifest.txt entries missing from the union');
 }
 console.log(`✓ version.json / history compaction passed (${histAll.length} historical entries)`);
+
+// 4c. TUI plugin retirement coherence (BOM-derived check): a TUI plugin dir
+// whose entrypoint (plugins/tui/<name>/tui.ts) appears in any historical
+// manifest but not in the current one was REMOVED from the package — its
+// registration must be retired via cli.template.jsonc `removed_plugins`, or
+// existing installs keep a dangling cli.json entry forever (the union merge
+// preserves it, the stale-file prune deletes its files). Auto-deriving the
+// removal at RUNTIME was rejected: removed_plugins keys cover more than
+// path-backed plugins, runtime derivation amplifies manifest-pollution
+// accidents into user-config damage, and it couples registration lifecycle
+// to file lifecycle. Explicit list executes; this BOM diff only verifies.
+{
+  const TUI_ENTRY_RE = /^plugins\/tui\/([^/]+)\/tui\.ts$/;
+  const tuiDirsOf = (files: string[]) =>
+    new Set(files.map((f) => TUI_ENTRY_RE.exec(f)?.[1]).filter((n): n is string => !!n));
+  const histTui = tuiDirsOf(collectHistoricalShippedFiles(repoDir, new Set([version])));
+  const curTui = tuiDirsOf(collectShippedFiles(repoDir));
+  const cliTemplate = readJsoncFile<Record<string, any>>(path.join(repoDir, 'cli.template.jsonc'));
+  const declaredRetired = new Set(
+    (Array.isArray(cliTemplate?.removed_plugins) ? cliTemplate.removed_plugins : []).filter(
+      (n: unknown): n is string => typeof n === 'string',
+    ),
+  );
+  const undeclared = [...histTui]
+    .filter((name) => !curTui.has(name))
+    .filter((name) => !declaredRetired.has(`./plugins/tui/${name}`));
+  if (undeclared.length > 0) {
+    throw new Error(
+      `TUI plugins removed from the package but not retired in cli.template.jsonc removed_plugins: ${undeclared.join(', ')}`,
+    );
+  }
+  console.log(`✓ TUI plugin retirement coherent (historical ${histTui.size}, current ${curTui.size}, all removals declared)`);
+}
 
 // 5. Execution: Full Install with custom tiers
 console.log('\nTest 5: Full Installation to Isolated Target');

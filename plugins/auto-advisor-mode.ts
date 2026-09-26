@@ -37,7 +37,7 @@
  * project-level only (read + write); default is off.
  */
 
-import { Plugin } from "@opencode/plugin"
+import type { Plugin } from "@opencode/plugin"
 import { commandArgumentText, type V2Session } from "./shared/agent-scope"
 import { COMMAND_NAME, setProjectDir } from "./auto-advisor/auto-advisor-config"
 import { makeCommandHandler } from "./auto-advisor/auto-advisor-mode-tracker"
@@ -45,8 +45,8 @@ import { makeFullInjectHook } from "./auto-advisor/auto-advisor-full-inject"
 import { makeSystemHook } from "./auto-advisor/auto-advisor-system-inject"
 import { makeToolGuardHook } from "./auto-advisor/auto-advisor-tool-guard"
 
-export const AutoAdvisorModePlugin = Plugin.define({
-  id: "auto-advisor-mode",
+export const AutoAdvisorModePlugin: Plugin.Plugin = {
+  id: "opencode-prime.auto-advisor-mode",
   async setup(ctx) {
     // Mode is project-level: pin state/config paths to this project's directory.
     setProjectDir(ctx.location.directory)
@@ -89,6 +89,6 @@ export const AutoAdvisorModePlugin = Plugin.define({
       await Promise.allSettled([context.dispose(), before.dispose(), after.dispose(), commands.dispose()])
     }
   },
-})
+}
 
 export default AutoAdvisorModePlugin

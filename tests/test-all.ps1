@@ -429,6 +429,16 @@ foreach ($f in $allFiles) {
     Check "file exists: $f" (Test-Path "$PSScriptRoot\..\$f")
 }
 
+# Installer must prepare TUI-plugin runtime dependencies in the target config
+# dir after copying files. TUI plugins are loaded from ~/.config/opencode and
+# need a colocated package.json + install step for bare package imports
+# (@opentui/solid + its solid-js peer; server plugins import type-only and
+# provision nothing).
+$installerSrc = Get-Content "$PSScriptRoot\..\install\src\installer.ts" -Raw
+Check "installer: provisions TUI plugin runtime deps" ($installerSrc -match "TUI_PLUGIN_RUNTIME_DEPS" -and $installerSrc -match "ensureTargetPluginPackageJson")
+Check "installer: runs local dependency install after copy" ($installerSrc -match "ensurePluginRuntimeDeps\(targetDir\)" -and $installerSrc.IndexOf("copyRepoFiles(repoDir, targetDir, shippedFiles)") -lt $installerSrc.IndexOf("ensurePluginRuntimeDeps(targetDir)"))
+Check "installer: local plugin deps install falls back through package managers" (($installerSrc -match "bun install") -and ($installerSrc -match "pnpm install") -and ($installerSrc -match "yarn install") -and ($installerSrc -match "npm install"))
+
 # Workflow protocols live at L2 (skills/<name>/SKILL.md) with thin command
 # launchers (commands/<name>.md) — the old plugin system-prompt injectors were
 # retired in v0.16.0. Content checks below preserve the former protocol anchors.

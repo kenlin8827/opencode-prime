@@ -71,7 +71,7 @@
  */
 
 import type { Context } from "@opencode/plugin/tui/context"
-import { Plugin } from "@opencode/plugin/tui"
+import type { Plugin } from "@opencode/plugin/tui"
 import { createMemo, createSignal } from "solid-js"
 // Programmatically create JSX elements via the SolidJS factory.
 // We use `jsx()` instead of JSX syntax to avoid tsconfig jsxImportSource
@@ -1032,8 +1032,8 @@ function safeBadges(build: () => Badge[]): Badge[] {
   }
 }
 
-export default Plugin.define({
-  id: "sidebar-status",
+const plugin: Plugin.Definition = {
+  id: "opencode-prime.sidebar-status",
   setup(ctx: Context) {
     // Claim the sidebar content slot — the OCP group renders as a vertical
     // section at the TOP of the right sidebar (prepend = first inside the
@@ -1052,4 +1052,6 @@ export default Plugin.define({
       panel.dispose()
     }
   },
-})
+}
+
+export default plugin

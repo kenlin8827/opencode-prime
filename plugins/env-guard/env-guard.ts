@@ -25,7 +25,7 @@ import { setProjectDir } from "./env-guard-config"
 import { makeToolGuardHook } from "./env-guard-tool-guard"
 
 const plugin: Plugin.Plugin = {
-  id: "env-guard",
+  id: "opencode-prime.env-guard",
   async setup(ctx) {
     // Switch is project-level: pin state/config paths to this project's directory.
     setProjectDir(ctx.location.directory)

@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import type { Context } from "@opencode/plugin/tui/context"
 import type { ModelInfo } from "@opencode/client"
-import { Plugin } from "@opencode/plugin/tui"
+import type { Plugin } from "@opencode/plugin/tui"
 import { appKeymapLayer } from "../_keymap-app"
 
 /**
@@ -1783,7 +1783,7 @@ function saveModelForm(ctx: Context, id: string, draft: ModelDraft, origKey?: st
 
 // ─── Plugin entry ────────────────────────────────────────────────────
 
-export default Plugin.define({
+const plugin: Plugin.Definition = {
   id: PLUGIN_ID,
   setup(ctx: Context) {
     initI18n()
@@ -1835,4 +1835,6 @@ export default Plugin.define({
       ],
     }))
   },
-})
+}
+
+export default plugin

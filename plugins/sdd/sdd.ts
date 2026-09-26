@@ -18,7 +18,7 @@
  * through, which the prompt hook expresses exactly.
  */
 
-import { Plugin } from "@opencode/plugin"
+import type { Plugin } from "@opencode/plugin"
 import type { V2Session } from "../shared/agent-scope"
 import { IMPL_COMMAND, PLAN_COMMAND, PRD_COMMAND, SDD_COMMAND, makeSddCommandHook } from "./sdd-command"
 
@@ -34,8 +34,8 @@ export function parseSddCommand(
   return { command, arguments: match[2] ?? "" }
 }
 
-export const SddPlugin = Plugin.define({
-  id: "sdd",
+export const SddPlugin: Plugin.Plugin = {
+  id: "opencode-prime.sdd",
   async setup(ctx) {
     const session = ctx.session as unknown as V2Session
     const handler = makeSddCommandHook(session)
@@ -53,6 +53,6 @@ export const SddPlugin = Plugin.define({
       await prompt.dispose()
     }
   },
-})
+}
 
 export default SddPlugin

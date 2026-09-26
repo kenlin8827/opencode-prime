@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import type { Context } from "@opencode/plugin/tui/context"
-import { Plugin } from "@opencode/plugin/tui"
+import type { Plugin } from "@opencode/plugin/tui"
 import { appKeymapLayer } from "../_keymap-app"
 
 /**
@@ -1191,7 +1191,7 @@ async function loadCatalog(ctx: Context): Promise<Catalog> {
 // ┌─ Plugin entry ──────────────────────────────────────────────────────
 // ════════════════════════════════════════════════════════════════════
 
-export default Plugin.define({
+const plugin: Plugin.Definition = {
   id: PLUGIN_ID,
   setup(ctx: Context) {
     initI18n()
@@ -1221,4 +1221,6 @@ export default Plugin.define({
       ],
     }))
   },
-})
+}
+
+export default plugin

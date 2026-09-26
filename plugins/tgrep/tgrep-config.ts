@@ -63,21 +63,32 @@ export function tgrepOptionsFrom(root: string, text: string): TgrepOptions {
   }
 }
 
-/** Read tools.tgrep from the user's options.jsonc; any failure (missing file,
- * unparseable text, invalid values) safely disables the integration. Shared
- * by the tgrep tool, the project profiler, and the project-manager probes. */
+/** Read tools.tgrep from the user's options.jsonc; a MISSING file means the
+ * machine never ran the interactive wizard/dashboard (CLI-only installs never
+ * write it) — that is NOT an opt-out, so it resolves to the documented
+ * default-ON, same as the installer's toolEnabled ("omitted → enabled").
+ * An unreadable/invalid file stays fail-safe disabled. Shared by the tgrep
+ * tool, the project profiler, and the project-manager probes. */
 export function loadTgrepOptions(root: string): TgrepOptions {
+  let text: string
   try {
-    return tgrepOptionsFrom(root, readFileSync(join(homedir(), ".config", "opencode", "options.jsonc"), "utf8"))
+    text = readFileSync(join(homedir(), ".config", "opencode", "options.jsonc"), "utf8")
+  } catch (error) {
+    return { enabled: (error as NodeJS.ErrnoException).code === "ENOENT" }
+  }
+  try {
+    return tgrepOptionsFrom(root, text)
   } catch {
     return { enabled: false }
   }
 }
 
-/** Validate settings without allowing index files outside the workspace. */
+/** Validate settings without allowing index files outside the workspace.
+ * An omitted switch (no tools.tgrep key) defaults ON — same rule as the
+ * installer's toolEnabled and the tgrep.ts registration comment. */
 export function parseTgrepOptions(root: string, value: unknown): TgrepOptions {
-  if (value === undefined || value === false) return { enabled: false }
-  if (value === true) return { enabled: true }
+  if (value === undefined || value === true) return { enabled: true }
+  if (value === false) return { enabled: false }
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("tools.tgrep must be a boolean or object")
   const raw = value as Record<string, unknown>
   if (raw.enabled !== undefined && typeof raw.enabled !== "boolean") throw new Error("tools.tgrep.enabled must be a boolean")

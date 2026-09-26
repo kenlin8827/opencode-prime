@@ -81,7 +81,7 @@ try {
   // death/restart cycle, so both launches share one data root.
   const xdgRoot = join(root, "shared-state")
   server = await startV2Server(runtime, { project: dir, password, xdgRoot, listenTimeoutMs: 240_000 })
-  await server.waitForPlugin("adr")
+  await server.waitForPlugin("opencode-prime.adr")
   const session = await server.createSession("adr recovery native ask", { providerID: "adr-fixture", id: "fixture" })
   // Arm the trap: the journal retires 0001 AFTER publishing the successor,
   // so its replace fails mid-lifecycle exactly at v1's crash point.
@@ -117,7 +117,7 @@ try {
   await server.close()
   console.log(`… server (pid ${deadPid}) killed with an unfinished transaction on disk; relaunching`)
   server = await startV2Server(runtime, { project: dir, password, xdgRoot })
-  await server.waitForPlugin("adr")
+  await server.waitForPlugin("opencode-prime.adr")
   // A resumed durable turn could re-present the settled Ask defensively;
   // dismissing authorizes nothing (execute.after cancels the armed review).
   const dismissDeadline = Date.now() + 30_000
