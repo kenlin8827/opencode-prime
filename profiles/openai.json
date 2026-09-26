@@ -1,10 +1,10 @@
 {
-  "description": "All-OpenAI family picks on the official OpenAI API — gpt-5.6-luna explores on flash and takes vision (5.6 line supports image inputs; replaces gpt-4o at ~12x the price), gpt-5.6-terra carries standard/pro/max (strongest under the $3/$15 cost red line on official-API pricing, kill-line index 57; gpt-5.6-sol at $4/$20 is excluded here — use opencode-zen or router/codex for Sol; gpt-5.3-codex-spark is the only surviving codex-line model at $1.75/$14 but a generation older and unranked on the kill-line). Replaces retired gpt-5.4-fast (flash), over-cap gpt-5.5 (standard), deprecated gpt-5.3-codex (pro), and nonexistent gpt-5.6-pro (max). Requires OPENAI_API_KEY environment variable.",
+  "description": "All-OpenAI family picks on the official OpenAI API — gpt-6 line (released 2026-09-22, 1M context, text+image+pdf inputs): gpt-6-luna at $0.1/$0.5 explores on flash and takes vision, gpt-6-sol at $2/$10 carries standard/pro/max — cheaper and stronger than gpt-5.6-terra ($2/$12); the 6-line dropped terra, so sol doubles as the orchestration tier. gpt-6-astra ($10/$50) breaches the $3/$15 cost red line and is excluded. Requires OPENAI_API_KEY environment variable.",
   "tiers": {
-    "flash": "openai/gpt-5.6-luna",
-    "standard": "openai/gpt-5.6-terra",
-    "pro": "openai/gpt-5.6-terra",
-    "max": "openai/gpt-5.6-terra",
-    "vision": "openai/gpt-5.6-luna"
+    "flash": "openai/gpt-6-luna",
+    "standard": "openai/gpt-6-sol",
+    "pro": "openai/gpt-6-sol",
+    "max": "openai/gpt-6-sol",
+    "vision": "openai/gpt-6-luna"
   }
 }

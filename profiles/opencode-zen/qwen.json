@@ -1,10 +1,10 @@
 {
-  "description": "All-Qwen family fallback — qwen3.5-plus keeps flash and vision work multimodal while staying under the cap, and qwen3.6-plus powers standard, pro, and max to keep the cost structure consistent across the coding ladder with the strongest Qwen reviewer allowed on OpenCode Zen. Requires OPENCODE_API_KEY environment variable (OpenCode Zen).",
+  "description": "All-Qwen family picks — qwen3.8-flash keeps flash and vision work multimodal at $0.15/$0.47, qwen3.6-plus runs standard orchestration, and qwen3.8-max (2026-08-03, $2/$6) powers pro and max as the strongest Qwen reviewer allowed under the cost red line on OpenCode Zen. Requires OPENCODE_API_KEY environment variable (OpenCode Zen).",
   "tiers": {
-    "flash": "opencode/qwen3.5-plus",
+    "flash": "opencode/qwen3.8-flash",
     "standard": "opencode/qwen3.6-plus",
-    "pro": "opencode/qwen3.6-plus",
-    "max": "opencode/qwen3.6-plus",
-    "vision": "opencode/qwen3.5-plus"
+    "pro": "opencode/qwen3.8-max",
+    "max": "opencode/qwen3.8-max",
+    "vision": "opencode/qwen3.8-flash"
   }
 }

@@ -1,10 +1,10 @@
 {
-  "description": "All-GPT codex line — flash uses gpt-5.6-luna for near-zero-cost exploration with 1M context (replaced two-generations-old gpt-5.1-codex-mini), standard runs gpt-5.6-terra for everyday orchestration (replaced gpt-5.1), pro steps up to gpt-5.6-sol for coding-heavy work at $2/$10 (replaced deprecated gpt-5.3-codex), max stays on sol since it is the strongest in-family survivor of the $3/$15 red line, and vision reuses luna (5.6 line supports image inputs). Requires OPENCODE_API_KEY environment variable (OpenCode Zen).",
+  "description": "All-GPT codex line — flash uses gpt-6-luna for near-zero-cost exploration at $0.1/$0.5 with 1M context, standard/pro/max run gpt-6-sol at $2/$10: the 6-line dropped terra, and sol is cheaper than 5.6-terra while gpt-6-astra ($10/$50) breaches the $3/$15 red line, so sol is both the orchestration tier and the strongest in-family survivor; vision reuses luna (6-line supports image inputs). Requires OPENCODE_API_KEY environment variable (OpenCode Zen).",
   "tiers": {
-    "flash": "opencode/gpt-5.6-luna",
-    "standard": "opencode/gpt-5.6-terra",
-    "pro": "opencode/gpt-5.6-sol",
-    "max": "opencode/gpt-5.6-sol",
-    "vision": "opencode/gpt-5.6-luna"
+    "flash": "opencode/gpt-6-luna",
+    "standard": "opencode/gpt-6-sol",
+    "pro": "opencode/gpt-6-sol",
+    "max": "opencode/gpt-6-sol",
+    "vision": "opencode/gpt-6-luna"
   }
 }

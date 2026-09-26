@@ -1,10 +1,10 @@
 {
-  "description": "Anthropic (official API) — claude-haiku-4-5 carries the high-traffic standard tier (fast) and explores on flash, claude-sonnet-5 codes on pro, claude-opus-5 judges on the low-frequency max tier. All Claude models accept images and PDFs — vision uses claude-sonnet-5 for balanced quality. Requires ANTHROPIC_API_KEY environment variable.",
+  "description": "Anthropic (official API) — claude-haiku-4-5 carries the high-traffic standard tier (fast) and explores on flash, claude-sonnet-5 codes on pro and judges on max: the entire opus line (opus-4-5 through opus-5-5 at $4-5/$20-25) and fable-5/5-1 ($10/$50) breach the $3/$15 cost red line, so sonnet-5 is the strongest in-family reviewer under the cap. All Claude models accept images and PDFs — vision uses claude-sonnet-5 for balanced quality. Requires ANTHROPIC_API_KEY environment variable.",
   "tiers": {
     "flash": "anthropic/claude-haiku-4-5",
     "standard": "anthropic/claude-haiku-4-5",
     "pro": "anthropic/claude-sonnet-5",
-    "max": "anthropic/claude-opus-5",
+    "max": "anthropic/claude-sonnet-5",
     "vision": "anthropic/claude-sonnet-5"
   }
 }

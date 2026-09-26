@@ -1,10 +1,10 @@
 {
-  "description": "Ultimate tier — strongest picks under the cost red line: deepseek-v4-flash explores on flash, kimi-k2.7-code orchestrates on standard, qwen3.8-max codes on pro (Qwen coding flagship), grok-4.6 judges on max (kill-line frontier champion at $2/$6, capability index 61); vision uses qwen3.8-flash. kimi-k3 stays out of the mixed ladder — glm-5.3 matches its capability index at 40% of the blended price — but leads the all-Kimi family profile. kimi-k2.6 is excluded: deprecated prior gen, dominated by same-price k2.7-code.",
+  "description": "Ultimate tier — strongest picks under the cost red line: deepseek-v4-flash explores on flash, kimi-k2.7-code orchestrates on standard, qwen3.8-max codes on pro (Qwen coding flagship), grok-4.7 judges on max (2026-09-21 successor to grok-4.6 at the same $2/$6); vision uses qwen3.8-flash. kimi-k3 stays out of the mixed ladder — glm-5.3 matches its capability index at 40% of the blended price — but leads the all-Kimi family profile. kimi-k2.6 is excluded: deprecated prior gen, dominated by same-price k2.7-code.",
   "tiers": {
     "flash": "opencode-go/deepseek-v4-flash",
     "standard": "opencode-go/kimi-k2.7-code",
     "pro": "opencode-go/qwen3.8-max",
-    "max": "opencode-go/grok-4.6",
+    "max": "opencode-go/grok-4.7",
     "vision": "opencode-go/qwen3.8-flash"
   }
 }

@@ -1,7 +1,7 @@
 {
-  "description": "All-Qwen family picks — qwen3.6-plus explores on flash and orchestrates on standard, qwen3.8-max codes on pro and judges on max. qwen3.7-max is skipped: at $2.5/$7.5 it costs more than the stronger qwen3.8-max ($2/$6). qwen3.8-flash handles vision — cheapest vision-capable Qwen at $0.15/$0.47 for high-frequency screenshot work.",
+  "description": "All-Qwen family picks — qwen3.8-flash explores on flash at $0.15/$0.47 (supersedes qwen3.6-plus on the cheapest tier), qwen3.6-plus orchestrates on standard, qwen3.8-max codes on pro and judges on max. qwen3.7-max is skipped: at $2.5/$7.5 it costs more than the stronger qwen3.8-max ($2/$6). qwen3.8-flash also handles vision — cheapest vision-capable Qwen for high-frequency screenshot work.",
   "tiers": {
-    "flash": "opencode-go/qwen3.6-plus",
+    "flash": "opencode-go/qwen3.8-flash",
     "standard": "opencode-go/qwen3.6-plus",
     "pro": "opencode-go/qwen3.8-max",
     "max": "opencode-go/qwen3.8-max",

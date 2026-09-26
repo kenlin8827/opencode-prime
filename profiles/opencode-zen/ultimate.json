@@ -1,10 +1,10 @@
 {
-  "description": "Ultimate tier — strongest picks under the cost red line on OpenCode Zen: deepseek-v4-flash anchors flash exploration, gemini-3.8-flash drives standard orchestration, gpt-5.6-sol powers pro-level coding, grok-4.6 delivers flagship review reasoning, and claude-sonnet-4-6 enables vision attachments. Requires OPENCODE_API_KEY environment variable (OpenCode Zen).",
+  "description": "Ultimate tier — strongest picks under the cost red line on OpenCode Zen: deepseek-v4-flash anchors flash exploration, gemini-3.8-flash drives standard orchestration, gpt-6-sol powers pro-level coding at $2/$10 (gpt-5.6-sol repriced to $4/$20 and breaches the cap), grok-4.7 delivers flagship review reasoning at $1.4/$4.2 (newer and cheaper than grok-4.6), and claude-sonnet-5 ($2/$10, superseding sonnet-4-6) enables vision attachments. Requires OPENCODE_API_KEY environment variable (OpenCode Zen).",
   "tiers": {
     "flash": "opencode/deepseek-v4-flash",
     "standard": "opencode/gemini-3.8-flash",
-    "pro": "opencode/gpt-5.6-sol",
-    "max": "opencode/grok-4.6",
-    "vision": "opencode/claude-sonnet-4-6"
+    "pro": "opencode/gpt-6-sol",
+    "max": "opencode/grok-4.7",
+    "vision": "opencode/claude-sonnet-5"
   }
 }

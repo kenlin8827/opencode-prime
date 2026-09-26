@@ -1,10 +1,10 @@
 {
-  "description": "DeepSeek (official DeepSeek API) — deepseek-v4-flash carries standard and flash tiers (non-reasoning, fastest), deepseek-v4-pro codes on pro and handles max-tier reasoning. Vision delegates to MiniMax-M3 hybrid fallback. Requires DEEPSEEK_API_KEY environment variable.",
+  "description": "DeepSeek (official DeepSeek API) — deepseek-flash carries standard and flash tiers (non-reasoning, fastest), deepseek-v4-pro codes on pro and handles max-tier reasoning. Vision uses deepseek-v4-flash-vision-exp, the image-input variant at the flash price. Requires DEEPSEEK_API_KEY environment variable.",
   "tiers": {
     "flash": "deepseek/deepseek-flash",
     "standard": "deepseek/deepseek-flash",
-    "pro": "deepseek/deepseek-flash",
+    "pro": "deepseek/deepseek-v4-pro",
     "max": "deepseek/deepseek-v4-pro",
-    "vision": "deepseek/deepseek-flash"
+    "vision": "deepseek/deepseek-v4-flash-vision-exp"
   }
 }
