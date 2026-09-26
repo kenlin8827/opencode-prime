@@ -42,8 +42,8 @@ function Apply-ProfileInPlace([hashtable]$obj, [hashtable]$p) {
     foreach ($tier in $p.tiers.Keys) {
         $ref = $p.tiers[$tier]
         $n = 0
-        foreach ($aname in $obj.agent.Keys) {
-            if ((Get-AgentTier $obj.agent $aname) -eq $tier) { $obj.agent[$aname].model = $ref; $n++ }
+        foreach ($aname in $obj.agents.Keys) {
+            if ((Get-AgentTier $obj.agents $aname) -eq $tier) { $obj.agents[$aname].model = $ref; $n++ }
         }
         if ($n -eq 0) { throw "no agent currently uses tier $tier" }
         if ($tier -eq 'standard') { $obj['model'] = $ref }
@@ -58,9 +58,9 @@ try {
     $tpl = Get-Content -Raw $template | ConvertFrom-Json -AsHashtable
     # expected per-tier ref in the untouched template
     $tplTierRef = @{}
-    foreach ($aname in $tpl.agent.Keys) {
-        $t = Get-AgentTier $tpl.agent $aname
-        if ($t -and -not $tplTierRef.ContainsKey($t)) { $tplTierRef[$t] = $tpl.agent[$aname].model }
+    foreach ($aname in $tpl.agents.Keys) {
+        $t = Get-AgentTier $tpl.agents $aname
+        if ($t -and -not $tplTierRef.ContainsKey($t)) { $tplTierRef[$t] = $tpl.agents[$aname].model }
     }
 
     $fail = 0
@@ -88,10 +88,10 @@ try {
         foreach ($tier in $p.tiers.Keys) {
             $ref = $p.tiers[$tier]
             $n = 0
-            foreach ($aname in $obj.agent.Keys) {
-                if ((Get-AgentTier $obj.agent $aname) -eq $tier) {
+            foreach ($aname in $obj.agents.Keys) {
+                if ((Get-AgentTier $obj.agents $aname) -eq $tier) {
                     $n++
-                    if ($obj.agent[$aname].model -ne $ref) { $errors += "tier ${tier}: agent $aname model '$($obj.agent[$aname].model)' != '$ref'" }
+                    if ($obj.agents[$aname].model -ne $ref) { $errors += "tier ${tier}: agent $aname model '$($obj.agents[$aname].model)' != '$ref'" }
                 }
             }
             if ($n -eq 0) { $errors += "tier ${tier}: no agent matched" }
@@ -100,12 +100,12 @@ try {
         # uncovered tiers: agents must keep the template ref (if the template has one)
         # The template ships no model presets by design, so this check only applies
         # if the template happens to have models (e.g. user-added or legacy).
-        foreach ($aname in $obj.agent.Keys) {
-            $t = Get-AgentTier $obj.agent $aname
+        foreach ($aname in $obj.agents.Keys) {
+            $t = Get-AgentTier $obj.agents $aname
             if ($t -and -not $p.tiers.Contains($t)) {
                 $expected = $tplTierRef[$t]
-                if ($expected -and $obj.agent[$aname].model -ne $expected) {
-                    $errors += "untouched tier ${t} ($aname): '$($obj.agent[$aname].model)' != template '$expected'"
+                if ($expected -and $obj.agents[$aname].model -ne $expected) {
+                    $errors += "untouched tier ${t} ($aname): '$($obj.agents[$aname].model)' != template '$expected'"
                 }
             }
         }
