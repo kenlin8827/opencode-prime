@@ -1,5 +1,5 @@
 {
-  "description": "All-Claude family picks — claude-haiku-4-5 keeps flash exploration low-cost, claude-sonnet-5 runs standard orchestration plus pro+max coding and review: at $2/$10 it is newer and cheaper than the retired pro/max pick claude-sonnet-4-6 ($3/$15) and is the strongest family member inside the cost red line on OpenCode Zen (opus-5-5 at $4/$20 and fable-5-1 at $10/$50 are excluded). Vision uses sonnet-5 for attachments. Requires OPENCODE_API_KEY environment variable (OpenCode Zen).",
+  "description": "All-Claude family picks — claude-haiku-4-5 handles low-cost flash exploration, while claude-sonnet-5 runs standard, pro, max, and vision as the strongest Claude model within OCP's $3/$15 cost cap. Claude Opus 5.5 ($4/$20) and Fable 5.1 ($10/$50) exceed the cap and are excluded. Requires OPENCODE_API_KEY environment variable (OpenCode Zen).",
   "tiers": {
     "flash": "opencode/claude-haiku-4-5",
     "standard": "opencode/claude-sonnet-5",

@@ -65,8 +65,8 @@
 | `opencode-zen/performance` | OpenCode Zen 网关 | 日常主力，`max` 具备评审能力 (DeepSeek V4 Flash / Kimi K2.7-Code / GPT-5.3 Codex / GPT-5.6 Terra) |
 | `opencode-zen/economy` | OpenCode Zen 网关 | 面向高频日常编码的成本优化阶梯 (Gemini 3.5 Flash Lite / GPT-5.1 / GPT-5.1 Codex / DeepSeek V4 Pro) |
 | `opencode-zen/lite` | OpenCode Zen 网关 | 成本最低，`max` 仍保持评审能力 (Ling 3.0 Flash Fin Free / Gemini 3.5 Flash Lite / MiniMax M2.7) |
-| `opencode-zen/claude` | OpenCode Zen 网关 | 全 Claude 模型族纯享预设 (Haiku 4.5 / Sonnet 5 / Sonnet 4.6) |
-| `opencode-zen/gpt` | OpenCode Zen 网关 | 全 GPT codex 线 (5.1 Codex Mini / 5.1 / 5.3 Codex / 5.6 Terra) |
+| `opencode-zen/claude` | OpenCode Zen 网关 | 全 Claude 模型族纯享预设 (Haiku 4.5 / Sonnet 5) |
+| `opencode-zen/gpt` | OpenCode Zen 网关 | 全 GPT 预设 (GPT-6 Luna / GPT-5.4 Mini / GPT-5.3 Codex) |
 | `opencode-zen/gemini` | OpenCode Zen 网关 | 全 Gemini 模型族纯享预设 (3.5 Flash Lite / 3.6 Flash / 3.8 Flash / 3.1 Pro) |
 | `opencode-zen/deepseek` | OpenCode Zen 网关 | 全 DeepSeek 模型族纯享预设 (V4 Flash / V4 Pro / V4 Flash Vision EXP) |
 | `opencode-zen/kimi` | OpenCode Zen 网关 | 全 Kimi 模型族纯享预设 (K2.5 / K2.6 / K2.7-Code / K3) |

@@ -1,10 +1,10 @@
 {
-  "description": "All-GPT codex line — flash uses gpt-6-luna for near-zero-cost exploration at $0.1/$0.5 with 1M context, standard/pro/max run gpt-6-sol at $2/$10: the 6-line dropped terra, and sol is cheaper than 5.6-terra while gpt-6-astra ($10/$50) breaches the $3/$15 red line, so sol is both the orchestration tier and the strongest in-family survivor; vision reuses luna (6-line supports image inputs). Requires OPENCODE_API_KEY environment variable (OpenCode Zen).",
+  "description": "All-GPT picks — gpt-6-luna handles flash exploration and vision ($0.1/$0.5, rising to $0.2/$0.75 above 272K context); gpt-5.4-mini runs standard orchestration at $0.75/$4.50, and gpt-5.3-codex powers pro and max at $1.75/$14 as the latest code-specialized GPT model within the $3/$15 cap. gpt-6-sol is excluded because its input price rises to $4 above 272K context; gpt-6-astra costs $10/$50. Requires OPENCODE_API_KEY environment variable (OpenCode Zen).",
   "tiers": {
     "flash": "opencode/gpt-6-luna",
-    "standard": "opencode/gpt-6-sol",
-    "pro": "opencode/gpt-6-sol",
-    "max": "opencode/gpt-6-sol",
+    "standard": "opencode/gpt-5.4-mini",
+    "pro": "opencode/gpt-5.3-codex",
+    "max": "opencode/gpt-5.3-codex",
     "vision": "opencode/gpt-6-luna"
   }
 }

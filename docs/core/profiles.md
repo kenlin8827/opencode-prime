@@ -65,8 +65,8 @@ A profile is a named preset that maps all model tiers to a specific provider's m
 | `opencode-zen/performance` | OpenCode Zen Gateway | Daily driver with review-capable `max` (DeepSeek V4 Flash / Kimi K2.7-Code / GPT-5.3 Codex / GPT-5.6 Terra) |
 | `opencode-zen/economy` | OpenCode Zen Gateway | Cost-optimized for high-traffic coding (Gemini 3.5 Flash Lite / GPT-5.1 / GPT-5.1 Codex / DeepSeek V4 Pro) |
 | `opencode-zen/lite` | OpenCode Zen Gateway | Cheapest usable ladder, DeepSeek V4 Pro still judges `max` (Ling 3.0 Flash Fin Free / Gemini 3.5 Flash Lite / MiniMax M2.7) |
-| `opencode-zen/claude` | OpenCode Zen Gateway | All-Claude picks (Haiku 4.5 / Sonnet 5 / Sonnet 4.6) |
-| `opencode-zen/gpt` | OpenCode Zen Gateway | All-GPT codex line (5.1 Codex Mini / 5.1 / 5.3 Codex / 5.6 Terra) |
+| `opencode-zen/claude` | OpenCode Zen Gateway | All-Claude picks (Haiku 4.5 / Sonnet 5) |
+| `opencode-zen/gpt` | OpenCode Zen Gateway | All-GPT picks (GPT-6 Luna / GPT-5.4 Mini / GPT-5.3 Codex) |
 | `opencode-zen/gemini` | OpenCode Zen Gateway | All-Gemini picks (3.5 Flash Lite / 3.6 Flash / 3.8 Flash / 3.1 Pro) |
 | `opencode-zen/deepseek` | OpenCode Zen Gateway | All-DeepSeek family fallback (V4 Flash / V4 Pro / V4 Flash Vision EXP) |
 | `opencode-zen/kimi` | OpenCode Zen Gateway | All-Kimi family fallback (K2.5 / K2.6 / K2.7-Code / K3) |
